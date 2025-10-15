@@ -6,14 +6,17 @@ import { clsx } from 'clsx'
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
 import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
-import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
+import {
+  formatCPF,
+  formatPhone,
+  formatDateSafe,
+} from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
 import { ManagerActions } from '@/components/case/ManagerActions'
 import { PafSection } from '@/components/case/PafSection'
 import { EvolutionsSection } from '@/components/case/EvolutionsSection'
 import { DetailField } from '@/components/case/DetailField'
 import { DetailSkeleton } from '@/components/case/DetailSkeleton'
-import { Header } from '@/components/layout/Header' // Importa o Header
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
@@ -38,12 +41,11 @@ export function CaseDetail() {
       </div>
     )
   }
-
   const statusInfo = CASE_STATUS_MAP[caseDetail.status as CaseStatusIdentifier]
 
   return (
     <div className="bg-card p-6 rounded-lg shadow-sm border space-y-6">
-      <div className="border-b pb-4">
+       <div className="border-b pb-4">
         <h2 className="text-2xl font-bold text-foreground">
           {caseDetail.nomeCompleto}
         </h2>
@@ -67,100 +69,18 @@ export function CaseDetail() {
           Informações Pessoais
         </h3>
         <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-6">
-          <DetailField
-            label="Nome Completo"
-            value={caseDetail.nomeCompleto}
-          />
+          <DetailField label="Nome Completo" value={caseDetail.nomeCompleto} />
           <DetailField label="CPF" value={formatCPF(caseDetail.cpf)} />
-          <DetailField
-            label="Data de Nascimento"
-            value={formatDateSafe(caseDetail.nascimento)}
-          />
+          <DetailField label="Data de Nascimento" value={formatDateSafe(caseDetail.nascimento)} />
           <DetailField label="Sexo" value={caseDetail.sexo} />
-          <DetailField
-            label="Telefone"
-            value={formatPhone(caseDetail.telefone)}
-          />
-          <DetailField
-            label="Endereço"
-            value={caseDetail.endereco}
-            className="lg:col-span-2"
-          />
-        </dl>
-      </div>
-
-      <div className="rounded-lg border bg-background p-4">
-        <h3 className="text-base font-semibold text-foreground mb-4">
-          Detalhes do Caso
-        </h3>
-        <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-6">
-          <DetailField
-            label="Data de Entrada"
-            value={formatDateSafe(caseDetail.dataEntrada)}
-          />
-          <DetailField
-            label="Nível de Urgência"
-            value={caseDetail.urgencia}
-          />
-          <DetailField
-            label="Violação de Direito"
-            value={caseDetail.violacao}
-          />
-          <DetailField
-            label="Categoria do Público"
-            value={caseDetail.categoria}
-          />
-          <DetailField
-            label="Órgão Demandante"
-            value={caseDetail.orgaoDemandante}
-          />
-          <DetailField
-            label="Agente Social (Acolhida)"
-            value={caseDetail.agenteAcolhida?.nome ?? 'Não designado'}
-          />
-          <DetailField
-            label="Especialista PAEFI"
-            value={
-              caseDetail.especialistaPAEFI?.nome ?? 'Não designado'
-            }
-          />
-          <DetailField
-            label="Número do SEI"
-            value={caseDetail.numeroSei}
-          />
-          <DetailField
-            label="Link do SEI"
-            value={
-              caseDetail.linkSei ? (
-                <a
-                  href={caseDetail.linkSei}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-primary hover:underline"
-                  title="Abrir processo no SEI"
-                >
-                  Abrir no SEI <ExternalLink size={14} />
-                </a>
-              ) : null
-            }
-          />
-          <div className="lg:col-span-3">
-            <DetailField
-              label="Observações Iniciais"
-              value={caseDetail.observacoes}
-            />
-          </div>
+          <DetailField label="Telefone" value={formatPhone(caseDetail.telefone)} />
+          <DetailField label="Endereço" value={caseDetail.endereco} className="lg:col-span-2" />
         </dl>
       </div>
       
       <CaseActions caseData={caseDetail} />
       <ManagerActions caseData={caseDetail} />
-      <PafSection
-        caseId={caseDetail.id}
-        caseStatus={caseDetail.status}
-        specialistId={caseDetail.especialistaPAEFI?.id}
-        currentUserId={user?.id}
-      />
+      <PafSection caseData={caseDetail} />
       <EvolutionsSection caseId={caseDetail.id} />
     </div>
   )

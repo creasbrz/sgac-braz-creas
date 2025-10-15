@@ -1,7 +1,6 @@
 // frontend/src/schemas/caseSchemas.ts
 import { z } from 'zod'
 
-// --- Funções de Validação Customizadas ---
 function validaCPF(cpf: string): boolean {
   cpf = cpf.replace(/[^\d]+/g, '')
   if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false
@@ -20,7 +19,6 @@ function validaCPF(cpf: string): boolean {
 
 const requiredFieldMessage = 'Este campo é obrigatório.'
 
-// --- Schemas de Formulário ---
 export const createCaseFormSchema = z.object({
   nomeCompleto: z.string().min(3, 'O nome deve ter no mínimo 3 caracteres.'),
   cpf: z.string().refine(validaCPF, { message: 'CPF inválido.' }),

@@ -1,23 +1,46 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import { globalIgnores } from 'eslint/config'
+// frontend/eslint.config.js
+import globals from "globals";
+import tseslint from "typescript-eslint";
+import pluginReactHooks from "eslint-plugin-react-hooks";
+import pluginReactRefresh from "eslint-plugin-react-refresh";
+import eslintJs from "@eslint/js";
 
-export default tseslint.config([
-  globalIgnores(['dist']),
+export default [
+  // Configuração base recomendada pelo ESLint
+  eslintJs.configs.recommended,
+
+  // Configurações para ficheiros TypeScript e TSX
   {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs['recommended-latest'],
-      reactRefresh.configs.vite,
-    ],
+    files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
+      parser: tseslint.parser,
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+        ecmaVersion: "latest",
+        sourceType: "module",
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+    plugins: {
+      "typescript-eslint": tseslint.plugin,
+      "react-hooks": pluginReactHooks,
+      "react-refresh": pluginReactRefresh,
+    },
+    rules: {
+      // Regras recomendadas para TypeScript
+      ...tseslint.configs.recommended.rules,
+      // Regras recomendadas para React Hooks
+      ...pluginReactHooks.configs.recommended.rules,
+      // Regra para o Fast Refresh do Vite
+      "react-refresh/only-export-components": "warn",
     },
   },
-])
+
+  // Ignora a pasta de build
+  {
+    ignores: ["dist/"],
+  },
+];

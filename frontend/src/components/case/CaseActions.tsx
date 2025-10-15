@@ -8,9 +8,9 @@ import { Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/utils/error'
-import { type CaseStatusIdentifier } from '@/constants/caseConstants' // Correção da importação
+import { type CaseStatusIdentifier } from '@/constants/caseConstants'
 import { caseTransitions, type StatusAction } from '@/constants/caseTransitions'
-import type { CaseDetailData } from '@/types/case' // Correção da importação
+import type { CaseDetailData } from '@/types/case'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,12 +57,17 @@ export function CaseActions({ caseData }: { caseData: CaseDetailData }) {
     user?.id === caseData.agenteAcolhida?.id ||
     user?.id === caseData.especialistaPAEFI?.id
 
+  // Correção: Garante que o 'user' existe antes de verificar o cargo
   const allowedActions =
     caseTransitions[caseData.status as CaseStatusIdentifier]?.filter(
-      (action: StatusAction) =>
-        action.type === 'status' &&
-        (isUserResponsible || user?.cargo === 'Gerente') &&
-        action.allowedRoles.includes(user?.cargo ?? ''),
+      (action: StatusAction) => {
+        if (!user) return false // Se o utilizador não estiver carregado, não mostra nenhuma ação
+        return (
+          action.type === 'status' &&
+          (isUserResponsible || user.cargo === 'Gerente') &&
+          action.allowedRoles.includes(user.cargo)
+        )
+      },
     ) || []
 
   if (allowedActions.length === 0) return null

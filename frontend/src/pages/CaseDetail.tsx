@@ -1,24 +1,18 @@
 // frontend/src/pages/CaseDetail.tsx
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { ExternalLink } from 'lucide-react'
 import { clsx } from 'clsx'
-import { ExternalLink, ArrowLeft } from 'lucide-react'
 
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
-import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
-import {
-  formatCPF,
-  formatPhone,
-  formatDateSafe,
-} from '@/utils/formatters'
+import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
 import { ManagerActions } from '@/components/case/ManagerActions'
 import { PafSection } from '@/components/case/PafSection'
 import { EvolutionsSection } from '@/components/case/EvolutionsSection'
 import { DetailField } from '@/components/case/DetailField'
 import { DetailSkeleton } from '@/components/case/DetailSkeleton'
-import type { CaseDetailData } from '@/types/case'
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
@@ -93,77 +87,10 @@ export function CaseDetail() {
         </dl>
       </div>
 
-      <div className="rounded-lg border bg-background p-4">
-        <h3 className="text-base font-semibold text-foreground mb-4">
-          Detalhes do Caso
-        </h3>
-        <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-6">
-          <DetailField
-            label="Data de Entrada"
-            value={formatDateSafe(caseDetail.dataEntrada)}
-          />
-          <DetailField
-            label="Nível de Urgência"
-            value={caseDetail.urgencia}
-          />
-          <DetailField
-            label="Violação de Direito"
-            value={caseDetail.violacao}
-          />
-          <DetailField
-            label="Categoria do Público"
-            value={caseDetail.categoria}
-          />
-          <DetailField
-            label="Órgão Demandante"
-            value={caseDetail.orgaoDemandante}
-          />
-          <DetailField
-            label="Agente Social (Acolhida)"
-            value={caseDetail.agenteAcolhida?.nome ?? 'Não designado'}
-          />
-          <DetailField
-            label="Especialista PAEFI"
-            value={
-              caseDetail.especialistaPAEFI?.nome ?? 'Não designado'
-            }
-          />
-          <DetailField
-            label="Número do SEI"
-            value={caseDetail.numeroSei}
-          />
-          <DetailField
-            label="Link do SEI"
-            value={
-              caseDetail.linkSei ? (
-                <a
-                  href={caseDetail.linkSei}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-primary hover:underline"
-                  title="Abrir processo no SEI"
-                >
-                  Abrir no SEI <ExternalLink size={14} />
-                </a>
-              ) : null
-            }
-          />
-          <div className="lg:col-span-3">
-            <DetailField
-              label="Observações Iniciais"
-              value={caseDetail.observacoes}
-            />
-          </div>
-        </dl>
-      </div>
-      
       <CaseActions caseData={caseDetail} />
       <ManagerActions caseData={caseDetail} />
       <PafSection
-        caseId={caseDetail.id}
-        caseStatus={caseDetail.status}
-        specialistId={caseDetail.especialistaPAEFI?.id}
-        currentUserId={user?.id}
+        caseData={caseDetail}
       />
       <EvolutionsSection caseId={caseDetail.id} />
     </div>

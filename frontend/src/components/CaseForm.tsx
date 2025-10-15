@@ -3,7 +3,7 @@ import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
 import { Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -30,7 +30,7 @@ interface CaseFormProps {
   onCaseCreated?: () => void
 }
 
-const defaultFormValues: CreateCaseFormData = {
+const defaultFormValues: Omit<CreateCaseFormData, 'linkSei'> & { linkSei?: string } = {
   nomeCompleto: '',
   cpf: '',
   nascimento: '',
@@ -68,8 +68,8 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
         ...data,
         cpf: data.cpf.replace(/\D/g, ''),
         telefone: data.telefone.replace(/\D/g, ''),
-        nascimento: new Date(data.nascimento).toISOString(),
-        dataEntrada: new Date(data.dataEntrada).toISOString(),
+        nascimento: new Date(data.nascimento),
+        dataEntrada: new Date(data.dataEntrada),
       }
       return await api.post('/cases', dataToSend)
     },

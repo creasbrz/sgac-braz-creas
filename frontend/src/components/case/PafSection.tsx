@@ -1,11 +1,12 @@
 // frontend/src/components/case/PafSection.tsx
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { z } from 'zod' // Importação adicionada
+import { z } from 'zod'
 
 import { usePaf } from '@/hooks/api/useCaseQueries'
+import { useAuth } from '@/hooks/useAuth' // Importação adicionada
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
 import { pafFormSchema } from '@/schemas/caseSchemas'
@@ -14,9 +15,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { DetailField } from './DetailField'
-import type { CaseDetailData, PafData } from '@/types/case' // Usa o tipo centralizado
+import type { CaseDetailData, PafData } from '@/types/case'
 
-// Correção: Usa `z.infer` em vez de `Zod.infer`
 type PafFormData = z.infer<typeof pafFormSchema>
 
 // Componente para exibir o PAF existente
@@ -104,7 +104,7 @@ interface PafSectionProps {
 }
 
 export function PafSection({ caseData }: PafSectionProps) {
-  const { user } = useAuth()
+  const { user } = useAuth() // Hook useAuth adicionado
   const { data: paf, isLoading } = usePaf(caseData.id)
 
   const canCreatePaf =

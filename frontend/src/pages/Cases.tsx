@@ -1,5 +1,4 @@
 // frontend/src/pages/Cases.tsx
-import { CaseForm } from '@/components/CaseForm'
 import { CaseTable } from '@/components/CaseTable'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -27,16 +26,13 @@ export function Cases() {
 
   return (
     <div className="space-y-6">
-      {/* O formulário de criação agora é acedido por um modal no cabeçalho,
-          pelo que não é mais necessário aqui.
-          Esta página agora foca-se exclusivamente na listagem. */}
-
+      {/* A página de Casos agora foca-se apenas em exibir a tabela */}
       <Card>
         <CardHeader>
           <CardTitle>Lista de Casos</CardTitle>
           <CardDescription>
             {canCreateCase
-              ? 'Visualize, gira e adicione novos casos através do botão no cabeçalho.'
+              ? 'Visualize, gira e adicione novos casos através do botão no menu lateral.'
               : 'Visualize todos os casos que lhe foram atribuídos.'}
           </CardDescription>
         </CardHeader>
@@ -47,4 +43,3 @@ export function Cases() {
     </div>
   )
 }
-

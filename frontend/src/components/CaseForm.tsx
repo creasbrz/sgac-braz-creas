@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
-import axios from 'axios'
 import { Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -23,12 +22,12 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema } from '@/schemas/caseSchemas'
+import { useAgents } from '@/hooks/api/useCaseQueries'
 
 type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
 
-interface Agent {
-  id: string
-  nome: string
+interface CaseFormProps {
+  onCaseCreated?: () => void
 }
 
 const defaultFormValues: CreateCaseFormData = {
@@ -49,20 +48,9 @@ const defaultFormValues: CreateCaseFormData = {
   numeroSei: '',
 }
 
-interface CaseFormProps {
-  onCaseCreated?: () => void
-}
-
 export function CaseForm({ onCaseCreated }: CaseFormProps) {
   const queryClient = useQueryClient()
-
-  const { data: agents, isLoading: isLoadingAgents } = useQuery<Agent[]>({
-    queryKey: ['agents'],
-    queryFn: async () => {
-      const response = await api.get('/users/agents')
-      return response.data
-    },
-  })
+  const { data: agents, isLoading: isLoadingAgents } = useAgents()
 
   const {
     control,
@@ -393,4 +381,3 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
     </form>
   )
 }
-

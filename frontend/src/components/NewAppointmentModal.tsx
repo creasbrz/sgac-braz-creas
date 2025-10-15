@@ -3,8 +3,7 @@ import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
 import { z } from 'zod'
-import { zodResolver } from '@hookform/resolvers/zod'
-import toast from 'react-hot-toast'
+import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -52,7 +51,7 @@ export function NewAppointmentModal({ onOpenChange, defaultCaseId }: NewAppointm
     queryKey: ['cases'],
     queryFn: async () => {
       const response = await api.get('/cases')
-      return response.data
+      return response.data?.items ?? [] // Garante que `items` existe
     },
   })
 
@@ -62,7 +61,15 @@ export function NewAppointmentModal({ onOpenChange, defaultCaseId }: NewAppointm
     formState: { errors },
     reset,
     setValue,
-  } = useForm<AppointmentFormData>()
+  } = useForm<AppointmentFormData>({
+    // O zodResolver não é mais necessário aqui se não estiver a usá-lo diretamente
+    defaultValues: {
+      titulo: '',
+      data: '',
+      time: '',
+      casoId: defaultCaseId ?? '',
+    }
+  })
 
   useEffect(() => {
     if (defaultCaseId) {

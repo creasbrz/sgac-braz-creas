@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import type { CaseDetailData } from '@/pages/CaseDetail'
+import type { CaseDetailData } from '@/types/case' // Correção da importação
 
 export function ManagerActions({ caseData }: { caseData: CaseDetailData }) {
   const { user } = useAuth()

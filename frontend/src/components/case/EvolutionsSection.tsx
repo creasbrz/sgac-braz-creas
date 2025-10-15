@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
+import { z } from 'zod' // Importação adicionada
 
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
@@ -12,7 +13,8 @@ import { formatDateSafe } from '@/utils/formatters'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
-type EvolutionFormData = Zod.infer<typeof evolutionFormSchema>
+// Correção: Usa `z.infer` em vez de `Zod.infer`
+type EvolutionFormData = z.infer<typeof evolutionFormSchema>
 
 interface Evolution {
   id: string

@@ -1,21 +1,19 @@
 // frontend/src/components/layout/MobileSidebar.tsx
 import { NavLink } from 'react-router-dom'
-import { Menu, HardHat } from 'lucide-react'
+import { Menu, PlusCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { Button } from '@/components/ui/button'
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
-import { navLinks } from './Sidebar'
+import { useModal } from '@/hooks/useModal'
+import { navLinks } from '@/constants/navigation'
 import { GdfLogo } from './GdfLogo'
 
 export function MobileSidebar() {
   const { user } = useAuth()
+  const { openNewCaseModal } = useModal()
 
   const accessibleLinks = user
     ? navLinks.filter((link) => link.allowedRoles.includes(user.cargo))
@@ -38,6 +36,16 @@ export function MobileSidebar() {
             <GdfLogo />
             <span className="text-foreground">SGAC-BRAZ</span>
           </NavLink>
+          {user?.cargo === 'Gerente' && (
+            <Button
+              variant="ghost"
+              className="justify-start gap-4 px-3 py-2 text-lg"
+              onClick={openNewCaseModal}
+            >
+              <PlusCircle className="h-5 w-5" />
+              Novo Caso
+            </Button>
+          )}
           {accessibleLinks.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
@@ -59,4 +67,3 @@ export function MobileSidebar() {
     </Sheet>
   )
 }
-

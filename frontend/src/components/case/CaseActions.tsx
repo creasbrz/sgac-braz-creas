@@ -8,8 +8,9 @@ import { Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/utils/error'
-import { caseTransitions, type CaseStatusIdentifier } from '@/constants/caseTransitions'
-import type { CaseDetailData } from '@/pages/CaseDetail'
+import { type CaseStatusIdentifier } from '@/constants/caseConstants' // Correção da importação
+import { caseTransitions, type StatusAction } from '@/constants/caseTransitions'
+import type { CaseDetailData } from '@/types/case' // Correção da importação
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +59,7 @@ export function CaseActions({ caseData }: { caseData: CaseDetailData }) {
 
   const allowedActions =
     caseTransitions[caseData.status as CaseStatusIdentifier]?.filter(
-      (action) =>
+      (action: StatusAction) =>
         action.type === 'status' &&
         (isUserResponsible || user?.cargo === 'Gerente') &&
         action.allowedRoles.includes(user?.cargo ?? ''),
@@ -70,7 +71,7 @@ export function CaseActions({ caseData }: { caseData: CaseDetailData }) {
     <div className="rounded-lg border bg-background p-4">
       <h3 className="text-base font-semibold text-foreground">Ações Rápidas</h3>
       <div className="mt-4 flex flex-wrap gap-4">
-        {allowedActions.map((action) => (
+        {allowedActions.map((action: StatusAction) => (
           <AlertDialog key={action.label}>
             <AlertDialogTrigger asChild>
               <Button

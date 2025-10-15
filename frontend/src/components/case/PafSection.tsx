@@ -1,8 +1,9 @@
 // frontend/src/components/case/PafSection.tsx
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { z } from 'zod' // Importação adicionada
 
 import { usePaf } from '@/hooks/api/useCaseQueries'
 import { api } from '@/lib/api'
@@ -13,10 +14,12 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { DetailField } from './DetailField'
-import type { PafData } from '@/types/case'
+import type { CaseDetailData, PafData } from '@/types/case' // Usa o tipo centralizado
 
-type PafFormData = Zod.infer<typeof pafFormSchema>
+// Correção: Usa `z.infer` em vez de `Zod.infer`
+type PafFormData = z.infer<typeof pafFormSchema>
 
+// Componente para exibir o PAF existente
 function DisplayPaf({ paf }: { paf: PafData }) {
   return (
     <div className="mt-4 space-y-4">
@@ -31,6 +34,7 @@ function DisplayPaf({ paf }: { paf: PafData }) {
   )
 }
 
+// Componente para o formulário de criação do PAF
 function CreatePafForm({ caseId }: { caseId: string }) {
   const queryClient = useQueryClient()
   const {
@@ -96,24 +100,17 @@ function CreatePafForm({ caseId }: { caseId: string }) {
 }
 
 interface PafSectionProps {
-  caseId: string
-  caseStatus: string
-  specialistId: string | null | undefined
-  currentUserId: string | null
+  caseData: CaseDetailData
 }
 
-export function PafSection({
-  caseId,
-  caseStatus,
-  specialistId,
-  currentUserId,
-}: PafSectionProps) {
-  const { data: paf, isLoading } = usePaf(caseId)
+export function PafSection({ caseData }: PafSectionProps) {
+  const { user } = useAuth()
+  const { data: paf, isLoading } = usePaf(caseData.id)
 
   const canCreatePaf =
     !paf &&
-    caseStatus === 'EM_ACOMPANHAMENTO_PAEFI' &&
-    specialistId === currentUserId
+    caseData.status === 'EM_ACOMPANHAMENTO_PAEFI' &&
+    caseData.especialistaPAEFI?.id === user?.id
 
   return (
     <div className="rounded-lg border bg-background p-4">
@@ -122,12 +119,12 @@ export function PafSection({
       </h3>
       {isLoading && <p className="text-sm text-muted-foreground mt-4">A carregar PAF...</p>}
       {!isLoading && paf && <DisplayPaf paf={paf} />}
-      {!isLoading && !paf && caseStatus !== 'EM_ACOMPANHAMENTO_PAEFI' && (
+      {!isLoading && !paf && caseData.status !== 'EM_ACOMPANHAMENTO_PAEFI' && (
         <p className="text-sm text-muted-foreground mt-4">
           O PAF estará disponível quando o caso for atribuído a um especialista.
         </p>
       )}
-      {!isLoading && canCreatePaf && <CreatePafForm caseId={caseId} />}
+      {!isLoading && canCreatePaf && <CreatePafForm caseId={caseData.id} />}
     </div>
   )
 }

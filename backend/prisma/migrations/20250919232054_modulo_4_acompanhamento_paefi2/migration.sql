@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "public"."Case" ALTER COLUMN "status" SET DEFAULT 'AGUARDANDO_ACOLHIDA';

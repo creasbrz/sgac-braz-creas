@@ -1,0 +1,42 @@
+{
+  "name": "sgac-braz-backend",
+  "version": "0.1.0",
+  "description": "Backend para o Sistema de Gestão de Atendimentos do CREAS Brazlândia",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "tsx watch src/server.ts"
+  },
+  "keywords": [
+    "creas",
+    "assistencia-social",
+    "gestao"
+  ],
+  "author": "DevHelper CREAS",
+  "license": "ISC",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@prisma/client": "5.17.0",
+    "bcryptjs": "^3.0.2",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
+    "fast-csv": "^5.0.5",
+    "fastify": "^5.6.1",
+    "pg": "^8.16.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.0.0",
+    "@types/node": "^24.7.2",
+    "pino-pretty": "^13.1.2",
+    "prisma": "5.17.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,97 @@
+// backend/prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                    String        @id @default(uuid())
+  nome                  String
+  email                 String        @unique
+  senha                 String
+  cargo                 String
+  ativo                 Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  casosCriados          Case[]        @relation("CasosCriados")
+  casosDeAcolhida       Case[]        @relation("CasosDeAcolhida")
+  casosDeAcompanhamento Case[]        @relation("CasosDeAcompanhamento")
+  evolucoes             Evolucao[]
+  pafsCriados           Paf[] // Corrigido de PAF para Paf
+  agendamentos          Agendamento[]
+}
+
+model Case {
+  id                  String        @id @default(uuid())
+  nomeCompleto        String
+  cpf                 String        @unique
+  nascimento          DateTime
+  sexo                String
+  telefone            String
+  endereco            String
+  dataEntrada         DateTime      @default(now())
+  urgencia            String
+  violacao            String
+  categoria           String
+  orgaoDemandante     String
+  numeroSei           String?
+  linkSei             String?
+  observacoes         String?
+  status              String        @default("AGUARDANDO_ACOLHIDA")
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  parecerFinal        String?       @db.Text
+  dataDesligamento    DateTime?
+  dataInicioPAEFI     DateTime?
+  criadoPor           User          @relation("CasosCriados", fields: [criadoPorId], references: [id])
+  criadoPorId         String
+  agenteAcolhida      User?         @relation("CasosDeAcolhida", fields: [agenteAcolhidaId], references: [id])
+  agenteAcolhidaId    String?
+  especialistaPAEFI   User?         @relation("CasosDeAcompanhamento", fields: [especialistaPAEFIId], references: [id])
+  especialistaPAEFIId String?
+  evolucoes           Evolucao[]
+  paf                 Paf? // Corrigido de PAF para Paf
+  agendamentos        Agendamento[]
+}
+
+model Evolucao {
+  id        String   @id @default(uuid())
+  conteudo  String   @db.Text
+  createdAt DateTime @default(now())
+  caso      Case     @relation(fields: [casoId], references: [id])
+  casoId    String
+  autor     User     @relation(fields: [autorId], references: [id])
+  autorId   String
+}
+
+// Corrigido de PAF para Paf para consistência
+model Paf {
+  id          String   @id @default(uuid())
+  diagnostico String   @db.Text
+  objetivos   String   @db.Text
+  estrategias String   @db.Text
+  prazos      String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  caso        Case     @relation(fields: [casoId], references: [id])
+  casoId      String   @unique
+  autor       User     @relation(fields: [autorId], references: [id])
+  autorId     String
+}
+
+model Agendamento {
+  id            String   @id @default(uuid())
+  titulo        String
+  data          DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  caso          Case     @relation(fields: [casoId], references: [id])
+  casoId        String
+  responsavel   User     @relation(fields: [responsavelId], references: [id])
+  responsavelId String
+}
+

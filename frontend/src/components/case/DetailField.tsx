@@ -17,4 +17,3 @@ export function DetailField({ label, value, className = '' }: DetailFieldProps) 
     </div>
   )
 }
-

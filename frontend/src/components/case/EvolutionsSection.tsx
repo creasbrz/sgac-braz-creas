@@ -87,9 +87,7 @@ export function EvolutionsSection({ caseId }: { caseId: string }) {
       </form>
 
       <div className="mt-6 space-y-4">
-        {isLoadingEvolutions && (
-          <p className="text-sm text-muted-foreground">A carregar histórico...</p>
-        )}
+        {isLoadingEvolutions && <p className="text-sm text-muted-foreground">A carregar histórico...</p>}
         {evolutions?.map((evo) => (
           <div key={evo.id} className="bg-card p-4 rounded-md border">
             <p className="text-sm text-foreground whitespace-pre-wrap">
@@ -109,4 +107,3 @@ export function EvolutionsSection({ caseId }: { caseId: string }) {
     </div>
   )
 }
-

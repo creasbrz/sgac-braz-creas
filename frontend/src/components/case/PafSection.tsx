@@ -13,19 +13,10 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { DetailField } from './DetailField'
+import type { PafData } from '@/types/case'
 
 type PafFormData = Zod.infer<typeof pafFormSchema>
 
-interface PafData {
-  diagnostico: string
-  objetivos: string
-  estrategias: string
-  prazos: string
-  createdAt: string
-  autor: { nome: string }
-}
-
-// Componente para exibir o PAF existente
 function DisplayPaf({ paf }: { paf: PafData }) {
   return (
     <div className="mt-4 space-y-4">
@@ -40,7 +31,6 @@ function DisplayPaf({ paf }: { paf: PafData }) {
   )
 }
 
-// Componente para o formulário de criação do PAF
 function CreatePafForm({ caseId }: { caseId: string }) {
   const queryClient = useQueryClient()
   const {
@@ -141,4 +131,3 @@ export function PafSection({
     </div>
   )
 }
-

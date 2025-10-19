@@ -11,14 +11,22 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
 
-interface Stats {
-  totalCases: number
-  acolhidasCount: number
-  acompanhamentosCount: number
+interface StatData {
+  name: string
+  value: number
 }
 
-// Componente reutilizável para os cartões de estatísticas
+interface Stats {
+  newCasesThisMonth: number
+  closedCasesThisMonth: number
+  acolhidasCount: number
+  acompanhamentosCount: number
+  workloadByAgent: StatData[]
+  workloadBySpecialist: StatData[]
+}
+
 interface StatCardProps {
   title: string
   description: string
@@ -39,7 +47,6 @@ function StatCard({ title, description, value }: StatCardProps) {
   )
 }
 
-// Componente de esqueleto para o StatCard
 function StatCardSkeleton() {
   return (
     <Card>
@@ -56,7 +63,6 @@ function StatCardSkeleton() {
 
 export function Dashboard() {
   const { user } = useAuth()
-  // Adiciona refetch para o botão "Tentar novamente"
   const { data: stats, isLoading, isError, refetch } = useQuery<Stats>({
     queryKey: ['stats'],
     queryFn: async () => {
@@ -78,7 +84,6 @@ export function Dashboard() {
       {user?.cargo === 'Gerente' && (
         <>
           {isError ? (
-            // Feedback de erro melhorado com um Card e botão de ação
             <Card className="border-destructive/50 bg-destructive/10 text-destructive">
               <CardHeader>
                 <CardTitle>Erro ao Carregar Dados</CardTitle>
@@ -93,29 +98,18 @@ export function Dashboard() {
               </CardContent>
             </Card>
           ) : isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <StatCardSkeleton key={i} />
+              ))}
             </div>
           ) : (
             <div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard
-                  title="Total de Casos"
-                  description="Número total de casos no sistema."
-                  value={stats?.totalCases}
-                />
-                <StatCard
-                  title="Acolhidas Ativas"
-                  description="Casos atualmente em acolhida."
-                  value={stats?.acolhidasCount}
-                />
-                <StatCard
-                  title="Acompanhamentos Ativos"
-                  description="Casos atualmente em PAEFI."
-                  value={stats?.acompanhamentosCount}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard title="Casos Novos no Mês" description="Entradas este mês." value={stats?.newCasesThisMonth} />
+                <StatCard title="Casos Desligados no Mês" description="Finalizados este mês." value={stats?.closedCasesThisMonth} />
+                <StatCard title="Acolhidas Ativas" description="Casos em acolhida." value={stats?.acolhidasCount} />
+                <StatCard title="Acompanhamentos Ativos" description="Casos em PAEFI." value={stats?.acompanhamentosCount} />
               </div>
               <p className="text-xs text-muted-foreground mt-2 text-right">
                 Atualizado em: {new Date().toLocaleString('pt-BR')}
@@ -125,19 +119,53 @@ export function Dashboard() {
         </>
       )}
 
-      {/* Fallback para outros cargos */}
       {user?.cargo !== 'Gerente' && (
         <Card>
           <CardHeader>
             <CardTitle>Seus Casos</CardTitle>
             <CardDescription>
-              Consulte os casos atribuídos a você no menu lateral, na secção
-              "Casos".
+              Consulte os casos atribuídos a você no menu lateral, na secção "Casos".
             </CardDescription>
           </CardHeader>
         </Card>
       )}
+
+      {user?.cargo === 'Gerente' && !isLoading && !isError && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Carga de Trabalho - Acolhida</CardTitle>
+              <CardDescription>Casos em acolhida por Agente Social.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={stats?.workloadByAgent} layout="vertical">
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} width={120} />
+                  <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Carga de Trabalho - Acompanhamento</CardTitle>
+              <CardDescription>Casos em PAEFI por Especialista.</CardDescription>
+            </CardHeader>
+            <CardContent>
+               <ResponsiveContainer width="100%" height={250}>
+                 <BarChart data={stats?.workloadBySpecialist} layout="vertical">
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} width={120} />
+                  <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
-

@@ -10,7 +10,7 @@ import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import toast from 'react-hot-toast'
-import { Loader2 } from 'lucide-react' // Importação corrigida
+import { Loader2 } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -68,13 +68,15 @@ function NewAppointmentModal({
   defaultCaseId?: string | null
 }) {
   const queryClient = useQueryClient()
-  const { data: cases } = useQuery<CaseOption[]>({
+  // Correção: A query agora espera um objeto paginado e extrai os `items`.
+  const { data: casesResponse } = useQuery<{ items: CaseOption[] }>({
     queryKey: ['cases'],
     queryFn: async () => {
       const response = await api.get('/cases')
       return response.data
     },
   })
+  const cases = casesResponse?.items
 
   const {
     control,
@@ -84,12 +86,11 @@ function NewAppointmentModal({
     setValue,
   } = useForm<AppointmentFormData>({
     resolver: zodResolver(appointmentFormSchema),
-    // Correção: Adiciona valores padrão para evitar o erro de "uncontrolled input"
     defaultValues: {
       titulo: '',
       data: '',
       time: '',
-      casoId: '',
+      casoId: defaultCaseId ?? '',
     },
   })
 
@@ -321,4 +322,3 @@ export function Agenda() {
     </div>
   )
 }
-

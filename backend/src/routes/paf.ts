@@ -12,7 +12,6 @@ export async function pafRoutes(app: FastifyInstance) {
       const paramsSchema = z.object({ caseId: z.string().uuid() })
       try {
         const { caseId } = paramsSchema.parse(request.params)
-        // Correção: usa 'paf' em minúsculas para corresponder ao cliente Prisma
         const paf = await prisma.paf.findUnique({
           where: { casoId: caseId },
           include: { autor: { select: { nome: true } } },
@@ -51,11 +50,10 @@ export async function pafRoutes(app: FastifyInstance) {
             .send({ message: 'Apenas especialistas podem criar um PAF.' })
         }
 
-        // Correção: usa 'paf' em minúsculas para corresponder ao cliente Prisma
         const newPaf = await prisma.paf.create({
           data: {
             ...data,
-            casoId,
+            casoId: caseId, // Correção Definitiva: Usar a variável `caseId` aqui
             autorId,
           },
         })
@@ -70,4 +68,3 @@ export async function pafRoutes(app: FastifyInstance) {
     },
   )
 }
-

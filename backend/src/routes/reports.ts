@@ -2,7 +2,7 @@
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { endOfMonth, startOfMonth, differenceInYears, isValid } from 'date-fns'
+import { endOfMonth, startOfMonth, differenceInYears } from 'date-fns'
 
 export async function reportRoutes(app: FastifyInstance) {
   // Rota para gerar os dados agregados do RMA para um mês específico
@@ -62,55 +62,24 @@ export async function reportRoutes(app: FastifyInstance) {
             },
           },
         })
-
-        const finalPaefiCases =
-          initialPaefiCases + newPaefiCases.length - closedPaefiCases
-
-        // Bloco C: Perfil dos NOVOS casos
-        const profileBySex = newPaefiCases.reduce(
-          (acc, curr) => {
-            const key = curr.sexo || 'NaoInformado'
-            acc[key] = (acc[key] || 0) + 1
-            return acc
-          },
-          {} as Record<string, number>,
-        )
-
-        const profileByAgeGroup = newPaefiCases.reduce(
-          (acc, curr) => {
-            let group = 'NaoInformado'
-            if (curr.nascimento && isValid(new Date(curr.nascimento))) {
-              const age = differenceInYears(new Date(), curr.nascimento)
-              if (age >= 0 && age <= 6) group = '0-6'
-              else if (age <= 12) group = '7-12'
-              else if (age <= 17) group = '13-17'
-              else if (age <= 29) group = '18-29'
-              else if (age <= 59) group = '30-59'
-              else if (age >= 60) group = '60+'
-            }
-            acc[group] = (acc[group] || 0) + 1
-            return acc
-          },
-          {} as Record<string, number>,
-        )
-
+        
+        const finalPaefiCases = initialPaefiCases + newPaefiCases.length - closedPaefiCases
+        
+        // C1: Perfil dos NOVOS casos por sexo
+        const profileBySex = newPaefiCases.reduce((acc, curr) => {
+            acc[curr.sexo] = (acc[curr.sexo] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>)
+        
         const rmaData = {
           initialCount: initialPaefiCases,
           newEntries: newPaefiCases.length,
           closedCases: closedPaefiCases,
           finalCount: finalPaefiCases,
           profileBySex: {
-            masculino: profileBySex['Masculino'] || 0,
-            feminino: profileBySex['Feminino'] || 0,
-            outro: profileBySex['Outro'] || 0,
-          },
-          profileByAgeGroup: {
-            '0-6': profileByAgeGroup['0-6'] || 0,
-            '7-12': profileByAgeGroup['7-12'] || 0,
-            '13-17': profileByAgeGroup['13-17'] || 0,
-            '18-29': profileByAgeGroup['18-29'] || 0,
-            '30-59': profileByAgeGroup['30-59'] || 0,
-            '60+': profileByAgeGroup['60+'] || 0,
+              masculino: profileBySex['Masculino'] || 0,
+              feminino: profileBySex['Feminino'] || 0,
+              outro: profileBySex['Outro'] || 0,
           },
         }
 
@@ -124,4 +93,3 @@ export async function reportRoutes(app: FastifyInstance) {
     },
   )
 }
-

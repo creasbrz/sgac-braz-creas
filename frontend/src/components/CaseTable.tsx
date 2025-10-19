@@ -20,25 +20,25 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatCPF } from '@/utils/formatters'
-import { Input } from '@/components/ui/input'
+import { Input } from './ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from './ui/select'
 import { useDebounce } from '@/hooks/useDebounce'
 import { getErrorMessage } from '@/utils/error'
 import { useAuth } from '@/hooks/useAuth'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton } from './ui/skeleton'
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
   PaginationNext,
   PaginationPrevious,
-} from '@/components/ui/pagination'
+} from './ui/pagination'
 
 interface Case {
   id: string
@@ -52,7 +52,6 @@ interface PaginatedCases {
   totalPages: number
 }
 
-// Componente para uma única linha da tabela
 function CaseRow({ caseData }: { caseData: Case }) {
   const statusInfo = CASE_STATUS_MAP[caseData.status as CaseStatusIdentifier]
 
@@ -91,7 +90,9 @@ export function CaseTable() {
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const debouncedSearchTerm = useDebounce(searchTerm, 500)
+  const [isExporting, setIsExporting] = useState(false)
 
+  // Correção: A query agora espera um objeto paginado
   const {
     data,
     isLoading,
@@ -113,11 +114,12 @@ export function CaseTable() {
   const cases = data?.items
 
   const handleStatusChange = (value: string) => {
-    setPage(1) // Volta para a primeira página ao alterar o filtro
+    setPage(1)
     setStatusFilter(value === 'all' ? '' : value)
   }
 
   const handleExport = async () => {
+    setIsExporting(true)
     const exportPromise = api.get('/cases/export', { responseType: 'blob' })
 
     toast.promise(exportPromise, {
@@ -135,6 +137,8 @@ export function CaseTable() {
       },
       error: (error) => getErrorMessage(error, 'Falha ao exportar dados.'),
     })
+
+    setIsExporting(false)
   }
 
   return (
@@ -169,7 +173,7 @@ export function CaseTable() {
           </Select>
         </div>
         {user?.cargo === 'Gerente' && (
-          <Button onClick={handleExport} variant="outline">
+          <Button onClick={handleExport} disabled={isExporting} variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -233,7 +237,6 @@ export function CaseTable() {
                 />
               </PaginationItem>
               
-              {/* Lógica de paginação pode ser melhorada para mostrar mais números */}
               <PaginationItem>
                 <span className="px-4 py-2 text-sm">
                   Página {page} de {data.totalPages}
@@ -257,4 +260,3 @@ export function CaseTable() {
     </div>
   )
 }
-

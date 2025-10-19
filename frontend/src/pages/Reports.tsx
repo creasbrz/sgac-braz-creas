@@ -21,25 +21,21 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card'
-import { RmaReport } from '@/components/RmaReport'
+import { RmaReport } from '@/components/RmaReport' // Importa o novo componente
 
 interface StatData {
   name: string
   value: number
-  [key: string]: any
 }
 
 interface Stats {
   totalCases: number
-  acolhidasCount: number
-  acompanhamentosCount: number
   casesByViolation: StatData[]
   casesByCategory: StatData[]
   casesByUrgency: StatData[]
-  productivity: StatData[]
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560', '#775DD0']
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF']
 
 export function Reports() {
   const {
@@ -77,28 +73,12 @@ export function Reports() {
         <Card>
           <CardHeader>
             <CardTitle>Total de Casos</CardTitle>
-            <CardDescription>Número total de casos no sistema.</CardDescription>
+            <CardDescription>
+              Número total de casos registados no sistema.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-4xl font-bold">{stats.totalCases}</p>
-          </CardContent>
-        </Card>
-         <Card>
-          <CardHeader>
-            <CardTitle>Acolhidas</CardTitle>
-             <CardDescription>Casos atualmente em acolhida.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-bold">{stats.acolhidasCount}</p>
-          </CardContent>
-        </Card>
-         <Card>
-          <CardHeader>
-            <CardTitle>Acompanhamentos</CardTitle>
-            <CardDescription>Casos atualmente em PAEFI.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-bold">{stats.acompanhamentosCount}</p>
           </CardContent>
         </Card>
       </div>
@@ -106,19 +86,30 @@ export function Reports() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Casos por Nível de Urgência</CardTitle>
+            <CardTitle>Casos por Tipo de Violação</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.casesByUrgency}>
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} angle={-45} textAnchor="end" />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+              <BarChart data={stats.casesByViolation}>
+                <XAxis
+                  dataKey="name"
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]}>
-                   {stats.casesByUrgency.map((_entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
+                <Bar
+                  dataKey="value"
+                  fill="hsl(var(--primary))"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -141,7 +132,7 @@ export function Reports() {
                   nameKey="name"
                   label
                 >
-                  {stats.casesByCategory.map((_entry, index) => (
+                  {stats.casesByCategory.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={COLORS[index % COLORS.length]}
@@ -156,23 +147,7 @@ export function Reports() {
         </Card>
       </div>
 
-       <Card>
-          <CardHeader>
-            <CardTitle>Produtividade por Técnico</CardTitle>
-            <CardDescription>Distribuição de casos por profissional responsável.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.productivity}>
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
+      {/* Adiciona o novo componente do RMA */}
       <RmaReport />
     </div>
   )

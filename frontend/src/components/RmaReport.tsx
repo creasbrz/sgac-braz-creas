@@ -35,20 +35,13 @@ interface RmaData {
     feminino: number
     outro: number
   }
-  profileByAgeGroup: {
-    '0-6': number
-    '7-12': number
-    '13-17': number
-    '18-29': number
-    '30-59': number
-    '60+': number
-  }
 }
 
 export function RmaReport() {
   const [selectedMonth, setSelectedMonth] = useState(
     format(new Date(), 'yyyy-MM'),
   )
+  const [isQueryEnabled, setIsQueryEnabled] = useState(false)
 
   const {
     data: rmaData,
@@ -58,6 +51,7 @@ export function RmaReport() {
   } = useQuery<RmaData>({
     queryKey: ['rmaReport', selectedMonth],
     queryFn: async () => {
+      setIsQueryEnabled(true)
       const response = await api.get('/reports/rma', {
         params: { month: selectedMonth },
       })
@@ -118,7 +112,7 @@ export function RmaReport() {
             <h3 className="font-bold text-lg">
               Resultado do RMA para {monthName}
             </h3>
-
+            
             {/* Bloco B: Volume de Atendimentos */}
             <Table>
               <TableHeader>
@@ -129,43 +123,27 @@ export function RmaReport() {
               </TableHeader>
               <TableBody>
                 <TableRow>
-                  <TableCell>
-                    B1. Famílias/Indivíduos em acompanhamento no início do mês
-                  </TableCell>
-                  <TableCell className="text-right font-bold">
-                    {rmaData.initialCount}
-                  </TableCell>
+                  <TableCell>B1. Famílias/Indivíduos em acompanhamento no início do mês</TableCell>
+                  <TableCell className="text-right font-bold">{rmaData.initialCount}</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>
-                    B2. Novas Famílias/Indivíduos inseridos no mês
-                  </TableCell>
-                  <TableCell className="text-right font-bold">
-                    {rmaData.newEntries}
-                  </TableCell>
+                  <TableCell>B2. Novas Famílias/Indivíduos inseridos no mês</TableCell>
+                  <TableCell className="text-right font-bold">{rmaData.newEntries}</TableCell>
                 </TableRow>
-                <TableRow>
+                 <TableRow>
                   <TableCell>B3. Famílias/Indivíduos desligados no mês</TableCell>
-                  <TableCell className="text-right font-bold">
-                    {rmaData.closedCases}
-                  </TableCell>
+                  <TableCell className="text-right font-bold">{rmaData.closedCases}</TableCell>
                 </TableRow>
-                <TableRow>
-                  <TableCell>
-                    B4. Total em acompanhamento no final do mês (B1+B2-B3)
-                  </TableCell>
-                  <TableCell className="text-right font-bold">
-                    {rmaData.finalCount}
-                  </TableCell>
+                 <TableRow>
+                  <TableCell>B4. Total em acompanhamento no final do mês (B1+B2-B3)</TableCell>
+                  <TableCell className="text-right font-bold">{rmaData.finalCount}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
-
+            
             {/* Bloco C: Perfil */}
-            <h4 className="font-semibold pt-4">
-              C1. Perfil dos Novos Casos por Sexo
-            </h4>
-            <Table>
+            <h4 className="font-semibold pt-4">C1. Perfil dos Novos Casos por Sexo</h4>
+             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Sexo</TableHead>
@@ -175,71 +153,15 @@ export function RmaReport() {
               <TableBody>
                 <TableRow>
                   <TableCell>Masculino</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileBySex.masculino}
-                  </TableCell>
+                  <TableCell className="text-right">{rmaData.profileBySex.masculino}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>Feminino</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileBySex.feminino}
-                  </TableCell>
+                  <TableCell className="text-right">{rmaData.profileBySex.feminino}</TableCell>
                 </TableRow>
-                <TableRow>
-                  <TableCell>Outro/Não informado</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileBySex.outro}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-
-            <h4 className="font-semibold pt-4">
-              C2. Perfil dos Novos Casos por Faixa Etária
-            </h4>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Faixa Etária</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell>0 a 6 anos</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileByAgeGroup['0-6']}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>7 a 12 anos</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileByAgeGroup['7-12']}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>13 a 17 anos</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileByAgeGroup['13-17']}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>18 a 29 anos</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileByAgeGroup['18-29']}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>30 a 59 anos</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileByAgeGroup['30-59']}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>60 anos ou mais</TableCell>
-                  <TableCell className="text-right">
-                    {rmaData.profileByAgeGroup['60+']}
-                  </TableCell>
+                 <TableRow>
+                  <TableCell>Outro</TableCell>
+                  <TableCell className="text-right">{rmaData.profileBySex.outro}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -249,4 +171,3 @@ export function RmaReport() {
     </Card>
   )
 }
-

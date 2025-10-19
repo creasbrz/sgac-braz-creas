@@ -9,7 +9,7 @@ import { evolutionRoutes } from './routes/evolutions'
 import { pafRoutes } from './routes/paf'
 import { statsRoutes } from './routes/stats'
 import { appointmentRoutes } from './routes/appointments'
-import { reportRoutes } from './routes/reports'
+import { reportRoutes } from './routes/reports' // Importa as novas rotas
 
 const app = fastify({
   logger: {
@@ -47,7 +47,7 @@ app.register(evolutionRoutes)
 app.register(pafRoutes)
 app.register(statsRoutes)
 app.register(appointmentRoutes)
-app.register(reportRoutes)
+app.register(reportRoutes) // Regista as novas rotas de relatórios
 
 // Iniciar o servidor
 app

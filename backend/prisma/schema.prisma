@@ -17,23 +17,24 @@ model User {
   ativo                 Boolean       @default(true)
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
+  
   casosCriados          Case[]        @relation("CasosCriados")
   casosDeAcolhida       Case[]        @relation("CasosDeAcolhida")
   casosDeAcompanhamento Case[]        @relation("CasosDeAcompanhamento")
   evolucoes             Evolucao[]
-  pafsCriados           Paf[] // Corrigido de PAF para Paf
+  pafsCriados           Paf[]
   agendamentos          Agendamento[]
 }
 
 model Case {
-  id                  String        @id @default(uuid())
+  id                  String    @id @default(uuid())
   nomeCompleto        String
-  cpf                 String        @unique
+  cpf                 String    @unique
   nascimento          DateTime
   sexo                String
   telefone            String
   endereco            String
-  dataEntrada         DateTime      @default(now())
+  dataEntrada         DateTime  @default(now())
   urgencia            String
   violacao            String
   categoria           String
@@ -41,20 +42,21 @@ model Case {
   numeroSei           String?
   linkSei             String?
   observacoes         String?
-  status              String        @default("AGUARDANDO_ACOLHIDA")
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  parecerFinal        String?       @db.Text
+  status              String    @default("AGUARDANDO_ACOLHIDA")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  parecerFinal        String?   @db.Text
   dataDesligamento    DateTime?
   dataInicioPAEFI     DateTime?
-  criadoPor           User          @relation("CasosCriados", fields: [criadoPorId], references: [id])
+
+  criadoPor           User      @relation("CasosCriados", fields: [criadoPorId], references: [id])
   criadoPorId         String
-  agenteAcolhida      User?         @relation("CasosDeAcolhida", fields: [agenteAcolhidaId], references: [id])
+  agenteAcolhida      User?     @relation("CasosDeAcolhida", fields: [agenteAcolhidaId], references: [id])
   agenteAcolhidaId    String?
-  especialistaPAEFI   User?         @relation("CasosDeAcompanhamento", fields: [especialistaPAEFIId], references: [id])
+  especialistaPAEFI   User?     @relation("CasosDeAcompanhamento", fields: [especialistaPAEFIId], references: [id])
   especialistaPAEFIId String?
   evolucoes           Evolucao[]
-  paf                 Paf? // Corrigido de PAF para Paf
+  paf                 Paf?
   agendamentos        Agendamento[]
 }
 
@@ -68,7 +70,6 @@ model Evolucao {
   autorId   String
 }
 
-// Corrigido de PAF para Paf para consistência
 model Paf {
   id          String   @id @default(uuid())
   diagnostico String   @db.Text
@@ -84,14 +85,15 @@ model Paf {
 }
 
 model Agendamento {
-  id            String   @id @default(uuid())
-  titulo        String
-  data          DateTime
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  caso          Case     @relation(fields: [casoId], references: [id])
-  casoId        String
-  responsavel   User     @relation(fields: [responsavelId], references: [id])
+  id        String   @id @default(uuid())
+  titulo    String
+  data      DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  caso      Case     @relation(fields: [casoId], references: [id])
+  casoId    String
+
+  responsavel User   @relation(fields: [responsavelId], references: [id])
   responsavelId String
 }
-

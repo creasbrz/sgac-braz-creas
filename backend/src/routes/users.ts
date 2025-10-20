@@ -46,7 +46,7 @@ export async function userRoutes(app: FastifyInstance) {
     },
   )
 
-  // Rota para listar Agentes Sociais
+  // Rota para listar Agentes Sociais ativos
   app.get(
     '/users/agents',
     { onRequest: [requireAuth] },
@@ -54,7 +54,7 @@ export async function userRoutes(app: FastifyInstance) {
       try {
         const agents = await prisma.user.findMany({
           where: { cargo: 'Agente Social', ativo: true },
-          select: { id: true, nome: true, email: true, cargo: true },
+          select: { id: true, nome: true },
           orderBy: { nome: 'asc' },
         })
         return await reply.status(200).send(agents)
@@ -64,7 +64,7 @@ export async function userRoutes(app: FastifyInstance) {
     },
   )
 
-  // Rota para listar Especialistas
+  // Rota para listar Especialistas ativos
   app.get(
     '/users/specialists',
     { onRequest: [requireAuth] },
@@ -72,7 +72,7 @@ export async function userRoutes(app: FastifyInstance) {
       try {
         const specialists = await prisma.user.findMany({
           where: { cargo: 'Especialista', ativo: true },
-          select: { id: true, nome: true, email: true, cargo: true },
+          select: { id: true, nome: true },
           orderBy: { nome: 'asc' },
         })
         return await reply.status(200).send(specialists)
@@ -115,7 +115,7 @@ export async function userRoutes(app: FastifyInstance) {
     },
   )
 
-  // Rota para "apagar" um utilizador (soft delete)
+  // Rota para desativar um utilizador (soft delete)
   app.delete(
     '/users/:id',
     { onRequest: [requireAuth, onlyManager] },
@@ -124,7 +124,6 @@ export async function userRoutes(app: FastifyInstance) {
       try {
         const { id } = paramsSchema.parse(request.params)
 
-        // Em vez de apagar, marca o utilizador como inativo
         await prisma.user.update({
           where: { id },
           data: { ativo: false },

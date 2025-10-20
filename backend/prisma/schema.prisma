@@ -14,7 +14,7 @@ model User {
   email                 String        @unique
   senha                 String
   cargo                 String
-  ativo                 Boolean       @default(true)
+  ativo                 Boolean       @default(true) // Novo campo para "soft delete"
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   
@@ -90,10 +90,9 @@ model Agendamento {
   data      DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   caso      Case     @relation(fields: [casoId], references: [id])
   casoId    String
-
   responsavel User   @relation(fields: [responsavelId], references: [id])
   responsavelId String
 }
+

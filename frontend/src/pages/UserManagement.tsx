@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod' // Importação adicionada
 import { api } from '@/lib/api'
 import { Loader2, Trash2, Edit } from 'lucide-react'
 import {
@@ -223,4 +224,3 @@ export function UserManagement() {
     </div>
   )
 }
-

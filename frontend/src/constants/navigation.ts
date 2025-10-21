@@ -2,14 +2,14 @@
 import { PieChart, LayoutDashboard, Calendar, Users, FolderKanban } from 'lucide-react'
 import { ROUTES } from './routes'
 
-// A lista de links de navegação foi movida para o seu próprio ficheiro para
-// uma melhor organização e para resolver o aviso do "Fast Refresh" do Vite.
+// A lista de links de navegação
 export const navLinks = [
   {
     to: ROUTES.DASHBOARD,
     icon: LayoutDashboard,
     label: 'Painel',
-    allowedRoles: ['Gerente'],
+    // Correção: Todos os utilizadores autenticados podem ver o painel
+    allowedRoles: ['Gerente', 'Agente Social', 'Especialista'],
   },
   {
     to: ROUTES.CASES,

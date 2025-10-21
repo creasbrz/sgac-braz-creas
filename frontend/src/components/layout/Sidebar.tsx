@@ -1,10 +1,9 @@
 // frontend/src/components/layout/Sidebar.tsx
 import { NavLink } from 'react-router-dom'
-import { PieChart, LayoutDashboard, Calendar, Users, FolderKanban, PlusCircle } from 'lucide-react'
+import { HardHat } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { useAuth } from '@/hooks/useAuth'
-import { useModal } from '@/hooks/useModal'
 import { ROUTES } from '@/constants/routes'
 import {
   Tooltip,
@@ -14,39 +13,9 @@ import {
 } from '@/components/ui/tooltip'
 import { GdfLogo } from './GdfLogo'
 import { Button } from '../ui/button'
-
-export const navLinks = [
-  {
-    to: ROUTES.DASHBOARD,
-    icon: LayoutDashboard,
-    label: 'Painel',
-    allowedRoles: ['Gerente'],
-  },
-  {
-    to: ROUTES.CASES,
-    icon: FolderKanban,
-    label: 'Casos',
-    allowedRoles: ['Gerente', 'Agente Social', 'Especialista'],
-  },
-  {
-    to: ROUTES.AGENDA,
-    icon: Calendar,
-    label: 'Agenda',
-    allowedRoles: ['Gerente', 'Agente Social', 'Especialista'],
-  },
-  {
-    to: ROUTES.USER_MANAGEMENT,
-    icon: Users,
-    label: 'Utilizadores',
-    allowedRoles: ['Gerente'],
-  },
-  {
-    to: ROUTES.REPORTS,
-    icon: PieChart,
-    label: 'Relatórios',
-    allowedRoles: ['Gerente'],
-  },
-]
+import { useModal } from '@/hooks/useModal'
+import { PlusCircle } from 'lucide-react'
+import { navLinks } from '@/constants/navigation' // Importa os links do novo ficheiro
 
 export function Sidebar() {
   const { user } = useAuth()
@@ -75,7 +44,11 @@ export function Sidebar() {
           >
             {user?.cargo === 'Gerente' && (
               <div className="px-1 py-2">
-                <Button size="sm" className="w-full justify-start gap-3" onClick={openNewCaseModal}>
+                <Button
+                  size="sm"
+                  className="w-full justify-start gap-3"
+                  onClick={openNewCaseModal}
+                >
                   <PlusCircle className="h-4 w-4" />
                   Novo Caso
                 </Button>
@@ -111,4 +84,3 @@ export function Sidebar() {
     </aside>
   )
 }
-

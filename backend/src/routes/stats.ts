@@ -1,9 +1,10 @@
 // backend/src/routes/stats.ts
 import { type FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
-import { startOfMonth, endOfMonth } from 'date-fns'
+import { startOfMonth, endOfMonth, startOfToday } from 'date-fns'
 
 export async function statsRoutes(app: FastifyInstance) {
+  // Rota para o painel gerencial (Gerente)
   app.get(
     '/stats',
     { onRequest: [app.authenticate] },
@@ -23,7 +24,7 @@ export async function statsRoutes(app: FastifyInstance) {
           casesByViolation,
           casesByCategory,
           casesByUrgency,
-          casesBySex, // Novo dado
+          casesBySex,
           totalCases,
           statusCounts,
           newCasesThisMonth,
@@ -34,7 +35,7 @@ export async function statsRoutes(app: FastifyInstance) {
           prisma.case.groupBy({ by: ['violacao'], _count: { id: true }, orderBy: { _count: { id: 'desc' } } }),
           prisma.case.groupBy({ by: ['categoria'], _count: { id: true }, orderBy: { _count: { id: 'desc' } } }),
           prisma.case.groupBy({ by: ['urgencia'], _count: { id: true }, orderBy: { _count: { id: 'desc' } } }),
-          prisma.case.groupBy({ by: ['sexo'], _count: { id: true } }), // Novo cálculo
+          prisma.case.groupBy({ by: ['sexo'], _count: { id: true } }),
           prisma.case.count(),
           prisma.case.groupBy({ by: ['status'], _count: { id: true } }),
           prisma.case.count({ where: { createdAt: { gte: startOfCurrentMonth, lte: endOfCurrentMonth } } }),
@@ -58,7 +59,7 @@ export async function statsRoutes(app: FastifyInstance) {
           casesByViolation: casesByViolation.map((item) => ({ name: item.violacao, value: item._count.id })),
           casesByCategory: casesByCategory.map((item) => ({ name: item.categoria, value: item._count.id })),
           casesByUrgency: casesByUrgency.map((item) => ({ name: item.urgencia, value: item._count.id })),
-          casesBySex: casesBySex.map((item) => ({ name: item.sexo, value: item._count.id })), // Novo mapeamento
+          casesBySex: casesBySex.map((item) => ({ name: item.sexo, value: item._count.id })),
           workloadByAgent: workloadByAgent.map(p => ({ name: userMap.get(p.agenteAcolhidaId!) ?? 'Desconhecido', value: p._count.id })).sort((a, b) => b.value - a.value),
           workloadBySpecialist: workloadBySpecialist.map(p => ({ name: userMap.get(p.especialistaPAEFIId!) ?? 'Desconhecido', value: p._count.id })).sort((a, b) => b.value - a.value),
         }
@@ -67,6 +68,45 @@ export async function statsRoutes(app: FastifyInstance) {
       } catch (error) {
         request.log.error(error, 'Erro ao buscar estatísticas.')
         return await reply.status(500).send({ message: 'Erro interno ao buscar estatísticas.' })
+      }
+    },
+  )
+
+  // Nova rota para o painel do técnico (Agente/Especialista)
+  app.get(
+    '/stats/my-agenda',
+    { onRequest: [app.authenticate] },
+    async (request, reply) => {
+      const { sub: userId } = request.user
+      const today = startOfToday()
+
+      try {
+        const appointments = await prisma.agendamento.findMany({
+          where: {
+            responsavelId: userId,
+            data: {
+              gte: today, // Apenas agendamentos de hoje em diante
+            },
+          },
+          include: {
+            caso: {
+              select: {
+                id: true,
+                nomeCompleto: true,
+              },
+            },
+          },
+          orderBy: {
+            data: 'asc',
+          },
+          take: 5, // Limita aos próximos 5
+        })
+        return await reply.status(200).send(appointments)
+      } catch (error) {
+        request.log.error(error, 'Erro ao buscar agendamentos do utilizador.')
+        return await reply
+          .status(500)
+          .send({ message: 'Erro interno ao buscar agendamentos.' })
       }
     },
   )

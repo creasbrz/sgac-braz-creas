@@ -34,6 +34,7 @@ export default function App() {
       <Route path={ROUTES.LOGIN} element={<Login />} />
 
       <Route element={<PrivateRoute />}>
+        {/* A rota /dashboard está corretamente definida e acessível */}
         <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
         <Route path={ROUTES.CASES} element={<Cases />} />
         <Route path={ROUTES.AGENDA} element={<Agenda />} />

@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
+import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
 import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
@@ -12,9 +13,12 @@ import { PafSection } from '@/components/case/PafSection'
 import { EvolutionsSection } from '@/components/case/EvolutionsSection'
 import { DetailField } from '@/components/case/DetailField'
 import { DetailSkeleton } from '@/components/case/DetailSkeleton'
+import type { CaseDetailData } from '@/types/case'
+import { Badge } from '@/components/ui/badge'
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const { data: caseDetail, isLoading, isError } = useCaseDetail(id)
 
   if (isLoading) {
@@ -35,6 +39,7 @@ export function CaseDetail() {
       </div>
     )
   }
+
   const statusInfo = CASE_STATUS_MAP[caseDetail.status as CaseStatusIdentifier]
 
   return (
@@ -87,7 +92,7 @@ export function CaseDetail() {
 
       <div className="rounded-lg border bg-background p-4">
         <h3 className="text-base font-semibold text-foreground mb-4">
-          Detalhes do Caso
+          Detalhes do Caso e Benefícios
         </h3>
         <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-6">
           <DetailField
@@ -146,6 +151,35 @@ export function CaseDetail() {
               value={caseDetail.observacoes}
             />
           </div>
+
+          <div className="lg:col-span-3">
+            <dt className="text-sm font-medium text-muted-foreground">Benefícios Registados</dt>
+            <dd className="mt-2 flex flex-wrap gap-2">
+              {caseDetail.beneficios?.length > 0 ? (
+                caseDetail.beneficios.map(beneficio => (
+                  <Badge key={beneficio} variant="secondary">
+                    {beneficio}
+                  </Badge>
+                ))
+              ) : (
+                <p className="text-sm text-foreground">Nenhum benefício registado.</p>
+              )}
+            </dd>
+          </div>
+          
+          {caseDetail.status === 'DESLIGADO' && (
+            <div className="lg:col-span-3 mt-6 pt-6 border-t">
+              <DetailField
+                label="Motivo do Desligamento"
+                value={caseDetail.motivoDesligamento}
+              />
+              <DetailField
+                label="Parecer Final de Desligamento"
+                value={caseDetail.parecerFinal}
+                className="mt-4"
+              />
+            </div>
+          )}
         </dl>
       </div>
       

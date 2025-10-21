@@ -23,11 +23,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { CloseCaseModal } from './CloseCaseModal' // Importa o novo modal
 
 export function CaseActions({ caseData }: { caseData: CaseDetailData }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [pendingStatus, setPendingStatus] = useState<string | null>(null)
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false)
 
   const { mutate: updateStatus, isPending } = useMutation({
     mutationFn: async (newStatus: string) => {
@@ -57,59 +59,72 @@ export function CaseActions({ caseData }: { caseData: CaseDetailData }) {
     user?.id === caseData.agenteAcolhida?.id ||
     user?.id === caseData.especialistaPAEFI?.id
 
-  // Correção: Garante que o 'user' existe antes de verificar o cargo
   const allowedActions =
     caseTransitions[caseData.status as CaseStatusIdentifier]?.filter(
       (action: StatusAction) => {
-        if (!user) return false // Se o utilizador não estiver carregado, não mostra nenhuma ação
+        if (!user) return false
         return (
-          action.type === 'status' &&
           (isUserResponsible || user.cargo === 'Gerente') &&
           action.allowedRoles.includes(user.cargo)
         )
       },
     ) || []
 
-  if (allowedActions.length === 0) return null
-
   return (
     <div className="rounded-lg border bg-background p-4">
-      <h3 className="text-base font-semibold text-foreground">Ações Rápidas</h3>
+      <h3 className="text-base font-semibold text-foreground">Ações do Caso</h3>
       <div className="mt-4 flex flex-wrap gap-4">
-        {allowedActions.map((action: StatusAction) => (
-          <AlertDialog key={action.label}>
-            <AlertDialogTrigger asChild>
+        {allowedActions.map((action: StatusAction) => {
+          // Ações de mudança de status (ex: Iniciar Acolhida, Reabrir)
+          if (action.type === 'status') {
+            return (
+              <AlertDialog key={action.label}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={isPending} className={clsx('w-48 justify-center', action.style, 'text-white')}>
+                    {isPending && pendingStatus === action.nextStatus ? <Loader2 className="animate-spin" /> : action.label}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Tem a certeza?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação irá alterar o status do caso para "{action.nextStatus?.replace(/_/g, ' ')}".
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleUpdateStatus(action.nextStatus as CaseStatusIdentifier)}>
+                      Confirmar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )
+          }
+
+          // Ação de Desligar (que abre o modal de formulário)
+          if (action.type === 'close') {
+            return (
               <Button
+                key={action.label}
                 variant="outline"
-                disabled={isPending}
+                onClick={() => setIsCloseModalOpen(true)}
                 className={clsx('w-48 justify-center', action.style, 'text-white')}
               >
-                {isPending && pendingStatus === action.nextStatus ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  action.label
-                )}
+                {action.label}
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Tem a certeza?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Esta ação irá alterar o status do caso para "{action.nextStatus?.replace(/_/g, ' ')}". Esta ação não pode ser desfeita facilmente.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => handleUpdateStatus(action.nextStatus as CaseStatusIdentifier)}
-                >
-                  Confirmar
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        ))}
+            )
+          }
+          return null
+        })}
       </div>
+      
+      {/* Renderiza o modal de desligamento */}
+      <CloseCaseModal
+        caseId={caseData.id}
+        isOpen={isCloseModalOpen}
+        onOpenChange={setIsCloseModalOpen}
+      />
     </div>
   )
 }

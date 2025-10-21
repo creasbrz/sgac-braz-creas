@@ -19,32 +19,27 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { formatCPF } from '@/utils/formatters'
-import { Input } from './ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select'
+import { formatCPF, formatDateSafe } from '@/utils/formatters'
+import { Input } from '@/components/ui/input'
 import { useDebounce } from '@/hooks/useDebounce'
 import { getErrorMessage } from '@/utils/error'
 import { useAuth } from '@/hooks/useAuth'
-import { Skeleton } from './ui/skeleton'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
   PaginationNext,
   PaginationPrevious,
-} from './ui/pagination'
+} from '@/components/ui/pagination'
 
 interface Case {
   id: string
   nomeCompleto: string
   cpf: string
   status: string
+  dataDesligamento?: string
+  parecerFinal?: string
 }
 
 interface PaginatedCases {
@@ -52,24 +47,39 @@ interface PaginatedCases {
   totalPages: number
 }
 
-function CaseRow({ caseData }: { caseData: Case }) {
+interface CaseRowProps {
+  caseData: Case
+  isClosedView: boolean
+}
+
+// Componente para uma única linha da tabela
+function CaseRow({ caseData, isClosedView }: CaseRowProps) {
   const statusInfo = CASE_STATUS_MAP[caseData.status as CaseStatusIdentifier]
 
   return (
     <TableRow>
       <TableCell className="font-medium">{caseData.nomeCompleto}</TableCell>
       <TableCell>{formatCPF(caseData.cpf)}</TableCell>
-      <TableCell>
-        <Badge
-          variant="outline"
-          className={clsx(
-            'border-transparent',
-            statusInfo?.style ?? 'bg-gray-100 text-gray-800',
-          )}
-        >
-          {statusInfo?.text ?? caseData.status}
-        </Badge>
-      </TableCell>
+      {isClosedView ? (
+        <>
+          <TableCell>{formatDateSafe(caseData.dataDesligamento)}</TableCell>
+          <TableCell className="max-w-xs truncate" title={caseData.parecerFinal}>
+            {caseData.parecerFinal ?? 'N/A'}
+          </TableCell>
+        </>
+      ) : (
+        <TableCell>
+          <Badge
+            variant="outline"
+            className={clsx(
+              'border-transparent',
+              statusInfo?.style ?? 'bg-gray-100 text-gray-800',
+            )}
+          >
+            {statusInfo?.text ?? caseData.status}
+          </Badge>
+        </TableCell>
+      )}
       <TableCell className="text-right space-x-2">
         <Button asChild variant="ghost" size="icon" title={`Agendar para ${caseData.nomeCompleto}`}>
           <Link to={`${ROUTES.AGENDA}?caseId=${caseData.id}`}>
@@ -84,26 +94,30 @@ function CaseRow({ caseData }: { caseData: Case }) {
   )
 }
 
-export function CaseTable() {
+interface CaseTableProps {
+  scope: 'active' | 'closed' // Define se a tabela mostra casos ativos ou fechados
+}
+
+export function CaseTable({ scope }: CaseTableProps) {
   const { user } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const debouncedSearchTerm = useDebounce(searchTerm, 500)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Correção: A query agora espera um objeto paginado
+  const endpoint = scope === 'closed' ? '/cases/closed' : '/cases'
+  const isClosedView = scope === 'closed'
+
   const {
     data,
     isLoading,
     isError,
   } = useQuery<PaginatedCases>({
-    queryKey: ['cases', debouncedSearchTerm, statusFilter, page],
+    queryKey: ['cases', scope, debouncedSearchTerm, page],
     queryFn: async () => {
-      const response = await api.get('/cases', {
+      const response = await api.get(endpoint, {
         params: {
           search: debouncedSearchTerm,
-          status: statusFilter,
           page,
         },
       })
@@ -112,11 +126,6 @@ export function CaseTable() {
   })
 
   const cases = data?.items
-
-  const handleStatusChange = (value: string) => {
-    setPage(1)
-    setStatusFilter(value === 'all' ? '' : value)
-  }
 
   const handleExport = async () => {
     setIsExporting(true)
@@ -154,24 +163,6 @@ export function CaseTable() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="w-full sm:w-auto sm:min-w-[200px]">
-          <Select
-            value={statusFilter || 'all'}
-            onValueChange={handleStatusChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Filtrar por status..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os Status</SelectItem>
-              {Object.entries(CASE_STATUS_MAP).map(([key, { text }]) => (
-                <SelectItem key={key} value={key}>
-                  {text}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         {user?.cargo === 'Gerente' && (
           <Button onClick={handleExport} disabled={isExporting} variant="outline">
             <Download className="mr-2 h-4 w-4" />
@@ -184,7 +175,14 @@ export function CaseTable() {
           <TableRow>
             <TableHead>Nome</TableHead>
             <TableHead>CPF</TableHead>
-            <TableHead>Status</TableHead>
+            {isClosedView ? (
+              <>
+                <TableHead>Data de Desligamento</TableHead>
+                <TableHead>Motivo</TableHead>
+              </>
+            ) : (
+              <TableHead>Status</TableHead>
+            )}
             <TableHead className="text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
@@ -192,7 +190,7 @@ export function CaseTable() {
           {isLoading &&
             Array.from({ length: 5 }).map((_, i) => (
               <TableRow key={`skeleton-${i}`}>
-                <TableCell colSpan={4} className="p-4">
+                <TableCell colSpan={isClosedView ? 5 : 4} className="p-4">
                   <Skeleton className="h-4 w-full" />
                 </TableCell>
               </TableRow>
@@ -200,7 +198,7 @@ export function CaseTable() {
           {isError && (
             <TableRow>
               <TableCell
-                colSpan={4}
+                colSpan={isClosedView ? 5 : 4}
                 className="py-10 text-center text-destructive"
               >
                 Falha ao carregar os casos.
@@ -210,7 +208,7 @@ export function CaseTable() {
           {!isLoading && !isError && cases?.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={4}
+                colSpan={isClosedView ? 5 : 4}
                 className="py-10 text-center text-muted-foreground"
               >
                 Nenhum caso encontrado.
@@ -218,7 +216,7 @@ export function CaseTable() {
             </TableRow>
           )}
           {cases?.map((c) => (
-            <CaseRow key={c.id} caseData={c} />
+            <CaseRow key={c.id} caseData={c} isClosedView={isClosedView} />
           ))}
         </TableBody>
       </Table>
@@ -236,13 +234,11 @@ export function CaseTable() {
                   aria-disabled={page === 1}
                 />
               </PaginationItem>
-              
               <PaginationItem>
                 <span className="px-4 py-2 text-sm">
                   Página {page} de {data.totalPages}
                 </span>
               </PaginationItem>
-
               <PaginationItem>
                 <PaginationNext
                   href="#"

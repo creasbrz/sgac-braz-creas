@@ -3,7 +3,9 @@
 export const ROUTES = {
   LOGIN: '/',
   DASHBOARD: '/dashboard',
-  CASES: '/cases',
+  CASES: '/cases', // Casos Ativos / Minha Caixa
+  CLOSED_CASES: '/cases/closed', // Casos Finalizados
+  TEAM_OVERVIEW: '/team-overview', // Visão da Equipe (Gerente)
   REPORTS: '/reports',
   AGENDA: '/agenda',
   USER_MANAGEMENT: '/users',
@@ -33,4 +35,3 @@ export const buildRoute = (
   }
   return path
 }
-

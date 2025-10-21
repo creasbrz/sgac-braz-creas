@@ -1,20 +1,30 @@
 // frontend/src/constants/navigation.ts
-import { PieChart, LayoutDashboard, Calendar, Users, FolderKanban } from 'lucide-react'
+import { PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive } from 'lucide-react'
 import { ROUTES } from './routes'
 
-// A lista de links de navegação
 export const navLinks = [
   {
     to: ROUTES.DASHBOARD,
     icon: LayoutDashboard,
     label: 'Painel',
-    // Correção: Todos os utilizadores autenticados podem ver o painel
     allowedRoles: ['Gerente', 'Agente Social', 'Especialista'],
   },
   {
     to: ROUTES.CASES,
     icon: FolderKanban,
-    label: 'Casos',
+    label: 'Meus Casos Ativos',
+    allowedRoles: ['Gerente', 'Agente Social', 'Especialista'],
+  },
+  {
+    to: ROUTES.TEAM_OVERVIEW,
+    icon: Users,
+    label: 'Casos Ativos (Equipe)',
+    allowedRoles: ['Gerente'],
+  },
+  {
+    to: ROUTES.CLOSED_CASES,
+    icon: Archive,
+    label: 'Casos Finalizados',
     allowedRoles: ['Gerente', 'Agente Social', 'Especialista'],
   },
   {
@@ -36,3 +46,4 @@ export const navLinks = [
     allowedRoles: ['Gerente'],
   },
 ]
+

@@ -1,5 +1,4 @@
 // frontend/src/constants/caseConstants.ts
-
 export type UserRole = 'Gerente' | 'Agente Social' | 'Especialista'
 
 export type CaseStatusIdentifier =
@@ -9,31 +8,21 @@ export type CaseStatusIdentifier =
   | 'EM_ACOMPANHAMENTO_PAEFI'
   | 'DESLIGADO'
 
-interface StatusInfo {
-  text: string
-  style: string
+export const CASE_STATUS_MAP: Record<CaseStatusIdentifier, { text: string, style: string }> = {
+  AGUARDANDO_ACOLHIDA: { text: 'Aguardando Acolhida', style: 'bg-yellow-100 text-yellow-800' },
+  EM_ACOLHIDA: { text: 'Em Acolhida', style: 'bg-blue-100 text-blue-800' },
+  AGUARDANDO_DISTRIBUICAO_PAEFI: { text: 'Aguardando Distribuição PAEFI', style: 'bg-orange-100 text-orange-800' },
+  EM_ACOMPANHAMENTO_PAEFI: { text: 'Acompanhamento PAEFI', style: 'bg-green-100 text-green-800' },
+  DESLIGADO: { text: 'Desligado', style: 'bg-gray-100 text-gray-800' },
 }
 
-export const CASE_STATUS_MAP: Record<CaseStatusIdentifier, StatusInfo> = {
-  AGUARDANDO_ACOLHIDA: {
-    text: 'Aguardando Acolhida',
-    style: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
-  },
-  EM_ACOLHIDA: {
-    text: 'Em Acolhida',
-    style: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  },
-  AGUARDANDO_DISTRIBUICAO_PAEFI: {
-    text: 'Aguardando Distribuição PAEFI',
-    style: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  },
-  EM_ACOMPANHAMENTO_PAEFI: {
-    text: 'Em Acompanhamento PAEFI',
-    style: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  },
-  DESLIGADO: {
-    text: 'Desligado',
-    style: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
-  },
-}
-
+// Lista oficial de motivos de desligamento
+export const MOTIVOS_DESLIGAMENTO = [
+  'Mudança de território',
+  'Falecimento',
+  'Recusa de atendimento',
+  'Violação cessada',
+  'Contrareferenciamento',
+  'Não localizado',
+  'Acolhimento',
+]

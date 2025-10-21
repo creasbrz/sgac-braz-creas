@@ -4,6 +4,7 @@ const animate = require("tailwindcss-animate")
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
+  // Caminho de conteúdo corrigido para incluir todos os ficheiros relevantes
   content: [
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',

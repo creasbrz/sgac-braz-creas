@@ -22,7 +22,6 @@ export interface StatusAction {
   style: string
 }
 
-// Correção: Garante que o Record usa o tipo de identificador correto.
 export const caseTransitions: Partial<
   Record<CaseStatusIdentifier, StatusAction[]>
 > = {
@@ -34,12 +33,17 @@ export const caseTransitions: Partial<
       allowedRoles: ['Gerente', 'Agente Social'],
       style: buttonStyles.success,
     },
+    {
+      label: 'Desligamento Simplificado',
+      type: 'close', // Abre o modal de desligamento
+      allowedRoles: ['Gerente', 'Agente Social'],
+      style: buttonStyles.neutral,
+    },
   ],
   EM_ACOLHIDA: [
     {
       label: 'Desligamento Simplificado',
-      type: 'status',
-      nextStatus: 'DESLIGADO',
+      type: 'close', // Abre o modal de desligamento
       allowedRoles: ['Gerente', 'Agente Social'],
       style: buttonStyles.neutral,
     },
@@ -62,9 +66,18 @@ export const caseTransitions: Partial<
   EM_ACOMPANHAMENTO_PAEFI: [
     {
       label: 'Desligar Acompanhamento',
-      type: 'close',
+      type: 'close', // Abre o modal de desligamento
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.danger,
+    },
+  ],
+  DESLIGADO: [
+    {
+      label: 'Reabrir Caso',
+      type: 'status',
+      nextStatus: 'AGUARDANDO_ACOLHIDA', // Sempre volta para a triagem
+      allowedRoles: ['Gerente'],
+      style: buttonStyles.primary,
     },
   ],
 }

@@ -19,6 +19,7 @@ export interface CaseDetailData {
   criadoPor: { nome: string }
   agenteAcolhida: { id: string; nome: string } | null
   especialistaPAEFI: { id: string; nome: string } | null
+  beneficios: string[] // Campo adicionado
 }
 
 export interface Evolution {

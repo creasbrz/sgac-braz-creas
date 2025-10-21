@@ -5,6 +5,8 @@ import { Loader2 } from 'lucide-react'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { Cases } from '@/pages/Cases'
+import { ClosedCases } from '@/pages/ClosedCases'
+import { TeamOverview } from '@/pages/TeamOverview'
 import { NotFound } from '@/pages/NotFound'
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
@@ -34,9 +36,10 @@ export default function App() {
       <Route path={ROUTES.LOGIN} element={<Login />} />
 
       <Route element={<PrivateRoute />}>
-        {/* A rota /dashboard está corretamente definida e acessível */}
         <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
         <Route path={ROUTES.CASES} element={<Cases />} />
+        <Route path={ROUTES.CLOSED_CASES} element={<ClosedCases />} />
+        <Route path={ROUTES.TEAM_OVERVIEW} element={<TeamOverview />} />
         <Route path={ROUTES.AGENDA} element={<Agenda />} />
         <Route path={ROUTES.REPORTS} element={<Reports />} />
         <Route path={ROUTES.CASE_DETAIL} element={<CaseDetail />} />

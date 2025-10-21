@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
@@ -30,7 +31,7 @@ interface CaseFormProps {
   onCaseCreated?: () => void
 }
 
-const defaultFormValues: Omit<CreateCaseFormData, 'linkSei'> & { linkSei?: string } = {
+const defaultFormValues: Omit<CreateCaseFormData, 'linkSei' | 'beneficios'> & { linkSei?: string, beneficios?: string[] } = {
   nomeCompleto: '',
   cpf: '',
   nascimento: '',
@@ -46,7 +47,17 @@ const defaultFormValues: Omit<CreateCaseFormData, 'linkSei'> & { linkSei?: strin
   linkSei: '',
   observacoes: '',
   numeroSei: '',
+  beneficios: [],
 }
+
+const beneficiosList = [
+  { id: 'BPC', label: 'BPC' },
+  { id: 'Bolsa Família', label: 'Bolsa Família' },
+  { id: 'Prato Cheio', label: 'Prato Cheio' },
+  { id: 'Vulnerabilidade', label: 'Vulnerabilidade' },
+  { id: 'Excepcional', label: 'Excepcional' },
+  { id: 'Calamidade', label: 'Calamidade' },
+]
 
 export function CaseForm({ onCaseCreated }: CaseFormProps) {
   const queryClient = useQueryClient()
@@ -203,6 +214,44 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                 </p>
               )}
             </div>
+          </div>
+        </div>
+        
+        <div className="space-y-2">
+          <Label className="font-semibold">Benefícios Recebidos</Label>
+          <div className="p-4 border rounded-lg">
+            <Controller
+              name="beneficios"
+              control={control}
+              render={({ field }) => (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {beneficiosList.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center space-x-2"
+                    >
+                      <Checkbox
+                        id={item.id}
+                        checked={field.value?.includes(item.id)}
+                        onCheckedChange={(checked) => {
+                          const currentValue = field.value ?? []
+                          if (checked) {
+                            field.onChange([...currentValue, item.id])
+                          } else {
+                            field.onChange(
+                              currentValue.filter((value) => value !== item.id),
+                            )
+                          }
+                        }}
+                      />
+                      <Label htmlFor={item.id} className="font-normal">
+                        {item.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            />
           </div>
         </div>
 

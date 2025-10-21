@@ -37,6 +37,7 @@ export const createCaseFormSchema = z.object({
   linkSei: z.string().url('URL inválida.').optional().or(z.literal('')),
   agenteAcolhidaId: z.string().min(1, 'É obrigatório selecionar um agente.'),
   observacoes: z.string().optional(),
+  beneficios: z.array(z.string()).optional(), // Campo adicionado
 })
 
 export const evolutionFormSchema = z.object({
@@ -52,4 +53,6 @@ export const pafFormSchema = z.object({
 
 export const closeCaseFormSchema = z.object({
   parecerFinal: z.string().min(10, 'O parecer final deve ter no mínimo 10 caracteres.'),
+  motivoDesligamento: z.string({ required_error: 'O motivo de desligamento é obrigatório.' })
+    .min(1, 'O motivo de desligamento é obrigatório.'),
 })

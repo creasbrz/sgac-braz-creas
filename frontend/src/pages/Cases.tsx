@@ -1,6 +1,5 @@
 // frontend/src/pages/Cases.tsx
 import { CaseTable } from '@/components/CaseTable'
-import { useAuth } from '@/hooks/useAuth'
 import {
   Card,
   CardContent,
@@ -8,6 +7,7 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card'
+import { useAuth } from '@/hooks/useAuth'
 import { Loader2 } from 'lucide-react'
 
 export function Cases() {
@@ -24,22 +24,28 @@ export function Cases() {
 
   const canCreateCase = user?.cargo === 'Gerente'
 
+  // Define descrições personalizadas com base no cargo
+  const descriptionText = {
+    Gerente: 'Visualize todos os casos que aguardam distribuição para o PAEFI.',
+    'Agente Social': 'Visualize todos os seus casos em acolhida ou aguardando acolhida.',
+    Especialista: 'Visualize todos os seus casos em acompanhamento PAEFI.'
+  }
+
+  // Garante que user não é nulo antes de aceder a cargo
+  const description = user ? (descriptionText[user.cargo] || 'Visualize os seus casos ativos.') : 'A carregar...'
+
   return (
-    <div className="space-y-6">
-      {/* A página de Casos agora foca-se apenas em exibir a tabela */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Casos</CardTitle>
-          <CardDescription>
-            {canCreateCase
-              ? 'Visualize, gira e adicione novos casos através do botão no menu lateral.'
-              : 'Visualize todos os casos que lhe foram atribuídos.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CaseTable />
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Meus Casos Ativos</CardTitle>
+        <CardDescription>
+          {description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {/* Passa o 'scope' para a tabela saber que dados buscar */}
+        <CaseTable scope="active" />
+      </CardContent>
+    </Card>
   )
 }

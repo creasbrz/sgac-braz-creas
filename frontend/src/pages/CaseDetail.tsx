@@ -4,7 +4,6 @@ import { ExternalLink } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
-import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
 import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
@@ -13,12 +12,10 @@ import { PafSection } from '@/components/case/PafSection'
 import { EvolutionsSection } from '@/components/case/EvolutionsSection'
 import { DetailField } from '@/components/case/DetailField'
 import { DetailSkeleton } from '@/components/case/DetailSkeleton'
-// A importação de CaseDetailData foi removida, pois o hook useCaseDetail já fornece o tipo.
 import { Badge } from '@/components/ui/badge'
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
   const { data: caseDetail, isLoading, isError } = useCaseDetail(id)
 
   if (isLoading) {
@@ -185,10 +182,8 @@ export function CaseDetail() {
       
       <CaseActions caseData={caseDetail} />
       <ManagerActions caseData={caseDetail} />
-      <PafSection
-        caseData={caseDetail}
-        currentUserId={user?.id}
-      />
+      {/* Correção: A prop 'currentUserId' foi removida */}
+      <PafSection caseData={caseDetail} />
       <EvolutionsSection caseId={caseDetail.id} />
     </div>
   )

@@ -22,8 +22,6 @@ export function Cases() {
     )
   }
 
-  const canCreateCase = user?.cargo === 'Gerente'
-
   // Define descrições personalizadas com base no cargo
   const descriptionText = {
     Gerente: 'Visualize todos os casos que aguardam distribuição para o PAEFI.',

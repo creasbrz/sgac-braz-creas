@@ -4,7 +4,6 @@ import { ExternalLink } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
-import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
 import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
@@ -18,7 +17,6 @@ import { Badge } from '@/components/ui/badge'
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
   const { data: caseDetail, isLoading, isError } = useCaseDetail(id)
 
   if (isLoading) {
@@ -185,6 +183,7 @@ export function CaseDetail() {
       
       <CaseActions caseData={caseDetail} />
       <ManagerActions caseData={caseDetail} />
+      {/* Correção: Passa o objeto `caseDetail` inteiro */}
       <PafSection caseData={caseDetail} />
       <EvolutionsSection caseId={caseDetail.id} />
     </div>

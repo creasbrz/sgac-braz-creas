@@ -1,6 +1,5 @@
 // frontend/src/components/CaseForm.tsx
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
-import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -22,7 +21,6 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getErrorMessage } from '@/utils/error'
-// Importa o schema E o tipo
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas' 
 import { useAgents } from '@/hooks/api/useCaseQueries'
 
@@ -30,7 +28,6 @@ interface CaseFormProps {
   onCaseCreated?: () => void
 }
 
-// Define os valores padrão usando o tipo importado
 const defaultFormValues: CreateCaseFormData = {
   nomeCompleto: '',
   cpf: '',

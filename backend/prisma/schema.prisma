@@ -48,10 +48,6 @@ model Case {
   parecerFinal        String?   @db.Text
   dataDesligamento    DateTime?
   dataInicioPAEFI     DateTime?
-  
-  // Novos campos adicionados
-  beneficios          String[]  @default([])
-  motivoDesligamento String?
 
   criadoPor           User      @relation("CasosCriados", fields: [criadoPorId], references: [id])
   criadoPorId         String
@@ -84,7 +80,7 @@ model Paf {
   updatedAt   DateTime @updatedAt
   caso        Case     @relation(fields: [casoId], references: [id])
   casoId      String   @unique
-  autor       User     @relation(fields: [autorId], references: [id])
+  autor       User     @relation(fields: [autorId], references: [ad])
   autorId     String
 }
 
@@ -94,8 +90,10 @@ model Agendamento {
   data      DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   caso      Case     @relation(fields: [casoId], references: [id])
   casoId    String
+
   responsavel User   @relation(fields: [responsavelId], references: [id])
   responsavelId String
 }

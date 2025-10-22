@@ -37,7 +37,11 @@ export interface PafData {
   estrategias: string
   prazos: string
   createdAt: string
-  autor: { nome: string }
+  // Correção: O autor do PAF agora inclui o ID
+  autor: { 
+    id: string
+    nome: string 
+  }
 }
 
 export interface UserOption {

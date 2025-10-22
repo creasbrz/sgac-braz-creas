@@ -14,7 +14,7 @@ export async function pafRoutes(app: FastifyInstance) {
         const { caseId } = paramsSchema.parse(request.params)
         const paf = await prisma.paf.findUnique({
           where: { casoId: caseId },
-          include: { autor: { select: { nome: true } } },
+          include: { autor: { select: { id: true, nome: true } } },
         })
         return await reply.status(200).send(paf)
       } catch (error) {
@@ -26,22 +26,22 @@ export async function pafRoutes(app: FastifyInstance) {
     },
   )
 
+  const pafBodySchema = z.object({
+    diagnostico: z.string().min(10),
+    objetivos: z.string().min(10),
+    estrategias: z.string().min(10),
+    prazos: z.string().min(5),
+  })
+
   // Rota para criar um PAF para um caso
   app.post(
     '/cases/:caseId/paf',
     { onRequest: [app.authenticate] },
     async (request, reply) => {
       const paramsSchema = z.object({ caseId: z.string().uuid() })
-      const bodySchema = z.object({
-        diagnostico: z.string().min(10),
-        objetivos: z.string().min(10),
-        estrategias: z.string().min(10),
-        prazos: z.string().min(10),
-      })
-
       try {
         const { caseId } = paramsSchema.parse(request.params)
-        const data = bodySchema.parse(request.body)
+        const data = pafBodySchema.parse(request.body)
         const { sub: autorId, cargo } = request.user
 
         if (cargo !== 'Especialista' && cargo !== 'Gerente') {
@@ -53,7 +53,7 @@ export async function pafRoutes(app: FastifyInstance) {
         const newPaf = await prisma.paf.create({
           data: {
             ...data,
-            casoId: caseId, // Correção Definitiva: Usar a variável `caseId` aqui
+            casoId: caseId, // Correção: Usar a variável `caseId` aqui
             autorId,
           },
         })
@@ -64,6 +64,48 @@ export async function pafRoutes(app: FastifyInstance) {
         return await reply
           .status(500)
           .send({ message: 'Erro interno ao criar PAF.' })
+      }
+    },
+  )
+
+  // Rota: Atualizar (Editar) um PAF existente
+  app.put(
+    '/cases/:caseId/paf',
+    { onRequest: [app.authenticate] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ caseId: z.string().uuid() })
+
+      try {
+        const { caseId } = paramsSchema.parse(request.params)
+        const data = pafBodySchema.parse(request.body)
+        const { sub: userId, cargo } = request.user
+
+        const existingPaf = await prisma.paf.findUnique({
+          where: { casoId: caseId }, // Correção: Usar a variável `caseId` aqui
+        })
+
+        if (!existingPaf) {
+          return await reply.status(404).send({ message: 'PAF não encontrado.' })
+        }
+
+        if (existingPaf.autorId !== userId && cargo !== 'Gerente') {
+          return await reply.status(403).send({ message: 'Apenas o autor ou um gerente podem editar este PAF.' })
+        }
+
+        const updatedPaf = await prisma.paf.update({
+          where: { casoId: caseId }, // Correção: Usar a variável `caseId` aqui
+          data: {
+            ...data,
+            updatedAt: new Date(),
+          },
+        })
+
+        return await reply.status(200).send(updatedPaf)
+      } catch (error) {
+        request.log.error(error, 'Erro ao atualizar PAF.')
+        return await reply
+          .status(500)
+          .send({ message: 'Erro interno ao atualizar PAF.' })
       }
     },
   )

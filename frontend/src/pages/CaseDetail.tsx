@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
+import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
 import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
@@ -12,11 +13,13 @@ import { PafSection } from '@/components/case/PafSection'
 import { EvolutionsSection } from '@/components/case/EvolutionsSection'
 import { DetailField } from '@/components/case/DetailField'
 import { DetailSkeleton } from '@/components/case/DetailSkeleton'
-import type { CaseDetailData } from '@/types/case'
+// O tipo CaseDetailData agora é importado em vez de ser definido aqui
+import type { CaseDetailData } from '@/types/case' 
 import { Badge } from '@/components/ui/badge'
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const { data: caseDetail, isLoading, isError } = useCaseDetail(id)
 
   if (isLoading) {
@@ -183,8 +186,10 @@ export function CaseDetail() {
       
       <CaseActions caseData={caseDetail} />
       <ManagerActions caseData={caseDetail} />
-      {/* Correção: Passa o objeto `caseDetail` inteiro */}
-      <PafSection caseData={caseDetail} />
+      <PafSection
+        caseData={caseDetail}
+        currentUserId={user?.id}
+      />
       <EvolutionsSection caseId={caseDetail.id} />
     </div>
   )

@@ -22,16 +22,16 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getErrorMessage } from '@/utils/error'
-import { createCaseFormSchema } from '@/schemas/caseSchemas'
+// Importa o schema E o tipo
+import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas' 
 import { useAgents } from '@/hooks/api/useCaseQueries'
-
-type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
 
 interface CaseFormProps {
   onCaseCreated?: () => void
 }
 
-const defaultFormValues: Omit<CreateCaseFormData, 'linkSei' | 'beneficios'> & { linkSei?: string, beneficios?: string[] } = {
+// Define os valores padrão usando o tipo importado
+const defaultFormValues: CreateCaseFormData = {
   nomeCompleto: '',
   cpf: '',
   nascimento: '',

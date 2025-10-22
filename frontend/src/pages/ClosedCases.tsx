@@ -23,10 +23,8 @@ export function ClosedCases() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/* Passa o 'scope' para a tabela buscar apenas casos fechados */}
         <CaseTable scope="closed" />
       </CardContent>
     </Card>
   )
 }
-

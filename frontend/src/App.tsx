@@ -5,8 +5,8 @@ import { Loader2 } from 'lucide-react'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { Cases } from '@/pages/Cases'
-import { ClosedCases } from '@/pages/ClosedCases'
-import { TeamOverview } from '@/pages/TeamOverview'
+import { ClosedCases } from '@/pages/ClosedCases' // Importa a nova página
+import { TeamOverview } from '@/pages/TeamOverview' // Importa a nova página
 import { NotFound } from '@/pages/NotFound'
 import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
@@ -35,6 +35,7 @@ export default function App() {
     <Routes>
       <Route path={ROUTES.LOGIN} element={<Login />} />
 
+      {/* Agrupa as rotas protegidas sob o layout principal */}
       <Route element={<PrivateRoute />}>
         <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
         <Route path={ROUTES.CASES} element={<Cases />} />

@@ -1,6 +1,6 @@
 // frontend/src/components/layout/Sidebar.tsx
 import { NavLink } from 'react-router-dom'
-import { PieChart, LayoutDashboard, Calendar, Users, FolderKanban, PlusCircle } from 'lucide-react'
+import { PlusCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { useAuth } from '@/hooks/useAuth'
@@ -43,7 +43,11 @@ export function Sidebar() {
           >
             {user?.cargo === 'Gerente' && (
               <div className="px-1 py-2">
-                <Button size="sm" className="w-full justify-start gap-3" onClick={openNewCaseModal}>
+                <Button
+                  size="sm"
+                  className="w-full justify-start gap-3"
+                  onClick={openNewCaseModal}
+                >
                   <PlusCircle className="h-4 w-4" />
                   Novo Caso
                 </Button>

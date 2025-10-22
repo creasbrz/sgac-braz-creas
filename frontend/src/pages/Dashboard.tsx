@@ -29,7 +29,40 @@ interface ManagerStats {
   workloadBySpecialist: StatData[]
 }
 
-// Componente para o Painel do Gerente
+interface StatCardProps {
+  title: string
+  description: string
+  value?: number
+}
+
+function StatCard({ title, description, value }: StatCardProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className="text-4xl font-bold">{value ?? '-'}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function StatCardSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-5 w-2/3" />
+        <Skeleton className="h-4 w-full mt-2" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-10 w-1/4" />
+      </CardContent>
+    </Card>
+  )
+}
+
 function ManagerDashboard() {
   const { data: stats, isLoading, isError, refetch } = useQuery<ManagerStats>({
     queryKey: ['stats'],
@@ -75,7 +108,6 @@ function ManagerDashboard() {
         </div>
       )}
 
-      {/* Gráficos de Carga de Trabalho */}
       {!isLoading && !isError && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           <Card>
@@ -116,43 +148,12 @@ function ManagerDashboard() {
   )
 }
 
-// Componente para o Painel do Técnico (Agente/Especialista)
 function TechnicianDashboard() {
   return (
     <UpcomingAppointments />
   )
 }
 
-// --- Componentes Auxiliares ---
-function StatCard({ title, description, value }: StatCardProps) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-4xl font-bold">{value ?? '-'}</p>
-      </CardContent>
-    </Card>
-  )
-}
-
-function StatCardSkeleton() {
-  return (
-    <Card>
-      <CardHeader>
-        <Skeleton className="h-5 w-2/3" />
-        <Skeleton className="h-4 w-full mt-2" />
-      </CardHeader>
-      <CardContent>
-        <Skeleton className="h-10 w-1/4" />
-      </CardContent>
-    </Card>
-  )
-}
-
-// --- Componente Principal ---
 export function Dashboard() {
   const { user } = useAuth()
 

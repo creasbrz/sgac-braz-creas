@@ -46,4 +46,3 @@ export const navLinks = [
     allowedRoles: ['Gerente'],
   },
 ]
-

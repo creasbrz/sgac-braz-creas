@@ -4,7 +4,6 @@ import { ExternalLink } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
-import { useAuth } from '@/hooks/useAuth'
 import { useCaseDetail } from '@/hooks/api/useCaseQueries'
 import { formatCPF, formatPhone, formatDateSafe } from '@/utils/formatters'
 import { CaseActions } from '@/components/case/CaseActions'
@@ -13,13 +12,12 @@ import { PafSection } from '@/components/case/PafSection'
 import { EvolutionsSection } from '@/components/case/EvolutionsSection'
 import { DetailField } from '@/components/case/DetailField'
 import { DetailSkeleton } from '@/components/case/DetailSkeleton'
-// O tipo CaseDetailData agora é importado em vez de ser definido aqui
-import type { CaseDetailData } from '@/types/case' 
+import type { CaseDetailData } from '@/types/case' // Importa o tipo centralizado
 import { Badge } from '@/components/ui/badge'
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
+  // O 'user' é removido daqui, pois agora é usado dentro de PafSection
   const { data: caseDetail, isLoading, isError } = useCaseDetail(id)
 
   if (isLoading) {
@@ -186,10 +184,8 @@ export function CaseDetail() {
       
       <CaseActions caseData={caseDetail} />
       <ManagerActions caseData={caseDetail} />
-      <PafSection
-        caseData={caseDetail}
-        currentUserId={user?.id}
-      />
+      {/* Correção: Passa a prop 'caseData' que o componente PafSection espera */}
+      <PafSection caseData={caseDetail} />
       <EvolutionsSection caseId={caseDetail.id} />
     </div>
   )

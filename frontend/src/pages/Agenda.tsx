@@ -9,7 +9,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import toast from 'react-hot-toast'
+import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { getErrorMessage } from '@/utils/error'
 
 interface Appointment {
@@ -56,6 +57,7 @@ const appointmentFormSchema = z.object({
   data: z.string().min(1, 'A data é obrigatória.'),
   time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Hora inválida.'),
   casoId: z.string().uuid('Selecione um caso.'),
+  observacoes: z.string().optional(),
 })
 
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
@@ -68,7 +70,7 @@ function NewAppointmentModal({
   defaultCaseId?: string | null
 }) {
   const queryClient = useQueryClient()
-  // Correção: A query agora espera um objeto paginado e extrai os `items`.
+
   const { data: casesResponse } = useQuery<{ items: CaseOption[] }>({
     queryKey: ['cases'],
     queryFn: async () => {
@@ -76,6 +78,7 @@ function NewAppointmentModal({
       return response.data
     },
   })
+
   const cases = casesResponse?.items
 
   const {
@@ -102,16 +105,7 @@ function NewAppointmentModal({
 
   const { mutate: createAppointment, isPending } = useMutation({
     mutationFn: async (data: AppointmentFormData) => {
-      const [hours, minutes] = data.time.split(':').map(Number)
-      const appointmentDate = new Date(data.data)
-      appointmentDate.setHours(hours, minutes)
-
-      const dataToSend = {
-        titulo: data.titulo,
-        casoId: data.casoId,
-        data: appointmentDate.toISOString(),
-      }
-      return await api.post('/appointments', dataToSend)
+      return await api.post('/appointments', data)
     },
     onSuccess: () => {
       toast.success('Agendamento criado com sucesso!')
@@ -136,6 +130,7 @@ function NewAppointmentModal({
           Preencha os dados para criar um novo evento na sua agenda.
         </DialogDescription>
       </DialogHeader>
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="titulo">Título do Agendamento</Label>
@@ -161,6 +156,7 @@ function NewAppointmentModal({
               <p className="text-sm text-destructive">{errors.data.message}</p>
             )}
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="time">Hora</Label>
             <Controller
@@ -175,7 +171,7 @@ function NewAppointmentModal({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="casoId">Vincular ao Caso</Label>
+          <Label>Vincular ao Caso</Label>
           <Controller
             name="casoId"
             control={control}
@@ -203,6 +199,17 @@ function NewAppointmentModal({
           )}
         </div>
 
+        <div className="space-y-2">
+          <Label>Observações (Opcional)</Label>
+          <Controller
+            name="observacoes"
+            control={control}
+            render={({ field }) => (
+              <Textarea placeholder="Detalhes adicionais..." {...field} />
+            )}
+          />
+        </div>
+
         <DialogFooter>
           <Button type="submit" disabled={isPending}>
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -214,31 +221,34 @@ function NewAppointmentModal({
   )
 }
 
+// =====================================================
+// ===================  PÁGINA PRINCIPAL  ===============
+// =====================================================
+
 export function Agenda() {
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date())
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()))
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [searchParams] = useSearchParams()
 
+  const [searchParams] = useSearchParams()
   const defaultCaseId = searchParams.get('caseId')
 
   useEffect(() => {
-    if (defaultCaseId) {
-      setIsModalOpen(true)
-    }
+    if (defaultCaseId) setIsModalOpen(true)
   }, [defaultCaseId])
 
   const monthQuery = format(currentMonth, 'yyyy-MM')
 
-  const { data: appointments } = useQuery<Appointment[]>({
-    queryKey: ['appointments', monthQuery],
-    queryFn: async () => {
-      const response = await api.get('/appointments', {
-        params: { month: monthQuery },
-      })
-      return response.data
-    },
-  })
+  const { data: appointments, isLoading: isLoadingAppointments } =
+    useQuery<Appointment[]>({
+      queryKey: ['appointments', monthQuery],
+      queryFn: async () => {
+        const response = await api.get('/appointments', {
+          params: { month: monthQuery },
+        })
+        return response.data
+      },
+    })
 
   const appointmentsOnSelectedDay =
     selectedDay && appointments
@@ -253,10 +263,12 @@ export function Agenda() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Agenda de Atendimentos</h2>
+
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogTrigger asChild>
             <Button>Novo Agendamento</Button>
           </DialogTrigger>
+
           <NewAppointmentModal
             onOpenChange={setIsModalOpen}
             defaultCaseId={defaultCaseId}
@@ -275,8 +287,7 @@ export function Agenda() {
               onMonthChange={setCurrentMonth}
               locale={ptBR}
               modifiers={{
-                scheduled:
-                  appointments?.map((app) => new Date(app.data)) ?? [],
+                scheduled: appointments?.map((app) => new Date(app.data)) ?? [],
               }}
               modifiersClassNames={{
                 scheduled: 'font-bold text-primary',
@@ -284,6 +295,7 @@ export function Agenda() {
             />
           </CardContent>
         </Card>
+
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>
@@ -293,18 +305,31 @@ export function Agenda() {
                 : 'Nenhum dia selecionado'}
             </CardTitle>
           </CardHeader>
+
           <CardContent>
-            {appointmentsOnSelectedDay.length > 0 ? (
+            {isLoadingAppointments && (
+              <p className="text-sm text-muted-foreground">
+                Carregando agendamentos...
+              </p>
+            )}
+
+            {!isLoadingAppointments &&
+            appointmentsOnSelectedDay.length > 0 ? (
               <ul className="space-y-4">
                 {appointmentsOnSelectedDay.map((app) => (
-                  <li key={app.id} className="border-l-4 border-primary pl-4">
+                  <li
+                    key={app.id}
+                    className="border-l-4 border-primary pl-4"
+                  >
                     <p className="font-semibold">{app.titulo}</p>
+
                     <Link
-                      to={ROUTES.CASE_DETAIL.replace(':id', app.caso.id)}
+                      to={ROUTES.CASE_DETAIL(app.caso.id)}
                       className="text-sm text-muted-foreground hover:underline"
                     >
                       Caso: {app.caso.nomeCompleto}
                     </Link>
+
                     <p className="text-xs text-muted-foreground mt-1">
                       {format(new Date(app.data), 'HH:mm')}
                     </p>
@@ -312,9 +337,11 @@ export function Agenda() {
                 ))}
               </ul>
             ) : (
-              <p className="text-muted-foreground">
-                Nenhum agendamento para este dia.
-              </p>
+              !isLoadingAppointments && (
+                <p className="text-muted-foreground">
+                  Nenhum agendamento para este dia.
+                </p>
+              )
             )}
           </CardContent>
         </Card>

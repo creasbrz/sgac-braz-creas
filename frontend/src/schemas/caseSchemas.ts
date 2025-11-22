@@ -1,62 +1,67 @@
 // frontend/src/schemas/caseSchemas.ts
-import { z } from 'zod'
+import { z } from 'zod' //
 
 // --- Funções de Validação Customizadas ---
-function validaCPF(cpf: string): boolean {
-  cpf = cpf.replace(/[^\d]+/g, '')
-  if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false
+function validaCPF(cpf: string): boolean { //
+  cpf = cpf.replace(/[^\d]+/g, '') //
+  if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false //
   let add = 0
-  for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i)
-  let rev = 11 - (add % 11)
-  if (rev === 10 || rev === 11) rev = 0
-  if (rev !== parseInt(cpf.charAt(9))) return false
+  for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i) //
+  let rev = 11 - (add % 11) //
+  if (rev === 10 || rev === 11) rev = 0 //
+  if (rev !== parseInt(cpf.charAt(9))) return false //
   add = 0
-  for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i)
-  rev = 11 - (add % 11)
-  if (rev === 10 || rev === 11) rev = 0
-  if (rev !== parseInt(cpf.charAt(10))) return false
-  return true
+  for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i) //
+  rev = 11 - (add % 11) //
+  if (rev === 10 || rev === 11) rev = 0 //
+  if (rev !== parseInt(cpf.charAt(10))) return false //
+  return true //
 }
 
-const requiredFieldMessage = 'Este campo é obrigatório.'
+const requiredFieldMessage = 'Este campo é obrigatório.' //
 
 // --- Schemas de Formulário ---
-export const createCaseFormSchema = z.object({
-  nomeCompleto: z.string().min(3, 'O nome deve ter no mínimo 3 caracteres.'),
-  cpf: z.string().refine(validaCPF, { message: 'CPF inválido.' }),
-  nascimento: z.string().min(1, requiredFieldMessage),
-  sexo: z.string().min(1, requiredFieldMessage),
-  telefone: z.string().refine((tel) => tel.replace(/\D/g, '').length >= 10, {
-    message: 'Telefone inválido.',
+export const createCaseFormSchema = z.object({ //
+  nomeCompleto: z.string().min(3, 'O nome deve ter no mínimo 3 caracteres.'), //
+  cpf: z.string().refine(validaCPF, { message: 'CPF inválido.' }), //
+  nascimento: z.string().min(1, requiredFieldMessage), //
+  sexo: z.string().min(1, requiredFieldMessage), //
+  telefone: z.string().refine((tel) => tel.replace(/\D/g, '').length >= 10, { //
+    message: 'Telefone inválido.', //
   }),
-  endereco: z.string().min(5, 'O endereço é obrigatório.'),
-  dataEntrada: z.string(),
-  urgencia: z.string().min(1, requiredFieldMessage),
-  violacao: z.string().min(1, requiredFieldMessage),
-  categoria: z.string().min(1, requiredFieldMessage),
-  orgaoDemandante: z.string().min(1, requiredFieldMessage),
-  numeroSei: z.string().optional(),
-  linkSei: z.string().url('URL inválida.').optional().or(z.literal('')),
-  agenteAcolhidaId: z.string().min(1, 'É obrigatório selecionar um agente.'),
-  observacoes: z.string().optional(),
-  beneficios: z.array(z.string()).optional(),
+  endereco: z.string().min(5, 'O endereço é obrigatório.'), //
+  dataEntrada: z.string(), //
+  urgencia: z.string().min(1, requiredFieldMessage), //
+  violacao: z.string().min(1, requiredFieldMessage), //
+  categoria: z.string().min(1, requiredFieldMessage), //
+  orgaoDemandante: z.string().min(1, requiredFieldMessage), //
+  numeroSei: z.string().optional(), //
+  linkSei: z.string().url('URL inválida.').optional().or(z.literal('')), //
+  agenteAcolhidaId: z.string().min(1, 'É obrigatório selecionar um agente.'), //
+  observacoes: z.string().optional(), //
+  beneficios: z.array(z.string()).optional(), //
 })
 
-// Exporta o tipo inferido do schema
-export type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
+export type CreateCaseFormData = z.infer<typeof createCaseFormSchema> //
 
-export const evolutionFormSchema = z.object({
-  conteudo: z.string().min(10, 'A evolução deve ter no mínimo 10 caracteres.'),
+export const evolutionFormSchema = z.object({ //
+  conteudo: z.string().min(10, 'A evolução deve ter no mínimo 10 caracteres.'), //
 })
 
-export const pafFormSchema = z.object({
-  diagnostico: z.string().min(10, 'O diagnóstico é muito curto.'),
-  objetivos: z.string().min(10, 'Defina objetivos claros.'),
-  estrategias: z.string().min(10, 'Descreva as estratégias.'),
-  prazos: z.string().min(5, 'Defina os prazos.'),
+// --- ALTERAÇÃO APLICADA AQUI ---
+export const pafFormSchema = z.object({ //
+  diagnostico: z.string().min(10, 'O diagnóstico é muito curto.'), //
+  objetivos: z.string().min(10, 'Defina objetivos claros.'), //
+  estrategias: z.string().min(10, 'Defina estratégias claras.'), //
+  
+  // Trocado 'prazos' (String) por 'deadline' (Data)
+  deadline: z.string().refine((val) => val && !isNaN(Date.parse(val)), { // Valida que é uma string de data não vazia
+    message: 'A data do prazo é obrigatória.',
+  }),
 })
+// --- FIM DA ALTERAÇÃO ---
 
-export const closeCaseFormSchema = z.object({
-  parecerFinal: z.string().min(10, 'O parecer final deve ter no mínimo 10 caracteres.'),
-  motivoDesligamento: z.string().min(1, 'O motivo de desligamento é obrigatório.'),
+export const closeCaseFormSchema = z.object({ //
+  motivoDesligamento: z.string().min(1, 'O motivo é obrigatório.'), //
+  parecerFinal: z.string().min(10, 'O parecer final é muito curto.'), //
 })

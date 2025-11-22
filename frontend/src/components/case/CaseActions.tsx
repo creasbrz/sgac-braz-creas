@@ -1,129 +1,101 @@
 // frontend/src/components/case/CaseActions.tsx
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { clsx } from 'clsx'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { getAvailableActions } from '@/constants/caseTransitions' //
+import { Button } from '@/components/ui/button' //
+import { useAuth } from '@/hooks/useAuth' //
+import { api } from '@/lib/api' //
+// Importa os modais da pasta correta
+import { CloseCaseModal } from '@/components/modals/CloseCaseModal' //
+import { AssignSpecialistModal } from '@/components/modals/AssignSpecialistModal' //
+import type { CaseStatusIdentifier } from '@/constants/caseConstants' //
+import type { CaseDetailData } from '@/types/case' //
+import { getErrorMessage } from '@/utils/error' //
 
-import { api } from '@/lib/api'
-import { useAuth } from '@/hooks/useAuth'
-import { getErrorMessage } from '@/utils/error'
-import { type CaseStatusIdentifier } from '@/constants/caseConstants'
-import { caseTransitions, type StatusAction } from '@/constants/caseTransitions'
-import type { CaseDetailData } from '@/types/case'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
-import { CloseCaseModal } from './CloseCaseModal' // Importa o novo modal
+type ActionType = "status" | "close" | "assign"
 
-export function CaseActions({ caseData }: { caseData: CaseDetailData }) {
+interface CaseActionsProps {
+  caseData: CaseDetailData
+}
+
+export function CaseActions({ caseData }: CaseActionsProps) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [pendingStatus, setPendingStatus] = useState<string | null>(null)
-  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false)
+  const [isCloseModalOpen, setCloseModalOpen] = useState(false)
+  const [isAssignModalOpen, setAssignModalOpen] = useState(false)
 
-  const { mutate: updateStatus, isPending } = useMutation({
-    mutationFn: async (newStatus: string) => {
-      return await api.patch(`/cases/${caseData.id}/status`, {
-        status: newStatus,
-      })
+  if (!user) return null
+
+  const actions = getAvailableActions(
+    caseData.status as CaseStatusIdentifier,
+    user.cargo
+  )
+
+  // --- MUTATION: Atualizar status ---
+  const updateStatus = useMutation({
+    mutationFn: async (nextStatus: CaseStatusIdentifier) => {
+      await api.patch(`/cases/${caseData.id}/status`, { status: nextStatus })
     },
     onSuccess: () => {
-      toast.success('Status do caso atualizado com sucesso!')
-      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      toast.success('Status atualizado com sucesso!')
+      // Invalida todas as queries relacionadas para atualizar a UI
       queryClient.invalidateQueries({ queryKey: ['case', caseData.id] })
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      queryClient.invalidateQueries({ queryKey: ['recentCases'] })
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Falha ao atualizar o status.'))
     },
-    onSettled: () => {
-      setPendingStatus(null)
-    },
   })
 
-  const handleUpdateStatus = (newStatus: CaseStatusIdentifier) => {
-    setPendingStatus(newStatus)
-    updateStatus(newStatus)
+  const handleAction = (type: ActionType, nextStatus?: CaseStatusIdentifier) => {
+    switch (type) {
+      case "status":
+        if (nextStatus) updateStatus.mutate(nextStatus)
+        break
+      case "close":
+        setCloseModalOpen(true)
+        break
+      case "assign":
+        setAssignModalOpen(true)
+        break
+    }
   }
 
-  const isUserResponsible =
-    user?.id === caseData.agenteAcolhida?.id ||
-    user?.id === caseData.especialistaPAEFI?.id
-
-  const allowedActions =
-    caseTransitions[caseData.status as CaseStatusIdentifier]?.filter(
-      (action: StatusAction) => {
-        if (!user) return false
-        return (
-          (isUserResponsible || user.cargo === 'Gerente') &&
-          action.allowedRoles.includes(user.cargo)
-        )
-      },
-    ) || []
-
   return (
-    <div className="rounded-lg border bg-background p-4">
-      <h3 className="text-base font-semibold text-foreground">Ações do Caso</h3>
-      <div className="mt-4 flex flex-wrap gap-4">
-        {allowedActions.map((action: StatusAction) => {
-          // Ações de mudança de status (ex: Iniciar Acolhida, Reabrir)
-          if (action.type === 'status') {
-            return (
-              <AlertDialog key={action.label}>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" disabled={isPending} className={clsx('w-48 justify-center', action.style, 'text-white')}>
-                    {isPending && pendingStatus === action.nextStatus ? <Loader2 className="animate-spin" /> : action.label}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Tem a certeza?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Esta ação irá alterar o status do caso para "{action.nextStatus?.replace(/_/g, ' ')}".
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleUpdateStatus(action.nextStatus as CaseStatusIdentifier)}>
-                      Confirmar
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )
-          }
+    <div className="flex flex-wrap gap-2 mt-4">
 
-          // Ação de Desligar (que abre o modal de formulário)
-          if (action.type === 'close') {
-            return (
-              <Button
-                key={action.label}
-                variant="outline"
-                onClick={() => setIsCloseModalOpen(true)}
-                className={clsx('w-48 justify-center', action.style, 'text-white')}
-              >
-                {action.label}
-              </Button>
-            )
-          }
-          return null
-        })}
-      </div>
-      
-      {/* Renderiza o modal de desligamento */}
+      {actions.length === 0 && (
+        <span className="text-sm text-muted-foreground">
+          Nenhuma ação disponível no momento.
+        </span>
+      )}
+
+      {actions.map((action) => (
+        <Button
+          key={action.label}
+          className={action.style}
+          onClick={() => handleAction(action.type as ActionType, action.nextStatus)}
+          disabled={action.type === "status" && updateStatus.isPending}
+        >
+          {action.type === "status" && updateStatus.isPending
+            ? "Atualizando..."
+            : action.label}
+        </Button>
+      ))}
+
+      {/* Modais */}
       <CloseCaseModal
-        caseId={caseData.id}
         isOpen={isCloseModalOpen}
-        onOpenChange={setIsCloseModalOpen}
+        onOpenChange={setCloseModalOpen}
+        caseId={caseData.id}
+      />
+
+      <AssignSpecialistModal
+        isOpen={isAssignModalOpen}
+        onClose={() => setAssignModalOpen(false)}
+        caseId={caseData.id}
       />
     </div>
   )

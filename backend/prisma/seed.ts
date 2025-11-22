@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client'
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
+import { addMonths, startOfDay, subDays } from 'date-fns'
 
 const prisma = new PrismaClient()
 
@@ -11,9 +12,6 @@ function getRandomItem<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
-/**
- * Gera um parecer final realista em português, baseado no motivo do desligamento.
- */
 function generateParecerFinal(motivo: string, nome: string): string {
   switch (motivo) {
     case 'Mudança de território':
@@ -35,9 +33,6 @@ function generateParecerFinal(motivo: string, nome: string): string {
   }
 }
 
-/**
- * Gera um PAF realista em português, baseado nos dados do caso.
- */
 function generateRealisticPaf(violacao: string, categoria: string): { diagnostico: string, objetivos: string, estrategias: string } {
   const diagnostico = `Núcleo familiar apresenta vulnerabilidade social e relacional, agravada pela situação de ${violacao.toLowerCase()}. Observa-se fragilidade nos vínculos familiares e comunitários, impactando o(a) ${categoria.toLowerCase()}.`
   
@@ -48,9 +43,6 @@ function generateRealisticPaf(violacao: string, categoria: string): { diagnostic
   return { diagnostico, objetivos, estrategias }
 }
 
-/**
- * Gera observações iniciais realistas em português.
- */
 function generateObservacoes(orgao: string, violacao: string, categoria: string): string {
   const obs = [
     `Caso encaminhado via SEI pelo(a) ${orgao}. Demanda inicial: ${violacao.toLowerCase()}.`,
@@ -60,7 +52,19 @@ function generateObservacoes(orgao: string, violacao: string, categoria: string)
   return getRandomItem(obs)
 }
 
-// --- Listas de Opções (em Português) ---
+// --- Textos para Evoluções (Novidade) ---
+const textosEvolucao = [
+  "Realizado atendimento individualizado na unidade. Usuário compareceu e relatou melhoria na convivência familiar.",
+  "Visita domiciliar realizada. Família receptiva, porém mantém-se a situação de vulnerabilidade habitacional.",
+  "Contato telefônico com a rede de saúde para verificar agendamento de consulta. Confirmado para a próxima semana.",
+  "Realizada escuta especializada. Identificada necessidade de encaminhamento para o CRAS.",
+  "Participação em reunião de rede com o Conselho Tutelar para discussão do caso.",
+  "Usuário não compareceu ao atendimento agendado. Realizado contato para reagendamento.",
+  "Entrega de benefícios eventuais (cesta básica) e orientação sobre o uso.",
+  "Atendimento psicossocial realizado. Trabalhado o fortalecimento de vínculos e autonomia."
+]
+
+// --- Listas de Opções ---
 const urgencias = [
   'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
   'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
@@ -87,9 +91,6 @@ const motivosDesligamento = [
   'Mudança de território', 'Falecimento', 'Recusa de atendimento', 
   'Violação cessada', 'Contrareferenciamento', 'Não localizado', 'Acolhimento',
 ]
-const prazosPaf = [
-  'Curto prazo (3 meses)', 'Médio prazo (6 meses)', 'Longo prazo (12 meses)'
-]
 const titulosAgendamento = [
   'Visita Domiciliar', 'Atendimento Individualizado', 'Escuta Especializada', 'Reunião de Rede (Saúde)', 'Acompanhamento Telefônico'
 ]
@@ -115,6 +116,7 @@ async function main() {
       email: 'gerente@creas.com',
       senha: hashedPassword,
       cargo: 'Gerente',
+      ativo: true,
     },
   })
 
@@ -126,6 +128,7 @@ async function main() {
           email: `agente${i + 1}@creas.com`,
           senha: hashedPassword,
           cargo: 'Agente Social',
+          ativo: true,
         },
       }),
     ),
@@ -139,6 +142,7 @@ async function main() {
           email: `especialista${i + 1}@creas.com`,
           senha: hashedPassword,
           cargo: 'Especialista',
+          ativo: true,
         },
       }),
     ),
@@ -147,6 +151,7 @@ async function main() {
 
   const createdCases = []
   console.log('📂 A criar 80 casos simulados...')
+  
   for (let i = 0; i < 80; i++) {
     const status = getRandomItem(statusPossiveis)
     const agenteAcolhida = getRandomItem(agentesSociais)
@@ -156,10 +161,10 @@ async function main() {
     const orgaoDemandante = getRandomItem(['CRAS', 'Conselho Tutelar', 'Saúde', 'Demanda Espontânea'])
     
     let especialistaPAEFI = null
-    let dataInicioPAEFI = null
-    let dataDesligamento = null
-    let motivoDesligamento = null
-    let parecerFinal = null
+    let dataInicioPAEFI: Date | null = null
+    let dataDesligamento: Date | null = null
+    let motivoDesligamento: string | null = null
+    let parecerFinal: string | null = null
     let pafData = undefined
 
     const beneficios = faker.helpers.arrayElements(beneficiosList, { min: 0, max: 2 })
@@ -175,7 +180,9 @@ async function main() {
           diagnostico,
           objetivos,
           estrategias,
-          prazos: getRandomItem(prazosPaf),
+          deadline: (i % 10 === 0) 
+            ? faker.date.future({ days: 7, refDate: startOfDay(new Date()) }) 
+            : addMonths(dataInicioPAEFI, getRandomItem([3, 6, 12])),
           autorId: especialistaPAEFI.id,
         }
       }
@@ -216,9 +223,42 @@ async function main() {
     })
     createdCases.push(newCase)
   }
-  console.log(`📦 ${createdCases.length} casos simulados criados com sucesso!`)
+  console.log(`📦 ${createdCases.length} casos simulados criados.`)
 
-  // --- Criação de Agendamentos ---
+  // --- Criação de Evoluções (Histórico) ---
+  console.log('📝 A criar evoluções (histórico) para os casos...')
+  let evolutionCount = 0
+  
+  for (const c of createdCases) {
+    // Determina quem pode ter escrito a evolução (Gerente, Agente ou Especialista)
+    const possiveisAutores = [gerente]
+    if (c.agenteAcolhidaId) possiveisAutores.push(agentesSociais.find(a => a.id === c.agenteAcolhidaId)!)
+    if (c.especialistaPAEFIId) possiveisAutores.push(especialistas.find(e => e.id === c.especialistaPAEFIId)!)
+
+    // Cria entre 1 e 5 evoluções para cada caso
+    const numEvolucoes = faker.number.int({ min: 1, max: 5 })
+    
+    for (let j = 0; j < numEvolucoes; j++) {
+      // Data da evolução: aleatória entre a entrada e hoje (ou data de desligamento)
+      const dataMax = c.dataDesligamento || new Date()
+      const dataEvolucao = faker.date.between({ from: c.dataEntrada, to: dataMax })
+      
+      const autor = getRandomItem(possiveisAutores)
+
+      await prisma.evolucao.create({
+        data: {
+          conteudo: getRandomItem(textosEvolucao), // Usa os textos predefinidos
+          createdAt: dataEvolucao,
+          casoId: c.id,
+          autorId: autor.id,
+        }
+      })
+      evolutionCount++
+    }
+  }
+  console.log(`📝 ${evolutionCount} evoluções registradas com sucesso!`)
+
+ // --- Criação de Agendamentos (TÉCNICOS) ---
   console.log('🗓️ A criar agendamentos simulados...')
   let agendamentoCount = 0
   const activeCases = createdCases.filter(c => 
@@ -234,7 +274,7 @@ async function main() {
     }
 
     if (responsavelId) {
-      const numAgendamentos = getRandomItem([1, 2]) // 1 ou 2 agendamentos por caso ativo
+      const numAgendamentos = getRandomItem([1, 2])
       for (let j = 0; j < numAgendamentos; j++) {
         await prisma.agendamento.create({
           data: {
@@ -248,8 +288,23 @@ async function main() {
       }
     }
   }
+
+  // --- [NOVO] Criação de Agendamentos para o GERENTE (Para você ver no dashboard) ---
+  const casosDoGerente = createdCases.slice(0, 3); // Pega 3 casos quaisquer
+  for (const c of casosDoGerente) {
+     await prisma.agendamento.create({
+        data: {
+          titulo: "Supervisão de Caso (Teste)",
+          data: faker.date.soon({ days: 7 }), // Próximos 7 dias
+          casoId: c.id,
+          responsavelId: gerente.id, // Atribui ao GERENTE
+          observacoes: "Reunião de alinhamento criada pelo seed."
+        }
+     });
+     agendamentoCount++;
+  }
+
   console.log(`📅 ${agendamentoCount} agendamentos futuros criados com sucesso!`)
-  
   console.log('🎉 Povoamento da base de dados concluído.')
 }
 
@@ -261,4 +316,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect()
   })
-

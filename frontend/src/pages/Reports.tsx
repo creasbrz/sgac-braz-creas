@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/card'
 import { RmaReport } from '@/components/RmaReport'
 
-// Correção: Adiciona uma assinatura de índice para compatibilidade com o Recharts
+// Define compatibilidade e previne crash
 interface StatData {
   name: string
   value: number
@@ -48,7 +48,7 @@ export function Reports() {
     isLoading,
     isError,
   } = useQuery<Stats>({
-    queryKey: ['stats'],
+    queryKey: ['reports-stats'], // Correção: evita colisão de cache
     queryFn: async () => {
       const response = await api.get('/stats')
       return response.data
@@ -74,6 +74,8 @@ export function Reports() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Painel Gerencial</h1>
+
+      {/* Cards de estatísticas principais */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
@@ -84,16 +86,18 @@ export function Reports() {
             <p className="text-4xl font-bold">{stats.totalCases}</p>
           </CardContent>
         </Card>
-         <Card>
+
+        <Card>
           <CardHeader>
             <CardTitle>Acolhidas</CardTitle>
-             <CardDescription>Casos atualmente em acolhida.</CardDescription>
+            <CardDescription>Casos atualmente em acolhida.</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-4xl font-bold">{stats.acolhidasCount}</p>
           </CardContent>
         </Card>
-         <Card>
+
+        <Card>
           <CardHeader>
             <CardTitle>Acompanhamentos</CardTitle>
             <CardDescription>Casos atualmente em PAEFI.</CardDescription>
@@ -104,76 +108,115 @@ export function Reports() {
         </Card>
       </div>
 
+      {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Casos por Urgência */}
         <Card>
           <CardHeader>
             <CardTitle>Casos por Nível de Urgência</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.casesByUrgency}>
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={80} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]}>
-                   {stats.casesByUrgency.map((_entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {stats.casesByUrgency.length === 0 ? (
+              <p className="text-muted-foreground">Sem dados suficientes.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={stats.casesByUrgency}
+                  margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
+                >
+                  <XAxis
+                    dataKey="name"
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    angle={-45}
+                    textAnchor="end"
+                    interval={0}
+                    height={80}
+                  />
+                  <YAxis stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip />
+                  <Bar dataKey="value">
+                    {stats.casesByUrgency.map((_entry, index) => (
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
+
+        {/* Casos por Categoria */}
         <Card>
           <CardHeader>
             <CardTitle>Casos por Categoria de Público</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={stats.casesByCategory}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  outerRadius={80}
-                  fill="hsl(var(--primary))"
-                  dataKey="value"
-                  nameKey="name"
-                  label
-                >
-                  {stats.casesByCategory.map((_entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            {stats.casesByCategory.length === 0 ? (
+              <p className="text-muted-foreground">Sem dados suficientes.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={stats.casesByCategory}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    label
+                    labelLine={false}
+                    dataKey="value"
+                    nameKey="name"
+                  >
+                    {stats.casesByCategory.map((_entry, index) => (
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
 
-       <Card>
-          <CardHeader>
-            <CardTitle>Produtividade por Técnico</CardTitle>
-            <CardDescription>Distribuição de casos por profissional responsável.</CardDescription>
-          </CardHeader>
-          <CardContent>
+      {/* Produtividade */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Produtividade por Técnico</CardTitle>
+          <CardDescription>
+            Distribuição de casos por profissional responsável.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {stats.productivity.length === 0 ? (
+            <p className="text-muted-foreground">Nenhum registro disponível.</p>
+          ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats.productivity}>
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <XAxis
+                  dataKey="name"
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <Tooltip />
+                <Bar dataKey="value">
+                  {stats.productivity.map((_entry, index) => (
+                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          )}
+        </CardContent>
+      </Card>
 
+      {/* Relatório RMA */}
       <RmaReport />
     </div>
   )

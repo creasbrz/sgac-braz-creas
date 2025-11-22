@@ -1,113 +1,203 @@
 // backend/src/routes/stats.ts
-import { type FastifyInstance } from 'fastify'
-import { prisma } from '../lib/prisma'
-import { startOfMonth, endOfMonth, startOfToday } from 'date-fns'
+import { type FastifyInstance } from "fastify";
+import { prisma } from "../lib/prisma"; //
+import { 
+  startOfMonth, 
+  endOfMonth, 
+  startOfDay, 
+  endOfDay, 
+  addDays 
+} from "date-fns";
 
 export async function statsRoutes(app: FastifyInstance) {
-  // Rota para o painel gerencial (Gerente)
-  app.get(
-    '/stats',
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      const { cargo } = request.user
+  // Proteção: todas as rotas exigem JWT
+  app.addHook("onRequest", async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.status(401).send({ message: "Não autorizado." });
+    }
+  });
 
-      if (cargo !== 'Gerente') {
-        return await reply.status(403).send({ message: 'Acesso negado.' })
-      }
+  /**
+   * ======================================================
+   * GET /stats  → Painel do Gerente E Relatórios
+   * ======================================================
+   */
+  app.get("/stats", async (request, reply) => {
+    const { cargo } = request.user as { cargo: string };
 
-      try {
-        const now = new Date()
-        const startOfCurrentMonth = startOfMonth(now)
-        const endOfCurrentMonth = endOfMonth(now)
+    if (cargo !== "Gerente") {
+      return reply.status(403).send({ message: "Acesso negado." });
+    }
 
-        const [
-          casesByViolation,
-          casesByCategory,
-          casesByUrgency,
-          casesBySex,
-          totalCases,
-          statusCounts,
-          newCasesThisMonth,
-          closedCasesThisMonth,
-          workloadByAgent,
-          workloadBySpecialist,
-        ] = await Promise.all([
-          prisma.case.groupBy({ by: ['violacao'], _count: { id: true }, orderBy: { _count: { id: 'desc' } } }),
-          prisma.case.groupBy({ by: ['categoria'], _count: { id: true }, orderBy: { _count: { id: 'desc' } } }),
-          prisma.case.groupBy({ by: ['urgencia'], _count: { id: true }, orderBy: { _count: { id: 'desc' } } }),
-          prisma.case.groupBy({ by: ['sexo'], _count: { id: true } }),
-          prisma.case.count(),
-          prisma.case.groupBy({ by: ['status'], _count: { id: true } }),
-          prisma.case.count({ where: { createdAt: { gte: startOfCurrentMonth, lte: endOfCurrentMonth } } }),
-          prisma.case.count({ where: { dataDesligamento: { gte: startOfCurrentMonth, lte: endOfCurrentMonth } } }),
-          prisma.case.groupBy({ by: ['agenteAcolhidaId'], _count: { id: true }, where: { agenteAcolhidaId: { not: null }, status: 'EM_ACOLHIDA' } }),
-          prisma.case.groupBy({ by: ['especialistaPAEFIId'], _count: { id: true }, where: { especialistaPAEFIId: { not: null }, status: 'EM_ACOMPANHAMENTO_PAEFI' } }),
-        ])
+    try {
+      const today = new Date();
+      const firstDayOfMonth = startOfMonth(today);
+      const lastDayOfMonth  = endOfMonth(today);
 
-        const agentIds = workloadByAgent.map((p) => p.agenteAcolhidaId!)
-        const specialistIds = workloadBySpecialist.map((p) => p.especialistaPAEFIId!)
-        
-        const users = await prisma.user.findMany({ where: { id: { in: [...agentIds, ...specialistIds] }}, select: { id: true, nome: true } })
-        const userMap = new Map(users.map(u => [u.id, u.nome]))
+      /** =======================
+       * 1. CONTAGENS PRINCIPAIS
+       * =======================*/
+      const totalCases = await prisma.case.count();
 
-        const stats = {
-          totalCases,
-          newCasesThisMonth,
-          closedCasesThisMonth,
-          acolhidasCount: statusCounts.find((s) => s.status === 'EM_ACOLHIDA')?._count.id || 0,
-          acompanhamentosCount: statusCounts.find((s) => s.status === 'EM_ACOMPANHAMENTO_PAEFI')?._count.id || 0,
-          casesByViolation: casesByViolation.map((item) => ({ name: item.violacao, value: item._count.id })),
-          casesByCategory: casesByCategory.map((item) => ({ name: item.categoria, value: item._count.id })),
-          casesByUrgency: casesByUrgency.map((item) => ({ name: item.urgencia, value: item._count.id })),
-          casesBySex: casesBySex.map((item) => ({ name: item.sexo, value: item._count.id })),
-          workloadByAgent: workloadByAgent.map(p => ({ name: userMap.get(p.agenteAcolhidaId!) ?? 'Desconhecido', value: p._count.id })).sort((a, b) => b.value - a.value),
-          workloadBySpecialist: workloadBySpecialist.map(p => ({ name: userMap.get(p.especialistaPAEFIId!) ?? 'Desconhecido', value: p._count.id })).sort((a, b) => b.value - a.value),
-        }
+      const acolhidasCount = await prisma.case.count({
+        where: {
+          status: { in: ["AGUARDANDO_ACOLHIDA", "EM_ACOLHIDA"] },
+        },
+      });
 
-        return await reply.status(200).send(stats)
-      } catch (error) {
-        request.log.error(error, 'Erro ao buscar estatísticas.')
-        return await reply.status(500).send({ message: 'Erro interno ao buscar estatísticas.' })
-      }
-    },
-  )
+      const acompanhamentosCount = await prisma.case.count({
+        where: { status: "EM_ACOMPANHAMENTO_PAEFI" },
+      });
 
-  // Nova rota para o painel do técnico (Agente/Especialista)
-  app.get(
-    '/stats/my-agenda',
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      const { sub: userId } = request.user
-      const today = startOfToday()
-
-      try {
-        const appointments = await prisma.agendamento.findMany({
-          where: {
-            responsavelId: userId,
-            data: {
-              gte: today, // Apenas agendamentos de hoje em diante
-            },
+      const newCasesThisMonth = await prisma.case.count({
+        where: {
+          dataEntrada: {
+            gte: firstDayOfMonth,
+            lte: lastDayOfMonth,
           },
-          include: {
-            caso: {
-              select: {
-                id: true,
-                nomeCompleto: true,
-              },
-            },
+        },
+      });
+
+      const closedCasesThisMonth = await prisma.case.count({
+        where: {
+          status: "DESLIGADO",
+          dataDesligamento: {
+            gte: firstDayOfMonth,
+            lte: lastDayOfMonth,
           },
-          orderBy: {
-            data: 'asc',
+        },
+      });
+
+      /** ==================================
+       * 2. WORKLOAD (Carga de Trabalho)
+       * ==================================*/
+
+      // --- CORREÇÃO AQUI ---
+      // Removido o 'OR: [{ativo: true}, {ativo: null}]' que causava o erro 500
+      // Como o campo é obrigatório no banco, buscamos apenas 'ativo: true'
+      
+      const agentWorkload = await prisma.user.findMany({
+        where: {
+          cargo: "Agente Social",
+          ativo: true, 
+        },
+        select: {
+          nome: true,
+          casosDeAcolhida: {
+            where: { status: { in: ["AGUARDANDO_ACOLHIDA", "EM_ACOLHIDA"] } },
           },
-          take: 5, // Limita aos próximos 5
-        })
-        return await reply.status(200).send(appointments)
-      } catch (error) {
-        request.log.error(error, 'Erro ao buscar agendamentos do utilizador.')
-        return await reply
-          .status(500)
-          .send({ message: 'Erro interno ao buscar agendamentos.' })
-      }
-    },
-  )
+        },
+      });
+
+      const specialistWorkload = await prisma.user.findMany({
+        where: {
+          cargo: "Especialista",
+          ativo: true,
+        },
+        select: {
+          nome: true,
+          casosDeAcompanhamento: {
+            where: { status: "EM_ACOMPANHAMENTO_PAEFI" },
+          },
+        },
+      });
+      // --- FIM DA CORREÇÃO ---
+
+      const workloadByAgent = agentWorkload.map((u) => ({
+        name: u.nome,
+        value: u.casosDeAcolhida?.length ?? 0,
+      }));
+
+      const workloadBySpecialist = specialistWorkload.map((u) => ({
+        name: u.nome,
+        value: u.casosDeAcompanhamento?.length ?? 0,
+      }));
+
+      /** ==================================
+       * 3. ESTATÍSTICAS PARA RELATÓRIOS
+       * ==================================*/
+      
+      const productivity = [...workloadByAgent, ...workloadBySpecialist].sort((a,b) => b.value - a.value);
+
+      const urgencyGroups = await prisma.case.groupBy({
+        by: ['urgencia'],
+        _count: { _all: true },
+        where: { status: { not: 'DESLIGADO' } },
+      });
+      const casesByUrgency = urgencyGroups.map(g => ({ name: g.urgencia, value: g._count._all }));
+
+      const categoryGroups = await prisma.case.groupBy({
+        by: ['categoria'],
+        _count: { _all: true },
+        where: { status: { not: 'DESLIGADO' } },
+      });
+      const casesByCategory = categoryGroups.map(g => ({ name: g.categoria, value: g._count._all }));
+
+      const violationGroups = await prisma.case.groupBy({
+        by: ['violacao'],
+        _count: { _all: true },
+        where: { status: { not: 'DESLIGADO' } },
+      });
+      const casesByViolation = violationGroups.map(g => ({ name: g.violacao, value: g._count._all }));
+
+      return reply.status(200).send({
+        // Dashboard
+        totalCases,
+        acolhidasCount,
+        acompanhamentosCount,
+        newCasesThisMonth,
+        closedCasesThisMonth,
+        workloadByAgent,
+        workloadBySpecialist,
+        // Relatórios
+        productivity,
+        casesByUrgency,
+        casesByCategory,
+        casesByViolation
+      });
+
+    } catch (error) {
+      console.error("Erro ao buscar estatísticas:", error);
+      return reply.status(500).send({ message: "Erro interno no servidor." });
+    }
+  });
+
+  /**
+   * ======================================================
+   * GET /stats/my-agenda
+   * ======================================================
+   */
+  app.get("/stats/my-agenda", async (request, reply) => {
+    const { sub: userId } = request.user as { sub: string };
+
+    try {
+      const today = startOfDay(new Date());
+      const cutoffDate = endOfDay(addDays(today, 30));
+
+      const appointments = await prisma.agendamento.findMany({
+        where: {
+          responsavelId: userId,
+          data: {
+            gte: today,
+            lte: cutoffDate,
+          },
+        },
+        orderBy: { data: "asc" },
+        take: 5,
+        include: {
+          caso: {
+            select: { id: true, nomeCompleto: true },
+          },
+        },
+      });
+
+      return reply.status(200).send(appointments);
+
+    } catch (error) {
+      console.error("Erro ao buscar próximos agendamentos:", error);
+      return reply.status(500).send({ message: "Erro interno no servidor." });
+    }
+  });
 }

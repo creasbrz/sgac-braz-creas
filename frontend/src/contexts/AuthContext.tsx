@@ -2,19 +2,21 @@
 import { createContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import axios from 'axios'
-import { jwtDecode } from 'jwt-decode'
+import { jwtDecode } from 'jwt-decode' //
 import { Loader2 } from 'lucide-react'
+import { getErrorMessage } from '@/utils/error'
+import { api } from '@/lib/api' //
+import { ROUTES } from '@/constants/routes' //
+import { STORAGE_KEYS } from '@/constants/storage' //
+import type { User, UserRole } from '@/types/user' //
 
-import { api } from '@/lib/api'
-import { ROUTES } from '@/constants/routes'
-import { STORAGE_KEYS } from '@/constants/storage'
-import type { User } from '@/types/user'
-
+// Define o que o token JWT contém
 interface DecodedToken {
   exp: number
   iat: number
-  sub: string
+  sub: string // O ID do usuário
+  nome: string
+  cargo: UserRole
 }
 
 interface LoginData {
@@ -27,97 +29,85 @@ interface AuthContextType {
   user: User | null
   login: (data: LoginData) => Promise<boolean>
   logout: () => void
-  isSessionLoading: boolean
-  isLoginLoading: boolean
+  isSessionLoading: boolean // Para saber se a sessão inicial está carregando
+  isLoginLoading: boolean // Para o botão de login
 }
 
 export const AuthContext = createContext({} as AuthContextType)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
   const [isSessionLoading, setIsSessionLoading] = useState(true)
   const [isLoginLoading, setIsLoginLoading] = useState(false)
   const navigate = useNavigate()
 
+  // Função de Logout
   const logout = () => {
     setUser(null)
-    setToken(null)
-    localStorage.removeItem(STORAGE_KEYS.TOKEN)
-    delete api.defaults.headers.common.Authorization
-    // O fallback com window.location.href é útil se o logout for chamado
-    // de um local fora do contexto do React Router, como um intercetor do Axios.
-    try {
-      navigate(ROUTES.LOGIN)
-    } catch {
-      window.location.href = ROUTES.LOGIN
-    }
+    localStorage.removeItem(STORAGE_KEYS.TOKEN) //
+    delete api.defaults.headers.common.Authorization //
+    
+    // Navega para o login. O <Navigate> no App.tsx cuidará do resto.
+    navigate(ROUTES.LOGIN) //
   }
 
+  // Efeito para carregar o usuário do localStorage na inicialização
   useEffect(() => {
     async function loadUserFromStorage() {
-      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN)
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN) //
+      
       if (storedToken) {
         try {
           const decodedToken = jwtDecode<DecodedToken>(storedToken)
+          // Verifica se o token não está expirado
           if (decodedToken.exp * 1000 > Date.now()) {
-            setToken(storedToken)
-            api.defaults.headers.common.Authorization = `Bearer ${storedToken}`
-            const response = await api.get('/me')
+            // Define o token no axios ANTES de fazer a chamada /me
+            api.defaults.headers.common.Authorization = `Bearer ${storedToken}` //
+            
+            // Busca os dados mais recentes do usuário
+            const response = await api.get('/me') //
             setUser(response.data)
           } else {
-            // Se o token estiver expirado, limpa-o
-            localStorage.removeItem(STORAGE_KEYS.TOKEN)
+            // Token expirado
+            logout()
           }
-        } catch {
-          localStorage.removeItem(STORAGE_KEYS.TOKEN)
+        } catch (error) {
+          // Token inválido ou erro na API
+          console.error("Falha ao carregar sessão:", error)
+          logout()
         }
       }
       setIsSessionLoading(false)
     }
     loadUserFromStorage()
+    // O 'navigate' não é uma dependência estável, então o desabilitamos
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Interceta erros 401 e força o logout
-  useEffect(() => {
-    const interceptor = api.interceptors.response.use(
-      (res) => res,
-      (err) => {
-        if (err.response?.status === 401) {
-          logout()
-        }
-        return Promise.reject(err)
-      },
-    )
-    return () => {
-      api.interceptors.response.eject(interceptor)
-    }
-    // Adicionamos a dependência 'logout' para garantir que a função está sempre atualizada.
-  }, [logout])
-
+  // Função de Login
   const login = async ({ email, senha }: LoginData): Promise<boolean> => {
     setIsLoginLoading(true)
     try {
-      const response = await api.post('/login', { email, senha })
+      const response = await api.post('/login', { email, senha }) //
       const { token: newToken } = response.data
 
-      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}`
-      setToken(newToken)
+      // 1. Salva o token
+      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken) //
+      api.defaults.headers.common.Authorization = `Bearer ${newToken}` //
 
-      const userResponse = await api.get('/me')
+      // 2. Busca os dados do usuário com o novo token
+      const userResponse = await api.get('/me') //
       const loggedUser: User = userResponse.data
-      setUser(loggedUser)
+      setUser(loggedUser) //
 
       toast.success('Login bem-sucedido!')
 
-      navigate(loggedUser.cargo === 'Gerente' ? ROUTES.DASHBOARD : ROUTES.CASES)
+      // 3. Redireciona com base no cargo
+      // Gerente vai para o Dashboard, outros para a lista de casos
+      navigate(loggedUser.cargo === 'Gerente' ? ROUTES.DASHBOARD : ROUTES.CASES) //
       return true
     } catch (error) {
-      let errMsg = 'Falha na autenticação.'
-      if (axios.isAxiosError(error) && error.response) {
-        errMsg = error.response.data?.message || 'Verifique as suas credenciais.'
-      }
+      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.') //
       toast.error(errMsg)
       return false
     } finally {
@@ -125,8 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const isAuthenticated = !!user && !!token
-
+  // Mostra um loader em tela cheia enquanto a sessão (do localStorage) está sendo validada
   if (isSessionLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -138,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated,
+        isAuthenticated: !!user, // Verdadeiro se 'user' não for nulo
         user,
         login,
         logout,
@@ -150,4 +139,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   )
 }
-

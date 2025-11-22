@@ -1,37 +1,38 @@
 // frontend/src/constants/routes.ts
 
-export const ROUTES = {
-  LOGIN: '/',
-  DASHBOARD: '/dashboard',
-  CASES: '/cases', // Casos Ativos / Minha Caixa
-  CLOSED_CASES: '/cases/closed', // Casos Finalizados
-  TEAM_OVERVIEW: '/team-overview', // Visão da Equipe (Gerente)
-  REPORTS: '/reports',
-  AGENDA: '/agenda',
-  USER_MANAGEMENT: '/users',
-  CASE_DETAIL: '/cases/:id',
+/**
+ * Define os caminhos exatos (paths) que o React Router usa no App.tsx.
+ * Nomes de rotas-pai são absolutos (começam com '/')
+ * Nomes de rotas-filhas são relativos (NÃO começam com '/')
+ */
+export const ROUTE_PATHS = { //
+  LOGIN: '/', //
+  DASHBOARD: '/dashboard', // Rota "Pai" que usa o MainLayout
+  CASES: 'cases', // Rota "Filha" de /dashboard
+  CLOSED_CASES: 'cases/closed', // Rota "Filha" de /dashboard
+  CASE_DETAIL: 'cases/:id', // Rota "Filha" de /dashboard
+  AGENDA: 'agenda', // Rota "Filha" de /dashboard
+  TEAM: 'team-overview', // Rota "Filha" de /dashboard
+  REPORTS: 'reports', // Rota "Filha" de /dashboard
+  USERS: 'users', // Rota "Filha" de /dashboard
+  NOT_FOUND: '*', //
 } as const
 
-// Tipos inferidos automaticamente a partir do objeto ROUTES
-export type RouteKey = keyof typeof ROUTES
-export type RoutePath = (typeof ROUTES)[RouteKey]
-
 /**
- * Constrói uma rota dinâmica substituindo os parâmetros.
- * Exemplo: buildRoute(ROUTES.CASE_DETAIL, { id: '123' }) -> '/cases/123'
- * @param route O caminho da rota a partir do objeto ROUTES.
- * @param params Um objeto com os parâmetros a serem substituídos.
- * @returns A rota final com os parâmetros preenchidos.
+ * Define as rotas absolutas (completas) para serem usadas em componentes
+ * como <Link to={...}> ou navigate(...).
  */
-export const buildRoute = (
-  route: RoutePath,
-  params?: Record<string, string | number>,
-) => {
-  let path = String(route)
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      path = path.replace(`:${key}`, String(value))
-    })
-  }
-  return path
-}
+export const ROUTES = { //
+  LOGIN: ROUTE_PATHS.LOGIN, //
+  DASHBOARD: ROUTE_PATHS.DASHBOARD, //
+  CASES: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.CASES}`, // ex: /dashboard/cases
+  CLOSED_CASES: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.CLOSED_CASES}`, // ex: /dashboard/cases/closed
+  AGENDA: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.AGENDA}`, // ex: /dashboard/agenda
+  TEAM_OVERVIEW: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.TEAM}`, // ex: /dashboard/team-overview
+  REPORTS: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.REPORTS}`, // ex: /dashboard/reports
+  USERS: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.USERS}`, // ex: /dashboard/users
+  NOT_FOUND: ROUTE_PATHS.NOT_FOUND, //
+
+  // Função para o único link dinâmico que temos
+  CASE_DETAIL: (id: string) => `${ROUTE_PATHS.DASHBOARD}/cases/${id}`, // ex: /dashboard/cases/123-abc
+} as const

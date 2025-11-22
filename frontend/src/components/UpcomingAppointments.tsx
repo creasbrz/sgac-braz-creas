@@ -1,20 +1,20 @@
 // frontend/src/components/UpcomingAppointments.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/api' //
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
-} from '@/components/ui/card'
+} from '@/components/ui/card' //
 import { Skeleton } from '@/components/ui/skeleton'
 import { Link } from 'react-router-dom'
-import { ROUTES } from '@/constants/routes'
-import { formatDateSafe } from '@/utils/formatters'
+import { ROUTES } from '@/constants/routes' //
+import { formatDateSafe } from '@/utils/formatters' //
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import type { UpcomingAppointment } from '@/types/agenda'
+import type { UpcomingAppointment } from '@/types/agenda' //
 
 function AppointmentSkeleton() {
   return (
@@ -36,6 +36,7 @@ export function UpcomingAppointments() {
   const { data: appointments, isLoading, isError } = useQuery<UpcomingAppointment[]>({
     queryKey: ['myAgendaStats'],
     queryFn: async () => {
+      // (Rota GET /stats/my-agenda)
       const response = await api.get('/stats/my-agenda')
       return response.data
     },
@@ -53,39 +54,45 @@ export function UpcomingAppointments() {
       </CardHeader>
       <CardContent>
         {isLoading && <AppointmentSkeleton />}
+        
         {isError && (
-          <p className="text-destructive">
+          <p className="text-sm text-destructive">
             Não foi possível carregar os seus agendamentos.
           </p>
         )}
+
         {!isLoading && !isError && appointments?.length === 0 && (
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Você não tem nenhum agendamento futuro.
           </p>
         )}
+
         {!isLoading && !isError && appointments && appointments.length > 0 && (
           <ul className="space-y-4">
             {appointments.map((app) => (
               <li key={app.id} className="flex items-center gap-4">
-                <div className="flex-none text-center border rounded-md px-3 py-1">
+                <div className="flex-none text-center border rounded-md px-3 py-1 bg-muted/30">
                   <span className="block text-xs uppercase text-primary font-semibold">
                     {format(new Date(app.data), 'MMM', { locale: ptBR })}
                   </span>
-                  <span className="block text-lg font-bold">
+                  <span className="block text-lg font-bold text-foreground">
                     {format(new Date(app.data), 'dd')}
                   </span>
                 </div>
                 <div>
-                  <p className="font-semibold">{app.titulo}</p>
+                  <p className="font-semibold text-foreground">{app.titulo}</p>
                   <p className="text-sm text-muted-foreground">
+                    {/* --- CORREÇÃO AQUI --- */}
+                    {/* Agora chamamos a função ROUTES.CASE_DETAIL(id) */}
                     <Link
-                      to={ROUTES.CASE_DETAIL.replace(':id', app.caso.id)}
-                      className="hover:underline"
+                      to={ROUTES.CASE_DETAIL(app.caso.id)} //
+                      className="hover:underline hover:text-primary transition-colors"
                     >
                       Caso: {app.caso.nomeCompleto}
                     </Link>
+                    {/* --- FIM DA CORREÇÃO --- */}
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {formatDateSafe(app.data)} às {format(new Date(app.data), 'HH:mm')}
                   </p>
                 </div>

@@ -1,23 +1,50 @@
 // frontend/src/constants/caseConstants.ts
-export type UserRole = 'Gerente' | 'Agente Social' | 'Especialista'
 
-export type CaseStatusIdentifier =
-  | 'AGUARDANDO_ACOLHIDA'
-  | 'EM_ACOLHIDA'
-  | 'AGUARDANDO_DISTRIBUICAO_PAEFI'
-  | 'EM_ACOMPANHAMENTO_PAEFI'
-  | 'DESLIGADO'
+// O mapa é a "Fonte da Verdade" e usa tokens de cor do tema.
+export const CASE_STATUS_MAP = {
+  AGUARDANDO_ACOLHIDA: {
+    text: 'Aguardando Acolhida',
+    style: 'bg-secondary text-secondary-foreground', // Amarelo/Laranja -> Mapeado para Secundário (cinza)
+  },
+  EM_ACOLHIDA: {
+    text: 'Em Acolhida',
+    style: 'bg-primary/10 text-primary', // Azul -> Mapeado para Primário (com opacidade)
+  },
+  AGUARDANDO_DISTRIBUICAO_PAEFI: {
+    text: 'Aguardando Distribuição',
+    style: 'bg-secondary text-secondary-foreground', // Amarelo/Laranja -> Mapeado para Secundário (cinza)
+  },
+  EM_ACOMPANHAMENTO_PAEFI: {
+    text: 'Acompanhamento PAEFI',
+    style: 'bg-primary text-primary-foreground', // Verde -> Mapeado para Primário (sólido)
+  },
+  DESLIGADO: {
+    text: 'Desligado',
+    style: 'bg-muted text-muted-foreground', // Cinza -> Mapeado para Muted
+  },
+} as const // 'as const' é crucial para a inferência de tipo
 
-export const CASE_STATUS_MAP: Record<CaseStatusIdentifier, { text: string, style: string }> = {
-  AGUARDANDO_ACOLHIDA: { text: 'Aguardando Acolhida', style: 'bg-yellow-100 text-yellow-800' },
-  EM_ACOLHIDA: { text: 'Em Acolhida', style: 'bg-blue-100 text-blue-800' },
-  AGUARDANDO_DISTRIBUICAO_PAEFI: { text: 'Aguardando Distribuição PAEFI', style: 'bg-orange-100 text-orange-800' },
-  EM_ACOMPANHAMENTO_PAEFI: { text: 'Acompanhamento PAEFI', style: 'bg-green-100 text-green-800' },
-  DESLIGADO: { text: 'Desligado', style: 'bg-gray-100 text-gray-800' },
+// O Tipo agora é inferido automaticamente do mapa
+export type CaseStatusIdentifier = keyof typeof CASE_STATUS_MAP
+// --- FIM DA SUGESTÃO 3 ---
+
+// --- SUGESTÃO 1 APLICADA ---
+// Helper function para buscar os dados do mapa com segurança
+/**
+ * Retorna o texto e a classe de estilo para um determinado status de caso.
+ */
+export function getCaseStatusInfo(status: string | null | undefined) {
+  if (status && status in CASE_STATUS_MAP) {
+    // Se o status for válido, retorna suas propriedades
+    return CASE_STATUS_MAP[status as CaseStatusIdentifier]
+  }
+  // Fallback para status desconhecido ou nulo
+  return { text: 'Desconhecido', style: 'bg-muted text-muted-foreground' }
 }
+// --- FIM DA SUGESTÃO 1 ---
 
-// Lista oficial de motivos de desligamento
-export const MOTIVOS_DESLIGAMENTO = [
+// Lista oficial de motivos de desligamento (do arquivo original)
+export const MOTIVOS_DESLIGAMENTO = [ //
   'Mudança de território',
   'Falecimento',
   'Recusa de atendimento',
@@ -25,4 +52,4 @@ export const MOTIVOS_DESLIGAMENTO = [
   'Contrareferenciamento',
   'Não localizado',
   'Acolhimento',
-]
+] //

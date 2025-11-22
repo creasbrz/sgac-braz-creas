@@ -1,53 +1,78 @@
 // frontend/src/App.tsx
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Toaster } from "sonner";
 
-import { Login } from '@/pages/Login'
-import { Dashboard } from '@/pages/Dashboard'
-import { Cases } from '@/pages/Cases'
-import { ClosedCases } from '@/pages/ClosedCases' // Importa a nova página
-import { TeamOverview } from '@/pages/TeamOverview' // Importa a nova página
-import { NotFound } from '@/pages/NotFound'
-import { ROUTES } from '@/constants/routes'
-import { useAuth } from '@/hooks/useAuth'
-import { CaseDetail } from '@/pages/CaseDetail'
-import { Reports } from '@/pages/Reports'
-import { Agenda } from '@/pages/Agenda'
-import { MainLayout } from '@/components/layout/MainLayout'
-import { UserManagement } from '@/pages/UserManagement'
+import { queryClient } from "./lib/react-query";
+import { AuthProvider } from "./contexts/AuthContext";
+import { ModalProvider } from "./contexts/ModalContext";
+import { ThemeProvider } from "./components/theme-provider";
 
-function PrivateRoute() {
-  const { isAuthenticated, isSessionLoading } = useAuth()
+import { ROUTE_PATHS } from "./constants/routes";
+import { ProtectedRoute } from "./ProtectedRoute";
+import { MainLayout } from "./components/layout/MainLayout";
+import { Login } from "./pages/Login";
+import { Dashboard } from "./pages/Dashboard";
+import { Cases } from "./pages/Cases";
+import { ClosedCases } from "./pages/ClosedCases";
+import { CaseDetail } from "./pages/CaseDetail";
+import { Agenda } from "./pages/Agenda";
+import { Reports } from "./pages/Reports";
+import { UserManagement } from "./pages/UserManagement";
+import { TeamOverview } from "./pages/TeamOverview";
+import { NotFound } from "./pages/NotFound";
 
-  if (isSessionLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
-  return isAuthenticated ? <MainLayout /> : <Navigate to={ROUTES.LOGIN} replace />
-}
-
-export default function App() {
+export function App() {
   return (
-    <Routes>
-      <Route path={ROUTES.LOGIN} element={<Login />} />
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <BrowserRouter>
+          <AuthProvider>
+            <ModalProvider>
+              <Routes>
+                <Route path={ROUTE_PATHS.LOGIN} element={<Login />} />
 
-      {/* Agrupa as rotas protegidas sob o layout principal */}
-      <Route element={<PrivateRoute />}>
-        <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
-        <Route path={ROUTES.CASES} element={<Cases />} />
-        <Route path={ROUTES.CLOSED_CASES} element={<ClosedCases />} />
-        <Route path={ROUTES.TEAM_OVERVIEW} element={<TeamOverview />} />
-        <Route path={ROUTES.AGENDA} element={<Agenda />} />
-        <Route path={ROUTES.REPORTS} element={<Reports />} />
-        <Route path={ROUTES.CASE_DETAIL} element={<CaseDetail />} />
-        <Route path={ROUTES.USER_MANAGEMENT} element={<UserManagement />} />
-      </Route>
+                <Route path={ROUTE_PATHS.DASHBOARD} element={<MainLayout />}>
+                  <Route
+                    index
+                    element={
+                      <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente Social"]}>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
 
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  )
+                  {/* Rotas gerais */}
+                  <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente Social"]} />}>
+                    <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
+                    <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
+                    <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
+                  </Route>
+
+                  {/* Rotas técnicas */}
+                  <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista"]} />}>
+                    <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
+                  </Route>
+
+                  {/* Rotas de gerência */}
+                  <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
+                    <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
+                    <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
+                    <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
+                  </Route>
+                </Route>
+
+                <Route path={ROUTE_PATHS.NOT_FOUND} element={<NotFound />} />
+                <Route path="*" element={<Navigate to={ROUTE_PATHS.DASHBOARD} replace />} />
+              </Routes>
+
+              <Toaster richColors />
+              <ReactQueryDevtools initialIsOpen={false} />
+            </ModalProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
 }

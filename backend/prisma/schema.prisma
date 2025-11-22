@@ -1,99 +1,124 @@
 // backend/prisma/schema.prisma
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "postgresql" //
+  url      = env("DATABASE_URL") //
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client-js" //
 }
 
 model User {
-  id                    String        @id @default(uuid())
-  nome                  String
-  email                 String        @unique
-  senha                 String
-  cargo                 String
-  ativo                 Boolean       @default(true)
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
+  id                    String        @id @default(uuid()) //
+  nome                  String //
+  email                 String        @unique //
+  senha                 String //
+  cargo                 String // "Gerente", "Agente Social", "Especialista"
+  ativo                 Boolean       @default(true) //
+  createdAt             DateTime      @default(now()) //
+  updatedAt             DateTime      @updatedAt //
   
-  casosCriados          Case[]        @relation("CasosCriados")
-  casosDeAcolhida       Case[]        @relation("CasosDeAcolhida")
-  casosDeAcompanhamento Case[]        @relation("CasosDeAcompanhamento")
-  evolucoes             Evolucao[]
-  pafsCriados           Paf[]
-  agendamentos          Agendamento[]
+  // --- RELAÇÕES (Sincronizadas com stats.ts) ---
+  // Agente Social -> Casos em Acolhida
+  casosDeAcolhida       Case[]        @relation("AgenteAcolhida")
+  
+  // Especialista -> Casos em Acompanhamento
+  casosDeAcompanhamento Case[]        @relation("EspecialistaPAEFI")
+  
+  // Outras relações
+  casosCriados          Case[]        @relation("CasosCriados") //
+  evolucoes             Evolucao[]    @relation("EvolucoesDoAutor") //
+  pafsCriados           Paf[]         @relation("PafsDoAutor") //
+  agendamentos          Agendamento[] @relation("AgendamentosDoResponsavel") //
 }
 
 model Case {
-  id                  String    @id @default(uuid())
-  nomeCompleto        String
-  cpf                 String    @unique
-  nascimento          DateTime
-  sexo                String
-  telefone            String
-  endereco            String
-  dataEntrada         DateTime  @default(now())
-  urgencia            String
-  violacao            String
-  categoria           String
-  orgaoDemandante     String
-  numeroSei           String?
-  linkSei             String?
-  observacoes         String?
-  status              String    @default("AGUARDANDO_ACOLHIDA")
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  parecerFinal        String?   @db.Text
-  dataDesligamento    DateTime?
-  dataInicioPAEFI     DateTime?
+  id                  String    @id @default(uuid()) //
+  nomeCompleto        String //
+  cpf                 String    @unique //
+  nascimento          DateTime //
+  sexo                String //
+  telefone            String //
+  endereco            String //
+  dataEntrada         DateTime  @default(now()) //
+  urgencia            String //
+  violacao            String //
+  categoria           String //
+  orgaoDemandante     String //
+  numeroSei           String? //
+  linkSei             String? //
+  observacoes         String? //
+  status              String    @default("AGUARDANDO_ACOLHIDA") //
+  createdAt           DateTime  @default(now()) //
+  updatedAt           DateTime  @updatedAt //
 
-  criadoPor           User      @relation("CasosCriados", fields: [criadoPorId], references: [id])
-  criadoPorId         String
-  agenteAcolhida      User?     @relation("CasosDeAcolhida", fields: [agenteAcolhidaId], references: [id])
-  agenteAcolhidaId    String?
-  especialistaPAEFI   User?     @relation("CasosDeAcompanhamento", fields: [especialistaPAEFIId], references: [id])
-  especialistaPAEFIId String?
-  evolucoes           Evolucao[]
-  paf                 Paf?
-  agendamentos        Agendamento[]
+  // Relações
+  criadoPor           User      @relation("CasosCriados", fields: [criadoPorId], references: [id]) //
+  criadoPorId         String //
+  
+  agenteAcolhida      User?     @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id]) //
+  agenteAcolhidaId    String? //
+  
+  especialistaPAEFI   User?     @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id]) //
+  especialistaPAEFIId String? //
+  
+  evolucoes           Evolucao[] //
+  paf                 Paf? //
+  agendamentos        Agendamento[] //
+
+  // Campos Adicionais
+  beneficios          String[] //
+  dataInicioPAEFI     DateTime? //
+  dataDesligamento    DateTime? //
+  motivoDesligamento  String? //
+  parecerFinal        String? //
 }
 
 model Evolucao {
-  id        String   @id @default(uuid())
-  conteudo  String   @db.Text
-  createdAt DateTime @default(now())
-  caso      Case     @relation(fields: [casoId], references: [id])
-  casoId    String
-  autor     User     @relation(fields: [autorId], references: [id])
-  autorId   String
+  id        String   @id @default(uuid()) //
+  conteudo  String   @db.Text //
+  createdAt DateTime @default(now()) //
+  updatedAt DateTime @updatedAt
+  
+  // Relações
+  caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade) //
+  casoId    String //
+  
+  autor     User     @relation("EvolucoesDoAutor", fields: [autorId], references: [id]) //
+  autorId   String //
 }
 
 model Paf {
-  id          String   @id @default(uuid())
-  diagnostico String   @db.Text
-  objetivos   String   @db.Text
-  estrategias String   @db.Text
-  prazos      String   @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  caso        Case     @relation(fields: [casoId], references: [id])
-  casoId      String   @unique
-  autor       User     @relation(fields: [autorId], references: [ad])
-  autorId     String
+  id          String   @id @default(uuid()) //
+  diagnostico String   @db.Text //
+  objetivos   String   @db.Text //
+  estrategias String   @db.Text //
+  
+  // Importante: Usamos 'deadline' (data)
+  deadline    DateTime //
+
+  createdAt   DateTime @default(now()) //
+  updatedAt   DateTime @updatedAt //
+  
+  // Relações
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade) //
+  casoId      String   @unique //
+  
+  autor     User     @relation("PafsDoAutor", fields: [autorId], references: [id]) //
+  autorId   String //
 }
 
 model Agendamento {
-  id        String   @id @default(uuid())
-  titulo    String
-  data      DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  caso      Case     @relation(fields: [casoId], references: [id])
-  casoId    String
-
-  responsavel User   @relation(fields: [responsavelId], references: [id])
+  id            String   @id @default(uuid()) //
+  titulo        String //
+  data          DateTime //
+  observacoes   String? //
+  createdAt     DateTime @default(now()) //
+  updatedAt     DateTime @updatedAt //
+  
+  // Relações
+  responsavel   User   @relation("AgendamentosDoResponsavel", fields: [responsavelId], references: [id])
   responsavelId String
+  caso          Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  casoId        String
 }

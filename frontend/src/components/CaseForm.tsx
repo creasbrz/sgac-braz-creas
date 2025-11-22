@@ -1,16 +1,14 @@
-// frontend/src/components/CaseForm.tsx
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
+import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -20,22 +18,78 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormDescription
+} from '@/components/ui/form'
+
 import { getErrorMessage } from '@/utils/error'
-import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas' 
+import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 
-interface CaseFormProps {
-  onCaseCreated?: () => void
+
+// ------------------------------------------------------------
+// 🔧 CONSTANTES E HELPERS
+// ------------------------------------------------------------
+
+const CPF_MASK = { mask: '000.000.000-00' }
+const PHONE_MASK = { mask: '(00) 00000-0000' }
+const SEI_MASK = { mask: '00000-00000000/0000-00' }
+
+const LISTS = {
+  sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
+
+  urgencia: [
+    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
+    'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
+    'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+    'Sem risco imediato', 'Visita periódica'
+  ],
+
+  violacao: [
+    'Abandono', 'Negligência', 'Afastamento do convívio familiar',
+    'Cumprimento de medidas socioeducativas',
+    'Descumprimento de condicionalidade do PBF',
+    'Discriminação', 'Situação de rua', 'Trabalho infantil',
+    'Violência física e/ou psicológica', 'Violência sexual', 'Outros'
+  ],
+
+  categoria: [
+    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso',
+    'Criança/adolescente', 'PCD', 'Álcool/drogas'
+  ],
+
+  beneficios: [
+    { id: 'BPC', label: 'BPC' },
+    { id: 'Bolsa Família', label: 'Bolsa Família' },
+    { id: 'Prato Cheio', label: 'Prato Cheio' },
+    { id: 'Vulnerabilidade', label: 'Vulnerabilidade' },
+    { id: 'Excepcional', label: 'Excepcional' },
+    { id: 'Calamidade', label: 'Calamidade' },
+  ]
 }
 
-const defaultFormValues: CreateCaseFormData = {
+
+// 🔧 Função que retorna SOMENTE a data local (sem UTC bug)
+const getLocalDateOnly = (date = new Date()) =>
+  new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0]
+
+
+// Valores iniciais
+const defaultValues: Partial<CreateCaseFormData> = {
   nomeCompleto: '',
   cpf: '',
   nascimento: '',
   sexo: '',
   telefone: '',
   endereco: '',
-  dataEntrada: new Date().toISOString().split('T')[0],
   urgencia: '',
   violacao: '',
   categoria: '',
@@ -45,51 +99,55 @@ const defaultFormValues: CreateCaseFormData = {
   observacoes: '',
   numeroSei: '',
   beneficios: [],
+  dataEntrada: '', 
 }
 
-const beneficiosList = [
-  { id: 'BPC', label: 'BPC' },
-  { id: 'Bolsa Família', label: 'Bolsa Família' },
-  { id: 'Prato Cheio', label: 'Prato Cheio' },
-  { id: 'Vulnerabilidade', label: 'Vulnerabilidade' },
-  { id: 'Excepcional', label: 'Excepcional' },
-  { id: 'Calamidade', label: 'Calamidade' },
-]
+
+// ------------------------------------------------------------
+// 🔧 COMPONENTE PRINCIPAL
+// ------------------------------------------------------------
+
+interface CaseFormProps {
+  onCaseCreated?: () => void
+}
 
 export function CaseForm({ onCaseCreated }: CaseFormProps) {
   const queryClient = useQueryClient()
-  const { data: agents, isLoading: isLoadingAgents } = useAgents()
+  const { data: agents, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgents()
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm<CreateCaseFormData>({
+  const form = useForm<CreateCaseFormData>({
     resolver: zodResolver(createCaseFormSchema),
-    defaultValues: defaultFormValues,
+    defaultValues: {
+      ...defaultValues,
+      dataEntrada: getLocalDateOnly(),
+    },
   })
 
   const { mutateAsync: createCase, isPending } = useMutation({
     mutationFn: async (data: CreateCaseFormData) => {
-      const dataToSend = {
+      const payload = {
         ...data,
         cpf: data.cpf.replace(/\D/g, ''),
         telefone: data.telefone.replace(/\D/g, ''),
-        nascimento: new Date(data.nascimento),
-        dataEntrada: new Date(data.dataEntrada),
+        nascimento: data.nascimento,     // já é data local YYYY-MM-DD
+        dataEntrada: getLocalDateOnly(), // sempre salvo a data atual corretamente
       }
-      return await api.post('/cases', dataToSend)
+
+      return await api.post('/cases', payload)
     },
+
     onSuccess: () => {
       toast.success('Caso cadastrado com sucesso!')
       queryClient.invalidateQueries({ queryKey: ['cases'] })
-      reset({
-        ...defaultFormValues,
-        dataEntrada: new Date().toISOString().split('T')[0],
+
+      form.reset({
+        ...defaultValues,
+        dataEntrada: getLocalDateOnly(),
       })
+
       onCaseCreated?.()
     },
+
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Falha ao cadastrar o caso.'))
     },
@@ -99,331 +157,409 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
     await createCase(data)
   }
 
+
+  // ------------------------------------------------------------
+  // 🔧 RENDERIZAÇÃO
+  // ------------------------------------------------------------
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
-      <fieldset
-        disabled={isPending}
-        className={clsx('space-y-6', isPending && 'opacity-50')}
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={clsx("space-y-6", isPending && "opacity-50 pointer-events-none")}
       >
-        <div className="space-y-2">
-          <Label className="font-semibold">Identificação Pessoal</Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
-            <div className="lg:col-span-2 space-y-2">
-              <Label htmlFor="nomeCompleto">Nome Completo</Label>
-              <Controller
-                name="nomeCompleto"
-                control={control}
-                render={({ field }) => <Input id="nomeCompleto" {...field} />}
-              />
-              {errors.nomeCompleto && (
-                <p className="text-sm text-destructive">
-                  {errors.nomeCompleto.message}
-                </p>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 1. IDENTIFICAÇÃO PESSOAL */}
+        {/* ------------------------------------------------------------ */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Identificação Pessoal</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+
+            {/* Nome */}
+            <FormField
+              control={form.control}
+              name="nomeCompleto"
+              render={({ field }) => (
+                <FormItem className="lg:col-span-2">
+                  <FormLabel>Nome Completo</FormLabel>
+                  <FormControl><Input {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cpf">CPF</Label>
-              <Controller
-                name="cpf"
-                control={control}
-                render={({ field }) => (
-                  <IMaskInput
-                    mask="000.000.000-00"
-                    id="cpf"
-                    value={field.value || ''}
-                    onAccept={field.onChange}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
-                )}
-              />
-              {errors.cpf && (
-                <p className="text-sm text-destructive">{errors.cpf.message}</p>
+            />
+
+            {/* CPF */}
+            <FormField
+              control={form.control}
+              name="cpf"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CPF</FormLabel>
+                  <FormControl>
+                    <IMaskInput
+                      {...CPF_MASK}
+                      value={field.value || ''}
+                      onAccept={(v: string) => field.onChange(v)}
+                      onBlur={field.onBlur}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="nascimento">Data de Nascimento</Label>
-              <Controller
-                name="nascimento"
-                control={control}
-                render={({ field }) => (
-                  <Input type="date" id="nascimento" {...field} />
-                )}
-              />
-              {errors.nascimento && (
-                <p className="text-sm text-destructive">
-                  {errors.nascimento.message}
-                </p>
+            />
+
+            {/* Data de Nascimento */}
+            <FormField
+              control={form.control}
+              name="nascimento"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Data de Nascimento</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sexo">Sexo</Label>
-              <Controller
-                name="sexo"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
+            />
+
+            {/* Sexo */}
+            <FormField
+              control={form.control}
+              name="sexo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sexo</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    </FormControl>
                     <SelectContent>
-                      <SelectItem value="Masculino">Masculino</SelectItem>
-                      <SelectItem value="Feminino">Feminino</SelectItem>
-                      <SelectItem value="Outro">Outro</SelectItem>
+                      {LISTS.sexo.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                )}
-              />
-              {errors.sexo && (
-                <p className="text-sm text-destructive">{errors.sexo.message}</p>
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="telefone">Telefone</Label>
-              <Controller
-                name="telefone"
-                control={control}
-                render={({ field }) => (
-                  <IMaskInput
-                    mask="(00) 00000-0000"
-                    id="telefone"
-                    value={field.value || ''}
-                    onAccept={field.onChange}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
-                )}
-              />
-              {errors.telefone && (
-                <p className="text-sm text-destructive">
-                  {errors.telefone.message}
-                </p>
-              )}
-            </div>
-            <div className="lg:col-span-3 space-y-2">
-              <Label htmlFor="endereco">Endereço</Label>
-              <Controller
-                name="endereco"
-                control={control}
-                render={({ field }) => <Input id="endereco" {...field} />}
-              />
-              {errors.endereco && (
-                <p className="text-sm text-destructive">
-                  {errors.endereco.message}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        <div className="space-y-2">
-          <Label className="font-semibold">Benefícios Recebidos</Label>
-          <div className="p-4 border rounded-lg">
-            <Controller
-              name="beneficios"
-              control={control}
+            />
+
+            {/* Telefone */}
+            <FormField
+              control={form.control}
+              name="telefone"
               render={({ field }) => (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {beneficiosList.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center space-x-2"
-                    >
-                      <Checkbox
-                        id={item.id}
-                        checked={field.value?.includes(item.id)}
-                        onCheckedChange={(checked) => {
-                          const currentValue = field.value ?? []
-                          if (checked) {
-                            field.onChange([...currentValue, item.id])
-                          } else {
-                            field.onChange(
-                              currentValue.filter((value) => value !== item.id),
-                            )
-                          }
-                        }}
-                      />
-                      <Label htmlFor={item.id} className="font-normal">
-                        {item.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
+                <FormItem>
+                  <FormLabel>Telefone</FormLabel>
+                  <FormControl>
+                    <IMaskInput
+                      {...PHONE_MASK}
+                      value={field.value || ''}
+                      onAccept={(v: string) => field.onChange(v)}
+                      onBlur={field.onBlur}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Endereço */}
+            <FormField
+              control={form.control}
+              name="endereco"
+              render={({ field }) => (
+                <FormItem className="lg:col-span-3">
+                  <FormLabel>Endereço</FormLabel>
+                  <FormControl><Input {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
             />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label className="font-semibold">Detalhes do Caso</Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
-            <div className="space-y-2">
-              <Label htmlFor="dataEntrada">Data da Entrada</Label>
-              <Controller
-                name="dataEntrada"
-                control={control}
-                render={({ field }) => (
-                  <Input type="date" id="dataEntrada" {...field} readOnly />
-                )}
-              />
-            </div>
-            <div className="lg:col-span-2 space-y-2">
-              <Label htmlFor="urgencia">Nível de Urgência</Label>
-              <Controller
-                name="urgencia"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Convive com agressor">Convive com agressor</SelectItem>
-                      <SelectItem value="Idoso 80+">Idoso 80+</SelectItem>
-                      <SelectItem value="Primeira infância">Primeira infância</SelectItem>
-                      <SelectItem value="Risco de morte">Risco de morte</SelectItem>
-                      <SelectItem value="Risco de reincidência">Risco de reincidência</SelectItem>
-                      <SelectItem value="Sofre ameaça">Sofre ameaça</SelectItem>
-                      <SelectItem value="Risco de desabrigo">Risco de desabrigo</SelectItem>
-                      <SelectItem value="Criança/Adolescente">Criança/Adolescente</SelectItem>
-                      <SelectItem value="PCD">PCD</SelectItem>
-                      <SelectItem value="Idoso">Idoso</SelectItem>
-                      <SelectItem value="Internação">Internação</SelectItem>
-                      <SelectItem value="Acolhimento">Acolhimento</SelectItem>
-                      <SelectItem value="Gestante/Lactante">Gestante/Lactante</SelectItem>
-                      <SelectItem value="Sem risco imediato">Sem risco imediato</SelectItem>
-                      <SelectItem value="Visita periódica">Visita periódica</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.urgencia && <p className="text-sm text-destructive">{errors.urgencia.message}</p>}
-            </div>
-            <div className="lg:col-span-2 space-y-2">
-              <Label htmlFor="violacao">Violação de Direito</Label>
-              <Controller
-                name="violacao"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Abandono">Abandono</SelectItem>
-                      <SelectItem value="Negligência">Negligência</SelectItem>
-                      <SelectItem value="Afastamento do convívio familiar">Afastamento do convívio familiar</SelectItem>
-                      <SelectItem value="Cumprimento de medidas socioeducativas">Cumprimento de medidas socioeducativas</SelectItem>
-                      <SelectItem value="Descumprimento de condicionalidade do PBF">Descumprimento de condicionalidade do PBF</SelectItem>
-                      <SelectItem value="Discriminação">Discriminação</SelectItem>
-                      <SelectItem value="Situação de rua">Situação de rua</SelectItem>
-                      <SelectItem value="Trabalho infantil">Trabalho infantil</SelectItem>
-                      <SelectItem value="Violência física e/ou psicológica">Violência física e/ou psicológica</SelectItem>
-                      <SelectItem value="Violência sexual">Violência sexual</SelectItem>
-                      <SelectItem value="Outros">Outros</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.violacao && <p className="text-sm text-destructive">{errors.violacao.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="categoria">Categoria do Público</Label>
-              <Controller
-                name="categoria"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Mulher">Mulher</SelectItem>
-                      <SelectItem value="POP RUA">POP RUA</SelectItem>
-                      <SelectItem value="LGBTQIA+">LGBTQIA+</SelectItem>
-                      <SelectItem value="Migrante">Migrante</SelectItem>
-                      <SelectItem value="Idoso">Idoso</SelectItem>
-                      <SelectItem value="Criança/adolescente">Criança/adolescente</SelectItem>
-                      <SelectItem value="PCD">PCD</SelectItem>
-                      <SelectItem value="Álcool/drogas">Álcool/drogas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.categoria && <p className="text-sm text-destructive">{errors.categoria.message}</p>}
-            </div>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 2. BENEFÍCIOS */}
+        {/* ------------------------------------------------------------ */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Benefícios Recebidos</h3>
+
+          <div className="p-4 border rounded-lg bg-card">
+            <FormField
+              control={form.control}
+              name="beneficios"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+
+                    {LISTS.beneficios.map(item => (
+                      <FormItem
+                        key={item.id}
+                        className="flex flex-row items-start space-x-3 space-y-0"
+                      >
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value?.includes(item.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                field.onChange([...(field.value || []), item.id])
+                              } else {
+                                field.onChange(field.value?.filter(v => v !== item.id))
+                              }
+                            }}
+                          />
+                        </FormControl>
+
+                        <FormLabel className="cursor-pointer">
+                          {item.label}
+                        </FormLabel>
+                      </FormItem>
+                    ))}
+
+                  </div>
+
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label className="font-semibold">Atribuição e Origem</Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
-            <div className="space-y-2">
-              <Label htmlFor="orgaoDemandante">Órgão Demandante</Label>
-              <Controller
-                name="orgaoDemandante"
-                control={control}
-                render={({ field }) => <Input id="orgaoDemandante" {...field} />}
-              />
-              {errors.orgaoDemandante && <p className="text-sm text-destructive">{errors.orgaoDemandante.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="numeroSei">Número do SEI (Opcional)</Label>
-              <Controller
-                name="numeroSei"
-                control={control}
-                render={({ field }) => <Input id="numeroSei" {...field} />}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="linkSei">Link do SEI (Opcional)</Label>
-              <Controller
-                name="linkSei"
-                control={control}
-                render={({ field }) => <Input type="url" id="linkSei" {...field} />}
-              />
-              {errors.linkSei && <p className="text-sm text-destructive">{errors.linkSei.message}</p>}
-            </div>
-            <div className="lg:col-span-3 space-y-2">
-              <Label htmlFor="agenteAcolhidaId">Agente Social Responsável</Label>
-              <Controller
-                name="agenteAcolhidaId"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingAgents}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={isLoadingAgents ? "A carregar..." : "Selecione..."} />
-                    </SelectTrigger>
+
+        {/* ------------------------------------------------------------ */}
+        {/* 3. DETALHES DO CASO */}
+        {/* ------------------------------------------------------------ */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Detalhes do Caso</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+
+            {/* Data Entrada */}
+            <FormField
+              control={form.control}
+              name="dataEntrada"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Data de Entrada</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} readOnly className="bg-muted" />
+                  </FormControl>
+                  <FormDescription>Data atual do sistema.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Urgência */}
+            <FormField
+              control={form.control}
+              name="urgencia"
+              render={({ field }) => (
+                <FormItem className="lg:col-span-2">
+                  <FormLabel>Nível de Urgência</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
                     <SelectContent>
-                      {agents?.map(agent => (
-                        <SelectItem key={agent.id} value={agent.id}>{agent.nome}</SelectItem>
+                      {LISTS.urgencia.map(u => (
+                        <SelectItem key={u} value={u}>{u}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                )}
-              />
-              {errors.agenteAcolhidaId && <p className="text-sm text-destructive">{errors.agenteAcolhidaId.message}</p>}
-            </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Violação */}
+            <FormField
+              control={form.control}
+              name="violacao"
+              render={({ field }) => (
+                <FormItem className="lg:col-span-2">
+                  <FormLabel>Violação de Direito</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {LISTS.violacao.map(v => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Categoria */}
+            <FormField
+              control={form.control}
+              name="categoria"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Categoria</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {LISTS.categoria.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="observacoes">Observações (Opcional)</Label>
-          <Controller
-            name="observacoes"
-            control={control}
-            render={({ field }) => <Textarea id="observacoes" {...field} />}
-          />
-        </div>
-      </fieldset>
 
-      <div className="flex justify-end pt-6">
-        <Button type="submit" disabled={isPending} className="w-40">
-          {isPending ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            'Cadastrar Caso'
+        {/* ------------------------------------------------------------ */}
+        {/* 4. ATRIBUIÇÃO E ORIGEM */}
+        {/* ------------------------------------------------------------ */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Atribuição e Origem</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+
+            {/* Órgão Demandante */}
+            <FormField
+              control={form.control}
+              name="orgaoDemandante"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Órgão Demandante</FormLabel>
+                  <FormControl><Input {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Número SEI */}
+            <FormField
+              control={form.control}
+              name="numeroSei"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Número do SEI</FormLabel>
+                  <FormControl>
+                    <IMaskInput
+                      {...SEI_MASK}
+                      value={field.value || ''}
+                      onAccept={(v: string) => field.onChange(v)}
+                      onBlur={field.onBlur}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="00000-00000000/0000-00"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Link SEI */}
+            <FormField
+              control={form.control}
+              name="linkSei"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Link do SEI</FormLabel>
+                  <FormControl>
+                    <Input type="url" {...field} placeholder="https://..." />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Agente Responsável */}
+            <FormField
+              control={form.control}
+              name="agenteAcolhidaId"
+              render={({ field }) => (
+                <FormItem className="lg:col-span-3">
+                  <FormLabel>Agente Social Responsável</FormLabel>
+
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={isLoadingAgents}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            isLoadingAgents
+                              ? "Carregando..."
+                              : "Selecione um agente"
+                          }
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+
+                    <SelectContent>
+                      {isErrorAgents && (
+                        <div className="p-2 text-destructive text-sm flex justify-center gap-2">
+                          <AlertCircle className="w-4 h-4" /> Falha ao carregar
+                        </div>
+                      )}
+
+                      {agents?.length === 0 && (
+                        <div className="p-2 text-sm text-muted-foreground text-center">
+                          Nenhum agente disponível
+                        </div>
+                      )}
+
+                      {agents?.map(agent => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+
+                  </Select>
+
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+          </div>
+        </div>
+
+
+        {/* OBSERVAÇÕES */}
+        <FormField
+          control={form.control}
+          name="observacoes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Observações (Opcional)</FormLabel>
+              <FormControl>
+                <Textarea {...field} className="min-h-[100px]" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
-        </Button>
-      </div>
-    </form>
+        />
+
+
+        {/* BOTÃO */}
+        <div className="flex justify-end pt-4">
+          <Button type="submit" disabled={isPending} className="w-44">
+            {isPending && <Loader2 className="animate-spin mr-2" />}
+            {isPending ? 'A salvar…' : 'Cadastrar Caso'}
+          </Button>
+        </div>
+
+      </form>
+    </Form>
   )
 }

@@ -1,19 +1,19 @@
 // frontend/src/components/layout/GdfLogo.tsx
-export function GdfLogo() {
+import { SVGProps } from 'react'
+
+export function GdfLogo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      className="size-8 text-primary"
-      viewBox="0 0 128 128"
+      viewBox="0 0 24 24"
       fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true" // O logo é decorativo, por isso escondemo-lo de leitores de tela.
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props} // Permite passar className e outras props
     >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M27.234 53.304L64.53 16L101.826 53.304L64.53 90.609L27.234 53.304ZM64.53 0L0 64.53L64.53 128L128 64.53L64.53 0Z"
-        fill="currentColor"
-      />
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
     </svg>
   )
 }

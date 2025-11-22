@@ -1,32 +1,21 @@
 // frontend/src/main.tsx
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from '@/components/ui/sonner'
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "./App";
 
-import App from './App.tsx'
-import './index.css'
-import { AuthProvider } from './contexts/AuthContext.tsx'
-import { ThemeProvider } from './components/theme-provider.tsx'
-import { ModalProvider } from './contexts/ModalContext.tsx'
+// Agora SÓ usa o index.css (que contém todo o tema)
+import "./styles/index.css";
 
-const queryClient = new QueryClient()
+const container = document.getElementById("root");
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+if (!container) {
+  throw new Error("Elemento #root não encontrado no index.html");
+}
+
+const root = createRoot(container);
+
+root.render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <ThemeProvider defaultTheme="light" storageKey="sgac-ui-theme">
-          <AuthProvider>
-            <ModalProvider>
-              <App />
-              <Toaster position="top-right" />
-            </ModalProvider>
-          </AuthProvider>
-        </ThemeProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
-  </React.StrictMode>,
-)
-
+    <App />
+  </React.StrictMode>
+);

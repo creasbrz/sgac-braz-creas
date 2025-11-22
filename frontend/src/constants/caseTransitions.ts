@@ -1,15 +1,17 @@
 // frontend/src/constants/caseTransitions.ts
 import {
-  type UserRole,
   type CaseStatusIdentifier,
+  // REMOVIDO: getCaseStatusInfo
 } from './caseConstants'
+// ADICIONADO: Importação correta do tipo UserRole
+import type { UserRole } from '@/types/user'
 
 const buttonStyles = {
-  success: 'bg-green-600 hover:bg-green-700',
-  danger: 'bg-red-600 hover:bg-red-700',
-  neutral: 'bg-gray-600 hover:bg-gray-700',
-  accent: 'bg-purple-600 hover:bg-purple-700',
-  primary: 'bg-blue-600 hover:bg-blue-700',
+  success: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+  danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+  neutral: 'bg-muted text-muted-foreground hover:bg-muted/90',
+  accent: 'bg-purple-600 hover:bg-purple-700 text-white',
+  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
 }
 
 export type ActionType = 'status' | 'assign' | 'close'
@@ -22,6 +24,7 @@ export interface StatusAction {
   style: string
 }
 
+// ... (O objeto caseTransitions permanece igual) ...
 export const caseTransitions: Partial<
   Record<CaseStatusIdentifier, StatusAction[]>
 > = {
@@ -35,7 +38,7 @@ export const caseTransitions: Partial<
     },
     {
       label: 'Desligamento Simplificado',
-      type: 'close', // Abre o modal de desligamento
+      type: 'close',
       allowedRoles: ['Gerente', 'Agente Social'],
       style: buttonStyles.neutral,
     },
@@ -43,7 +46,7 @@ export const caseTransitions: Partial<
   EM_ACOLHIDA: [
     {
       label: 'Desligamento Simplificado',
-      type: 'close', // Abre o modal de desligamento
+      type: 'close',
       allowedRoles: ['Gerente', 'Agente Social'],
       style: buttonStyles.neutral,
     },
@@ -66,7 +69,7 @@ export const caseTransitions: Partial<
   EM_ACOMPANHAMENTO_PAEFI: [
     {
       label: 'Desligar Acompanhamento',
-      type: 'close', // Abre o modal de desligamento
+      type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.danger,
     },
@@ -75,9 +78,21 @@ export const caseTransitions: Partial<
     {
       label: 'Reabrir Caso',
       type: 'status',
-      nextStatus: 'AGUARDANDO_ACOLHIDA', // Sempre volta para a triagem
+      nextStatus: 'AGUARDANDO_ACOLHIDA',
       allowedRoles: ['Gerente'],
       style: buttonStyles.primary,
     },
   ],
+}
+
+// ... (A função getAvailableActions permanece igual) ...
+export function getAvailableActions(
+  status: CaseStatusIdentifier,
+  cargo: UserRole,
+): StatusAction[] {
+  const possibleActions = caseTransitions[status] || []
+  
+  return possibleActions.filter(action => 
+    action.allowedRoles.includes(cargo)
+  )
 }

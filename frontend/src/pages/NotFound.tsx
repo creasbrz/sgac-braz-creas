@@ -1,21 +1,31 @@
 // frontend/src/pages/NotFound.tsx
 import { Link } from 'react-router-dom'
-import { ROUTES } from '../constants/routes'
+import { ROUTES } from '@/constants/routes' //
+import { Button } from '@/components/ui/button' //
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card' //
 
 export function NotFound() {
-  return (
-    <div className="flex h-screen flex-col items-center justify-center bg-slate-100 text-center">
-      <h1 className="text-6xl font-bold text-slate-800">404</h1>
-      <p className="mt-4 text-xl text-slate-600">Página não encontrada.</p>
-      <p className="mt-2 text-slate-500">
-        A página que você está a procurar não existe ou foi movida.
-      </p>
-      <Link
-        to={ROUTES.DASHBOARD}
-        className="mt-8 rounded-md bg-sky-600 px-6 py-2 text-white hover:bg-sky-700"
-      >
-        Voltar para o Painel
-      </Link>
-    </div>
-  )
+  return (
+    // CORREÇÃO 1: Usa 'min-h-screen' para centralizar na tela inteira
+    <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
+      <Card className="max-w-md w-full text-center shadow-md"> {/* */}
+        <CardHeader> {/* */}
+          <CardTitle className="text-4xl font-bold text-destructive">404</CardTitle> {/* */}
+        </CardHeader>
+        <CardContent> {/* */}
+          <p className="mt-2 text-lg text-muted-foreground">
+            Página não encontrada.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A página que você procura não existe ou foi movida.
+          </p>
+
+          {/* CORREÇÃO 2: Usa o padrão 'asChild' do Shadcn/ui */}
+          <Button asChild className="mt-6 w-full">
+            <Link to={ROUTES.DASHBOARD}>Voltar para o Painel</Link> {/* */}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }

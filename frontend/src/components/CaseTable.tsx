@@ -1,14 +1,22 @@
 // frontend/src/components/CaseTable.tsx
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { api } from '@/lib/api'
-import { clsx } from 'clsx'
-import { CalendarPlus, Download, Search } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { MoreHorizontal, Search, Edit, FileDown, Loader2 } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 
-import { CASE_STATUS_MAP, type CaseStatusIdentifier } from '@/constants/caseConstants'
-import { ROUTES } from '@/constants/routes'
+import { api } from '@/lib/api' //
+import { type CaseSummary } from '@/types/case' //
+import { useDebounce } from '@/hooks/useDebounce' //
+import { ROUTES } from '@/constants/routes' //
+import { formatCPF, formatDateSafe } from '@/utils/formatters' //
+import { useAuth } from '@/hooks/useAuth' //
+import { getErrorMessage } from '@/utils/error' //
+
+import { Button } from '@/components/ui/button' //
+import { Input } from '@/components/ui/input' //
 import {
   Table,
   TableBody,
@@ -16,116 +24,76 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { formatCPF, formatDateSafe } from '@/utils/formatters'
-import { Input } from '@/components/ui/input'
-import { useDebounce } from '@/hooks/useDebounce'
-import { getErrorMessage } from '@/utils/error'
-import { useAuth } from '@/hooks/useAuth'
-import { Skeleton } from '@/components/ui/skeleton'
+} from '@/components/ui/table' //
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu' //
+import { Skeleton } from '@/components/ui/skeleton' //
+import { Pagination } from './Pagination' //
+import { CaseStatusBadge } from './CaseStatusBadge' //
 
-interface Case {
-  id: string
-  nomeCompleto: string
-  cpf: string
-  status: string
-  dataDesligamento?: string
-  parecerFinal?: string
-}
-
-interface PaginatedCases {
-  items: Case[]
+interface PaginatedCasesResponse {
+  items: CaseSummary[]
+  total: number
+  page: number
+  pageSize: number
   totalPages: number
 }
 
-interface CaseRowProps {
-  caseData: Case
-  isClosedView: boolean
-}
-
-// Componente para uma única linha da tabela
-function CaseRow({ caseData, isClosedView }: CaseRowProps) {
-  const statusInfo = CASE_STATUS_MAP[caseData.status as CaseStatusIdentifier]
-
-  return (
-    <TableRow>
-      <TableCell className="font-medium">{caseData.nomeCompleto}</TableCell>
-      <TableCell>{formatCPF(caseData.cpf)}</TableCell>
-      {isClosedView ? (
-        <>
-          <TableCell>{formatDateSafe(caseData.dataDesligamento)}</TableCell>
-          <TableCell className="max-w-xs truncate" title={caseData.parecerFinal}>
-            {caseData.parecerFinal ?? 'N/A'}
-          </TableCell>
-        </>
-      ) : (
-        <TableCell>
-          <Badge
-            variant="outline"
-            className={clsx(
-              'border-transparent',
-              statusInfo?.style ?? 'bg-gray-100 text-gray-800',
-            )}
-          >
-            {statusInfo?.text ?? caseData.status}
-          </Badge>
-        </TableCell>
-      )}
-      <TableCell className="text-right space-x-2">
-        <Button asChild variant="ghost" size="icon" title={`Agendar para ${caseData.nomeCompleto}`}>
-          <Link to={`${ROUTES.AGENDA}?caseId=${caseData.id}`}>
-            <CalendarPlus className="h-4 w-4" />
-          </Link>
-        </Button>
-        <Button asChild variant="ghost" size="sm" title={`Ver detalhes de ${caseData.nomeCompleto}`}>
-          <Link to={ROUTES.CASE_DETAIL.replace(':id', caseData.id)}>Ver</Link>
-        </Button>
-      </TableCell>
-    </TableRow>
-  )
-}
-
 interface CaseTableProps {
-  scope: 'active' | 'closed' // Define se a tabela mostra casos ativos ou fechados
+  endpoint: '/cases' | '/cases/closed'
+  title: string
+  description: string
 }
 
-export function CaseTable({ scope }: CaseTableProps) {
+export function CaseTable({ endpoint, title, description }: CaseTableProps) {
   const { user } = useAuth()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+  
+  const initialSearch = searchParams.get('search') ?? ''
+  const initialPage = Number(searchParams.get('page') ?? '1')
+
+  const [searchTerm, setSearchTerm] = useState(initialSearch)
   const debouncedSearchTerm = useDebounce(searchTerm, 500)
+  const currentPage = initialPage > 0 ? initialPage : 1
   const [isExporting, setIsExporting] = useState(false)
 
-  const endpoint = scope === 'closed' ? '/cases/closed' : '/cases'
-  const isClosedView = scope === 'closed'
-
   const {
-    data,
+    data: result,
     isLoading,
     isError,
-  } = useQuery<PaginatedCases>({
-    queryKey: ['cases', scope, debouncedSearchTerm, page],
+    refetch,
+  } = useQuery<PaginatedCasesResponse>({
+    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage],
     queryFn: async () => {
       const response = await api.get(endpoint, {
         params: {
-          search: debouncedSearchTerm,
-          page,
+          search: debouncedSearchTerm || undefined,
+          page: currentPage,
+          pageSize: 10,
         },
       })
       return response.data
     },
+    placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 30,
+    enabled: !!endpoint,
   })
 
-  const cases = data?.items
+  const handlePageChange = (page: number) => {
+    const params = new URLSearchParams(searchParams)
+    params.set('page', String(page))
+    if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
+    else params.delete('search')
+    setSearchParams(params)
+  }
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value)
+  }
 
   const handleExport = async () => {
     setIsExporting(true)
@@ -145,113 +113,160 @@ export function CaseTable({ scope }: CaseTableProps) {
         return 'Exportação concluída!'
       },
       error: (error) => getErrorMessage(error, 'Falha ao exportar dados.'),
+      finally: () => setIsExporting(false)
     })
-
-    setIsExporting(false)
   }
 
   return (
-    <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
-      <div className="p-4 flex flex-col sm:flex-row items-center gap-4 border-b">
-        <div className="relative w-full sm:flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Procurar por nome ou CPF..."
-            className="pl-8 w-full"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">{title}</h2>
+          <p className="text-muted-foreground">{description}</p>
         </div>
-        {user?.cargo === 'Gerente' && (
-          <Button onClick={handleExport} disabled={isExporting} variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
+        {endpoint === '/cases' && user?.cargo === 'Gerente' && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+            Exportar CSV
           </Button>
         )}
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nome</TableHead>
-            <TableHead>CPF</TableHead>
-            {isClosedView ? (
-              <>
-                <TableHead>Data de Desligamento</TableHead>
-                <TableHead>Motivo</TableHead>
-              </>
-            ) : (
-              <TableHead>Status</TableHead>
+
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold hidden sm:inline">Filtrar:</span>
+        <div className="relative flex-1 sm:flex-none">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9 h-9 w-full sm:w-[320px]"
+            placeholder="Buscar por nome ou CPF..."
+            value={searchTerm}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSearch(e.target.value)}
+/>
+        </div>
+      </div>
+
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[140px]">Status</TableHead>
+              <TableHead>Nome Completo</TableHead>
+              <TableHead className="w-[140px]">CPF</TableHead>
+              <TableHead className="w-[180px]">
+                {endpoint === '/cases/closed' ? 'Data Deslig.' : 'Data Entrada'}
+              </TableHead>
+              <TableHead className="w-[200px]">Responsável</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading &&
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-full" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
+                </TableRow>
+              ))}
+            
+            {isError && (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-destructive">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <p>Erro ao carregar os casos.</p>
+                    <Button variant="outline" size="sm" onClick={() => refetch()}>
+                      Tentar Novamente
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
             )}
-            <TableHead className="text-right">Ações</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading &&
-            Array.from({ length: 5 }).map((_, i) => (
-              <TableRow key={`skeleton-${i}`}>
-                <TableCell colSpan={isClosedView ? 5 : 4} className="p-4">
-                  <Skeleton className="h-4 w-full" />
+
+            {!isLoading && !isError && result?.items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  Nenhum caso encontrado {debouncedSearchTerm && 'para esta busca'}.
+                </TableCell>
+              </TableRow>
+            )}
+
+            {!isLoading && !isError && result?.items.map((caseItem) => (
+              <TableRow key={caseItem.id}>
+                <TableCell>
+                  <CaseStatusBadge status={caseItem.status} />
+                </TableCell>
+                <TableCell className="font-medium">
+                  <Link
+                    to={ROUTES.CASE_DETAIL(caseItem.id)} //
+                    className="hover:underline hover:text-primary transition-colors"
+                    title={`Ver detalhes de ${caseItem.nomeCompleto}`}
+                  >
+                    {caseItem.nomeCompleto}
+                  </Link>
+                </TableCell>
+                <TableCell className="font-mono text-xs">
+                  {formatCPF(caseItem.cpf)}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {endpoint === '/cases/closed'
+                    ? formatDateSafe(caseItem.dataDesligamento)
+                    : formatDistanceToNow(new Date(caseItem.dataEntrada), {
+                        locale: ptBR,
+                        addSuffix: true,
+                      })}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm truncate max-w-[200px]">
+                  {caseItem.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && caseItem.especialistaPAEFI)
+                    ? caseItem.especialistaPAEFI?.nome ?? 'Não atribuído'
+                    : caseItem.agenteAcolhida?.nome ?? 'Não atribuído'}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    {/* --- CORREÇÃO APLICADA AQUI --- */}
+                    {/* asChild (true) faz o DropdownMenuTrigger renderizar como o Button filho */}
+                    {/* Evita <button><button>...</button></button> */}
+                    <DropdownMenuTrigger asChild> 
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <span className="sr-only">Abrir menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    {/* --- FIM DA CORREÇÃO --- */}
+                    
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem className="p-0"> 
+                        <Link 
+                          to={ROUTES.CASE_DETAIL(caseItem.id)} 
+                          className="flex w-full items-center px-2 py-1.5 cursor-pointer"
+                        >
+                          <Edit className="mr-2 h-4 w-4" /> Ver Detalhes
+                        </Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
-          {isError && (
-            <TableRow>
-              <TableCell
-                colSpan={isClosedView ? 5 : 4}
-                className="py-10 text-center text-destructive"
-              >
-                Falha ao carregar os casos.
-              </TableCell>
-            </TableRow>
-          )}
-          {!isLoading && !isError && cases?.length === 0 && (
-            <TableRow>
-              <TableCell
-                colSpan={isClosedView ? 5 : 4}
-                className="py-10 text-center text-muted-foreground"
-              >
-                Nenhum caso encontrado.
-              </TableCell>
-            </TableRow>
-          )}
-          {cases?.map((c) => (
-            <CaseRow key={c.id} caseData={c} isClosedView={isClosedView} />
-          ))}
-        </TableBody>
-      </Table>
-      {data && data.totalPages > 1 && (
-        <div className="p-4 border-t flex justify-center">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setPage((p) => Math.max(1, p - 1))
-                  }}
-                  aria-disabled={page === 1}
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <span className="px-4 py-2 text-sm">
-                  Página {page} de {data.totalPages}
-                </span>
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setPage((p) => Math.min(data.totalPages, p + 1))
-                  }}
-                  aria-disabled={page === data.totalPages}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
+          </TableBody>
+        </Table>
+      </div>
+
+      {result && result.total > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={result.totalPages}
+          totalItems={result.total}
+          pageSize={result.pageSize}
+          onPageChange={handlePageChange}
+        />
       )}
     </div>
   )

@@ -5,8 +5,9 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsup src --out-dir dist",
-    "start": "node dist/server.js"
+    "build": "prisma generate && tsup src --out-dir dist", 
+    "start": "node dist/server.js",
+    "postinstall": "prisma generate"
   },
   "keywords": [
     "creas",

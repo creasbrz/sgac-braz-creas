@@ -5,14 +5,39 @@ import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { MobileSidebar } from "./MobileSidebar"
 import { useLocation } from "react-router-dom"
-import { NotificationBell } from "./NotificationBell" // SININHO
+import { NotificationBell } from "./NotificationBell"
+
+// Mapa de nomes amigáveis para as rotas
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard': 'Painel Principal',
+  '/dashboard/cases': 'Gestão de Casos',
+  '/dashboard/cases/closed': 'Arquivo Morto (Finalizados)',
+  '/dashboard/agenda': 'Minha Agenda',
+  '/dashboard/reports': 'Relatórios Gerenciais',
+  '/dashboard/team-overview': 'Visão de Equipe',
+  '/dashboard/users': 'Controle de Usuários',
+  '/dashboard/audit': 'Auditoria do Sistema'
+}
 
 export function Header() {
   const { user, logout } = useAuth()
   const location = useLocation()
+  const pathname = location.pathname
 
-  const pageName = location.pathname.split("/")[1] || "Dashboard"
-  const formattedTitle = pageName.charAt(0).toUpperCase() + pageName.slice(1)
+  // Lógica para determinar o título da página
+  let pageTitle = PAGE_TITLES[pathname]
+
+  // Se não achou no mapa exato, verifica padrões dinâmicos
+  if (!pageTitle) {
+    if (pathname.includes('/dashboard/cases/')) {
+      pageTitle = 'Prontuário Eletrônico' // Para a tela de detalhes
+    } else {
+      // Fallback genérico: pega o último pedaço da URL
+      const parts = pathname.split('/')
+      const lastPart = parts[parts.length - 1]
+      pageTitle = lastPart.charAt(0).toUpperCase() + lastPart.slice(1)
+    }
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/95 px-6 backdrop-blur">
@@ -21,30 +46,28 @@ export function Header() {
         <MobileSidebar />
       </div>
 
-      {/* BREADCRUMB */}
+      {/* BREADCRUMB (Caminho) */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="hidden sm:inline-block font-medium text-foreground">
+        <span className="hidden sm:inline-block font-medium text-foreground/80">
           SGAC
         </span>
         <Slash className="hidden sm:inline-block h-4 w-4 text-muted-foreground/40" />
-        <span className="font-medium text-foreground">
-          {formattedTitle}
+        <span className="font-semibold text-primary">
+          {pageTitle}
         </span>
       </div>
 
-      {/* AÇÕES DO HEADER */}
+      {/* AÇÕES */}
       <div className="ml-auto flex items-center gap-2 md:gap-4">
         
-        {/* 🔔 SININHO DE NOTIFICAÇÕES */}
         <NotificationBell />
-
         <ThemeToggle />
 
         <div className="hidden md:flex flex-col items-end border-l pl-4 ml-2">
           <span className="text-sm font-medium leading-none">
             {user?.nome}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground uppercase">
             {user?.cargo}
           </span>
         </div>

@@ -14,8 +14,7 @@ import { ROUTES } from '@/constants/routes'
 import { formatCPF, formatDateSafe } from '@/utils/formatters'
 import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/utils/error'
-// [NOVO] Importa a função de cor
-import { getUrgencyColor } from '@/constants/caseConstants'
+import { URGENCY_STYLES, getUrgencyColor } from '@/constants/caseConstants'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,8 +38,12 @@ import { Pagination } from './Pagination'
 import { CaseStatusBadge } from './CaseStatusBadge'
 import { DataTableFilters } from './DataTableFilters'
 
+interface ExtendedCaseSummary extends CaseSummary {
+  urgencia: string
+}
+
 interface PaginatedCasesResponse {
-  items: CaseSummary[]
+  items: ExtendedCaseSummary[]
   total: number
   page: number
   pageSize: number
@@ -138,10 +141,10 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 h-full flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">{title}</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
           <p className="text-muted-foreground">{description}</p>
         </div>
         {endpoint === '/cases' && user?.cargo === 'Gerente' && (
@@ -162,7 +165,7 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              className="pl-9 h-9 w-full sm:w-[320px]"
+              className="pl-9 h-9 w-full sm:w-[320px] bg-background"
               placeholder="Buscar por nome ou CPF..."
               value={searchTerm}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
@@ -179,150 +182,136 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
         )}
       </div>
 
-      <div className="rounded-md border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nome Completo</TableHead>
-              <TableHead className="w-[140px]">CPF</TableHead>
-              
-              {endpoint === '/cases' && <TableHead className="w-[180px]">Urgência</TableHead>}
-              
-              <TableHead className="w-[180px]">
-                {endpoint === '/cases/closed' ? 'Data Deslig.' : 'Data Entrada'}
-              </TableHead>
-
-              {endpoint === '/cases/closed' && <TableHead className="w-[180px]">Motivo</TableHead>}
-              
-              <TableHead className="w-[200px]">Responsável</TableHead>
-              <TableHead className="w-[160px]">Status</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          
-          <TableBody>
-            {isLoading &&
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-6 w-48" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-28" /></TableCell>
-                  {endpoint === '/cases' && <TableCell><Skeleton className="h-6 w-20" /></TableCell>}
-                  <TableCell><Skeleton className="h-6 w-32" /></TableCell>
-                  {endpoint === '/cases/closed' && <TableCell><Skeleton className="h-6 w-32" /></TableCell>}
-                  <TableCell><Skeleton className="h-6 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
-                </TableRow>
-              ))}
-            
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={endpoint === '/cases' ? 7 : 8} className="h-32 text-center text-destructive">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <p>Erro ao carregar os casos.</p>
-                    <Button variant="outline" size="sm" onClick={() => refetch()}>
-                      Tentar Novamente
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!isLoading && !isError && result?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={endpoint === '/cases' ? 7 : 8} className="h-32 text-center text-muted-foreground">
-                  Nenhum caso encontrado.
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!isLoading && !isError && result?.items.map((caseItem) => (
-              <TableRow key={caseItem.id}>
-                
-                {/* 1. NOME */}
-                <TableCell className="font-medium">
-                  <Link
-                    to={ROUTES.CASE_DETAIL(caseItem.id)}
-                    className="hover:underline hover:text-primary transition-colors block truncate max-w-[250px]"
-                    title={caseItem.nomeCompleto}
-                  >
-                    {caseItem.nomeCompleto}
-                  </Link>
-                </TableCell>
-
-                {/* 2. CPF */}
-                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                  {formatCPF(caseItem.cpf)}
-                </TableCell>
-
-                {/* 3. URGÊNCIA (Com cores e texto) */}
-                {endpoint === '/cases' && (
-                  <TableCell>
-                    <Badge 
-                      variant="outline" 
-                      className={`${getUrgencyColor(caseItem.urgencia)} border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide truncate max-w-[160px] block text-center`}
-                      title={caseItem.urgencia}
-                    >
-                      {caseItem.urgencia}
-                    </Badge>
-                  </TableCell>
-                )}
-                
-                {/* 4. DATA */}
-                <TableCell className="text-muted-foreground text-sm">
-                  {endpoint === '/cases/closed'
-                    ? formatDateSafe(caseItem.dataDesligamento)
-                    : formatDistanceToNow(new Date(caseItem.dataEntrada), {
-                        locale: ptBR,
-                        addSuffix: true,
-                      })}
-                </TableCell>
-
-                {/* 5. MOTIVO (Só fechados) */}
-                {endpoint === '/cases/closed' && (
-                  <TableCell className="text-sm text-muted-foreground truncate max-w-[180px]" title={caseItem.motivoDesligamento ?? ''}>
-                    {caseItem.motivoDesligamento ?? '-'}
-                  </TableCell>
-                )}
-
-                {/* 6. RESPONSÁVEL */}
-                <TableCell className="text-muted-foreground text-sm truncate max-w-[200px]">
-                  {caseItem.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && caseItem.especialistaPAEFI)
-                    ? caseItem.especialistaPAEFI?.nome ?? 'Não atribuído'
-                    : caseItem.agenteAcolhida?.nome ?? 'Não atribuído'}
-                </TableCell>
-
-                {/* 7. STATUS */}
-                <TableCell>
-                  <CaseStatusBadge status={caseItem.status} />
-                </TableCell>
-
-                {/* 8. AÇÕES */}
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild> 
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <span className="sr-only">Abrir menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="p-0"> 
-                        <Link 
-                          to={ROUTES.CASE_DETAIL(caseItem.id)} 
-                          className="flex w-full items-center px-2 py-1.5 cursor-pointer"
-                        >
-                          <Edit className="mr-2 h-4 w-4" /> Ver Detalhes
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+      {/* A Tabela agora tem scroll interno definido no componente ui/table */}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nome Completo</TableHead>
+            <TableHead className="w-[140px]">CPF</TableHead>
+            {endpoint === '/cases' && <TableHead className="w-[100px]">Urgência</TableHead>}
+            <TableHead className="w-[180px]">
+              {endpoint === '/cases/closed' ? 'Data Deslig.' : 'Data Entrada'}
+            </TableHead>
+            {endpoint === '/cases/closed' && <TableHead className="w-[180px]">Motivo</TableHead>}
+            <TableHead className="w-[200px]">Responsável</TableHead>
+            <TableHead className="w-[160px]">Status</TableHead>
+            <TableHead className="w-[50px]"></TableHead>
+          </TableRow>
+        </TableHeader>
+        
+        <TableBody>
+          {isLoading &&
+            Array.from({ length: 8 }).map((_, i) => (
+              <TableRow key={i}>
+                <TableCell><Skeleton className="h-6 w-48" /></TableCell>
+                <TableCell><Skeleton className="h-6 w-28" /></TableCell>
+                {endpoint === '/cases' && <TableCell><Skeleton className="h-6 w-20" /></TableCell>}
+                <TableCell><Skeleton className="h-6 w-32" /></TableCell>
+                {endpoint === '/cases/closed' && <TableCell><Skeleton className="h-6 w-32" /></TableCell>}
+                <TableCell><Skeleton className="h-6 w-32" /></TableCell>
+                <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                <TableCell><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
               </TableRow>
             ))}
-          </TableBody>
-        </Table>
-      </div>
+          
+          {isError && (
+            <TableRow>
+              <TableCell colSpan={endpoint === '/cases' ? 7 : 8} className="h-32 text-center text-destructive">
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <p>Erro ao carregar os casos.</p>
+                  <Button variant="outline" size="sm" onClick={() => refetch()}>
+                    Tentar Novamente
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          )}
+
+          {!isLoading && !isError && result?.items.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={endpoint === '/cases' ? 7 : 8} className="h-32 text-center text-muted-foreground">
+                Nenhum caso encontrado.
+              </TableCell>
+            </TableRow>
+          )}
+
+          {!isLoading && !isError && result?.items.map((caseItem) => (
+            <TableRow key={caseItem.id}>
+              <TableCell className="font-medium">
+                <Link
+                  to={ROUTES.CASE_DETAIL(caseItem.id)}
+                  className="hover:underline hover:text-primary transition-colors block truncate max-w-[250px]"
+                  title={caseItem.nomeCompleto}
+                >
+                  {caseItem.nomeCompleto}
+                </Link>
+              </TableCell>
+
+              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                {formatCPF(caseItem.cpf)}
+              </TableCell>
+
+              {endpoint === '/cases' && (
+                <TableCell>
+                  <Badge 
+                    variant="outline" 
+                    className={`${getUrgencyColor(caseItem.urgencia)} border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide truncate max-w-[160px] block text-center`}
+                    title={caseItem.urgencia}
+                  >
+                    {caseItem.urgencia}
+                  </Badge>
+                </TableCell>
+              )}
+              
+              <TableCell className="text-muted-foreground text-sm">
+                {endpoint === '/cases/closed'
+                  ? formatDateSafe(caseItem.dataDesligamento)
+                  : formatDistanceToNow(new Date(caseItem.dataEntrada), {
+                      locale: ptBR,
+                      addSuffix: true,
+                    })}
+              </TableCell>
+
+              {endpoint === '/cases/closed' && (
+                <TableCell className="text-sm text-muted-foreground truncate max-w-[180px]" title={caseItem.motivoDesligamento ?? ''}>
+                  {caseItem.motivoDesligamento ?? '-'}
+                </TableCell>
+              )}
+
+              <TableCell className="text-muted-foreground text-sm truncate max-w-[200px]">
+                {caseItem.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && caseItem.especialistaPAEFI)
+                  ? caseItem.especialistaPAEFI?.nome ?? 'Não atribuído'
+                  : caseItem.agenteAcolhida?.nome ?? 'Não atribuído'}
+              </TableCell>
+
+              <TableCell>
+                <CaseStatusBadge status={caseItem.status} />
+              </TableCell>
+
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild> 
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <span className="sr-only">Abrir menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem className="p-0"> 
+                      <Link 
+                        to={ROUTES.CASE_DETAIL(caseItem.id)} 
+                        className="flex w-full items-center px-2 py-1.5 cursor-pointer"
+                      >
+                        <Edit className="mr-2 h-4 w-4" /> Ver Detalhes
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {result && result.total > 0 && (
         <Pagination

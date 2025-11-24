@@ -4,8 +4,19 @@ import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, BarChart, Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  BarChart, // [CORREÇÃO] Adicionado
+  Bar,      // [CORREÇÃO] Adicionado
 } from "recharts"
 
 import { Loader2, BarChart3, Clock, TrendingUp, Download } from "lucide-react"
@@ -127,14 +138,16 @@ export function AdvancedAnalytics() {
     <div className="space-y-6 animate-in fade-in duration-700" ref={exportRef}>
 
       {/* Controles */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="flex flex-col gap-4">
+        {/* KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
            <DashboardStatCard title="Tempo Médio" value={data.avgHandlingTime} description="Dias" icon={Clock} colorClass="text-blue-500" />
            <DashboardStatCard title="Total Ativos" value={data.totalActive} description="Casos hoje" icon={BarChart3} colorClass="text-purple-500" />
            <DashboardStatCard title="Novos (Mês)" value={trendData[trendData.length-1]?.novos ?? 0} description="Entradas" icon={TrendingUp} colorClass="text-emerald-500" />
         </div>
 
-        <div className="flex gap-2 items-center">
+        {/* Filtros */}
+        <div className="flex gap-2 items-center justify-end">
           <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
             <SelectTrigger className="w-[140px] bg-background"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -157,22 +170,21 @@ export function AdvancedAnalytics() {
             <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
           </CardHeader>
           <CardContent>
-            {/* FIX DE ALTURA: width 99% e minHeight */}
             <div style={{ width: '99%', height: 320, minHeight: 320 }}>
               <ResponsiveContainer width="100%" height="100%" debounce={200}>
-                <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
+                <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
                   <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={10} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))' }} />
-                  <Legend />
+                  <Legend verticalAlign="top" height={36} />
                   <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} />
                   <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-2 text-xs text-muted-foreground text-center">
-               Previsão de novos casos para o próximo mês (IA Linear): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
+               Previsão de novos casos (IA): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
             </div>
           </CardContent>
         </Card>
@@ -185,21 +197,35 @@ export function AdvancedAnalytics() {
       {/* Produtividade e Heatmap e Pizza */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Gráfico de Violações (Pizza) - AGORA FUNCIONA */}
+        {/* Gráfico de Violações (Pizza) */}
         <Card>
           <CardHeader><CardTitle>Violações (Top 5)</CardTitle></CardHeader>
           <CardContent>
-             <div style={{ width: '99%', height: 300, minHeight: 300 }}>
+             <div style={{ width: '99%', height: 340, minHeight: 340 }}>
                 {pieData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%" debounce={200}>
                     <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                      <Pie 
+                        data={pieData} 
+                        cx="50%" 
+                        cy="45%" 
+                        innerRadius={50} 
+                        outerRadius={70} 
+                        paddingAngle={5} 
+                        dataKey="value"
+                      >
                         {pieData.map((_: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip contentStyle={{ borderRadius: '8px', backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
-                      <Legend layout="vertical" verticalAlign="middle" align="right" iconType="circle" />
+                      <Legend 
+                        layout="horizontal" 
+                        verticalAlign="bottom" 
+                        align="center" 
+                        iconType="circle" 
+                        wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de violação.</div>}
@@ -214,9 +240,9 @@ export function AdvancedAnalytics() {
              <div style={{ width: '99%', height: 300, minHeight: 300 }}>
                 {productivity && productivity.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%" debounce={200}>
-                    <BarChart data={productivity} layout="vertical" margin={{left: 10}}>
+                    <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
                       <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} fontSize={12}/>
+                      <YAxis dataKey="name" type="category" width={70} tickLine={false} axisLine={false} fontSize={11}/>
                       <Tooltip cursor={{fill: 'transparent'}} />
                       <Bar dataKey="value" fill={COLORS[4]} radius={[0,4,4,0]} barSize={20} />
                     </BarChart>
@@ -232,7 +258,7 @@ export function AdvancedAnalytics() {
           <CardContent>
              <div className="h-[150px] overflow-y-auto">
                 {heatmap && heatmap.length > 0 ? (
-                   <div className="grid grid-cols-12 md:grid-cols-[repeat(auto-fill,minmax(30px,1fr))] gap-1">
+                   <div className="grid grid-cols-7 sm:grid-cols-12 md:grid-cols-[repeat(auto-fill,minmax(30px,1fr))] gap-1">
                       {heatmap.slice(0, 90).map((h: any) => { 
                          const intensity = Math.min(4, Math.ceil(h.count / 2));
                          const colors = ['bg-muted/20', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-400', 'bg-emerald-600'];

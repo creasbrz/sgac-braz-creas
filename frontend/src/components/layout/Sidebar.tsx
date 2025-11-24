@@ -25,7 +25,7 @@ export const Sidebar = memo(function Sidebar() {
   }
 
   return (
-    <aside className="hidden md:flex flex-col border-r bg-card min-h-screen">
+    <aside className="hidden md:flex flex-col border-r bg-card min-h-screen w-[260px]">
       
       {/* LOGO */}
       <div className="flex h-16 items-center border-b px-6">
@@ -60,7 +60,7 @@ export const Sidebar = memo(function Sidebar() {
 
       {/* FOOTER */}
       <div className="border-t p-4 text-center text-xs text-muted-foreground">
-        v1.0.0 • SEDES/DF
+        v2.0.0 • SEDES/DF
       </div>
     </aside>
   )

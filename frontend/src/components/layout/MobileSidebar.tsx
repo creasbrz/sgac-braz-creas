@@ -11,6 +11,7 @@ import {
   SheetTrigger,
   SheetTitle,
   SheetDescription,
+  SheetHeader
 } from "@/components/ui/sheet"
 
 import { useAuth } from "@/hooks/useAuth"
@@ -42,46 +43,45 @@ export function MobileSidebar() {
         </Button>
       </SheetTrigger>
 
-      <SheetContent side="left" className="flex flex-col w-[85%] max-w-[300px] p-6">
-        <div className="sr-only">
-          <SheetTitle>Menu</SheetTitle>
-          <SheetDescription>Navegação do sistema SGAC.</SheetDescription>
+      {/* FIX: Largura fixa (300px) para não ficar estranho em telas muito pequenas */}
+      <SheetContent side="left" className="flex flex-col w-[300px] p-0"> 
+        
+        <SheetHeader className="p-6 border-b text-left">
+            <div className="flex items-center gap-3">
+                <GdfLogo className="h-8 w-8 text-primary" />
+                <div>
+                    <SheetTitle className="text-lg font-bold">SGAC-BRAZ</SheetTitle>
+                    <SheetDescription className="text-xs">Sistema de Gestão CREAS</SheetDescription>
+                </div>
+            </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-4">
+            {/* Botão Novo Caso */}
+            <Button
+            onClick={() => {
+                closeMenu()
+                openNewCaseModal()
+            }}
+            className="w-full shadow-sm mb-6"
+            size="lg"
+            >
+            <Plus className="mr-2 h-4 w-4" /> Novo Caso
+            </Button>
+
+            <nav className="grid gap-6">
+                {groupedLinks.Acompanhamento.length > 0 && (
+                <MobileGroup title="Acompanhamento" links={groupedLinks.Acompanhamento} close={closeMenu} />
+                )}
+                {groupedLinks.Administração.length > 0 && (
+                <MobileGroup title="Administração" links={groupedLinks.Administração} close={closeMenu} />
+                )}
+            </nav>
         </div>
 
-        {/* LOGO */}
-        <div className="flex items-center gap-2 mb-8">
-          <GdfLogo className="h-6 w-6 text-primary" />
-          <span className="font-bold text-lg">SGAC-BRAZ</span>
-        </div>
-
-        {/* BOTÃO PRINCIPAL */}
-        <Button
-          onClick={() => {
-            closeMenu()
-            openNewCaseModal()
-          }}
-          className="w-full shadow-sm mb-6"
-          size="lg"
-        >
-          <Plus className="mr-2 h-4 w-4" /> Novo Caso
-        </Button>
-
-        {/* LINKS */}
-        <div className="flex-1 overflow-y-auto">
-          <nav className="grid gap-8">
-            {groupedLinks.Acompanhamento.length > 0 && (
-              <MobileGroup title="Acompanhamento" links={groupedLinks.Acompanhamento} close={closeMenu} />
-            )}
-            {groupedLinks.Administração.length > 0 && (
-              <MobileGroup title="Administração" links={groupedLinks.Administração} close={closeMenu} />
-            )}
-          </nav>
-        </div>
-
-        {/* FOOTER */}
-        <div className="border-t pt-4 mt-auto">
-          <div className="px-2 text-sm font-medium">{user?.nome}</div>
-          <div className="px-2 text-xs text-muted-foreground">{user?.cargo}</div>
+        <div className="border-t p-4 bg-muted/30">
+          <div className="text-sm font-medium">{user?.nome}</div>
+          <div className="text-xs text-muted-foreground uppercase">{user?.cargo}</div>
         </div>
       </SheetContent>
     </Sheet>
@@ -109,7 +109,7 @@ function MobileLink({ to, icon: Icon, label, onClick }: any) {
       end
       className={({ isActive }) =>
         clsx(
-          "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium transition-colors",
+          "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
           isActive
             ? "bg-primary/10 text-primary"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"

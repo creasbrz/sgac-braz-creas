@@ -7,19 +7,19 @@ import { NewCaseModal } from "../NewCaseModal"
 export function MainLayout() {
   return (
     <div className="flex min-h-screen w-full bg-muted/20">
-      {/* GRID GERAL */}
-      <div className="grid w-full min-h-screen md:grid-cols-[260px_1fr] lg:grid-cols-[280px_1fr]">
+      {/* GRID FIXO: 260px para sidebar, restante para conteúdo */}
+      <div className="grid w-full min-h-screen md:grid-cols-[260px_1fr]">
 
         {/* SIDEBAR FIXA */}
         <Sidebar />
 
         {/* ÁREA PRINCIPAL */}
-        <div className="flex flex-col">
+        <div className="flex flex-col h-screen overflow-hidden">
           {/* HEADER FIXO */}
           <Header />
 
           {/* CONTEÚDO SCROLLÁVEL */}
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-background">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-background/50">
             <div className="mx-auto max-w-6xl space-y-6">
               <Outlet />
             </div>

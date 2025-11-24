@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from 'lucide-react' // Tipo genérico para ícones
 import { ROUTES } from './routes' //
 import type { UserRole } from '@/types/user' //
+import { ShieldCheck } from 'lucide-react'
 
 interface NavLink {
   to: string
@@ -71,6 +72,13 @@ export const navLinks: NavLink[] = [
     icon: PieChart,
     label: 'Relatórios',
     allowedRoles: ['Gerente'], //
+    section: 'Administração',
+  },
+  {
+    to: 'audit', // ou ROUTES.AUDIT se você criou a constante
+    icon: ShieldCheck,
+    label: 'Auditoria Global',
+    allowedRoles: ['Gerente'],
     section: 'Administração',
   },
 ]

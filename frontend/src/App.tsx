@@ -22,6 +22,7 @@ import { Reports } from "./pages/Reports";
 import { UserManagement } from "./pages/UserManagement";
 import { TeamOverview } from "./pages/TeamOverview";
 import { NotFound } from "./pages/NotFound";
+import { GlobalAudit } from "./pages/GlobalAudit";
 
 export function App() {
   return (
@@ -60,6 +61,7 @@ export function App() {
                     <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
                     <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
                     <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
+                    <Route path="audit" element={<GlobalAudit />} />
                   </Route>
                 </Route>
 

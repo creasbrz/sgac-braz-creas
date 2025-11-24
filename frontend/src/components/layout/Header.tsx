@@ -5,14 +5,14 @@ import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { MobileSidebar } from "./MobileSidebar"
 import { useLocation } from "react-router-dom"
+import { NotificationBell } from "./NotificationBell" // SININHO
 
 export function Header() {
   const { user, logout } = useAuth()
   const location = useLocation()
 
   const pageName = location.pathname.split("/")[1] || "Dashboard"
-  const formattedTitle =
-    pageName.charAt(0).toUpperCase() + pageName.slice(1)
+  const formattedTitle = pageName.charAt(0).toUpperCase() + pageName.slice(1)
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/95 px-6 backdrop-blur">
@@ -32,11 +32,15 @@ export function Header() {
         </span>
       </div>
 
-      {/* AÇÕES */}
-      <div className="ml-auto flex items-center gap-4">
+      {/* AÇÕES DO HEADER */}
+      <div className="ml-auto flex items-center gap-2 md:gap-4">
+        
+        {/* 🔔 SININHO DE NOTIFICAÇÕES */}
+        <NotificationBell />
+
         <ThemeToggle />
 
-        <div className="hidden md:flex flex-col items-end">
+        <div className="hidden md:flex flex-col items-end border-l pl-4 ml-2">
           <span className="text-sm font-medium leading-none">
             {user?.nome}
           </span>

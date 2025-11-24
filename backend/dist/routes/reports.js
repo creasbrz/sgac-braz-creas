@@ -30,13 +30,14 @@ var prisma = new import_client.PrismaClient();
 
 // src/routes/reports.ts
 var import_date_fns = require("date-fns");
+var import_client2 = require("@prisma/client");
 async function reportRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
       const { cargo } = request.user;
-      if (cargo !== "Gerente") {
-        return reply.status(403).send({ message: "Acesso negado. Apenas gerentes podem ver relat\xF3rios." });
+      if (cargo !== import_client2.Cargo.Gerente) {
+        return reply.status(403).send({ message: "Acesso negado." });
       }
     } catch (err) {
       await reply.status(401).send({ message: "N\xE3o autorizado." });
@@ -47,24 +48,17 @@ async function reportRoutes(app) {
       const technicians = await prisma.user.findMany({
         where: {
           cargo: {
-            in: ["Agente Social", "Especialista"]
+            in: [import_client2.Cargo.Agente_Social, import_client2.Cargo.Especialista]
           },
           ativo: true
-          //
         },
-        select: {
-          id: true,
-          nome: true,
-          cargo: true
-        },
-        orderBy: {
-          cargo: "asc"
-        }
+        select: { id: true, nome: true, cargo: true },
+        orderBy: { cargo: "asc" }
       });
       const activeCases = await prisma.case.findMany({
         where: {
           status: {
-            not: "DESLIGADO"
+            not: import_client2.CaseStatus.DESLIGADO
           }
         },
         select: {
@@ -72,93 +66,73 @@ async function reportRoutes(app) {
           nomeCompleto: true,
           status: true,
           agenteAcolhidaId: true,
-          //
           especialistaPAEFIId: true
-          //
         }
       });
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
-          if (tech.cargo === "Agente Social") {
-            return c.agenteAcolhidaId === tech.id && (c.status === "AGUARDANDO_ACOLHIDA" || c.status === "EM_ACOLHIDA");
+          if (tech.cargo === import_client2.Cargo.Agente_Social) {
+            return c.agenteAcolhidaId === tech.id && (c.status === import_client2.CaseStatus.AGUARDANDO_ACOLHIDA || c.status === import_client2.CaseStatus.EM_ACOLHIDA);
           }
-          if (tech.cargo === "Especialista") {
-            return c.especialistaPAEFIId === tech.id && c.status === "EM_ACOMPANHAMENTO_PAEFI";
+          if (tech.cargo === import_client2.Cargo.Especialista) {
+            return c.especialistaPAEFIId === tech.id && c.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI;
           }
           return false;
         }).map((c) => ({ id: c.id, nomeCompleto: c.nomeCompleto }));
         return {
           nome: tech.nome,
-          //
-          cargo: tech.cargo,
-          //
+          // Formata o nome do cargo para ficar bonito na tela (remove o underline)
+          cargo: tech.cargo === import_client2.Cargo.Agente_Social ? "Agente Social" : "Especialista",
           cases: techCases
-          //
         };
       });
       return reply.status(200).send(overview);
     } catch (error) {
-      console.error("Erro ao gerar relat\xF3rio de equipe:", error);
+      console.error("Erro /reports/team-overview:", error);
       return reply.status(500).send({ message: "Erro interno no servidor." });
     }
   });
   app.get("/reports/rma", async (request, reply) => {
     const querySchema = import_zod.z.object({
-      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/, "Formato de m\xEAs inv\xE1lido. Use YYYY-MM.")
+      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/, "Formato inv\xE1lido (YYYY-MM).")
     });
     try {
       const { month } = querySchema.parse(request.query);
-      const targetMonth = parseISO(month);
+      const targetMonth = (0, import_date_fns.parseISO)(month);
       const firstDay = (0, import_date_fns.startOfMonth)(targetMonth);
       const lastDay = (0, import_date_fns.endOfMonth)(targetMonth);
-      const firstDayOfPreviousMonth = (0, import_date_fns.startOfMonth)((0, import_date_fns.subMonths)(targetMonth, 1));
-      const lastDayOfPreviousMonth = (0, import_date_fns.endOfMonth)((0, import_date_fns.subMonths)(targetMonth, 1));
       const initialCount = await prisma.case.count({
         where: {
-          status: "EM_ACOMPANHAMENTO_PAEFI",
-          dataInicioPAEFI: {
-            lt: firstDay
-            // Começou antes do início deste mês
-          },
+          status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+          // Enum
+          dataInicioPAEFI: { lt: firstDay },
           OR: [
             { dataDesligamento: null },
-            // Ainda ativo
             { dataDesligamento: { gte: firstDay } }
-            // Ou foi desligado *neste* mês (contava no início)
           ]
         }
       });
       const newEntries = await prisma.case.findMany({
         where: {
-          dataInicioPAEFI: {
-            gte: firstDay,
-            lte: lastDay
-          }
+          dataInicioPAEFI: { gte: firstDay, lte: lastDay }
         },
-        select: {
-          id: true,
-          sexo: true,
-          nascimento: true
-        }
+        select: { id: true, sexo: true, nascimento: true }
       });
       const closedCases = await prisma.case.count({
         where: {
-          status: "DESLIGADO",
-          dataDesligamento: {
-            gte: firstDay,
-            lte: lastDay
-          }
+          status: import_client2.CaseStatus.DESLIGADO,
+          // Enum
+          dataDesligamento: { gte: firstDay, lte: lastDay }
         }
       });
       const finalCount = initialCount + newEntries.length - closedCases;
       const profileBySex = { masculino: 0, feminino: 0, outro: 0 };
       newEntries.forEach((c) => {
-        if (c.sexo === "Masculino") profileBySex.masculino++;
-        else if (c.sexo === "Feminino") profileBySex.feminino++;
+        if (c.sexo === import_client2.Sexo.M) profileBySex.masculino++;
+        else if (c.sexo === import_client2.Sexo.F) profileBySex.feminino++;
         else profileBySex.outro++;
       });
       const profileByAgeGroup = {
-        //
         "0-6": 0,
         "7-12": 0,
         "13-17": 0,
@@ -176,21 +150,16 @@ async function reportRoutes(app) {
         else if (age <= 59) profileByAgeGroup["30-59"]++;
         else profileByAgeGroup["60+"]++;
       });
-      const rmaData = {
-        //
+      return reply.status(200).send({
         initialCount,
         newEntries: newEntries.length,
         closedCases,
         finalCount,
         profileBySex,
         profileByAgeGroup
-      };
-      return reply.status(200).send(rmaData);
+      });
     } catch (error) {
-      if (error instanceof import_zod.z.ZodError) {
-        return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten() });
-      }
-      console.error("Erro ao gerar relat\xF3rio RMA:", error);
+      console.error("Erro /reports/rma:", error);
       return reply.status(500).send({ message: "Erro interno no servidor." });
     }
   });

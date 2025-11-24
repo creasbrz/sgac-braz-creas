@@ -1,476 +1,494 @@
 // backend/src/routes/cases.ts
 import { type FastifyInstance, type FastifyReply } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma' //
-import { format as formatCsv } from 'fast-csv' //
-import { format } from 'date-fns' //
-import { ptBR } from 'date-fns/locale' //
+import { prisma } from '../lib/prisma'
+import { format as formatCsv } from 'fast-csv'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { CaseStatus, Cargo, LogAction, Sexo, Urgencia, Violacao, CategoriaPublico } from '@prisma/client'
 
-// --- Funções Auxiliares (Helpers) ---
+// -------------------------------------------------------
+// 🔧 UTILITÁRIOS
+// -------------------------------------------------------
 
-const formatDateForCsv = (date: Date | null | undefined): string => { //
-  if (date && !isNaN(date.getTime())) {
-    return format(date, 'dd/MM/yyyy', { locale: ptBR }) //
-  }
-  return 'N/A'
+/** * Calcula o peso numérico da urgência para ordenação correta 
+ * 4 (Crítica) -> 1 (Baixa)
+ */
+const calculateUrgencyWeight = (urgencia: string): number => {
+  const term = urgencia.trim()
+  
+  // Grupo 1: Gravíssimas (Peso 4)
+  if ([
+    'Convive com agressor', 
+    'Idoso 80+', 
+    'Primeira infância', 
+    'Risco de morte'
+  ].includes(term)) return 4;
+  
+  // Grupo 2: Muito Graves (Peso 3)
+  if ([
+    'Risco de reincidência', 
+    'Sofre ameaça', 
+    'Risco de desabrigo', 
+    'Criança/Adolescente'
+  ].includes(term)) return 3;
+  
+  // Grupo 3: Graves (Peso 2)
+  if ([
+    'PCD', 
+    'Idoso', 
+    'Internação', 
+    'Acolhimento', 
+    'Gestante/Lactante'
+  ].includes(term)) return 2;
+  
+  // Grupo 4: Sem gravidade / Padrão (Peso 1)
+  return 1;
 }
 
-function internalError(reply: FastifyReply, message: string, error: unknown) { //
+/** Formata datas para CSV ou retorna 'N/A'. */
+const formatDateForCsv = (date: Date | null | undefined): string => {
+  return date && !isNaN(date.getTime())
+    ? format(date, 'dd/MM/yyyy', { locale: ptBR })
+    : 'N/A'
+}
+
+/** Padroniza resposta de erro interno. */
+function internalError(reply: FastifyReply, message: string, error: unknown) {
   console.error(message, error)
   return reply.status(500).send({ message })
 }
 
-// Lógica para determinar quais casos um usuário pode ver em "Minha Caixa"
-function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) { //
-  if (user.cargo === 'Agente Social') { //
-    return {
-      agenteAcolhidaId: user.sub, //
-      status: { in: ['AGUARDANDO_ACOLHIDA', 'EM_ACOLHIDA'] }, //
-    }
+/** Filtros para casos ativos conforme o cargo do usuário. */
+function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
+  switch (user.cargo) {
+    case Cargo.Agente_Social:
+      return {
+        agenteAcolhidaId: user.sub,
+        status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
+      }
+    case Cargo.Especialista:
+      return {
+        especialistaPAEFIId: user.sub,
+        status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+      }
+    case Cargo.Gerente:
+      return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
+    default:
+      return { id: '-1' } // Retorna nada se cargo desconhecido
   }
-  if (user.cargo === 'Especialista') { //
-    return {
-      especialistaPAEFIId: user.sub, //
-      status: 'EM_ACOMPANHAMENTO_PAEFI', //
-    }
-  }
-  if (user.cargo === 'Gerente') { //
-    // Gerente vê casos aguardando distribuição PAEFI
-    return {
-      status: 'AGUARDANDO_DISTRIBUICAO_PAEFI', //
-    }
-  }
-  return { id: '-1' } // Se não for nenhum cargo conhecido, não retorna nada
 }
 
-// Lógica para determinar quais casos finalizados um usuário pode ver
-function buildClosedCaseWhereClause(user: { cargo: string; sub: string }) { //
-  const where: any = {
-    status: 'DESLIGADO', //
-  }
-  // Agente e Especialista só veem casos finalizados pelos quais foram responsáveis
-  if (user.cargo === 'Agente Social') { //
-    where.agenteAcolhidaId = user.sub
-  } else if (user.cargo === 'Especialista') {
-    where.especialistaPAEFIId = user.sub
-  }
-  // Gerente vê todos os casos desligados (sem filtro adicional)
+/** Filtros para casos fechados. */
+function buildClosedCaseWhereClause(user: { cargo: string; sub: string }) {
+  const where: any = { status: CaseStatus.DESLIGADO }
+  if (user.cargo === Cargo.Agente_Social) where.agenteAcolhidaId = user.sub
+  if (user.cargo === Cargo.Especialista) where.especialistaPAEFIId = user.sub
   return where
 }
 
-export async function caseRoutes(app: FastifyInstance) { //
-  // Rota para criar um novo caso
-  app.post(
-    '/cases',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      // Este schema reflete o CaseForm.tsx
-      const createCaseBodySchema = z.object({
-        nomeCompleto: z.string(), //
-        cpf: z.string().length(11), //
-        nascimento: z.coerce.date(), //
-        sexo: z.string(), //
-        telefone: z.string(), //
-        endereco: z.string(), //
-        dataEntrada: z.coerce.date(), //
-        urgencia: z.string(), //
-        violacao: z.string(), //
-        categoria: z.string(), //
-        orgaoDemandante: z.string(), //
-        numeroSei: z.string().optional(), //
-        linkSei: z.string().url().optional().or(z.literal('')), // (Aceita URL ou string vazia)
-        agenteAcolhidaId: z.string().uuid(), //
-        observacoes: z.string().optional(), //
-        beneficios: z.array(z.string()).optional(), //
+/** Criação de logs internos. */
+async function createLog(casoId: string, autorId: string, acao: LogAction, descricao: string) {
+  await prisma.caseLog.create({
+    data: { casoId, autorId, acao, descricao },
+  })
+}
+
+// -------------------------------------------------------
+// 🚀 ROTAS
+// -------------------------------------------------------
+
+export async function caseRoutes(app: FastifyInstance) {
+
+  // -----------------------------------------------------
+  // 1. Criar Caso
+  // -----------------------------------------------------
+  app.post('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const schema = z.object({
+      nomeCompleto: z.string(),
+      cpf: z.string().length(11),
+      nascimento: z.coerce.date(),
+      // Campos são string para aceitar as listas detalhadas
+      sexo: z.string(),
+      telefone: z.string(),
+      endereco: z.string(),
+      dataEntrada: z.coerce.date(),
+      urgencia: z.string(),
+      violacao: z.string(),
+      categoria: z.string(),
+      orgaoDemandante: z.string(),
+      numeroSei: z.string().optional(),
+      linkSei: z.string().url().optional().or(z.literal('')),
+      agenteAcolhidaId: z.string().uuid(),
+      observacoes: z.string().optional(),
+      beneficios: z.array(z.string()).optional(),
+    })
+
+    try {
+      const data = schema.parse(request.body)
+      const userId = request.user.sub
+      
+      // Calcula o peso para ordenação
+      const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
+
+      const novoCaso = await prisma.case.create({
+        data: {
+          ...data,
+          pesoUrgencia, // Salva o peso calculado
+          criadoPorId: userId,
+          numeroSei: data.numeroSei || null,
+          linkSei: data.linkSei || null,
+          observacoes: data.observacoes || null,
+          beneficios: data.beneficios || [],
+        },
       })
 
-      try {
-        const dataToSave = createCaseBodySchema.parse(request.body)
-        const userId = request.user.sub //
+      await createLog(novoCaso.id, userId, LogAction.CRIACAO, 'Caso cadastrado no sistema.')
 
-        const newCase = await prisma.case.create({ //
-          data: {
-            ...dataToSave,
-            criadoPorId: userId, //
-            // Garante que campos opcionais não enviados sejam null
-            numeroSei: dataToSave.numeroSei || null,
-            linkSei: dataToSave.linkSei || null,
-            observacoes: dataToSave.observacoes || null,
-            beneficios: dataToSave.beneficios || [],
+      return reply.status(201).send(novoCaso)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
+      }
+      return internalError(reply, 'Erro interno ao criar caso.', error)
+    }
+  })
+
+  // -----------------------------------------------------
+  // 2. Listar Casos Ativos
+  // -----------------------------------------------------
+  app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const schema = z.object({
+      search: z.string().optional(),
+      page: z.coerce.number().min(1).default(1),
+      pageSize: z.coerce.number().min(1).max(100).default(10),
+      status: z.nativeEnum(CaseStatus).optional(),
+      urgencia: z.string().optional(),
+      violacao: z.string().optional(),
+    })
+
+    try {
+      const { search, page, pageSize, status, urgencia, violacao } = schema.parse(request.query)
+      
+      // 1. Filtro Base (Permissão)
+      let where = buildActiveCaseWhereClause(request.user) as any
+
+      // 2. Busca Textual
+      if (search) {
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { nomeCompleto: { contains: search, mode: 'insensitive' } },
+              { cpf: { contains: search } },
+            ],
           },
-        })
-
-        return await reply.status(201).send(newCase)
-      } catch (error) {
-        if (error instanceof z.ZodError) { //
-          return await reply.status(400).send({
-            message: 'Dados inválidos.',
-            errors: error.flatten().fieldErrors, //
-          })
-        }
-        return internalError(reply, 'Erro interno ao criar caso.', error) //
+        ]
       }
-    },
-  )
 
-  // Rota para listar casos (Refatorada para "Casos Ativos / Minha Caixa")
-  app.get(
-    '/cases',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      const getCasesQuerySchema = z.object({
-        search: z.string().optional(), //
-        page: z.coerce.number().min(1).default(1), //
-        pageSize: z.coerce.number().min(1).max(100).default(10), //
-      })
+      // 3. Filtros Específicos
+      if (status) where.status = status
+      if (urgencia && urgencia !== 'all') where.urgencia = urgencia
+      if (violacao && violacao !== 'all') where.violacao = { equals: violacao }
 
-      try {
-        const { search, page, pageSize } = getCasesQuerySchema.parse(
-          request.query,
-        )
-
-        let whereClause = buildActiveCaseWhereClause(request.user) as any //
-
-        if (search) { //
-          whereClause.OR = [
-            { nomeCompleto: { contains: search, mode: 'insensitive' } }, //
-            { cpf: { contains: search } }, //
-          ]
-        }
-
-        const [cases, total] = await Promise.all([
-          prisma.case.findMany({ //
-            where: whereClause,
-            orderBy: { createdAt: 'desc' }, //
-            take: pageSize, //
-            skip: (page - 1) * pageSize, //
-            include: {
-              agenteAcolhida: { select: { nome: true } }, //
-              especialistaPAEFI: { select: { nome: true } }, //
-            },
-          }),
-          prisma.case.count({ where: whereClause }), //
-        ])
-
-        return await reply.status(200).send({ //
-          items: cases,
-          total,
-          page,
-          pageSize,
-          totalPages: Math.ceil(total / pageSize),
-        })
-      } catch (error) {
-        return internalError(reply, 'Erro interno ao listar casos ativos.', error) //
-      }
-    },
-  )
-
-  // Nova Rota para listar Casos Finalizados
-  app.get(
-    '/cases/closed',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      const getCasesQuerySchema = z.object({
-        search: z.string().optional(), //
-        page: z.coerce.number().min(1).default(1), //
-        pageSize: z.coerce.number().min(1).max(100).default(10), //
-      })
-
-      try {
-        const { search, page, pageSize } = getCasesQuerySchema.parse(
-          request.query,
-        )
-        
-        // Aplica o filtro de permissão (Gerente vê todos, técnicos veem os seus)
-        let whereClause: any = buildClosedCaseWhereClause(request.user) //
-
-        if (search) { //
-          whereClause.OR = [
-            { nomeCompleto: { contains: search, mode: 'insensitive' } }, //
-            { cpf: { contains: search } }, //
-          ]
-        }
-
-        const [cases, total] = await Promise.all([
-          prisma.case.findMany({ //
-            where: whereClause,
-            orderBy: { dataDesligamento: 'desc' }, //
-            take: pageSize, //
-            skip: (page - 1) * pageSize, //
-            select: { //
-              id: true,
-              nomeCompleto: true,
-              cpf: true,
-              status: true,
-              dataDesligamento: true,
-              parecerFinal: true,
-              // Adiciona responsáveis para a tabela de fechados
-              agenteAcolhida: { select: { nome: true } },
-              especialistaPAEFI: { select: { nome: true } },
-            },
-          }),
-          prisma.case.count({ where: whereClause }), //
-        ])
-
-        return await reply.status(200).send({ //
-          items: cases,
-          total,
-          page,
-          pageSize,
-          totalPages: Math.ceil(total / pageSize),
-        })
-      } catch (error) {
-        return internalError(reply, 'Erro interno ao listar casos finalizados.', error) //
-      }
-    },
-  )
-  
-  // Rota para buscar um único caso por ID
-  app.get(
-    '/cases/:id',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      const getCaseParamsSchema = z.object({
-        id: z.string().uuid(), //
-      })
-
-      try {
-        const { id } = getCaseParamsSchema.parse(request.params)
-        const caseDetail = await prisma.case.findUnique({ //
-          where: { id },
+      const [items, total] = await Promise.all([
+        prisma.case.findMany({
+          where,
+          // Ordenação: Peso (Decrescente) -> Data (Decrescente)
+          orderBy: [
+            { pesoUrgencia: 'desc' }, 
+            { createdAt: 'desc' }
+          ],
+          take: pageSize,
+          skip: (page - 1) * pageSize,
           include: {
-            criadoPor: { select: { nome: true } }, //
-            agenteAcolhida: { select: { id: true, nome: true } }, //
-            especialistaPAEFI: { select: { id: true, nome: true } }, //
+            agenteAcolhida: { select: { nome: true } },
+            especialistaPAEFI: { select: { nome: true } },
           },
-        })
+        }),
+        prisma.case.count({ where }),
+      ])
 
-        if (!caseDetail) { //
-          return await reply.status(404).send({ message: 'Caso não encontrado.' }) //
-        }
-        
-        return await reply.status(200).send(caseDetail) //
-      } catch (error) {
-        return internalError(reply, 'Erro interno ao buscar o caso.', error) //
+      return reply.send({
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      })
+    } catch (error) {
+      return internalError(reply, 'Erro interno ao listar casos ativos.', error)
+    }
+  })
+
+  // -----------------------------------------------------
+  // 3. Listar Casos Fechados
+  // -----------------------------------------------------
+  app.get('/cases/closed', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const schema = z.object({
+      search: z.string().optional(),
+      page: z.coerce.number().min(1).default(1),
+      pageSize: z.coerce.number().min(1).max(100).default(10),
+    })
+
+    try {
+      const { search, page, pageSize } = schema.parse(request.query)
+      let where = buildClosedCaseWhereClause(request.user)
+
+      if (search) {
+        where.OR = [
+          { nomeCompleto: { contains: search, mode: 'insensitive' } },
+          { cpf: { contains: search } },
+        ]
       }
-    },
-  )
 
-  // Rota para atualizar o status de um caso
-  app.patch(
-    '/cases/:id/status',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      const paramsSchema = z.object({ id: z.string().uuid() }) //
-      const bodySchema = z.object({
-        status: z.enum([ //
-          'AGUARDANDO_ACOLHIDA',
-          'EM_ACOLHIDA',
-          'AGUARDANDO_DISTRIBUICAO_PAEFI',
-          'EM_ACOMPANHAMENTO_PAEFI',
-          'DESLIGADO',
-        ]),
+      const [items, total] = await Promise.all([
+        prisma.case.findMany({
+          where,
+          orderBy: { dataDesligamento: 'desc' },
+          take: pageSize,
+          skip: (page - 1) * pageSize,
+          select: {
+            id: true,
+            nomeCompleto: true,
+            cpf: true,
+            status: true,
+            dataDesligamento: true,
+            parecerFinal: true,
+            urgencia: true,
+            motivoDesligamento: true, // Inclui o motivo
+            agenteAcolhida: { select: { nome: true } },
+            especialistaPAEFI: { select: { nome: true } },
+          },
+        }),
+        prisma.case.count({ where }),
+      ])
+
+      return reply.send({
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      })
+    } catch (error) {
+      return internalError(reply, 'Erro interno ao listar casos finalizados.', error)
+    }
+  })
+
+  // -----------------------------------------------------
+  // 4. Detalhes do Caso
+  // -----------------------------------------------------
+  app.get('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
+    try {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+
+      const caso = await prisma.case.findUnique({
+        where: { id },
+        include: {
+          criadoPor: { select: { nome: true } },
+          agenteAcolhida: { select: { id: true, nome: true } },
+          especialistaPAEFI: { select: { id: true, nome: true } },
+          logs: {
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+            include: { autor: { select: { nome: true } } },
+          },
+        },
       })
 
-      try {
-        const { id } = paramsSchema.parse(request.params)
-        const { status } = bodySchema.parse(request.body)
-        const { sub: userId, cargo } = request.user //
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-        const caseToUpdate = await prisma.case.findUnique({ where: { id } }) //
-        if (!caseToUpdate) {
-          return await reply.status(404).send({ message: 'Caso não encontrado.' }) //
-        }
+      return reply.send(caso)
+    } catch (error) {
+      return internalError(reply, 'Erro ao buscar detalhes do caso.', error)
+    }
+  })
 
-        const isManager = cargo === 'Gerente' //
-        const isResponsibleAgent = caseToUpdate.agenteAcolhidaId === userId //
-        const isResponsibleSpecialist =
-          caseToUpdate.especialistaPAEFIId === userId //
+  // -----------------------------------------------------
+  // 5. Atualizar Status
+  // -----------------------------------------------------
+  app.patch('/cases/:id/status', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    const bodySchema = z.object({
+      status: z.nativeEnum(CaseStatus),
+    })
 
-        // Permissão para reabrir (só gerente pode)
-        if (caseToUpdate.status === 'DESLIGADO' && status !== 'DESLIGADO') { //
-          if (!isManager) {
-             return await reply.status(403).send({ message: 'Apenas Gerentes podem reabrir um caso.' }) //
-          }
-        } else if (!isManager && !isResponsibleAgent && !isResponsibleSpecialist) { // Regra geral
-           return await reply.status(403).send({ message: 'Você não tem permissão para esta ação.' }) //
-        }
+    try {
+      const { id } = paramsSchema.parse(request.params)
+      const { status } = bodySchema.parse(request.body)
+      const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
 
-        let data: any = { status } //
+      const caso = await prisma.case.findUnique({ where: { id } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-        // Lógica de Reabertura: Se o caso estava desligado e foi reaberto,
-        // limpa os campos de desligamento.
-        if (caseToUpdate.status === 'DESLIGADO' && status !== 'DESLIGADO') { //
-          data = {
-            ...data,
-            status: 'AGUARDANDO_ACOLHIDA', // Sempre volta para a triagem inicial
-            motivoDesligamento: null, //
-            dataDesligamento: null, //
-            parecerFinal: null, //
-          }
-        }
-        
-        const updatedCase = await prisma.case.update({ //
-          where: { id },
-          data,
-        })
+      const isManager = cargo === Cargo.Gerente
+      const isAgent = caso.agenteAcolhidaId === userId
+      const isSpec = caso.especialistaPAEFIId === userId
 
-        return await reply.status(200).send(updatedCase)
-      } catch (error) {
-        if (error instanceof z.ZodError) { //
-          return await reply.status(400).send({
-            message: 'Dados de status inválidos.',
-            errors: error.flatten().fieldErrors, //
-          })
-        }
-        return internalError(reply, 'Erro interno ao atualizar o status.', error) //
+      if (caso.status === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO && !isManager) {
+        return reply.status(403).send({ message: 'Apenas gerentes podem reabrir um caso.' })
       }
-    },
-  )
 
-  // Rota para atribuir um especialista a um caso
-  app.patch(
-    '/cases/:id/assign',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      const paramsSchema = z.object({ id: z.string().uuid() })
-      const bodySchema = z.object({
-        specialistId: z.string().uuid(), //
+      if (!isManager && !isAgent && !isSpec) {
+        return reply.status(403).send({ message: 'Sem permissão para alterar este caso.' })
+      }
+
+      const oldStatus = caso.status
+      let updateData: any = { status }
+
+      if (oldStatus === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO) {
+        updateData = {
+          status: CaseStatus.AGUARDANDO_ACOLHIDA,
+          motivoDesligamento: null,
+          dataDesligamento: null,
+          parecerFinal: null,
+        }
+      }
+
+      const updated = await prisma.case.update({ where: { id }, data: updateData })
+
+      if (oldStatus !== status) {
+        await createLog(id, userId, LogAction.MUDANCA_STATUS, `Alterou o status de ${oldStatus} para ${status}`)
+      } else {
+        await createLog(id, userId, LogAction.MUDANCA_STATUS, `Reabriu o caso (status reiniciado).`)
+      }
+
+      return reply.send(updated)
+    } catch (error) {
+      return internalError(reply, 'Erro ao alterar status.', error)
+    }
+  })
+
+  // -----------------------------------------------------
+  // 6. Atribuir Especialista ao Caso
+  // -----------------------------------------------------
+  app.patch('/cases/:id/assign', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() })
+    const body = z.object({ specialistId: z.string().uuid() })
+
+    try {
+      const { id } = params.parse(request.params)
+      const { specialistId } = body.parse(request.body)
+      const { cargo, sub: userId } = request.user as { sub: string, cargo: string }
+
+      if (cargo !== Cargo.Gerente) {
+        return reply.status(403).send({ message: 'Apenas gerentes podem atribuir casos.' })
+      }
+
+      const specialist = await prisma.user.findUnique({ where: { id: specialistId } })
+
+      const updatedCase = await prisma.case.update({
+        where: { id },
+        data: { especialistaPAEFIId: specialistId, status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: new Date() },
       })
 
-      try {
-        const { id } = paramsSchema.parse(request.params)
-        const { specialistId } = bodySchema.parse(request.body)
-        const { cargo } = request.user
+      await createLog(id, userId, LogAction.ATRIBUICAO, `Atribuiu o caso ao especialista ${specialist?.nome || 'Desconhecido'}`)
 
-        if (cargo !== 'Gerente') { //
-          return await reply
-            .status(403)
-            .send({ message: 'Apenas gerentes podem atribuir casos.' }) //
-        }
+      return reply.send(updatedCase)
+    } catch (error) {
+      return internalError(reply, 'Erro ao atribuir especialista.', error)
+    }
+  })
 
-        const updatedCase = await prisma.case.update({ //
-          where: { id },
-          data: {
-            especialistaPAEFIId: specialistId, //
-            status: 'EM_ACOMPANHAMENTO_PAEFI', //
-            dataInicioPAEFI: new Date(), //
-          },
-        })
+  // -----------------------------------------------------
+  // 7. Desligar Caso
+  // -----------------------------------------------------
+  app.patch('/cases/:id/close', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() })
+    const body = z.object({
+      parecerFinal: z.string().min(10, 'Muito curto.'),
+      motivoDesligamento: z.string().min(1, 'Obrigatório.'),
+    })
 
-        return await reply.status(200).send(updatedCase)
-      } catch (error) {
-        return internalError(reply, 'Erro interno ao atribuir especialista.', error) //
+    try {
+      const { id } = params.parse(request.params)
+      const { parecerFinal, motivoDesligamento } = body.parse(request.body)
+      const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+
+      const caso = await prisma.case.findUnique({ where: { id } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+
+      const isManager = cargo === Cargo.Gerente
+      const isAgent = caso.agenteAcolhidaId === userId
+      const isSpec = caso.especialistaPAEFIId === userId
+
+      if (!isManager && !isAgent && !isSpec) {
+        return reply.status(403).send({ message: 'Sem permissão para esta ação.' })
       }
-    },
-  )
 
-  // Rota para desligar um caso com parecer final e motivo
-  app.patch(
-    '/cases/:id/close',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      const paramsSchema = z.object({ id: z.string().uuid() })
-      const bodySchema = z.object({
-        parecerFinal: z.string().min(10, 'O parecer final é muito curto.'), //
-        motivoDesligamento: z.string().min(1, 'O motivo de desligamento é obrigatório.'), //
+      const updated = await prisma.case.update({
+        where: { id },
+        data: {
+          status: CaseStatus.DESLIGADO,
+          parecerFinal,
+          motivoDesligamento,
+          dataDesligamento: new Date(),
+        },
       })
 
-      try {
-        const { id } = paramsSchema.parse(request.params)
-        const { parecerFinal, motivoDesligamento } = bodySchema.parse(request.body)
-        const { sub: userId, cargo } = request.user //
+      await createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou o caso. Motivo: ${motivoDesligamento}`)
 
-        const caseToClose = await prisma.case.findUnique({ where: { id } }) //
-        if (!caseToClose) {
-          return await reply.status(404).send({ message: 'Caso não encontrado.' }) //
-        }
+      return reply.send(updated)
+    } catch (error) {
+      return internalError(reply, 'Erro ao desligar caso.', error)
+    }
+  })
 
-        // Permissão atualizada: Gerente, Agente responsável ou Especialista responsável
-        const isManager = cargo === 'Gerente'
-        const isResponsibleAgent = caseToClose.agenteAcolhidaId === userId
-        const isResponsibleSpecialist = caseToClose.especialistaPAEFIId === userId
+  // -----------------------------------------------------
+  // 8. Exportação CSV
+  // -----------------------------------------------------
+  app.get('/cases/export', { onRequest: [app.authenticate] }, async (request, reply) => {
+    if ((request.user as any).cargo !== Cargo.Gerente) {
+      return reply.status(403).send({ message: 'Acesso negado.' })
+    }
 
-        if (!isManager && !isResponsibleAgent && !isResponsibleSpecialist) { //
-          return await reply.status(403).send({ message: 'Você não tem permissão para esta ação.' }) //
-        }
+    try {
+      const casos = await prisma.case.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          criadoPor: true,
+          agenteAcolhida: true,
+          especialistaPAEFI: true,
+        },
+      })
 
-        const updatedCase = await prisma.case.update({ //
-          where: { id },
-          data: {
-            status: 'DESLIGADO', //
-            parecerFinal, //
-            motivoDesligamento, //
-            dataDesligamento: new Date(), //
-          },
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="export_casos_${format(new Date(), 'yyyy-MM-dd')}.csv"`
+      )
+      reply.type('text/csv; charset=utf-8')
+
+      const csv = formatCsv({ headers: true })
+      csv.pipe(reply.raw)
+
+      casos.forEach((c) => {
+        csv.write({
+          ID: c.id,
+          Nome_Completo: c.nomeCompleto,
+          CPF: c.cpf,
+          Nascimento: formatDateForCsv(c.nascimento),
+          Sexo: c.sexo,
+          Telefone: c.telefone,
+          Endereco: c.endereco,
+          Data_Entrada: formatDateForCsv(c.dataEntrada),
+          Urgencia: c.urgencia,
+          Violacao: c.violacao,
+          Categoria: c.categoria,
+          Orgao_Demandante: c.orgaoDemandante,
+          Numero_SEI: c.numeroSei ?? 'N/A',
+          Status: c.status,
+          Criado_Por: c.criadoPor?.nome ?? 'Usuário Removido',
+          Agente_Acolhida: c.agenteAcolhida?.nome ?? 'Não Atribuído',
+          Especialista_PAEFI: c.especialistaPAEFI?.nome ?? 'Não Atribuído',
+          Data_Desligamento: formatDateForCsv(c.dataDesligamento),
+          Parecer_Final: c.parecerFinal ?? 'N/A',
         })
+      })
 
-        return await reply.status(200).send(updatedCase)
-      } catch (error) {
-        return internalError(reply, 'Erro interno ao desligar o caso.', error) //
-      }
-    },
-  )
-
-  // Rota para exportar todos os casos para CSV
-  app.get(
-    '/cases/export',
-    { onRequest: [app.authenticate] }, //
-    async (request, reply) => {
-      if (request.user.cargo !== 'Gerente') { //
-        return await reply.status(403).send({ message: 'Acesso negado.' }) //
-      }
-
-      try {
-        const allCases = await prisma.case.findMany({ //
-          orderBy: { createdAt: 'desc' }, //
-          include: {
-            criadoPor: true, //
-            agenteAcolhida: true, //
-            especialistaPAEFI: true, //
-          },
-        })
-
-        reply.header( //
-          'Content-Disposition',
-          `attachment; filename="export_casos_${format(
-            new Date(),
-            'yyyy-MM-dd',
-          )}.csv"`, //
-        )
-        reply.type('text/csv; charset=utf-8') //
-        
-        const csvStream = format({ headers: true }) //
-        csvStream.pipe(reply.raw) //
-
-        allCases.forEach((c) => {
-          csvStream.write({ //
-            ID: c.id,
-            Nome_Completo: c.nomeCompleto, //
-            CPF: c.cpf, //
-            Nascimento: formatDateForCsv(c.nascimento), //
-            Sexo: c.sexo, //
-            Telefone: c.telefone, //
-            Endereco: c.endereco, //
-            Data_Entrada: formatDateForCsv(c.dataEntrada), //
-            Urgencia: c.urgencia, //
-            Violacao: c.violacao, //
-            Categoria: c.categoria, //
-            Orgao_Demandante: c.orgaoDemandante, //
-            Numero_SEI: c.numeroSei ?? 'N/A', //
-            Status: c.status, //
-            Criado_Por: c.criadoPor?.nome ?? 'Utilizador Removido', //
-            Agente_Acolhida: c.agenteAcolhida?.nome ?? 'Não Atribuído', //
-            Especialista_PAEFI: c.especialistaPAEFI?.nome ?? 'Não Atribuído', //
-            Data_Desligamento: formatDateForCsv(c.dataDesligamento), //
-            Parecer_Final: c.parecerFinal ?? 'N/A', //
-          })
-        })
-
-        csvStream.end() //
-      } catch (error) {
-        return internalError(reply, 'Erro interno ao exportar dados.', error) //
-      }
-    },
-  )
+      csv.end()
+    } catch (error) {
+      return internalError(reply, 'Erro ao exportar CSV.', error)
+    }
+  })
 }

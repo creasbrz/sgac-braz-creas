@@ -29,105 +29,143 @@ var import_client = require("@prisma/client");
 var prisma = new import_client.PrismaClient();
 
 // src/routes/paf.ts
+var import_client2 = require("@prisma/client");
 async function pafRoutes(app) {
+  const pafBodySchema = import_zod.z.object({
+    diagnostico: import_zod.z.string().min(10, "O diagn\xF3stico deve conter ao menos 10 caracteres."),
+    objetivos: import_zod.z.string().min(10, "Os objetivos devem conter ao menos 10 caracteres."),
+    estrategias: import_zod.z.string().min(10, "As estrat\xE9gias devem conter ao menos 10 caracteres."),
+    deadline: import_zod.z.coerce.date({ required_error: "A data do prazo \xE9 obrigat\xF3ria." })
+  });
+  const paramsSchema = import_zod.z.object({
+    caseId: import_zod.z.string().uuid()
+  });
   app.get(
     "/cases/:caseId/paf",
     { onRequest: [app.authenticate] },
-    //
     async (request, reply) => {
-      const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
       try {
         const { caseId } = paramsSchema.parse(request.params);
         const paf = await prisma.paf.findUnique({
           where: { casoId: caseId },
-          //
-          include: { autor: { select: { id: true, nome: true } } }
-          //
+          include: {
+            autor: { select: { id: true, nome: true } }
+          }
         });
-        return await reply.status(200).send(paf);
+        return reply.status(200).send(paf);
       } catch (error) {
-        request.log.error(error, "Erro ao buscar PAF.");
-        return await reply.status(500).send({ message: "Erro interno ao buscar PAF." });
+        console.error("\u274C Erro ao buscar PAF:", error);
+        return reply.status(500).send({ message: "Erro interno ao buscar PAF." });
       }
     }
   );
-  const pafBodySchema = import_zod.z.object({
-    //
-    diagnostico: import_zod.z.string().min(10),
-    //
-    objetivos: import_zod.z.string().min(10),
-    //
-    estrategias: import_zod.z.string().min(10),
-    //
-    // Trocamos 'prazos: z.string()' por 'deadline: z.coerce.date()'
-    deadline: import_zod.z.coerce.date({
-      required_error: "A data do prazo \xE9 obrigat\xF3ria."
-    })
-  });
+  app.get(
+    "/cases/:caseId/paf/history",
+    { onRequest: [app.authenticate] },
+    async (request, reply) => {
+      try {
+        const { caseId } = paramsSchema.parse(request.params);
+        const paf = await prisma.paf.findUnique({ where: { casoId } });
+        if (!paf) return reply.status(200).send([]);
+        const history = await prisma.pafVersion.findMany({
+          where: { pafId: paf.id },
+          orderBy: { savedAt: "desc" },
+          include: {
+            autor: { select: { nome: true } }
+          }
+        });
+        return reply.status(200).send(history);
+      } catch (error) {
+        console.error("\u274C Erro ao buscar hist\xF3rico do PAF:", error);
+        return reply.status(500).send({ message: "Erro ao buscar hist\xF3rico do PAF." });
+      }
+    }
+  );
   app.post(
     "/cases/:caseId/paf",
     { onRequest: [app.authenticate] },
-    //
     async (request, reply) => {
-      const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
       try {
         const { caseId } = paramsSchema.parse(request.params);
         const data = pafBodySchema.parse(request.body);
         const { sub: autorId, cargo } = request.user;
         if (cargo !== "Especialista" && cargo !== "Gerente") {
-          return await reply.status(403).send({ message: "Apenas especialistas podem criar um PAF." });
+          return reply.status(403).send({ message: "Apenas especialistas podem criar um PAF." });
         }
-        const newPaf = await prisma.paf.create({
+        const created = await prisma.paf.create({
           data: {
             ...data,
-            // 'data' agora contém 'deadline' em vez de 'prazos'
             casoId: caseId,
-            //
-            autorId
-            //
+            autorId,
+            versaoAtual: 1
           }
         });
-        return await reply.status(201).send(newPaf);
+        await prisma.caseLog.create({
+          data: {
+            casoId,
+            autorId,
+            acao: import_client2.LogAction.PAF_CRIADO,
+            descricao: "Criou o PAF do caso.",
+            valorNovo: JSON.stringify(data)
+          }
+        });
+        return reply.status(201).send(created);
       } catch (error) {
-        request.log.error(error, "Erro ao criar PAF.");
-        return await reply.status(500).send({ message: "Erro interno ao criar PAF." });
+        console.error("\u274C Erro ao criar PAF:", error);
+        return reply.status(500).send({ message: "Erro interno ao criar PAF." });
       }
     }
   );
   app.put(
     "/cases/:caseId/paf",
     { onRequest: [app.authenticate] },
-    //
     async (request, reply) => {
-      const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
       try {
         const { caseId } = paramsSchema.parse(request.params);
-        const data = pafBodySchema.partial().parse(request.body);
+        const bodyData = pafBodySchema.partial().parse(request.body);
         const { sub: userId, cargo } = request.user;
-        const existingPaf = await prisma.paf.findUnique({
-          where: { casoId: caseId }
-          //
-        });
-        if (!existingPaf) {
-          return await reply.status(404).send({ message: "PAF n\xE3o encontrado." });
+        const existing = await prisma.paf.findUnique({ where: { casoId } });
+        if (!existing) {
+          return reply.status(404).send({ message: "PAF n\xE3o encontrado." });
         }
-        if (existingPaf.autorId !== userId && cargo !== "Gerente") {
-          return await reply.status(403).send({ message: "Apenas o autor ou um gerente podem editar este PAF." });
+        if (existing.autorId !== userId && cargo !== "Gerente") {
+          return reply.status(403).send({ message: "Sem permiss\xE3o para editar este PAF." });
         }
-        const updatedPaf = await prisma.paf.update({
-          where: { casoId: caseId },
-          //
+        const nextVersionNumber = existing.versaoAtual + 1;
+        await prisma.pafVersion.create({
           data: {
-            ...data,
-            // 'data' agora contém 'deadline' (se foi enviado)
-            updatedAt: /* @__PURE__ */ new Date()
-            //
+            pafId: existing.id,
+            diagnostico: existing.diagnostico,
+            objetivos: existing.objetivos,
+            estrategias: existing.estrategias,
+            deadline: existing.deadline,
+            autorId: existing.autorId,
+            versaoNumero: existing.versaoAtual
           }
         });
-        return await reply.status(200).send(updatedPaf);
+        const updated = await prisma.paf.update({
+          where: { casoId },
+          data: {
+            ...bodyData,
+            autorId: userId,
+            versaoAtual: nextVersionNumber,
+            updatedAt: /* @__PURE__ */ new Date()
+          }
+        });
+        await prisma.caseLog.create({
+          data: {
+            casoId,
+            autorId: userId,
+            acao: import_client2.LogAction.PAF_ATUALIZADO,
+            descricao: `Atualizou o PAF para a vers\xE3o ${nextVersionNumber}.`,
+            valorAnterior: JSON.stringify(existing),
+            valorNovo: JSON.stringify(bodyData)
+          }
+        });
+        return reply.status(200).send(updated);
       } catch (error) {
-        request.log.error(error, "Erro ao atualizar PAF.");
-        return await reply.status(500).send({ message: "Erro interno ao atualizar PAF." });
+        console.error("\u274C Erro ao atualizar PAF:", error);
+        return reply.status(500).send({ message: "Erro interno ao atualizar PAF." });
       }
     }
   );

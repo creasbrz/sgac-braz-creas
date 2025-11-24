@@ -29,6 +29,7 @@ var import_client = require("@prisma/client");
 var prisma = new import_client.PrismaClient();
 
 // src/routes/users.ts
+var import_client2 = require("@prisma/client");
 async function userRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
@@ -39,16 +40,15 @@ async function userRoutes(app) {
   });
   app.get("/users", async (request, reply) => {
     const { sub: userId, cargo } = request.user;
-    if (cargo !== "Gerente") {
+    if (cargo !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Acesso negado." });
     }
     try {
       const users = await prisma.user.findMany({
         where: {
           id: { not: userId },
-          // Não inclui o gerente logado
+          // Não inclui o próprio gerente logado
           ativo: true
-          // Mostra apenas usuários ativos
         },
         orderBy: { nome: "asc" },
         select: {
@@ -69,9 +69,9 @@ async function userRoutes(app) {
     try {
       const agents = await prisma.user.findMany({
         where: {
-          cargo: "Agente Social",
+          cargo: import_client2.Cargo.Agente_Social,
+          // [CORREÇÃO] Uso do Enum com underline
           ativo: true
-          //
         },
         orderBy: { nome: "asc" },
         select: {
@@ -89,9 +89,9 @@ async function userRoutes(app) {
     try {
       const specialists = await prisma.user.findMany({
         where: {
-          cargo: "Especialista",
+          cargo: import_client2.Cargo.Especialista,
+          // [CORREÇÃO]
           ativo: true
-          //
         },
         orderBy: { nome: "asc" },
         select: {
@@ -107,18 +107,24 @@ async function userRoutes(app) {
   });
   app.put("/users/:id", async (request, reply) => {
     const { cargo } = request.user;
-    if (cargo !== "Gerente") {
+    if (cargo !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Acesso negado." });
     }
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
     const bodySchema = import_zod.z.object({
       nome: import_zod.z.string().min(3),
       email: import_zod.z.string().email(),
-      cargo: import_zod.z.enum(["Gerente", "Agente Social", "Especialista"])
+      cargo: import_zod.z.nativeEnum(import_client2.Cargo)
+      // Valida se é "Gerente", "Agente_Social", etc.
     });
     try {
       const { id } = paramsSchema.parse(request.params);
-      const data = bodySchema.parse(request.body);
+      const rawData = request.body;
+      let cargoValue = rawData.cargo;
+      if (cargoValue === "Agente Social") cargoValue = import_client2.Cargo.Agente_Social;
+      if (cargoValue === "Especialista") cargoValue = import_client2.Cargo.Especialista;
+      if (cargoValue === "Gerente") cargoValue = import_client2.Cargo.Gerente;
+      const data = bodySchema.parse({ ...rawData, cargo: cargoValue });
       const updatedUser = await prisma.user.update({
         where: { id },
         data: {
@@ -135,7 +141,7 @@ async function userRoutes(app) {
   });
   app.delete("/users/:id", async (request, reply) => {
     const { cargo } = request.user;
-    if (cargo !== "Gerente") {
+    if (cargo !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Acesso negado." });
     }
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
@@ -145,7 +151,6 @@ async function userRoutes(app) {
         where: { id },
         data: {
           ativo: false
-          //
         }
       });
       return reply.status(204).send();

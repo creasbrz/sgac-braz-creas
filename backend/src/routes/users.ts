@@ -1,7 +1,8 @@
 // backend/src/routes/users.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma' //
+import { prisma } from '../lib/prisma'
+import { Cargo } from '@prisma/client' // [CORREÇÃO] Importando o Enum
 
 export async function userRoutes(app: FastifyInstance) {
   // Protege todas as rotas de usuários
@@ -14,24 +15,20 @@ export async function userRoutes(app: FastifyInstance) {
   })
 
   /**
-   * -----------------------------------------------------------------
    * [GET] /users - Listar todos os usuários (para Gerente)
-   * -----------------------------------------------------------------
-   * Usado pela página 'UserManagement.tsx'.
-   * Lista todos os usuários, exceto o próprio gerente que está logado.
    */
   app.get('/users', async (request, reply) => {
     const { sub: userId, cargo } = request.user as { sub: string; cargo: string }
 
-    if (cargo !== 'Gerente') {
+    if (cargo !== Cargo.Gerente) { // [CORREÇÃO]
       return reply.status(403).send({ message: 'Acesso negado.' })
     }
 
     try {
       const users = await prisma.user.findMany({
         where: {
-          id: { not: userId }, // Não inclui o gerente logado
-          ativo: true, // Mostra apenas usuários ativos
+          id: { not: userId }, // Não inclui o próprio gerente logado
+          ativo: true,
         },
         orderBy: { nome: 'asc' },
         select: {
@@ -50,17 +47,15 @@ export async function userRoutes(app: FastifyInstance) {
   })
 
   /**
-   * -----------------------------------------------------------------
    * [GET] /users/agents - Listar Agentes Sociais ativos
-   * -----------------------------------------------------------------
-   * Usado pelo 'NewCaseModal.tsx' para preencher o <Select>.
+   * Usado no Modal de Novo Caso
    */
   app.get('/users/agents', async (request, reply) => {
     try {
       const agents = await prisma.user.findMany({
         where: {
-          cargo: 'Agente Social',
-          ativo: true, //
+          cargo: Cargo.Agente_Social, // [CORREÇÃO] Uso do Enum com underline
+          ativo: true,
         },
         orderBy: { nome: 'asc' },
         select: {
@@ -76,17 +71,14 @@ export async function userRoutes(app: FastifyInstance) {
   })
 
   /**
-   * -----------------------------------------------------------------
    * [GET] /users/specialists - Listar Especialistas ativos
-   * -----------------------------------------------------------------
-   * Usado pelo 'ManagerActions.tsx' para atribuir casos PAEFI.
    */
   app.get('/users/specialists', async (request, reply) => {
     try {
       const specialists = await prisma.user.findMany({
         where: {
-          cargo: 'Especialista',
-          ativo: true, //
+          cargo: Cargo.Especialista, // [CORREÇÃO]
+          ativo: true,
         },
         orderBy: { nome: 'asc' },
         select: {
@@ -102,28 +94,38 @@ export async function userRoutes(app: FastifyInstance) {
   })
 
   /**
-   * -----------------------------------------------------------------
    * [PUT] /users/:id - Atualizar um usuário
-   * -----------------------------------------------------------------
-   * Usado pelo 'EditUserModal' na 'UserManagement.tsx'.
    */
   app.put('/users/:id', async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
-    if (cargo !== 'Gerente') {
+    if (cargo !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Acesso negado.' })
     }
 
     const paramsSchema = z.object({ id: z.string().uuid() })
-    // Schema baseado no 'editUserFormSchema'
+    
+    // O body ainda recebe strings do frontend, precisamos converter para Enum se necessário
+    // Mas o Zod com nativeEnum ajuda a validar
     const bodySchema = z.object({
       nome: z.string().min(3),
       email: z.string().email(),
-      cargo: z.enum(['Gerente', 'Agente Social', 'Especialista']),
+      cargo: z.nativeEnum(Cargo), // Valida se é "Gerente", "Agente_Social", etc.
     })
 
     try {
       const { id } = paramsSchema.parse(request.params)
-      const data = bodySchema.parse(request.body)
+      // Aqui pode dar erro se o frontend enviar "Agente Social" com espaço.
+      // Idealmente o frontend deve enviar o valor do enum ("Agente_Social").
+      // Se o frontend envia com espaço, teremos que tratar aqui.
+      const rawData = request.body as any
+      
+      // Pequeno "adapter" caso o frontend mande com espaço
+      let cargoValue = rawData.cargo
+      if (cargoValue === 'Agente Social') cargoValue = Cargo.Agente_Social
+      if (cargoValue === 'Especialista') cargoValue = Cargo.Especialista
+      if (cargoValue === 'Gerente') cargoValue = Cargo.Gerente
+
+      const data = bodySchema.parse({ ...rawData, cargo: cargoValue })
 
       const updatedUser = await prisma.user.update({
         where: { id },
@@ -142,15 +144,11 @@ export async function userRoutes(app: FastifyInstance) {
   })
 
   /**
-   * -----------------------------------------------------------------
    * [DELETE] /users/:id - Desativar um usuário
-   * -----------------------------------------------------------------
-   * Usado pela 'UserManagement.tsx'.
-   * Não deleta o usuário (para manter o histórico), apenas o desativa.
    */
   app.delete('/users/:id', async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
-    if (cargo !== 'Gerente') {
+    if (cargo !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Acesso negado.' })
     }
 
@@ -159,15 +157,14 @@ export async function userRoutes(app: FastifyInstance) {
     try {
       const { id } = paramsSchema.parse(request.params)
 
-      // Em vez de deletar, atualizamos o campo 'ativo' para 'false'
       await prisma.user.update({
         where: { id },
         data: {
-          ativo: false, //
+          ativo: false,
         },
       })
 
-      return reply.status(204).send() // 204 No Content (sucesso, sem corpo)
+      return reply.status(204).send()
     } catch (error) {
       console.error('Erro ao desativar usuário:', error)
       return reply.status(500).send({ message: 'Erro interno no servidor.' })

@@ -1,3 +1,4 @@
+// frontend/src/components/CaseForm.tsx
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -32,48 +33,80 @@ import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 
+// ------------------------------------------------------------
+// 🔧 CONSTANTES DE LISTAS (Sincronizadas com o Seed/Banco)
+// ------------------------------------------------------------
 
-// ------------------------------------------------------------
-// 🔧 CONSTANTES E HELPERS
-// ------------------------------------------------------------
+const LISTS = {
+  sexo: [
+    'Masculino',
+    'Feminino',
+    'Outro',
+    'Não Informado'
+  ],
+
+  // Lista detalhada de urgências (Strings)
+  urgencia: [
+    'Convive com agressor',
+    'Idoso 80+',
+    'Primeira infância',
+    'Risco de morte',
+    'Risco de reincidência',
+    'Sofre ameaça',
+    'Risco de desabrigo',
+    'Criança/Adolescente',
+    'PCD',
+    'Idoso',
+    'Internação',
+    'Acolhimento',
+    'Gestante/Lactante',
+    'Sem risco imediato',
+    'Visita periódica'
+  ],
+
+  // Lista detalhada de violações (Strings)
+  violacao: [
+    'Abandono',
+    'Negligência',
+    'Afastamento do convívio familiar',
+    'Cumprimento de medidas socioeducativas',
+    'Descumprimento de condicionalidade do PBF',
+    'Discriminação',
+    'Situação de rua',
+    'Trabalho infantil',
+    'Violência física e/ou psicológica',
+    'Violência sexual',
+    'Outros'
+  ],
+
+  // Lista detalhada de categorias (Strings)
+  categoria: [
+    'Mulher',
+    'POP RUA',
+    'LGBTQIA+',
+    'Migrante',
+    'Idoso',
+    'Criança/adolescente',
+    'PCD',
+    'Álcool/drogas',
+    'Família em vulnerabilidade'
+  ],
+
+  // Lista de Benefícios (IDs fixos)
+  beneficios: [
+    { id: 'BPC', label: 'BPC (Benefício de Prestação Continuada)' },
+    { id: 'Bolsa Família', label: 'Bolsa Família' },
+    { id: 'Prato Cheio', label: 'Prato Cheio' },
+    { id: 'Vulnerabilidade', label: 'Auxílio Vulnerabilidade' },
+    { id: 'Excepcional', label: 'Auxílio Excepcional' },
+    { id: 'Calamidade', label: 'Auxílio Calamidade' },
+    { id: 'DF Social', label: 'DF Social' }
+  ]
+}
 
 const CPF_MASK = { mask: '000.000.000-00' }
 const PHONE_MASK = { mask: '(00) 00000-0000' }
 const SEI_MASK = { mask: '00000-00000000/0000-00' }
-
-const LISTS = {
-  sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
-
-  urgencia: [
-    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
-    'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
-    'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
-    'Sem risco imediato', 'Visita periódica'
-  ],
-
-  violacao: [
-    'Abandono', 'Negligência', 'Afastamento do convívio familiar',
-    'Cumprimento de medidas socioeducativas',
-    'Descumprimento de condicionalidade do PBF',
-    'Discriminação', 'Situação de rua', 'Trabalho infantil',
-    'Violência física e/ou psicológica', 'Violência sexual', 'Outros'
-  ],
-
-  categoria: [
-    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso',
-    'Criança/adolescente', 'PCD', 'Álcool/drogas'
-  ],
-
-  beneficios: [
-    { id: 'BPC', label: 'BPC' },
-    { id: 'Bolsa Família', label: 'Bolsa Família' },
-    { id: 'Prato Cheio', label: 'Prato Cheio' },
-    { id: 'Vulnerabilidade', label: 'Vulnerabilidade' },
-    { id: 'Excepcional', label: 'Excepcional' },
-    { id: 'Calamidade', label: 'Calamidade' },
-  ]
-}
-
 
 // 🔧 Função que retorna SOMENTE a data local (sem UTC bug)
 const getLocalDateOnly = (date = new Date()) =>
@@ -81,8 +114,6 @@ const getLocalDateOnly = (date = new Date()) =>
     .toISOString()
     .split("T")[0]
 
-
-// Valores iniciais
 const defaultValues: Partial<CreateCaseFormData> = {
   nomeCompleto: '',
   cpf: '',
@@ -102,17 +133,13 @@ const defaultValues: Partial<CreateCaseFormData> = {
   dataEntrada: '', 
 }
 
-
-// ------------------------------------------------------------
-// 🔧 COMPONENTE PRINCIPAL
-// ------------------------------------------------------------
-
 interface CaseFormProps {
   onCaseCreated?: () => void
 }
 
 export function CaseForm({ onCaseCreated }: CaseFormProps) {
   const queryClient = useQueryClient()
+  // Busca lista de agentes para o select
   const { data: agents, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgents()
 
   const form = useForm<CreateCaseFormData>({
@@ -127,10 +154,11 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
     mutationFn: async (data: CreateCaseFormData) => {
       const payload = {
         ...data,
+        // Remove formatação de máscaras antes de enviar
         cpf: data.cpf.replace(/\D/g, ''),
         telefone: data.telefone.replace(/\D/g, ''),
-        nascimento: data.nascimento,     // já é data local YYYY-MM-DD
-        dataEntrada: getLocalDateOnly(), // sempre salvo a data atual corretamente
+        nascimento: data.nascimento,     
+        dataEntrada: getLocalDateOnly(), 
       }
 
       return await api.post('/cases', payload)
@@ -138,7 +166,9 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
 
     onSuccess: () => {
       toast.success('Caso cadastrado com sucesso!')
+      // Invalida queries para atualizar listas e gráficos
       queryClient.invalidateQueries({ queryKey: ['cases'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
 
       form.reset({
         ...defaultValues,
@@ -149,18 +179,14 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
     },
 
     onError: (error) => {
-      toast.error(getErrorMessage(error, 'Falha ao cadastrar o caso.'))
+      console.error(error)
+      toast.error(getErrorMessage(error, 'Falha ao cadastrar o caso. Verifique os dados.'))
     },
   })
 
   const onSubmit: SubmitHandler<CreateCaseFormData> = async (data) => {
     await createCase(data)
   }
-
-
-  // ------------------------------------------------------------
-  // 🔧 RENDERIZAÇÃO
-  // ------------------------------------------------------------
 
   return (
     <Form {...form}>
@@ -169,14 +195,11 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
         className={clsx("space-y-6", isPending && "opacity-50 pointer-events-none")}
       >
 
-        {/* ------------------------------------------------------------ */}
         {/* 1. IDENTIFICAÇÃO PESSOAL */}
-        {/* ------------------------------------------------------------ */}
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Identificação Pessoal</h3>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
-
+            
             {/* Nome */}
             <FormField
               control={form.control}
@@ -203,7 +226,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                       value={field.value || ''}
                       onAccept={(v: string) => field.onChange(v)}
                       onBlur={field.onBlur}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     />
                   </FormControl>
                   <FormMessage />
@@ -261,7 +284,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                       value={field.value || ''}
                       onAccept={(v: string) => field.onChange(v)}
                       onBlur={field.onBlur}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     />
                   </FormControl>
                   <FormMessage />
@@ -284,21 +307,16 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
           </div>
         </div>
 
-
-        {/* ------------------------------------------------------------ */}
         {/* 2. BENEFÍCIOS */}
-        {/* ------------------------------------------------------------ */}
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Benefícios Recebidos</h3>
-
           <div className="p-4 border rounded-lg bg-card">
             <FormField
               control={form.control}
               name="beneficios"
               render={({ field }) => (
                 <FormItem>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     {LISTS.beneficios.map(item => (
                       <FormItem
                         key={item.id}
@@ -316,15 +334,12 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                             }}
                           />
                         </FormControl>
-
-                        <FormLabel className="cursor-pointer">
+                        <FormLabel className="cursor-pointer font-normal leading-none">
                           {item.label}
                         </FormLabel>
                       </FormItem>
                     ))}
-
                   </div>
-
                   <FormMessage />
                 </FormItem>
               )}
@@ -332,15 +347,11 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
           </div>
         </div>
 
-
-        {/* ------------------------------------------------------------ */}
         {/* 3. DETALHES DO CASO */}
-        {/* ------------------------------------------------------------ */}
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Detalhes do Caso</h3>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
-
+            
             {/* Data Entrada */}
             <FormField
               control={form.control}
@@ -357,16 +368,16 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               )}
             />
 
-            {/* Urgência */}
+            {/* Urgência (Lista Detalhada) */}
             <FormField
               control={form.control}
               name="urgencia"
               render={({ field }) => (
                 <FormItem className="lg:col-span-2">
-                  <FormLabel>Nível de Urgência</FormLabel>
+                  <FormLabel>Classificação de Urgência/Risco</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                    <SelectContent>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione a situação principal" /></SelectTrigger></FormControl>
+                    <SelectContent className="max-h-[200px]">
                       {LISTS.urgencia.map(u => (
                         <SelectItem key={u} value={u}>{u}</SelectItem>
                       ))}
@@ -377,15 +388,15 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               )}
             />
 
-            {/* Violação */}
+            {/* Violação (Lista Detalhada) */}
             <FormField
               control={form.control}
               name="violacao"
               render={({ field }) => (
                 <FormItem className="lg:col-span-2">
-                  <FormLabel>Violação de Direito</FormLabel>
+                  <FormLabel>Violação de Direito Identificada</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione o tipo de violação" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {LISTS.violacao.map(v => (
                         <SelectItem key={v} value={v}>{v}</SelectItem>
@@ -397,15 +408,15 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               )}
             />
 
-            {/* Categoria */}
+            {/* Categoria (Lista Detalhada) */}
             <FormField
               control={form.control}
               name="categoria"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Categoria</FormLabel>
+                  <FormLabel>Categoria do Público</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione o perfil" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {LISTS.categoria.map(c => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -416,19 +427,14 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                 </FormItem>
               )}
             />
-
           </div>
         </div>
 
-
-        {/* ------------------------------------------------------------ */}
         {/* 4. ATRIBUIÇÃO E ORIGEM */}
-        {/* ------------------------------------------------------------ */}
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Atribuição e Origem</h3>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
-
+            
             {/* Órgão Demandante */}
             <FormField
               control={form.control}
@@ -436,7 +442,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Órgão Demandante</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
+                  <FormControl><Input {...field} placeholder="Ex: CRAS, Conselho Tutelar, MP..." /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -455,7 +461,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                       value={field.value || ''}
                       onAccept={(v: string) => field.onChange(v)}
                       onBlur={field.onBlur}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="00000-00000000/0000-00"
                     />
                   </FormControl>
@@ -470,9 +476,9 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               name="linkSei"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Link do SEI</FormLabel>
+                  <FormLabel>Link do Processo SEI</FormLabel>
                   <FormControl>
-                    <Input type="url" {...field} placeholder="https://..." />
+                    <Input type="url" {...field} placeholder="https://sei.df.gov.br/..." />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -485,8 +491,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               name="agenteAcolhidaId"
               render={({ field }) => (
                 <FormItem className="lg:col-span-3">
-                  <FormLabel>Agente Social Responsável</FormLabel>
-
+                  <FormLabel>Agente Social Responsável (Acolhida/Triagem)</FormLabel>
                   <Select
                     value={field.value}
                     onValueChange={field.onChange}
@@ -497,8 +502,8 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                         <SelectValue
                           placeholder={
                             isLoadingAgents
-                              ? "Carregando..."
-                              : "Selecione um agente"
+                              ? "Carregando lista..."
+                              : "Selecione um agente social"
                           }
                         />
                       </SelectTrigger>
@@ -507,13 +512,13 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                     <SelectContent>
                       {isErrorAgents && (
                         <div className="p-2 text-destructive text-sm flex justify-center gap-2">
-                          <AlertCircle className="w-4 h-4" /> Falha ao carregar
+                          <AlertCircle className="w-4 h-4" /> Falha ao carregar agentes
                         </div>
                       )}
 
-                      {agents?.length === 0 && (
+                      {!isLoadingAgents && agents?.length === 0 && (
                         <div className="p-2 text-sm text-muted-foreground text-center">
-                          Nenhum agente disponível
+                          Nenhum agente cadastrado
                         </div>
                       )}
 
@@ -523,39 +528,34 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                         </SelectItem>
                       ))}
                     </SelectContent>
-
                   </Select>
-
                   <FormMessage />
                 </FormItem>
               )}
             />
-
           </div>
         </div>
 
-
-        {/* OBSERVAÇÕES */}
+        {/* 5. OBSERVAÇÕES FINAIS */}
         <FormField
           control={form.control}
           name="observacoes"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Observações (Opcional)</FormLabel>
+              <FormLabel>Observações Gerais (Opcional)</FormLabel>
               <FormControl>
-                <Textarea {...field} className="min-h-[100px]" />
+                <Textarea {...field} className="min-h-[100px]" placeholder="Informações adicionais relevantes para a triagem..." />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-
-        {/* BOTÃO */}
-        <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={isPending} className="w-44">
-            {isPending && <Loader2 className="animate-spin mr-2" />}
-            {isPending ? 'A salvar…' : 'Cadastrar Caso'}
+        {/* BOTÃO DE AÇÃO */}
+        <div className="flex justify-end pt-4 border-t">
+          <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto min-w-[200px]">
+            {isPending && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+            {isPending ? 'Salvando Dados...' : 'Cadastrar Novo Caso'}
           </Button>
         </div>
 

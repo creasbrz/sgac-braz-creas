@@ -1,318 +1,414 @@
 // backend/prisma/seed.ts
-import { PrismaClient } from '@prisma/client'
+/**
+ * Seed Realista e Blindado para SGAC-BRAZ (CREAS)
+ * - Correção: Tratamento de datas para evitar erro "from date > to date"
+ * - Textos técnicos baseados no SUAS (Sistema Único de Assistência Social).
+ * - Distribuição de dados ponderada para simular a realidade de um território.
+ */
+
+import { PrismaClient, CaseStatus, Cargo, LogAction } from '@prisma/client'
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
-import { addMonths, startOfDay, subDays } from 'date-fns'
+import { addDays, addMonths, subDays, isAfter, isBefore } from 'date-fns'
 
 const prisma = new PrismaClient()
 
-// --- Funções Auxiliares de Geração de Dados ---
+/* --------------------------- CONFIGURAÇÕES --------------------------- */
+const NUM_AGENTES = 3
+const NUM_ESPECIALISTAS = 4
+const NUM_CASOS = 150 
+const MAX_EVOLUCOES = 8
+const MAX_AGENDAMENTOS = 3
+const CONCURRENCY = 10
 
-function getRandomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
-}
+/* --------------------------- DADOS TÉCNICOS (SUAS) --------------------------- */
 
-function generateParecerFinal(motivo: string, nome: string): string {
-  switch (motivo) {
-    case 'Mudança de território':
-      return `A família/indivíduo, Sr(a). ${nome}, informou mudança de endereço para outra regional administrativa. O caso está sendo encaminhado via SEI para o CREAS de referência do novo território. Não há mais pendências nesta unidade.`
-    case 'Falecimento':
-      return `Recebida comunicação de falecimento do(a) usuário(a) Sr(a). ${nome}, confirmado por documentação (certidão de óbito anexa ao processo). O acompanhamento do núcleo familiar restante, se necessário, será avaliado em novo registro.`
-    case 'Recusa de atendimento':
-      return `Após múltiplas tentativas de contato (TC) e visita domiciliar (VD), o(a) usuário(a) ${nome} recusou formalmente o acompanhamento ofertado pela equipe, assinando o termo de recusa. O caso será encerrado por desejo do utilizador, que foi orientado sobre os serviços.`
-    case 'Violação cessada':
-      return `O acompanhamento foi concluído com sucesso. As violações de direito identificadas no início do atendimento foram cessadas e os objetivos do PAF foram alcançados. A família (Sr(a). ${nome}) demonstrou fortalecimento dos vínculos e superação da situação de vulnerabilidade.`
-    case 'Contrareferenciamento':
-      return `Caso contrareferenciado para o CRAS de origem (${getRandomItem(['CRAS Brazlândia', 'CRAS Incra'])}) para acompanhamento no PAIF, visto que as demandas de proteção especial foram superadas e a família se enquadra no perfil de Proteção Básica.`
-    case 'Não localizado':
-      return `Realizadas 3 (três) tentativas de visita domiciliar em dias e horários alternados e múltiplos contatos telefônicos sem sucesso. O(A) usuário(a) ${nome} não foi localizado no endereço fornecido e não há novos contatos. Esgotadas as possibilidades de busca ativa no território.`
-    case 'Acolhimento':
-      return `O(A) usuário(a) ${nome} foi encaminhado(a) e recebido(a) em serviço de acolhimento institucional em ${faker.date.recent({ days: 10 }).toLocaleDateString('pt-BR')}. O acompanhamento será continuado pela equipe do serviço de acolhimento.`
-    default:
-      return 'Desligamento realizado conforme parecer técnico detalhado em evoluções anteriores.'
-  }
-}
-
-function generateRealisticPaf(violacao: string, categoria: string): { diagnostico: string, objetivos: string, estrategias: string } {
-  const diagnostico = `Núcleo familiar apresenta vulnerabilidade social e relacional, agravada pela situação de ${violacao.toLowerCase()}. Observa-se fragilidade nos vínculos familiares e comunitários, impactando o(a) ${categoria.toLowerCase()}.`
-  
-  const objetivos = `1. Superação da situação de ${violacao.toLowerCase()}.\n2. Fortalecimento da função protetiva da família.\n3. Promoção de acesso a outros serviços e benefícios socioassistenciais.`
-  
-  const estrategias = `1. Realização de atendimentos psicossociais individualizados e familiares.\n2. Visitas domiciliares para monitoramento e orientação.\n3. Articulação com a rede (Saúde, Educação, Conselho Tutelar) para ações integradas.`
-
-  return { diagnostico, objetivos, estrategias }
-}
-
-function generateObservacoes(orgao: string, violacao: string, categoria: string): string {
-  const obs = [
-    `Caso encaminhado via SEI pelo(a) ${orgao}. Demanda inicial: ${violacao.toLowerCase()}.`,
-    `Usuário(a) compareceu por demanda espontânea, relatando ${violacao.toLowerCase()}. Perfil: ${categoria.toLowerCase()}.`,
-    `Recebido ofício do ${orgao} solicitando acompanhamento para o(a) usuário(a) da categoria ${categoria.toLowerCase()}.`,
-  ]
-  return getRandomItem(obs)
-}
-
-// --- Textos para Evoluções (Novidade) ---
 const textosEvolucao = [
-  "Realizado atendimento individualizado na unidade. Usuário compareceu e relatou melhoria na convivência familiar.",
-  "Visita domiciliar realizada. Família receptiva, porém mantém-se a situação de vulnerabilidade habitacional.",
-  "Contato telefônico com a rede de saúde para verificar agendamento de consulta. Confirmado para a próxima semana.",
-  "Realizada escuta especializada. Identificada necessidade de encaminhamento para o CRAS.",
-  "Participação em reunião de rede com o Conselho Tutelar para discussão do caso.",
-  "Usuário não compareceu ao atendimento agendado. Realizado contato para reagendamento.",
-  "Entrega de benefícios eventuais (cesta básica) e orientação sobre o uso.",
-  "Atendimento psicossocial realizado. Trabalhado o fortalecimento de vínculos e autonomia."
+  "Realizada visita domiciliar. A família reside em imóvel próprio, porém em condições precárias de habitabilidade. Identificada necessidade de encaminhamento para o CRAS para atualização do CadÚnico.",
+  "Atendimento psicossocial realizado na unidade. O usuário relata sofrimento psíquico decorrente da violência sofrida. Foi realizado acolhimento e agendado retorno.",
+  "Contato telefônico com a UBS de referência. A enfermeira responsável informou que a idosa compareceu à consulta agendada e está com a medicação regularizada.",
+  "Busca ativa realizada no território. O usuário não foi localizado no endereço informado. Vizinhos relataram que a família mudou-se há cerca de duas semanas.",
+  "Participação em estudo de caso com a rede intersetorial (Saúde, Educação e Conselho Tutelar). Definidas estratégias conjuntas para proteção da criança.",
+  "Atendimento ao familiar responsável. Foram prestadas orientações sobre o Benefício de Prestação Continuada (BPC) e entregue a lista de documentação necessária.",
+  "O adolescente compareceu ao grupo de convivência. Demonstrou boa interação com os pares, embora ainda apresente resistência em falar sobre o conflito familiar.",
+  "Realizada articulação com o CAPS para avaliação psiquiátrica do usuário, visando suporte ao tratamento de dependência química.",
+  "Entrega de benefício eventual (Auxílio Alimentação/Cesta Básica) em caráter emergencial, conforme parecer técnico.",
+  "Escuta especializada realizada. O relato foi registrado conforme protocolo e o caso será discutido em reunião de equipe para definição de fluxo."
 ]
 
-// --- Listas de Opções ---
-const urgencias = [
-  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
-  'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
-  'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante', 'Sem risco imediato',
-  'Visita periódica',
+const pafDiagnosticos = [
+  "Núcleo familiar monoparental chefiado por mulher, em situação de extrema pobreza. Observa-se fragilidade nos vínculos familiares agravada pelo desemprego e uso abusivo de álcool por parte de um dos membros.",
+  "Idoso em situação de negligência e abandono afetivo. Reside sozinho, apresenta limitações de mobilidade e não conta com suporte da rede familiar extensa. Renda proveniente de BPC.",
+  "Família com histórico de violação de direitos (violência física) contra criança. Genitores apresentam dificuldades no exercício da função protetiva e acessam a rede de serviços de forma irregular.",
+  "Adolescente em cumprimento de medida socioeducativa. Família apresenta vínculos fragilizados e dificuldade em impor limites. O jovem evadiu da escola e não possui atividades no contraturno.",
+  "Pessoa com deficiência (PCD) em situação de isolamento social. Família sobrecarregada com os cuidados e sem acesso a serviços de reabilitação adequados."
 ]
-const violacoes = [
-  'Abandono', 'Negligência', 'Afastamento do convívio familiar', 'Cumprimento de medidas socioeducativas',
-  'Descumprimento de condicionalidade do PBF', 'Discriminação', 'Situação de rua', 'Trabalho infantil',
-  'Violência física e/ou psicológica', 'Violência sexual', 'Outros',
+
+const pafObjetivos = [
+  "1. Fortalecer a função protetiva da família.\n2. Superar a situação de violação de direitos.\n3. Promover o acesso à rede de serviços públicos.",
+  "1. Restabelecer vínculos familiares rompidos.\n2. Garantir a segurança e integridade física do usuário.\n3. Viabilizar a inserção em programas de transferência de renda.",
+  "1. Promover a autonomia e emancipação dos membros da família.\n2. Articular ações de saúde mental para o agressor.\n3. Acompanhar o desempenho escolar das crianças.",
+  "1. Reduzir os danos causados pela situação de violência.\n2. Incluir o usuário em atividades comunitárias e de lazer.\n3. Monitorar a situação habitacional."
 ]
-const categorias = [
-  'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 'Criança/adolescente',
-  'PCD', 'Álcool/drogas',
+
+const pafEstrategias = [
+  "Visitas domiciliares quinzenais; Encaminhamento para o CRAS (PAIF); Articulação com a UBS para acompanhamento médico.",
+  "Atendimentos psicossociais individuais e em grupo; Busca ativa de familiares extensos; Encaminhamento para assessoria jurídica.",
+  "Inserção em oficinas de convivência; Reuniões de rede com a escola e Conselho Tutelar; Orientações sobre direitos e cidadania.",
+  "Acompanhamento sistemático da equipe técnica; Encaminhamento para qualificação profissional; Solicitação de benefícios eventuais."
 ]
-const statusPossiveis = [
-  'AGUARDANDO_ACOLHIDA', 'EM_ACOLHIDA', 'AGUARDANDO_DISTRIBUICAO_PAEFI',
-  'EM_ACOMPANHAMENTO_PAEFI', 'DESLIGADO',
+
+/* --------------------------- LISTAS DE CLASSIFICAÇÃO --------------------------- */
+const urgenciasWeighted: [string, number][] = [
+  ['Convive com agressor', 0.15],
+  ['Risco de morte', 0.05],
+  ['Idoso 80+', 0.10],
+  ['Primeira infância', 0.10],
+  ['Risco de reincidência', 0.15],
+  ['Sofre ameaça', 0.10],
+  ['Risco de desabrigo', 0.05],
+  ['Sem risco imediato', 0.20],
+  ['Visita periódica', 0.10],
 ]
+
+const violacoesWeighted: [string, number][] = [
+  ['Violência física e/ou psicológica', 0.40],
+  ['Negligência', 0.25],
+  ['Abandono', 0.10],
+  ['Violência sexual', 0.08],
+  ['Trabalho infantil', 0.02],
+  ['Situação de rua', 0.05],
+  ['Outros', 0.10],
+]
+
+const categoriasWeighted: [string, number][] = [
+  ['Mulher', 0.35],
+  ['Idoso', 0.20],
+  ['Criança/adolescente', 0.25],
+  ['Família em vulnerabilidade', 0.10],
+  ['PCD', 0.05],
+  ['POP RUA', 0.05],
+]
+
+const sexos = ['Masculino', 'Feminino', 'Outro', 'Não Informado']
+
 const beneficiosList = [
-  'BPC', 'Bolsa Família', 'Prato Cheio', 'Vulnerabilidade', 'Excepcional', 'Calamidade',
+  'BPC (Idoso/PCD)', 
+  'Bolsa Família', 
+  'Prato Cheio', 
+  'DF Social', 
+  'Auxílio Vulnerabilidade', 
+  'Auxílio Calamidade'
 ]
+
 const motivosDesligamento = [
-  'Mudança de território', 'Falecimento', 'Recusa de atendimento', 
-  'Violação cessada', 'Contrareferenciamento', 'Não localizado', 'Acolhimento',
+  'Superação da situação de violação',
+  'Mudança de território (transferência)',
+  'Óbito do usuário',
+  'Recusa de atendimento',
+  'Contra-referência para CRAS (PAIF)',
+  'Acolhimento Institucional'
 ]
+
 const titulosAgendamento = [
-  'Visita Domiciliar', 'Atendimento Individualizado', 'Escuta Especializada', 'Reunião de Rede (Saúde)', 'Acompanhamento Telefônico'
+  'Visita Domiciliar',
+  'Atendimento Psicossocial',
+  'Escuta Especializada',
+  'Reunião de Rede',
+  'Estudo de Caso'
 ]
 
-// --- Função Principal de Povoamento ---
-async function main() {
-  console.log('✅ A iniciar o povoamento da base de dados...')
+/* --------------------------- UTILITÁRIOS --------------------------- */
 
-  console.log('🧹 A limpar tabelas existentes...')
-  await prisma.agendamento.deleteMany()
+const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
+
+function randWeighted<T>(arr: [T, number][]): T {
+  const total = arr.reduce((s, [, w]) => s + w, 0)
+  let r = Math.random() * total
+  for (const [item, weight] of arr) {
+    if (r < weight) return item
+    r -= weight
+  }
+  return arr[0][0]
+}
+
+function pickMultiple<T>(arr: T[], min = 0, max = 2): T[] {
+  const n = faker.number.int({ min, max })
+  return faker.helpers.arrayElements(arr, n)
+}
+
+function chunkArray<T>(arr: T[], size = 10): T[][] {
+  const res: T[][] = []
+  for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size))
+  return res
+}
+
+const calculateWeight = (urgencia: string): number => {
+  const term = urgencia.trim()
+  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
+  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
+  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
+  return 1;
+}
+
+/* --------------------------- SEED PRINCIPAL --------------------------- */
+
+async function main() {
+  console.log('🌱 Iniciando seed REALISTA (SUAS)...')
+
+  console.log('🧹 Limpando dados antigos...')
+  await prisma.caseLog.deleteMany()
+  await prisma.pafVersion.deleteMany()
   await prisma.paf.deleteMany()
+  await prisma.agendamento.deleteMany()
+  await prisma.anexo.deleteMany()
   await prisma.evolucao.deleteMany()
   await prisma.case.deleteMany()
   await prisma.user.deleteMany()
-  console.log('🧼 Tabelas limpas com sucesso.')
 
-  console.log('👤 A criar utilizadores...')
   const hashedPassword = await bcrypt.hash('senha-segura-123', 8)
 
+  // 1. Usuários
+  console.log('👥 Criando equipe técnica...')
   const gerente = await prisma.user.create({
-    data: {
-      nome: 'Gerente CREAS',
-      email: 'gerente@creas.com',
-      senha: hashedPassword,
-      cargo: 'Gerente',
-      ativo: true,
-    },
+    data: { nome: 'Gerente CREAS', email: 'gerente@creas.test', senha: hashedPassword, cargo: Cargo.Gerente, ativo: true }
   })
 
-  const agentesSociais = await Promise.all(
-    Array.from({ length: 3 }).map((_, i) =>
-      prisma.user.create({
-        data: {
-          nome: `Agente Social ${i + 1}`,
-          email: `agente${i + 1}@creas.com`,
-          senha: hashedPassword,
-          cargo: 'Agente Social',
-          ativo: true,
-        },
-      }),
-    ),
-  )
-
-  const especialistas = await Promise.all(
-    Array.from({ length: 4 }).map((_, i) =>
-      prisma.user.create({
-        data: {
-          nome: `Especialista ${i + 1}`,
-          email: `especialista${i + 1}@creas.com`,
-          senha: hashedPassword,
-          cargo: 'Especialista',
-          ativo: true,
-        },
-      }),
-    ),
-  )
-  console.log('👥 Utilizadores (1 Gerente, 3 Agentes, 4 Especialistas) criados com sucesso!')
-
-  const createdCases = []
-  console.log('📂 A criar 80 casos simulados...')
-  
-  for (let i = 0; i < 80; i++) {
-    const status = getRandomItem(statusPossiveis)
-    const agenteAcolhida = getRandomItem(agentesSociais)
-    const nomeCompleto = faker.person.fullName()
-    const violacao = getRandomItem(violacoes)
-    const categoria = getRandomItem(categorias)
-    const orgaoDemandante = getRandomItem(['CRAS', 'Conselho Tutelar', 'Saúde', 'Demanda Espontânea'])
-    
-    let especialistaPAEFI = null
-    let dataInicioPAEFI: Date | null = null
-    let dataDesligamento: Date | null = null
-    let motivoDesligamento: string | null = null
-    let parecerFinal: string | null = null
-    let pafData = undefined
-
-    const beneficios = faker.helpers.arrayElements(beneficiosList, { min: 0, max: 2 })
-
-    if (['EM_ACOMPANHAMENTO_PAEFI', 'DESLIGADO'].includes(status)) {
-      especialistaPAEFI = getRandomItem(especialistas)
-      dataInicioPAEFI = faker.date.past({ years: 1 })
-      
-      const { diagnostico, objetivos, estrategias } = generateRealisticPaf(violacao, categoria)
-      
-      pafData = {
-        create: {
-          diagnostico,
-          objetivos,
-          estrategias,
-          deadline: (i % 10 === 0) 
-            ? faker.date.future({ days: 7, refDate: startOfDay(new Date()) }) 
-            : addMonths(dataInicioPAEFI, getRandomItem([3, 6, 12])),
-          autorId: especialistaPAEFI.id,
-        }
-      }
-    }
-    
-    if (status === 'DESLIGADO') {
-      dataDesligamento = faker.date.recent({ days: 30 })
-      motivoDesligamento = getRandomItem(motivosDesligamento)
-      parecerFinal = generateParecerFinal(motivoDesligamento, nomeCompleto)
-    }
-    
-    const newCase = await prisma.case.create({
-      data: {
-        nomeCompleto,
-        cpf: faker.string.numeric(11),
-        nascimento: faker.date.birthdate({ min: 18, max: 70, mode: 'age' }),
-        sexo: getRandomItem(['Masculino', 'Feminino']),
-        telefone: faker.phone.number('619########'),
-        endereco: faker.location.streetAddress({ useFullAddress: true }),
-        dataEntrada: faker.date.past({ years: 2 }),
-        urgencia: getRandomItem(urgencias),
-        violacao,
-        categoria,
-        orgaoDemandante,
-        numeroSei: `${faker.string.numeric(5)}-${faker.string.numeric(8)}/${faker.string.numeric(4)}-${faker.string.numeric(2)}`,
-        observacoes: generateObservacoes(orgaoDemandante, violacao, categoria),
-        status,
-        criadoPorId: gerente.id,
-        agenteAcolhidaId: agenteAcolhida.id,
-        especialistaPAEFIId: especialistaPAEFI?.id,
-        dataInicioPAEFI,
-        dataDesligamento,
-        beneficios,
-        motivoDesligamento,
-        parecerFinal,
-        paf: pafData,
-      },
-    })
-    createdCases.push(newCase)
+  const agentes = []
+  for (let i = 1; i <= NUM_AGENTES; i++) {
+    agentes.push(await prisma.user.create({
+      data: { nome: `Agente Social ${i}`, email: `agente${i}@creas.test`, senha: hashedPassword, cargo: Cargo.Agente_Social, ativo: true }
+    }))
   }
-  console.log(`📦 ${createdCases.length} casos simulados criados.`)
 
-  // --- Criação de Evoluções (Histórico) ---
-  console.log('📝 A criar evoluções (histórico) para os casos...')
-  let evolutionCount = 0
-  
-  for (const c of createdCases) {
-    // Determina quem pode ter escrito a evolução (Gerente, Agente ou Especialista)
-    const possiveisAutores = [gerente]
-    if (c.agenteAcolhidaId) possiveisAutores.push(agentesSociais.find(a => a.id === c.agenteAcolhidaId)!)
-    if (c.especialistaPAEFIId) possiveisAutores.push(especialistas.find(e => e.id === c.especialistaPAEFIId)!)
-
-    // Cria entre 1 e 5 evoluções para cada caso
-    const numEvolucoes = faker.number.int({ min: 1, max: 5 })
-    
-    for (let j = 0; j < numEvolucoes; j++) {
-      // Data da evolução: aleatória entre a entrada e hoje (ou data de desligamento)
-      const dataMax = c.dataDesligamento || new Date()
-      const dataEvolucao = faker.date.between({ from: c.dataEntrada, to: dataMax })
-      
-      const autor = getRandomItem(possiveisAutores)
-
-      await prisma.evolucao.create({
-        data: {
-          conteudo: getRandomItem(textosEvolucao), // Usa os textos predefinidos
-          createdAt: dataEvolucao,
-          casoId: c.id,
-          autorId: autor.id,
-        }
-      })
-      evolutionCount++
-    }
+  const especialistas = []
+  for (let i = 1; i <= NUM_ESPECIALISTAS; i++) {
+    especialistas.push(await prisma.user.create({
+      data: { nome: `Especialista ${i}`, email: `especialista${i}@creas.test`, senha: hashedPassword, cargo: Cargo.Especialista, ativo: true }
+    }))
   }
-  console.log(`📝 ${evolutionCount} evoluções registradas com sucesso!`)
 
- // --- Criação de Agendamentos (TÉCNICOS) ---
-  console.log('🗓️ A criar agendamentos simulados...')
-  let agendamentoCount = 0
-  const activeCases = createdCases.filter(c => 
-    c.status === 'EM_ACOLHIDA' || c.status === 'EM_ACOMPANHAMENTO_PAEFI'
-  )
+  // 2. Casos
+  console.log(`📂 Gerando ${NUM_CASOS} prontuários detalhados...`)
+  const now = new Date()
+  const casePayloads: any[] = []
 
-  for (const c of activeCases) {
-    let responsavelId = null
-    if (c.status === 'EM_ACOLHIDA' && c.agenteAcolhidaId) {
-      responsavelId = c.agenteAcolhidaId
-    } else if (c.status === 'EM_ACOMPANHAMENTO_PAEFI' && c.especialistaPAEFIId) {
-      responsavelId = c.especialistaPAEFIId
+  for (let i = 0; i < NUM_CASOS; i++) {
+    const statusOptionsWeighted: [CaseStatus, number][] = [
+      [CaseStatus.AGUARDANDO_ACOLHIDA, 0.10],
+      [CaseStatus.EM_ACOLHIDA, 0.15],
+      [CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI, 0.10],
+      [CaseStatus.EM_ACOMPANHAMENTO_PAEFI, 0.50],
+      [CaseStatus.DESLIGADO, 0.15]
+    ]
+    const status = randWeighted(statusOptionsWeighted)
+    
+    const agente = rand(agentes)
+    const especialista = rand(especialistas)
+    
+    // [SEGURANÇA] Data de entrada até ontem para evitar "futuro" no log
+    const dataEntrada = faker.date.between({ from: subDays(now, 365), to: subDays(now, 1) })
+    
+    const urgencia = randWeighted(urgenciasWeighted)
+    const violacao = randWeighted(violacoesWeighted)
+    const categoria = randWeighted(categoriasWeighted)
+
+    const base: any = {
+      nomeCompleto: faker.person.fullName(),
+      cpf: faker.string.numeric(11),
+      nascimento: faker.date.birthdate({ min: 0, max: 90 }),
+      sexo: rand(sexos),
+      telefone: faker.string.numeric(11),
+      endereco: `${faker.location.street()}, ${faker.location.buildingNumber()} - ${faker.location.city()}`,
+      dataEntrada,
+      urgencia,
+      pesoUrgencia: calculateWeight(urgencia),
+      violacao,
+      categoria,
+      orgaoDemandante: rand(['CRAS', 'Conselho Tutelar', 'MPDFT', 'Demanda Espontânea', 'Disque 100', 'Saúde']),
+      numeroSei: faker.datatype.boolean() ? `SEI-${faker.number.int({ min: 10000, max: 99999 })}` : null,
+      linkSei: null,
+      observacoes: faker.lorem.paragraph(1),
+      status,
+      criadoPorId: gerente.id,
+      agenteAcolhidaId: agente.id,
+      beneficios: pickMultiple(beneficiosList, 0, 3)
     }
 
-    if (responsavelId) {
-      const numAgendamentos = getRandomItem([1, 2])
-      for (let j = 0; j < numAgendamentos; j++) {
-        await prisma.agendamento.create({
-          data: {
-            titulo: getRandomItem(titulosAgendamento),
-            data: faker.date.future({ days: 30 }),
-            casoId: c.id,
-            responsavelId: responsavelId,
-          },
+    const updates: any = {}
+
+    if (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.DESLIGADO) {
+      updates.especialistaPAEFIId = especialista.id
+      const diasTriagem = faker.number.int({ min: 2, max: 45 })
+      updates.dataInicioPAEFI = addDays(dataEntrada, diasTriagem)
+    }
+
+    if (status === CaseStatus.DESLIGADO) {
+      const baseStart = updates.dataInicioPAEFI ?? dataEntrada
+      const diasAteDeslig = faker.number.int({ min: 10, max: 180 })
+      const dataDeslig = addDays(baseStart, diasAteDeslig)
+      // Garante que não desliga no futuro
+      updates.dataDesligamento = isAfter(dataDeslig, now) ? now : dataDeslig
+      updates.motivoDesligamento = rand(motivosDesligamento)
+      updates.parecerFinal = `Caso desligado após cumprimento dos objetivos. ${faker.lorem.sentence()}`
+    }
+
+    casePayloads.push({ base, updates })
+  }
+
+  // 3. Inserção em Chunks
+  console.log('⚙️ Processando inserção em lotes...')
+  const chunks = chunkArray(casePayloads, CONCURRENCY)
+  let createdCount = 0
+
+  for (const chunk of chunks) {
+    await Promise.all(chunk.map(async (item) => {
+      const { base, updates } = item
+      try {
+        await prisma.$transaction(async (tx) => {
+          const novoCaso = await tx.case.create({ data: { ...base, ...updates } })
+          createdCount++
+
+          // Logs
+          const logsToCreate: any[] = [{
+            acao: LogAction.CRIACAO,
+            descricao: 'Caso inserido no sistema (Triagem).',
+            casoId: novoCaso.id,
+            autorId: base.criadoPorId,
+            createdAt: base.dataEntrada
+          }]
+
+          if (novoCaso.status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
+            logsToCreate.push({
+              acao: LogAction.MUDANCA_STATUS,
+              descricao: 'Encaminhado para Acolhida/Técnico.',
+              casoId: novoCaso.id,
+              autorId: novoCaso.agenteAcolhidaId!,
+              createdAt: addDays(base.dataEntrada, 1)
+            })
+          }
+
+          if (novoCaso.especialistaPAEFIId) {
+            logsToCreate.push({
+              acao: LogAction.ATRIBUICAO,
+              descricao: `Atribuído ao especialista (id: ${novoCaso.especialistaPAEFIId}).`,
+              casoId: novoCaso.id,
+              autorId: gerente.id,
+              createdAt: novoCaso.dataInicioPAEFI ?? addDays(base.dataEntrada, 2)
+            })
+          }
+
+          if (novoCaso.dataDesligamento) {
+            logsToCreate.push({
+              acao: LogAction.DESLIGAMENTO,
+              descricao: `Caso desligado. Motivo: ${novoCaso.motivoDesligamento}`,
+              casoId: novoCaso.id,
+              autorId: gerente.id,
+              createdAt: novoCaso.dataDesligamento
+            })
+          }
+
+          if (logsToCreate.length > 0) await tx.caseLog.createMany({ data: logsToCreate })
+
+          // Evoluções (Com correção de data)
+          const numEvos = faker.number.int({ min: 2, max: MAX_EVOLUCOES })
+          const evolutionsData: any[] = []
+          for (let e = 0; e < numEvos; e++) {
+            const maxDate = novoCaso.dataDesligamento ?? now
+            let start = addDays(base.dataEntrada, 1)
+            
+            // [CORREÇÃO] Garante que start < end
+            if (isAfter(start, maxDate) || start.getTime() === maxDate.getTime()) {
+                start = base.dataEntrada
+            }
+            if (isAfter(start, maxDate)) {
+                // Se ainda assim der erro (caso criado hoje), usa a data de entrada exata
+                start = maxDate 
+            }
+
+            // Se as datas forem iguais, faker quebra, então evitamos chamar between
+            const evoDate = start.getTime() === maxDate.getTime() 
+                ? start 
+                : faker.date.between({ from: start, to: maxDate })
+
+            evolutionsData.push({
+              conteudo: rand(textosEvolucao),
+              casoId: novoCaso.id,
+              autorId: rand([novoCaso.agenteAcolhidaId!, novoCaso.especialistaPAEFIId ?? novoCaso.agenteAcolhidaId!]),
+              createdAt: evoDate
+            })
+          }
+          if (evolutionsData.length) await tx.evolucao.createMany({ data: evolutionsData })
+
+          // PAF
+          if (novoCaso.status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || novoCaso.dataDesligamento) {
+            const dataInicio = novoCaso.dataInicioPAEFI ?? addDays(base.dataEntrada, 3)
+            const deadline = addMonths(dataInicio, 6)
+
+            const paf = await tx.paf.create({
+              data: {
+                diagnostico: rand(pafDiagnosticos),
+                objetivos: rand(pafObjetivos),
+                estrategias: rand(pafEstrategias),
+                deadline,
+                casoId: novoCaso.id,
+                autorId: novoCaso.especialistaPAEFIId ?? gerente.id,
+                createdAt: addDays(dataInicio, 7)
+              }
+            })
+
+            if (faker.datatype.boolean()) {
+              await tx.pafVersion.create({
+                data: {
+                  pafId: paf.id,
+                  diagnostico: rand(pafDiagnosticos),
+                  objetivos: rand(pafObjetivos),
+                  estrategias: 'Estratégias iniciais definidas em reunião de equipe.',
+                  deadline: addMonths(dataInicio, 3),
+                  autorId: paf.autorId,
+                  savedAt: addDays(dataInicio, 8)
+                }
+              })
+            }
+
+            await tx.caseLog.create({
+              data: {
+                acao: LogAction.PAF_CRIADO,
+                descricao: 'Plano de Acompanhamento (PAF) elaborado.',
+                casoId: novoCaso.id,
+                autorId: paf.autorId,
+                createdAt: addDays(dataInicio, 7)
+              }
+            })
+          }
+
+          // Agendamentos
+          if (!novoCaso.dataDesligamento) {
+            const numAg = faker.number.int({ min: 0, max: MAX_AGENDAMENTOS })
+            const agendas: any[] = []
+            for (let a = 0; a < numAg; a++) {
+              // Agendamentos apenas no futuro próximo
+              const dataAg = addDays(now, faker.number.int({ min: 1, max: 30 }))
+              agendas.push({
+                titulo: rand(titulosAgendamento),
+                data: dataAg,
+                observacoes: 'Confirmar presença.',
+                responsavelId: novoCaso.especialistaPAEFIId ?? novoCaso.agenteAcolhidaId!,
+                casoId: novoCaso.id,
+                createdAt: now
+              })
+            }
+            if (agendas.length) await tx.agendamento.createMany({ data: agendas })
+          }
         })
-        agendamentoCount++
-      }
-    }
+      } catch (err) { console.error('Erro no caso:', err) }
+    }))
+    await new Promise((res) => setTimeout(res, 50))
   }
 
-  // --- [NOVO] Criação de Agendamentos para o GERENTE (Para você ver no dashboard) ---
-  const casosDoGerente = createdCases.slice(0, 3); // Pega 3 casos quaisquer
-  for (const c of casosDoGerente) {
-     await prisma.agendamento.create({
-        data: {
-          titulo: "Supervisão de Caso (Teste)",
-          data: faker.date.soon({ days: 7 }), // Próximos 7 dias
-          casoId: c.id,
-          responsavelId: gerente.id, // Atribui ao GERENTE
-          observacoes: "Reunião de alinhamento criada pelo seed."
-        }
-     });
-     agendamentoCount++;
-  }
-
-  console.log(`📅 ${agendamentoCount} agendamentos futuros criados com sucesso!`)
-  console.log('🎉 Povoamento da base de dados concluído.')
+  console.log('🎉 Seed finalizado!')
+  console.log(`📊 ${createdCount} prontuários gerados.`)
+  console.log('🔐 Login: gerente@creas.test | Senha: senha-segura-123')
 }
 
-main()
-  .catch((e) => {
-    console.error('❌ Ocorreu um erro durante o povoamento:', e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+main().catch((e) => { console.error('❌ Erro Fatal:', e); process.exit(1) }).finally(async () => { await prisma.$disconnect() })

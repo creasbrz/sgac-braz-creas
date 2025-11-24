@@ -39,7 +39,7 @@ export function GlobalAudit() {
     search: "",
   })
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading} = useQuery({
     queryKey: ["audit-logs", page, filters],
     queryFn: async () => {
       const res = await api.get("/audit", {

@@ -1,5 +1,5 @@
 // frontend/src/contexts/SidebarContext.tsx
-import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { createContext, useContext, useState, ReactNode } from "react"
 
 interface SidebarContextType {
   isCollapsed: boolean

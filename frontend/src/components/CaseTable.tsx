@@ -14,7 +14,7 @@ import { ROUTES } from '@/constants/routes'
 import { formatCPF, formatDateSafe } from '@/utils/formatters'
 import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/utils/error'
-import { URGENCY_STYLES, getUrgencyColor } from '@/constants/caseConstants'
+import { getUrgencyColor } from '@/constants/caseConstants'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

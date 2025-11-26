@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom'
 import { ROUTES } from '@/constants/routes'
 
 interface AgentStats {
-  role: 'Agente Social'
+  role: 'Agente_Social' // [CORREÇÃO]
   myActiveCases: number
   myClosedMonth: number
   myNewCasesMonth: number

@@ -1,6 +1,7 @@
 // frontend/src/types/user.ts
 
-export type UserRole = 'Gerente' | 'Agente Social' | 'Especialista'
+// [CORREÇÃO] Adicione o underline
+export type UserRole = 'Gerente' | 'Agente_Social' | 'Especialista'
 
 export interface User {
   id: string

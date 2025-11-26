@@ -1,51 +1,29 @@
 // frontend/src/pages/UserManagement.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod' // Importação adicionada
+import { z } from 'zod'
 import { api } from '@/lib/api'
 import { Loader2, Trash2, Edit } from 'lucide-react'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/utils/error'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { editUserFormSchema } from '@/schemas/userSchemas'
 import type { User } from '@/types/user'
@@ -60,7 +38,7 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
     formState: { errors },
   } = useForm<EditUserFormData>({
     resolver: zodResolver(editUserFormSchema),
-    defaultValues: user,
+    defaultValues: user, // O TypeScript agora vai aceitar pois o schema bate com o tipo User
   })
 
   const { mutate: updateUser, isPending } = useMutation({
@@ -77,7 +55,7 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
     },
   })
 
-  const onSubmit = (data: EditUserFormData) => {
+  const onSubmit: SubmitHandler<EditUserFormData> = (data) => {
     updateUser(data)
   }
 
@@ -106,7 +84,8 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
               <Select onValueChange={field.onChange} value={field.value}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Agente Social">Agente Social</SelectItem>
+                  {/* [CORREÇÃO] Valores atualizados */}
+                  <SelectItem value="Agente_Social">Agente Social</SelectItem>
                   <SelectItem value="Especialista">Especialista</SelectItem>
                   <SelectItem value="Gerente">Gerente</SelectItem>
                 </SelectContent>
@@ -162,6 +141,7 @@ export function UserManagement() {
           Edite ou desative os profissionais do sistema.
         </p>
       </div>
+      
       <Card>
         <CardHeader>
           <CardTitle>Profissionais Ativos</CardTitle>
@@ -185,7 +165,7 @@ export function UserManagement() {
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.nome}</TableCell>
                     <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.cargo}</TableCell>
+                    <TableCell>{user.cargo.replace('_', ' ')}</TableCell>
                     <TableCell className="text-right">
                       <Dialog open={editingUser?.id === user.id} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)}>
                         <DialogTrigger asChild>
@@ -205,7 +185,8 @@ export function UserManagement() {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>Tem a certeza?</AlertDialogTitle>
-                            <AlertDialogDescription>Esta ação irá desativar o utilizador "{user.nome}". Ele não poderá mais aceder ao sistema. Esta ação não pode ser desfeita facilmente.</AlertDialogDescription>
+                            <AlertDialogDescription>Esta ação irá desativar o utilizador "{user.nome}".
+                            Ele não poderá mais aceder ao sistema. Esta ação não pode ser desfeita facilmente.</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>

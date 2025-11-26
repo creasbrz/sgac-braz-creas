@@ -6,7 +6,6 @@ import { Loader2 } from 'lucide-react'
 export function ClosedCases() {
   const { user, isSessionLoading } = useAuth()
 
-  // Loader inicial (igual ao Cases.tsx)
   if (isSessionLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -15,7 +14,6 @@ export function ClosedCases() {
     )
   }
 
-  // Caso raro mas importante: usuário nulo após validar sessão
   if (!user) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -26,20 +24,19 @@ export function ClosedCases() {
     )
   }
 
-  // Título dinâmico por cargo
-  const titlesByRole = {
-    Gerente: 'Todos os Casos Finalizados',
-    'Agente Social': 'Meus Casos Finalizados',
-    Especialista: 'Meus Casos Finalizados',
+  // [CORREÇÃO] Usando chaves com underline
+  const titlesByRole: Record<string, string> = {
+    Gerente: 'Arquivo Morto (Todos)',
+    'Agente_Social': 'Meus Casos Finalizados',
+    Especialista: 'Histórico de Acompanhamentos',
   }
 
   const title = titlesByRole[user.cargo] ?? 'Casos Finalizados'
 
-  // Descrição por cargo
   const description =
     user.cargo === 'Gerente'
-      ? 'Consulte todos os casos finalizados do sistema.'
-      : 'Consulte todos os seus casos que já foram desligados.'
+      ? 'Consulta completa ao histórico de casos desligados da unidade.'
+      : 'Consulte os casos que você atendeu e já foram desligados.'
 
   return (
     <CaseTable

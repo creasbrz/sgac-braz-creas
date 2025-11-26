@@ -1,16 +1,17 @@
 // frontend/src/pages/Dashboard.tsx
+import React from 'react' // [CORREÇÃO] Import necessário para tipagem
 import { useAuth } from '@/hooks/useAuth'
 import { Loader2 } from 'lucide-react'
 import { ManagerDashboard } from './ManagerDashboard'
 import { TechnicianDashboard } from './TechnicianDashboard'
 import { SocialAgentDashboard } from './SocialAgentDashboard'
-import React from 'react'
 
-type Cargo = 'Gerente' | 'Agente Social' | 'Especialista' | string
+type Cargo = 'Gerente' | 'Agente_Social' | 'Especialista' | string
 
+// [CORREÇÃO] Tipo React.ReactNode em vez de JSX.Element
 const DASHBOARD_BY_ROLE: Record<Cargo, React.ReactNode> = {
   Gerente: <ManagerDashboard />,
-  'Agente Social': <SocialAgentDashboard />,
+  'Agente_Social': <SocialAgentDashboard />,
   Especialista: <TechnicianDashboard />,
 }
 
@@ -42,7 +43,7 @@ export function Dashboard() {
   )
 
   const subtitle =
-    user.cargo === 'Agente Social'
+    user.cargo === 'Agente_Social'
       ? 'Painel de Acolhida e Triagem.'
       : user.cargo === 'Gerente'
       ? 'Resumo geral da unidade.'

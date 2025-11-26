@@ -1,9 +1,5 @@
 // frontend/src/constants/caseTransitions.ts
-import {
-  type CaseStatusIdentifier,
-  // REMOVIDO: getCaseStatusInfo
-} from './caseConstants'
-// ADICIONADO: Importação correta do tipo UserRole
+import { type CaseStatusIdentifier } from './caseConstants'
 import type { UserRole } from '@/types/user'
 
 const buttonStyles = {
@@ -24,7 +20,6 @@ export interface StatusAction {
   style: string
 }
 
-// ... (O objeto caseTransitions permanece igual) ...
 export const caseTransitions: Partial<
   Record<CaseStatusIdentifier, StatusAction[]>
 > = {
@@ -33,13 +28,13 @@ export const caseTransitions: Partial<
       label: 'Iniciar Acolhida',
       type: 'status',
       nextStatus: 'EM_ACOLHIDA',
-      allowedRoles: ['Gerente', 'Agente Social'],
+      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
       style: buttonStyles.success,
     },
     {
       label: 'Desligamento Simplificado',
       type: 'close',
-      allowedRoles: ['Gerente', 'Agente Social'],
+      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
       style: buttonStyles.neutral,
     },
   ],
@@ -47,14 +42,14 @@ export const caseTransitions: Partial<
     {
       label: 'Desligamento Simplificado',
       type: 'close',
-      allowedRoles: ['Gerente', 'Agente Social'],
+      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
       style: buttonStyles.neutral,
     },
     {
       label: 'Encaminhar para PAEFI',
       type: 'status',
       nextStatus: 'AGUARDANDO_DISTRIBUICAO_PAEFI',
-      allowedRoles: ['Gerente', 'Agente Social'],
+      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
       style: buttonStyles.accent,
     },
   ],
@@ -85,7 +80,6 @@ export const caseTransitions: Partial<
   ],
 }
 
-// ... (A função getAvailableActions permanece igual) ...
 export function getAvailableActions(
   status: CaseStatusIdentifier,
   cargo: UserRole,

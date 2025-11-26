@@ -6,7 +6,6 @@ import { Loader2 } from 'lucide-react'
 export function Cases() {
   const { user, isSessionLoading } = useAuth()
 
-  // Evita piscar a interface
   if (isSessionLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -15,7 +14,6 @@ export function Cases() {
     )
   }
 
-  // Sessão inválida (token expirado ou falha no /me)
   if (!user) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -26,25 +24,22 @@ export function Cases() {
     )
   }
 
-  // Título dinâmico por cargo
-  const titlesByRole = {
+  // [CORREÇÃO] Usando chaves exatas do backend (com underline)
+  const titlesByRole: Record<string, string> = {
     Gerente: 'Todos os Casos',
-    'Agente Social': 'Casos de Acolhida',
+    'Agente_Social': 'Minha Caixa de Acolhida',
     Especialista: 'Casos em Acompanhamento PAEFI',
   }
 
-  const title = titlesByRole[user.cargo] ?? 'Meus Casos'
+  const title = titlesByRole[user.cargo] ?? 'Casos Ativos'
 
-  // Descrições dinâmicas
-  const descriptionText = {
-    Gerente: 'Visualize todos os casos que aguardam distribuição para o PAEFI.',
-    'Agente Social': 'Visualize todos os seus casos em acolhida ou aguardando acolhida.',
-    Especialista: 'Visualize todos os seus casos em acompanhamento PAEFI.',
+  const descriptionText: Record<string, string> = {
+    Gerente: 'Visão geral de todos os casos ativos na unidade.',
+    'Agente_Social': 'Casos aguardando acolhida ou em atendimento inicial sob sua responsabilidade.',
+    Especialista: 'Casos vinculados ao seu acompanhamento técnico.',
   }
 
-  const description =
-    descriptionText[user.cargo] ??
-    'Visualize os seus casos ativos.'
+  const description = descriptionText[user.cargo] ?? 'Listagem de casos do sistema.'
 
   return (
     <CaseTable

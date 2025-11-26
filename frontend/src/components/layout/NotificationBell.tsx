@@ -1,12 +1,9 @@
 // frontend/src/components/layout/NotificationBell.tsx
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bell } from 'lucide-react'
+import { Bell, Info, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { useAuth } from '@/hooks/useAuth'
-import { ROUTES } from '@/constants/routes'
-
 import {
   Popover,
   PopoverContent,
@@ -25,50 +22,14 @@ interface NotificationItem {
 }
 
 export function NotificationBell() {
-  const { user } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
 
+  // Busca notificações a cada 60 segundos
   const { data: notifications = [] } = useQuery<NotificationItem[]>({
     queryKey: ['notifications-bell'],
     queryFn: async () => {
-      const items: NotificationItem[] = []
-
-      // 1. Verificar Prazos de PAF (Exceto para Agente Social)
-      // [CORREÇÃO] Uso de Agente_Social
-      if (user?.cargo !== 'Agente_Social') {
-        const pafRes = await api.get('/alerts/paf-deadlines')
-        const pafs = pafRes.data
-        
-        pafs.forEach((p: any) => {
-          items.push({
-            id: `paf-${p.pafId}`,
-            title: 'Prazo de PAF Vencendo',
-            description: `Caso: ${p.caseName}. Vence em breve!`,
-            link: ROUTES.CASE_DETAIL(p.caseId),
-            type: 'critical'
-          })
-        })
-      }
-
-      // 2. Verificar Novos Casos na Triagem (Agente ou Gerente)
-      // [CORREÇÃO] Uso de Agente_Social
-      if (user?.cargo === 'Agente_Social' || user?.cargo === 'Gerente') {
-        const casesRes = await api.get('/cases', { 
-            params: { status: 'AGUARDANDO_ACOLHIDA', pageSize: 5 } 
-        })
-        
-        if (casesRes.data.total > 0) {
-            items.push({
-                id: 'new-cases-queue',
-                title: 'Novos Casos na Fila',
-                description: `Existem ${casesRes.data.total} casos aguardando acolhida.`,
-                link: ROUTES.CASES,
-                type: 'info'
-            })
-        }
-      }
-
-      return items
+      const res = await api.get('/alerts')
+      return res.data
     },
     refetchInterval: 1000 * 60, // 1 minuto
   })
@@ -82,7 +43,9 @@ export function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5 text-muted-foreground" />
           {hasNotifications && (
-            <span className={`absolute top-2 right-2 h-2.5 w-2.5 rounded-full border border-background ${criticalCount > 0 ? 'bg-destructive' : 'bg-blue-500'}`} />
+            <span 
+              className={`absolute top-2 right-2 h-2.5 w-2.5 rounded-full border border-background ${criticalCount > 0 ? 'bg-destructive' : 'bg-blue-500'}`} 
+            />
           )}
         </Button>
       </PopoverTrigger>
@@ -95,8 +58,9 @@ export function NotificationBell() {
         
         <ScrollArea className="h-[300px]">
             {notifications.length === 0 ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">
-                    Nenhuma notificação nova.
+                <div className="p-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                    <Bell className="h-8 w-8 opacity-20" />
+                    <p>Tudo em dia!</p>
                 </div>
             ) : (
                 <div className="grid gap-1">
@@ -108,10 +72,13 @@ export function NotificationBell() {
                             className="flex flex-col gap-1 px-4 py-3 hover:bg-muted/50 transition-colors border-b last:border-0"
                         >
                             <div className="flex items-center gap-2">
-                                <span className={`h-2 w-2 rounded-full ${item.type === 'critical' ? 'bg-destructive' : 'bg-blue-500'}`} />
+                                {item.type === 'critical' 
+                                  ? <AlertTriangle className="h-4 w-4 text-destructive" />
+                                  : <Info className="h-4 w-4 text-blue-500" />
+                                }
                                 <span className="font-medium text-sm">{item.title}</span>
                             </div>
-                            <p className="text-xs text-muted-foreground pl-4">
+                            <p className="text-xs text-muted-foreground pl-6">
                                 {item.description}
                             </p>
                         </Link>

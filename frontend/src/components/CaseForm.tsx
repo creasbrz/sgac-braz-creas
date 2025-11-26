@@ -1,4 +1,5 @@
 // frontend/src/components/CaseForm.tsx
+import { useEffect } from 'react'
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -34,7 +35,7 @@ import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSch
 import { useAgents } from '@/hooks/api/useCaseQueries'
 
 // ------------------------------------------------------------
-// 🔧 CONSTANTES DE LISTAS (Sincronizadas com o Seed/Banco)
+// 🔧 CONSTANTES DE LISTAS (Sincronizadas com o Banco/Seed)
 // ------------------------------------------------------------
 
 const LISTS = {
@@ -104,8 +105,10 @@ const LISTS = {
   ]
 }
 
+// Máscaras
 const CPF_MASK = { mask: '000.000.000-00' }
 const PHONE_MASK = { mask: '(00) 00000-0000' }
+// [CORREÇÃO] Máscara SEI ajustada conforme solicitado: 00000-00000000/0000-00
 const SEI_MASK = { mask: '00000-00000000/0000-00' }
 
 // 🔧 Função que retorna SOMENTE a data local (sem UTC bug)
@@ -135,57 +138,103 @@ const defaultValues: Partial<CreateCaseFormData> = {
 
 interface CaseFormProps {
   onCaseCreated?: () => void
+  initialData?: any // Dados para edição (opcional)
+  caseId?: string   // ID se for edição (opcional)
 }
 
-export function CaseForm({ onCaseCreated }: CaseFormProps) {
+export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) {
   const queryClient = useQueryClient()
-  // Busca lista de agentes para o select
   const { data: agents, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgents()
+  
+  // Se tiver caseId, estamos a editar
+  const isEditing = !!caseId
 
   const form = useForm<CreateCaseFormData>({
     resolver: zodResolver(createCaseFormSchema),
-    defaultValues: {
-      ...defaultValues,
-      dataEntrada: getLocalDateOnly(),
-    },
+    defaultValues: initialData 
+      ? { 
+          ...initialData, 
+          // Se vier do banco, a data pode vir com hora, cortamos para YYYY-MM-DD
+          dataEntrada: initialData.dataEntrada?.split('T')[0],
+          nascimento: initialData.nascimento?.split('T')[0],
+          // Garante string vazia se vier null do banco para não quebrar o input
+          numeroSei: initialData.numeroSei ?? '',
+          linkSei: initialData.linkSei ?? '',
+          observacoes: initialData.observacoes ?? '',
+        } 
+      : { 
+          ...defaultValues, 
+          dataEntrada: getLocalDateOnly(),
+        },
   })
 
-  const { mutateAsync: createCase, isPending } = useMutation({
+  // Efeito para atualizar o formulário se os dados iniciais mudarem (ex: reabrir modal com outro caso)
+  useEffect(() => {
+    if (initialData) {
+      form.reset({ 
+        ...initialData, 
+        dataEntrada: initialData.dataEntrada?.split('T')[0],
+        nascimento: initialData.nascimento?.split('T')[0],
+        numeroSei: initialData.numeroSei ?? '',
+        linkSei: initialData.linkSei ?? '',
+        observacoes: initialData.observacoes ?? '',
+      })
+    }
+  }, [initialData, form])
+
+  const { mutateAsync: submitCase, isPending } = useMutation({
     mutationFn: async (data: CreateCaseFormData) => {
       const payload = {
         ...data,
-        // Remove formatação de máscaras antes de enviar
+        // Remove formatação de máscaras antes de enviar para o backend
         cpf: data.cpf.replace(/\D/g, ''),
         telefone: data.telefone.replace(/\D/g, ''),
         nascimento: data.nascimento,     
-        dataEntrada: getLocalDateOnly(), 
+        dataEntrada: data.dataEntrada,
+        // Envia null se a string for vazia para limpar no banco
+        numeroSei: data.numeroSei || null,
+        linkSei: data.linkSei || null,
+        observacoes: data.observacoes || null
       }
 
-      return await api.post('/cases', payload)
+      if (isEditing && caseId) {
+        // PUT: Atualizar
+        return await api.put(`/cases/${caseId}`, payload)
+      } else {
+        // POST: Criar
+        return await api.post('/cases', payload)
+      }
     },
 
     onSuccess: () => {
-      toast.success('Caso cadastrado com sucesso!')
+      toast.success(isEditing ? 'Dados atualizados com sucesso!' : 'Caso cadastrado com sucesso!')
+      
       // Invalida queries para atualizar listas e gráficos
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
-
-      form.reset({
-        ...defaultValues,
-        dataEntrada: getLocalDateOnly(),
-      })
+      
+      if (isEditing) {
+        // Se for edição, atualiza também a query de detalhes específica
+        queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+      } else {
+        // Se for criação, limpa o formulário
+        form.reset({
+          ...defaultValues,
+          dataEntrada: getLocalDateOnly(),
+        })
+      }
 
       onCaseCreated?.()
     },
 
     onError: (error) => {
       console.error(error)
-      toast.error(getErrorMessage(error, 'Falha ao cadastrar o caso. Verifique os dados.'))
+      toast.error(getErrorMessage(error, isEditing ? 'Falha ao atualizar o caso.' : 'Falha ao cadastrar o caso.'))
     },
   })
 
   const onSubmit: SubmitHandler<CreateCaseFormData> = async (data) => {
-    await createCase(data)
+    await submitCase(data)
   }
 
   return (
@@ -360,9 +409,16 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                 <FormItem>
                   <FormLabel>Data de Entrada</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} readOnly className="bg-muted" />
+                    <Input 
+                      type="date" 
+                      {...field} 
+                      readOnly={!isEditing} 
+                      className={!isEditing ? "bg-muted opacity-70" : ""}
+                    />
                   </FormControl>
-                  <FormDescription>Data atual do sistema.</FormDescription>
+                  <FormDescription>
+                    {isEditing ? "Cuidado ao alterar a data de entrada." : "Data atual do sistema."}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -448,7 +504,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
               )}
             />
 
-            {/* Número SEI */}
+            {/* Número SEI (Máscara Corrigida) */}
             <FormField
               control={form.control}
               name="numeroSei"
@@ -478,7 +534,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
                 <FormItem>
                   <FormLabel>Link do Processo SEI</FormLabel>
                   <FormControl>
-                    <Input type="url" {...field} placeholder="https://sei.df.gov.br/..." />
+                    <Input type="url" {...field} value={field.value ?? ''} placeholder="https://sei.df.gov.br/..." />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -536,7 +592,7 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
           </div>
         </div>
 
-        {/* 5. OBSERVAÇÕES FINAIS */}
+        {/* 5. OBSERVAÇÕES */}
         <FormField
           control={form.control}
           name="observacoes"
@@ -544,18 +600,21 @@ export function CaseForm({ onCaseCreated }: CaseFormProps) {
             <FormItem>
               <FormLabel>Observações Gerais (Opcional)</FormLabel>
               <FormControl>
-                <Textarea {...field} className="min-h-[100px]" placeholder="Informações adicionais relevantes para a triagem..." />
+                <Textarea {...field} value={field.value ?? ''} className="min-h-[100px]" placeholder="Informações adicionais..." />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* BOTÃO DE AÇÃO */}
+        {/* BOTÃO */}
         <div className="flex justify-end pt-4 border-t">
           <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto min-w-[200px]">
             {isPending && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-            {isPending ? 'Salvando Dados...' : 'Cadastrar Novo Caso'}
+            {isPending 
+              ? 'Salvando Dados...' 
+              : (isEditing ? 'Atualizar Dados' : 'Cadastrar Novo Caso')
+            }
           </Button>
         </div>
 

@@ -1,61 +1,58 @@
 // frontend/src/components/dashboard/UpcomingPafDeadlines.tsx
-
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api' //
-import { AlertTriangle, CalendarCheck, Loader2 } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import { api } from '@/lib/api'
+import { AlertTriangle, Calendar, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card' //
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ROUTES } from '@/constants/routes' //
-import { formatDateSafe } from '@/utils/formatters' //
 
-interface PafDeadlineAlert {
-  pafId: string
-  deadline: string
-  caseId: string
-  caseName: string
-  specialistName: string
-  objetivosResumo: string
+// Interface baseada na nova rota /alerts
+interface AlertItem {
+  id: string
+  title: string
+  description: string
+  link: string
+  type: 'critical' | 'info'
 }
 
 export function UpcomingPafDeadlines() {
-  const {
-    data: alerts,
-    isLoading,
-    isError,
-  } = useQuery<PafDeadlineAlert[]>({
-    queryKey: ['pafDeadlineAlerts'],
+  const { data: alerts, isLoading, isError } = useQuery<AlertItem[]>({
+    queryKey: ['alerts'], // Mesmo queryKey do sininho para aproveitar cache
     queryFn: async () => {
-      const response = await api.get('/alerts/paf-deadlines')
-      return response.data
+      try {
+        // Agora consumimos a rota unificada
+        const res = await api.get('/alerts')
+        
+        // Segurança: Garante que retorna array
+        if (!Array.isArray(res.data)) return []
+        
+        // Filtra apenas notificações relacionadas a PAF ou Prazos Críticos
+        return res.data.filter((item: AlertItem) => 
+          item.title.includes('PAF') || 
+          item.id.startsWith('paf-') ||
+          item.type === 'critical'
+        )
+      } catch {
+        return []
+      }
     },
-    staleTime: 1000 * 60 * 5,
+    // Atualiza a cada 1 minuto
+    refetchInterval: 1000 * 60 
   })
 
   if (isLoading) {
     return (
-      <Card aria-busy="true">
+      <Card className="h-full">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarCheck className="h-5 w-5 flex-shrink-0" /> {/* Impede ícone de esmagar */}
-            Prazos de PAF Próximos (7 dias)
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Calendar className="h-5 w-5 text-muted-foreground" />
+            Alertas e Prazos
           </CardTitle>
-          <CardDescription>
-            <span className="sr-only">Carregando prazos...</span>
-            A carregar prazos...
-          </CardDescription>
         </CardHeader>
-        <CardContent className="flex h-32 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <CardContent className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     )
@@ -63,95 +60,72 @@ export function UpcomingPafDeadlines() {
 
   if (isError) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-            Erro ao Carregar Prazos
-          </CardTitle>
-          <CardDescription>
-            Não foi possível buscar os prazos de PAF.
-          </CardDescription>
-        </CardHeader>
+      <Card className="h-full border-destructive/50 bg-destructive/10">
+        <CardContent className="flex items-center justify-center h-full py-6 text-destructive text-sm">
+          Erro ao carregar alertas.
+        </CardContent>
       </Card>
     )
   }
 
-  const sortedAlerts = [...(alerts ?? [])].sort(
-    (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
-  )
+  // Garante que alerts é um array antes de checar tamanho
+  const safeAlerts = Array.isArray(alerts) ? alerts : []
 
   return (
-    <Card className="h-full"> {/* Garante altura consistente se estiver em grid */}
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarCheck className="h-5 w-5 flex-shrink-0 text-primary" />
-          Prazos de PAF Próximos
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between text-base">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <span>Atenção Necessária</span>
+          </div>
+          {safeAlerts.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {safeAlerts.length} pendentes
+            </Badge>
+          )}
         </CardTitle>
-        <CardDescription>
-          {sortedAlerts.length > 0
-            ? `${sortedAlerts.length} PAF(s) vencendo nos próximos 7 dias.`
-            : 'Nenhum PAF com prazo crítico para esta semana.'}
-        </CardDescription>
       </CardHeader>
-
-      <CardContent>
-        {sortedAlerts.length > 0 ? (
-          <ul className="space-y-3">
-            {sortedAlerts.map((alert) => {
-              const deadlineDate = new Date(alert.deadline)
-
-              return (
-                <li
-                  key={`${alert.caseId}-${alert.pafId}`}
-                  // CORREÇÃO DE LAYOUT:
-                  // 'items-start' alinha ao topo (melhor para textos longos)
-                  // 'overflow-hidden' impede vazamento
-                  className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-3 border rounded-md bg-background/50 hover:bg-accent/50 transition-colors"
-                >
-                  {/* Lado Esquerdo: Informações do Caso (com truncate) */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <Link
-                      to={ROUTES.CASE_DETAIL(alert.caseId)} //
-                      className="font-semibold text-primary hover:underline block truncate"
-                      title={`Ver caso: ${alert.caseName}`}
-                    >
-                      Caso: {alert.caseName}
-                    </Link>
-
-                    <p
-                      className="text-sm text-muted-foreground line-clamp-2" // line-clamp-2 limita a 2 linhas
-                      title={alert.objetivosResumo}
-                    >
-                      <span className="font-medium text-foreground/80">Objetivo:</span> {alert.objetivosResumo}
-                    </p>
-
-                    <p className="text-xs text-muted-foreground truncate">
-                      Responsável: {alert.specialistName}
-                    </p>
-                  </div>
-
-                  {/* Lado Direito: Data (fixo, não encolhe) */}
-                  <div className="text-right flex-shrink-0 flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2">
-                    <Badge variant="outline" className="whitespace-nowrap border-destructive/30 text-destructive bg-destructive/5">
-                      {formatDateSafe(alert.deadline)}
-                    </Badge>
-
-                    <p className="text-xs font-medium text-destructive mt-0.5">
-                      Vence {formatDistanceToNow(deadlineDate, {
-                        addSuffix: true,
-                        locale: ptBR,
-                      })}
-                    </p>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+      
+      <CardContent className="flex-1 overflow-y-auto pr-2">
+        {safeAlerts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 text-center text-muted-foreground text-sm border-2 border-dashed rounded-lg bg-muted/10">
+            <CheckCircle2 className="h-8 w-8 text-green-500/50 mb-2" />
+            <p>Tudo em dia!</p>
+            <p className="text-xs opacity-70">Nenhum prazo crítico pendente.</p>
+          </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-            <CalendarCheck className="h-10 w-10 mb-2 opacity-20" />
-            <p>Tudo em dia por aqui.</p>
+          <div className="space-y-3">
+            {safeAlerts.map((item) => (
+              <div 
+                key={item.id} 
+                className="flex flex-col gap-2 p-3 rounded-lg border bg-card hover:bg-muted/40 transition-colors"
+              >
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <h4 className="font-medium text-sm text-foreground">
+                      {item.title}
+                    </h4>
+                    <p className="text-xs text-muted-foreground line-clamp-2" title={item.description}>
+                      {item.description}
+                    </p>
+                  </div>
+                  
+                  {item.type === 'critical' && (
+                    <Badge variant="destructive" className="text-[10px] h-5 px-1.5 shrink-0">
+                      Urgente
+                    </Badge>
+                  )}
+                </div>
+
+                <Button asChild variant="ghost" size="sm" className="w-full justify-between h-7 text-xs mt-1 border border-input/50">
+                  <Link to={item.link}>
+                    Ver Detalhes
+                    <ArrowRight className="h-3 w-3 ml-2" />
+                  </Link>
+                </Button>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>

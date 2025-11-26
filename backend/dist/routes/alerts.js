@@ -28,82 +28,108 @@ var import_client = require("@prisma/client");
 var prisma = new import_client.PrismaClient();
 
 // src/routes/alerts.ts
+var import_client2 = require("@prisma/client");
 var import_date_fns = require("date-fns");
-var UPCOMING_DEADLINE_DAYS = 7;
 async function alertRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
-    } catch (err) {
+    } catch {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  app.get("/alerts/paf-deadlines", async (request, reply) => {
+  app.get("/alerts", async (request, reply) => {
     const { sub: userId, cargo } = request.user;
-    if (cargo === "Agente Social") {
-      return reply.status(200).send([]);
+    const notifications = [];
+    const today = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
+    const tomorrowEnd = (0, import_date_fns.addDays)(today, 2);
+    const agenda = await prisma.agendamento.findMany({
+      where: {
+        responsavelId: userId,
+        data: { gte: today, lt: tomorrowEnd }
+      },
+      include: { caso: { select: { nomeCompleto: true } } }
+    });
+    for (const ag of agenda) {
+      notifications.push({
+        id: `agenda-${ag.id}`,
+        title: "Agendamento Pr\xF3ximo",
+        description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
+        link: "/dashboard/agenda",
+        type: "info"
+      });
     }
-    try {
-      const today = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
-      const cutoffDate = (0, import_date_fns.endOfDay)((0, import_date_fns.addDays)(today, UPCOMING_DEADLINE_DAYS));
-      const whereClause = {
-        // Filtra pelo campo 'deadline' (DateTime)
-        deadline: {
-          gte: today,
-          lte: cutoffDate
-        },
-        // Usa a relação 'caso' (minúsculo)
-        caso: {
-          status: "EM_ACOMPANHAMENTO_PAEFI"
-          //
-        }
-      };
-      if (cargo === "Especialista") {
-        whereClause.caso.especialistaPAEFIId = userId;
+    if (cargo === import_client2.Cargo.Gerente) {
+      const distCount = await prisma.case.count({
+        where: { status: import_client2.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
+      });
+      if (distCount > 0) {
+        notifications.push({
+          id: "dist-queue",
+          title: "Distribui\xE7\xE3o Pendente",
+          description: `${distCount} casos aguardam atribui\xE7\xE3o de t\xE9cnico.`,
+          link: "/dashboard/cases",
+          // Link para lista geral
+          type: "critical"
+        });
       }
-      const upcomingPAFs = await prisma.paf.findMany({
-        where: whereClause,
-        orderBy: {
-          deadline: "asc"
-          // Ordena pelo campo 'deadline'
-        },
-        select: {
-          id: true,
-          deadline: true,
-          objetivos: true,
-          caso: {
-            // Usa a relação 'caso'
-            select: {
-              id: true,
-              nomeCompleto: true,
-              //
-              especialistaPAEFI: {
-                //
-                select: {
-                  nome: true
-                  //
-                }
-              }
-            }
-          }
+    }
+    if (cargo === import_client2.Cargo.Agente_Social) {
+      const acolhidaCount = await prisma.case.count({
+        where: {
+          agenteAcolhidaId: userId,
+          status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA
         }
       });
-      const formattedAlerts = upcomingPAFs.map((paf) => {
-        var _a, _b;
-        return {
-          pafId: paf.id,
-          deadline: paf.deadline,
-          caseId: paf.caso.id,
-          caseName: paf.caso.nomeCompleto,
-          specialistName: ((_a = paf.caso.especialistaPAEFI) == null ? void 0 : _a.nome) ?? "N\xE3o atribu\xEDdo",
-          objetivosResumo: ((_b = paf.objetivos) == null ? void 0 : _b.length) > 100 ? paf.objetivos.substring(0, 100) + "..." : paf.objetivos ?? ""
-        };
-      });
-      return reply.status(200).send(formattedAlerts);
-    } catch (error) {
-      console.error("Erro ao buscar alertas de prazo do PAF:", error);
-      return reply.status(500).send({ message: "Erro interno ao buscar alertas." });
+      if (acolhidaCount > 0) {
+        notifications.push({
+          id: "acolhida-queue",
+          title: "Novos Casos para Acolhida",
+          description: `Voc\xEA tem ${acolhidaCount} casos aguardando atendimento inicial.`,
+          link: "/dashboard/cases",
+          type: "critical"
+        });
+      }
     }
+    if (cargo === import_client2.Cargo.Especialista) {
+      const casesWithoutPaf = await prisma.case.count({
+        where: {
+          especialistaPAEFIId: userId,
+          status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+          paf: { is: null }
+        }
+      });
+      if (casesWithoutPaf > 0) {
+        notifications.push({
+          id: "missing-paf",
+          title: "Casos sem PAF",
+          description: `${casesWithoutPaf} casos precisam de Plano de Acompanhamento.`,
+          link: "/dashboard/cases",
+          type: "critical"
+        });
+      }
+      const pafDeadline = (0, import_date_fns.addDays)(/* @__PURE__ */ new Date(), 15);
+      const pafsExpiring = await prisma.paf.findMany({
+        where: {
+          autorId: userId,
+          // Ou filtrar pelo caso especialistaPAEFIId
+          deadline: { gte: today, lte: pafDeadline },
+          caso: { status: { not: import_client2.CaseStatus.DESLIGADO } }
+          // Ignora casos já fechados
+        },
+        include: { caso: { select: { nomeCompleto: true } } }
+      });
+      for (const p of pafsExpiring) {
+        notifications.push({
+          id: `paf-exp-${p.id}`,
+          title: "PAF Vencendo",
+          description: `Revis\xE3o necess\xE1ria: ${p.caso.nomeCompleto}`,
+          link: `/dashboard/cases/${p.casoId}`,
+          type: "critical"
+        });
+      }
+    }
+    return reply.send(notifications);
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

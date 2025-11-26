@@ -26,7 +26,9 @@ var import_fastify = __toESM(require("fastify"));
 var import_cors = __toESM(require("@fastify/cors"));
 var import_jwt = __toESM(require("@fastify/jwt"));
 var import_static = __toESM(require("@fastify/static"));
-var import_path = __toESM(require("path"));
+var import_multipart = __toESM(require("@fastify/multipart"));
+var import_path2 = __toESM(require("path"));
+var import_fs2 = __toESM(require("fs"));
 
 // src/routes/auth.ts
 var import_zod = require("zod");
@@ -151,25 +153,9 @@ var import_locale = require("date-fns/locale");
 var import_client2 = require("@prisma/client");
 var calculateUrgencyWeight = (urgencia) => {
   const term = urgencia.trim();
-  if ([
-    "Convive com agressor",
-    "Idoso 80+",
-    "Primeira inf\xE2ncia",
-    "Risco de morte"
-  ].includes(term)) return 4;
-  if ([
-    "Risco de reincid\xEAncia",
-    "Sofre amea\xE7a",
-    "Risco de desabrigo",
-    "Crian\xE7a/Adolescente"
-  ].includes(term)) return 3;
-  if ([
-    "PCD",
-    "Idoso",
-    "Interna\xE7\xE3o",
-    "Acolhimento",
-    "Gestante/Lactante"
-  ].includes(term)) return 2;
+  if (["Convive com agressor", "Idoso 80+", "Primeira inf\xE2ncia", "Risco de morte"].includes(term)) return 4;
+  if (["Risco de reincid\xEAncia", "Sofre amea\xE7a", "Risco de desabrigo", "Crian\xE7a/Adolescente"].includes(term)) return 3;
+  if (["PCD", "Idoso", "Interna\xE7\xE3o", "Acolhimento", "Gestante/Lactante"].includes(term)) return 2;
   return 1;
 };
 var formatDateForCsv = (date) => {
@@ -214,7 +200,6 @@ async function caseRoutes(app2) {
       nomeCompleto: import_zod2.z.string(),
       cpf: import_zod2.z.string().length(11),
       nascimento: import_zod2.z.coerce.date(),
-      // Campos são string para aceitar as listas detalhadas
       sexo: import_zod2.z.string(),
       telefone: import_zod2.z.string(),
       endereco: import_zod2.z.string(),
@@ -223,10 +208,12 @@ async function caseRoutes(app2) {
       violacao: import_zod2.z.string(),
       categoria: import_zod2.z.string(),
       orgaoDemandante: import_zod2.z.string(),
-      numeroSei: import_zod2.z.string().optional(),
-      linkSei: import_zod2.z.string().url().optional().or(import_zod2.z.literal("")),
       agenteAcolhidaId: import_zod2.z.string().uuid(),
-      observacoes: import_zod2.z.string().optional(),
+      // [CORREÇÃO] Aceita null (nullable) explicitamente
+      numeroSei: import_zod2.z.string().nullable().optional(),
+      // Link: Aceita URL válida, string vazia OU null
+      linkSei: import_zod2.z.union([import_zod2.z.string().url(), import_zod2.z.literal(""), import_zod2.z.null()]).optional(),
+      observacoes: import_zod2.z.string().nullable().optional(),
       beneficios: import_zod2.z.array(import_zod2.z.string()).optional()
     });
     try {
@@ -237,11 +224,11 @@ async function caseRoutes(app2) {
         data: {
           ...data,
           pesoUrgencia,
-          // Salva o peso calculado
-          criadoPorId: userId,
-          numeroSei: data.numeroSei || null,
+          // Garante que undefined vire null no banco
+          numeroSei: data.numeroSei ?? null,
           linkSei: data.linkSei || null,
-          observacoes: data.observacoes || null,
+          // Se for string vazia, vira null
+          observacoes: data.observacoes ?? null,
           beneficios: data.beneficios || []
         }
       });
@@ -249,9 +236,59 @@ async function caseRoutes(app2) {
       return reply.status(201).send(novoCaso);
     } catch (error) {
       if (error instanceof import_zod2.z.ZodError) {
+        console.log("Erro valida\xE7\xE3o POST:", error.flatten());
         return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
       }
       return internalError(reply, "Erro interno ao criar caso.", error);
+    }
+  });
+  app2.put("/cases/:id", { onRequest: [app2.authenticate] }, async (request, reply) => {
+    const paramsSchema = import_zod2.z.object({ id: import_zod2.z.string().uuid() });
+    const bodySchema = import_zod2.z.object({
+      nomeCompleto: import_zod2.z.string(),
+      cpf: import_zod2.z.string().length(11),
+      nascimento: import_zod2.z.coerce.date(),
+      sexo: import_zod2.z.string(),
+      telefone: import_zod2.z.string(),
+      endereco: import_zod2.z.string(),
+      dataEntrada: import_zod2.z.coerce.date(),
+      urgencia: import_zod2.z.string(),
+      violacao: import_zod2.z.string(),
+      categoria: import_zod2.z.string(),
+      orgaoDemandante: import_zod2.z.string(),
+      agenteAcolhidaId: import_zod2.z.string().uuid(),
+      // [CORREÇÃO] .nullable() adicionado para aceitar null vindo do front
+      numeroSei: import_zod2.z.string().nullable().optional(),
+      // Link: Aceita URL, string vazia ou null
+      linkSei: import_zod2.z.union([import_zod2.z.string().url(), import_zod2.z.literal(""), import_zod2.z.null()]).optional(),
+      observacoes: import_zod2.z.string().nullable().optional(),
+      beneficios: import_zod2.z.array(import_zod2.z.string()).optional()
+    });
+    try {
+      const { id } = paramsSchema.parse(request.params);
+      const data = bodySchema.parse(request.body);
+      const userId = request.user.sub;
+      const pesoUrgencia = calculateUrgencyWeight(data.urgencia);
+      const updatedCaso = await prisma.case.update({
+        where: { id },
+        data: {
+          ...data,
+          pesoUrgencia,
+          numeroSei: data.numeroSei ?? null,
+          linkSei: data.linkSei || null,
+          // String vazia vira null
+          observacoes: data.observacoes ?? null,
+          beneficios: data.beneficios || []
+        }
+      });
+      await createLog(id, userId, import_client2.LogAction.OUTRO, "Editou dados cadastrais do caso.");
+      return reply.send(updatedCaso);
+    } catch (error) {
+      if (error instanceof import_zod2.z.ZodError) {
+        console.log("Erro valida\xE7\xE3o PUT:", error.flatten());
+        return reply.status(400).send({ message: "Dados inv\xE1lidos na edi\xE7\xE3o.", errors: error.flatten().fieldErrors });
+      }
+      return internalError(reply, "Erro ao editar caso.", error);
     }
   });
   app2.get("/cases", { onRequest: [app2.authenticate] }, async (request, reply) => {
@@ -283,7 +320,6 @@ async function caseRoutes(app2) {
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where,
-          // Ordenação: Peso (Decrescente) -> Data (Decrescente)
           orderBy: [
             { pesoUrgencia: "desc" },
             { createdAt: "desc" }
@@ -297,13 +333,7 @@ async function caseRoutes(app2) {
         }),
         prisma.case.count({ where })
       ]);
-      return reply.send({
-        items,
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize)
-      });
+      return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
       return internalError(reply, "Erro interno ao listar casos ativos.", error);
     }
@@ -338,20 +368,13 @@ async function caseRoutes(app2) {
             parecerFinal: true,
             urgencia: true,
             motivoDesligamento: true,
-            // Inclui o motivo
             agenteAcolhida: { select: { nome: true } },
             especialistaPAEFI: { select: { nome: true } }
           }
         }),
         prisma.case.count({ where })
       ]);
-      return reply.send({
-        items,
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize)
-      });
+      return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
       return internalError(reply, "Erro interno ao listar casos finalizados.", error);
     }
@@ -365,55 +388,31 @@ async function caseRoutes(app2) {
           criadoPor: { select: { nome: true } },
           agenteAcolhida: { select: { id: true, nome: true } },
           especialistaPAEFI: { select: { id: true, nome: true } },
-          logs: {
-            orderBy: { createdAt: "desc" },
-            take: 20,
-            include: { autor: { select: { nome: true } } }
-          }
+          logs: { orderBy: { createdAt: "desc" }, take: 20, include: { autor: { select: { nome: true } } } }
         }
       });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       return reply.send(caso);
     } catch (error) {
-      return internalError(reply, "Erro ao buscar detalhes do caso.", error);
+      return internalError(reply, "Erro ao buscar detalhes.", error);
     }
   });
   app2.patch("/cases/:id/status", { onRequest: [app2.authenticate] }, async (request, reply) => {
     const paramsSchema = import_zod2.z.object({ id: import_zod2.z.string().uuid() });
-    const bodySchema = import_zod2.z.object({
-      status: import_zod2.z.nativeEnum(import_client2.CaseStatus)
-    });
+    const bodySchema = import_zod2.z.object({ status: import_zod2.z.nativeEnum(import_client2.CaseStatus) });
     try {
       const { id } = paramsSchema.parse(request.params);
       const { status } = bodySchema.parse(request.body);
       const { sub: userId, cargo } = request.user;
       const caso = await prisma.case.findUnique({ where: { id } });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
-      const isManager = cargo === import_client2.Cargo.Gerente;
-      const isAgent = caso.agenteAcolhidaId === userId;
-      const isSpec = caso.especialistaPAEFIId === userId;
-      if (caso.status === import_client2.CaseStatus.DESLIGADO && status !== import_client2.CaseStatus.DESLIGADO && !isManager) {
-        return reply.status(403).send({ message: "Apenas gerentes podem reabrir um caso." });
-      }
-      if (!isManager && !isAgent && !isSpec) {
-        return reply.status(403).send({ message: "Sem permiss\xE3o para alterar este caso." });
-      }
-      const oldStatus = caso.status;
       let updateData = { status };
-      if (oldStatus === import_client2.CaseStatus.DESLIGADO && status !== import_client2.CaseStatus.DESLIGADO) {
-        updateData = {
-          status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA,
-          motivoDesligamento: null,
-          dataDesligamento: null,
-          parecerFinal: null
-        };
+      if (caso.status === import_client2.CaseStatus.DESLIGADO && status !== import_client2.CaseStatus.DESLIGADO) {
+        updateData = { status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, dataDesligamento: null, parecerFinal: null };
       }
       const updated = await prisma.case.update({ where: { id }, data: updateData });
-      if (oldStatus !== status) {
-        await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Alterou o status de ${oldStatus} para ${status}`);
-      } else {
-        await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Reabriu o caso (status reiniciado).`);
-      }
+      if (caso.status !== status) await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Alterou status para ${status}`);
+      else await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Reabriu caso.`);
       return reply.send(updated);
     } catch (error) {
       return internalError(reply, "Erro ao alterar status.", error);
@@ -426,26 +425,18 @@ async function caseRoutes(app2) {
       const { id } = params.parse(request.params);
       const { specialistId } = body.parse(request.body);
       const { cargo, sub: userId } = request.user;
-      if (cargo !== import_client2.Cargo.Gerente) {
-        return reply.status(403).send({ message: "Apenas gerentes podem atribuir casos." });
-      }
-      const specialist = await prisma.user.findUnique({ where: { id: specialistId } });
-      const updatedCase = await prisma.case.update({
-        where: { id },
-        data: { especialistaPAEFIId: specialistId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: /* @__PURE__ */ new Date() }
-      });
-      await createLog(id, userId, import_client2.LogAction.ATRIBUICAO, `Atribuiu o caso ao especialista ${(specialist == null ? void 0 : specialist.nome) || "Desconhecido"}`);
-      return reply.send(updatedCase);
+      if (cargo !== import_client2.Cargo.Gerente) return reply.status(403).send({ message: "Acesso negado." });
+      const spec = await prisma.user.findUnique({ where: { id: specialistId } });
+      const updated = await prisma.case.update({ where: { id }, data: { especialistaPAEFIId: specialistId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: /* @__PURE__ */ new Date() } });
+      await createLog(id, userId, import_client2.LogAction.ATRIBUICAO, `Atribuiu a ${(spec == null ? void 0 : spec.nome) || "Desconhecido"}`);
+      return reply.send(updated);
     } catch (error) {
-      return internalError(reply, "Erro ao atribuir especialista.", error);
+      return internalError(reply, "Erro ao atribuir.", error);
     }
   });
   app2.patch("/cases/:id/close", { onRequest: [app2.authenticate] }, async (request, reply) => {
     const params = import_zod2.z.object({ id: import_zod2.z.string().uuid() });
-    const body = import_zod2.z.object({
-      parecerFinal: import_zod2.z.string().min(10, "Muito curto."),
-      motivoDesligamento: import_zod2.z.string().min(1, "Obrigat\xF3rio.")
-    });
+    const body = import_zod2.z.object({ parecerFinal: import_zod2.z.string().min(10), motivoDesligamento: import_zod2.z.string().min(1) });
     try {
       const { id } = params.parse(request.params);
       const { parecerFinal, motivoDesligamento } = body.parse(request.body);
@@ -453,73 +444,29 @@ async function caseRoutes(app2) {
       const caso = await prisma.case.findUnique({ where: { id } });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       const isManager = cargo === import_client2.Cargo.Gerente;
-      const isAgent = caso.agenteAcolhidaId === userId;
-      const isSpec = caso.especialistaPAEFIId === userId;
-      if (!isManager && !isAgent && !isSpec) {
-        return reply.status(403).send({ message: "Sem permiss\xE3o para esta a\xE7\xE3o." });
-      }
-      const updated = await prisma.case.update({
-        where: { id },
-        data: {
-          status: import_client2.CaseStatus.DESLIGADO,
-          parecerFinal,
-          motivoDesligamento,
-          dataDesligamento: /* @__PURE__ */ new Date()
-        }
-      });
-      await createLog(id, userId, import_client2.LogAction.DESLIGAMENTO, `Desligou o caso. Motivo: ${motivoDesligamento}`);
+      if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: "Sem permiss\xE3o." });
+      const updated = await prisma.case.update({ where: { id }, data: { status: import_client2.CaseStatus.DESLIGADO, parecerFinal, motivoDesligamento, dataDesligamento: /* @__PURE__ */ new Date() } });
+      await createLog(id, userId, import_client2.LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}`);
       return reply.send(updated);
     } catch (error) {
-      return internalError(reply, "Erro ao desligar caso.", error);
+      return internalError(reply, "Erro ao desligar.", error);
     }
   });
   app2.get("/cases/export", { onRequest: [app2.authenticate] }, async (request, reply) => {
-    if (request.user.cargo !== import_client2.Cargo.Gerente) {
-      return reply.status(403).send({ message: "Acesso negado." });
-    }
+    if (request.user.cargo !== import_client2.Cargo.Gerente) return reply.status(403).send({ message: "Acesso negado." });
     try {
-      const casos = await prisma.case.findMany({
-        orderBy: { createdAt: "desc" },
-        include: {
-          criadoPor: true,
-          agenteAcolhida: true,
-          especialistaPAEFI: true
-        }
-      });
-      reply.header(
-        "Content-Disposition",
-        `attachment; filename="export_casos_${(0, import_date_fns.format)(/* @__PURE__ */ new Date(), "yyyy-MM-dd")}.csv"`
-      );
+      const casos = await prisma.case.findMany({ orderBy: { createdAt: "desc" }, include: { criadoPor: true, agenteAcolhida: true, especialistaPAEFI: true } });
+      reply.header("Content-Disposition", `attachment; filename="export_casos_${(0, import_date_fns.format)(/* @__PURE__ */ new Date(), "yyyy-MM-dd")}.csv"`);
       reply.type("text/csv; charset=utf-8");
       const csv = (0, import_fast_csv.format)({ headers: true });
       csv.pipe(reply.raw);
       casos.forEach((c) => {
-        var _a, _b, _c;
-        csv.write({
-          ID: c.id,
-          Nome_Completo: c.nomeCompleto,
-          CPF: c.cpf,
-          Nascimento: formatDateForCsv(c.nascimento),
-          Sexo: c.sexo,
-          Telefone: c.telefone,
-          Endereco: c.endereco,
-          Data_Entrada: formatDateForCsv(c.dataEntrada),
-          Urgencia: c.urgencia,
-          Violacao: c.violacao,
-          Categoria: c.categoria,
-          Orgao_Demandante: c.orgaoDemandante,
-          Numero_SEI: c.numeroSei ?? "N/A",
-          Status: c.status,
-          Criado_Por: ((_a = c.criadoPor) == null ? void 0 : _a.nome) ?? "Usu\xE1rio Removido",
-          Agente_Acolhida: ((_b = c.agenteAcolhida) == null ? void 0 : _b.nome) ?? "N\xE3o Atribu\xEDdo",
-          Especialista_PAEFI: ((_c = c.especialistaPAEFI) == null ? void 0 : _c.nome) ?? "N\xE3o Atribu\xEDdo",
-          Data_Desligamento: formatDateForCsv(c.dataDesligamento),
-          Parecer_Final: c.parecerFinal ?? "N/A"
-        });
+        var _a, _b;
+        csv.write({ ID: c.id, Nome: c.nomeCompleto, CPF: c.cpf, Nascimento: formatDateForCsv(c.nascimento), Sexo: c.sexo, Telefone: c.telefone, Endereco: c.endereco, Entrada: formatDateForCsv(c.dataEntrada), Urgencia: c.urgencia, Violacao: c.violacao, Categoria: c.categoria, Orgao: c.orgaoDemandante, Status: c.status, Agente: ((_a = c.agenteAcolhida) == null ? void 0 : _a.nome) ?? "N/A", Especialista: ((_b = c.especialistaPAEFI) == null ? void 0 : _b.nome) ?? "N/A", Data_Desligamento: formatDateForCsv(c.dataDesligamento), Parecer_Final: c.parecerFinal ?? "N/A" });
       });
       csv.end();
     } catch (error) {
-      return internalError(reply, "Erro ao exportar CSV.", error);
+      return internalError(reply, "Erro ao exportar.", error);
     }
   });
 }
@@ -958,19 +905,15 @@ async function statsRoutes(app2) {
         else if (diff < -15) insights.push(`\u{1F4C9} Queda de ${Math.abs(Math.round(diff))}% na demanda.`);
       }
       if (avgHandlingTime > 120) insights.push(`\u26A0\uFE0F Tempo m\xE9dio alto (${avgHandlingTime} dias).`);
-      if (pieData.length > 0) {
-        insights.push(`\u{1F50D} Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
-      }
+      if (pieData.length > 0) insights.push(`\u{1F50D} Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
       return reply.send({
         trendData,
         avgHandlingTime,
         totalActive: activeTotal,
         insights,
         pieData
-        // Agora enviamos os dados reais
       });
     } catch (error) {
-      console.error(error);
       return reply.status(500).send({ message: "Erro interno." });
     }
   });
@@ -1092,11 +1035,14 @@ async function statsRoutes(app2) {
     const { sub: userId } = request.user;
     try {
       const start = (0, import_date_fns2.startOfDay)(/* @__PURE__ */ new Date());
-      const end = (0, import_date_fns2.endOfDay)((0, import_date_fns2.addDays)(start, 30));
       const appointments = await prisma.agendamento.findMany({
-        where: { responsavelId: userId, data: { gte: start, lte: end } },
+        where: {
+          responsavelId: userId,
+          data: { gte: start }
+        },
         orderBy: { data: "asc" },
         take: 5,
+        // Pega os 5 próximos
         include: { caso: { select: { id: true, nomeCompleto: true } } }
       });
       return reply.send(appointments);
@@ -1370,82 +1316,108 @@ async function reportRoutes(app2) {
 }
 
 // src/routes/alerts.ts
+var import_client7 = require("@prisma/client");
 var import_date_fns5 = require("date-fns");
-var UPCOMING_DEADLINE_DAYS = 7;
 async function alertRoutes(app2) {
   app2.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
-    } catch (err) {
+    } catch {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  app2.get("/alerts/paf-deadlines", async (request, reply) => {
+  app2.get("/alerts", async (request, reply) => {
     const { sub: userId, cargo } = request.user;
-    if (cargo === "Agente Social") {
-      return reply.status(200).send([]);
+    const notifications = [];
+    const today = (0, import_date_fns5.startOfDay)(/* @__PURE__ */ new Date());
+    const tomorrowEnd = (0, import_date_fns5.addDays)(today, 2);
+    const agenda = await prisma.agendamento.findMany({
+      where: {
+        responsavelId: userId,
+        data: { gte: today, lt: tomorrowEnd }
+      },
+      include: { caso: { select: { nomeCompleto: true } } }
+    });
+    for (const ag of agenda) {
+      notifications.push({
+        id: `agenda-${ag.id}`,
+        title: "Agendamento Pr\xF3ximo",
+        description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
+        link: "/dashboard/agenda",
+        type: "info"
+      });
     }
-    try {
-      const today = (0, import_date_fns5.startOfDay)(/* @__PURE__ */ new Date());
-      const cutoffDate = (0, import_date_fns5.endOfDay)((0, import_date_fns5.addDays)(today, UPCOMING_DEADLINE_DAYS));
-      const whereClause = {
-        // Filtra pelo campo 'deadline' (DateTime)
-        deadline: {
-          gte: today,
-          lte: cutoffDate
-        },
-        // Usa a relação 'caso' (minúsculo)
-        caso: {
-          status: "EM_ACOMPANHAMENTO_PAEFI"
-          //
-        }
-      };
-      if (cargo === "Especialista") {
-        whereClause.caso.especialistaPAEFIId = userId;
+    if (cargo === import_client7.Cargo.Gerente) {
+      const distCount = await prisma.case.count({
+        where: { status: import_client7.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
+      });
+      if (distCount > 0) {
+        notifications.push({
+          id: "dist-queue",
+          title: "Distribui\xE7\xE3o Pendente",
+          description: `${distCount} casos aguardam atribui\xE7\xE3o de t\xE9cnico.`,
+          link: "/dashboard/cases",
+          // Link para lista geral
+          type: "critical"
+        });
       }
-      const upcomingPAFs = await prisma.paf.findMany({
-        where: whereClause,
-        orderBy: {
-          deadline: "asc"
-          // Ordena pelo campo 'deadline'
-        },
-        select: {
-          id: true,
-          deadline: true,
-          objetivos: true,
-          caso: {
-            // Usa a relação 'caso'
-            select: {
-              id: true,
-              nomeCompleto: true,
-              //
-              especialistaPAEFI: {
-                //
-                select: {
-                  nome: true
-                  //
-                }
-              }
-            }
-          }
+    }
+    if (cargo === import_client7.Cargo.Agente_Social) {
+      const acolhidaCount = await prisma.case.count({
+        where: {
+          agenteAcolhidaId: userId,
+          status: import_client7.CaseStatus.AGUARDANDO_ACOLHIDA
         }
       });
-      const formattedAlerts = upcomingPAFs.map((paf) => {
-        var _a, _b;
-        return {
-          pafId: paf.id,
-          deadline: paf.deadline,
-          caseId: paf.caso.id,
-          caseName: paf.caso.nomeCompleto,
-          specialistName: ((_a = paf.caso.especialistaPAEFI) == null ? void 0 : _a.nome) ?? "N\xE3o atribu\xEDdo",
-          objetivosResumo: ((_b = paf.objetivos) == null ? void 0 : _b.length) > 100 ? paf.objetivos.substring(0, 100) + "..." : paf.objetivos ?? ""
-        };
-      });
-      return reply.status(200).send(formattedAlerts);
-    } catch (error) {
-      console.error("Erro ao buscar alertas de prazo do PAF:", error);
-      return reply.status(500).send({ message: "Erro interno ao buscar alertas." });
+      if (acolhidaCount > 0) {
+        notifications.push({
+          id: "acolhida-queue",
+          title: "Novos Casos para Acolhida",
+          description: `Voc\xEA tem ${acolhidaCount} casos aguardando atendimento inicial.`,
+          link: "/dashboard/cases",
+          type: "critical"
+        });
+      }
     }
+    if (cargo === import_client7.Cargo.Especialista) {
+      const casesWithoutPaf = await prisma.case.count({
+        where: {
+          especialistaPAEFIId: userId,
+          status: import_client7.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+          paf: { is: null }
+        }
+      });
+      if (casesWithoutPaf > 0) {
+        notifications.push({
+          id: "missing-paf",
+          title: "Casos sem PAF",
+          description: `${casesWithoutPaf} casos precisam de Plano de Acompanhamento.`,
+          link: "/dashboard/cases",
+          type: "critical"
+        });
+      }
+      const pafDeadline = (0, import_date_fns5.addDays)(/* @__PURE__ */ new Date(), 15);
+      const pafsExpiring = await prisma.paf.findMany({
+        where: {
+          autorId: userId,
+          // Ou filtrar pelo caso especialistaPAEFIId
+          deadline: { gte: today, lte: pafDeadline },
+          caso: { status: { not: import_client7.CaseStatus.DESLIGADO } }
+          // Ignora casos já fechados
+        },
+        include: { caso: { select: { nomeCompleto: true } } }
+      });
+      for (const p of pafsExpiring) {
+        notifications.push({
+          id: `paf-exp-${p.id}`,
+          title: "PAF Vencendo",
+          description: `Revis\xE3o necess\xE1ria: ${p.caso.nomeCompleto}`,
+          link: `/dashboard/cases/${p.casoId}`,
+          type: "critical"
+        });
+      }
+    }
+    return reply.send(notifications);
   });
 }
 
@@ -1530,12 +1502,135 @@ async function auditRoutes(app2) {
   });
 }
 
+// src/routes/attachments.ts
+var import_zod10 = require("zod");
+var import_fs = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
+var import_promises = require("stream/promises");
+var import_client8 = require("@prisma/client");
+async function attachmentRoutes(app2) {
+  app2.addHook("onRequest", async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch (err) {
+      return reply.status(401).send({ message: "N\xE3o autorizado." });
+    }
+  });
+  app2.post("/cases/:caseId/attachments", async (request, reply) => {
+    console.log("\u{1F4E5} [API] Recebendo pedido de upload...");
+    const paramsSchema = import_zod10.z.object({ caseId: import_zod10.z.string().uuid() });
+    try {
+      const { caseId } = paramsSchema.parse(request.params);
+      const { sub: userId } = request.user;
+      const data = await request.file();
+      if (!data) {
+        console.log("\u274C [API] Erro: Nenhum ficheiro detetado.");
+        return reply.status(400).send({ message: "Nenhum ficheiro enviado." });
+      }
+      console.log(`\u{1F4C4} [API] Ficheiro: ${data.filename} (${data.mimetype})`);
+      const allowedMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+      if (!allowedMimeTypes.includes(data.mimetype)) {
+        await data.toBuffer();
+        return reply.status(400).send({ message: "Formato inv\xE1lido. Use PDF ou Imagens." });
+      }
+      const safeFilename = data.filename.replace(/[^a-zA-Z0-9.]/g, "_");
+      const fileName = `${Date.now()}-${safeFilename}`;
+      const uploadDir2 = import_path.default.resolve(process.cwd(), "uploads");
+      if (!import_fs.default.existsSync(uploadDir2)) {
+        console.log(`\u{1F4C1} [API] Criando diret\xF3rio: ${uploadDir2}`);
+        import_fs.default.mkdirSync(uploadDir2, { recursive: true });
+      }
+      const uploadPath = import_path.default.join(uploadDir2, fileName);
+      await (0, import_promises.pipeline)(data.file, import_fs.default.createWriteStream(uploadPath));
+      console.log("\u2705 [API] Ficheiro gravado no disco.");
+      const anexo = await prisma.anexo.create({
+        data: {
+          nome: data.filename,
+          tipo: data.mimetype,
+          url: `/uploads/${fileName}`,
+          casoId: caseId,
+          autorId: userId,
+          tamanho: 0
+          // Opcional
+        }
+      });
+      await prisma.caseLog.create({
+        data: {
+          casoId,
+          autorId: userId,
+          acao: import_client8.LogAction.ANEXO_ADICIONADO,
+          descricao: `Anexou: ${data.filename}`
+        }
+      });
+      return reply.status(201).send(anexo);
+    } catch (error) {
+      console.error("\u274C [API] Erro Cr\xEDtico no Upload:", error);
+      return reply.status(500).send({ message: "Falha interna ao salvar ficheiro." });
+    }
+  });
+  app2.get("/cases/:caseId/attachments", async (request, reply) => {
+    const paramsSchema = import_zod10.z.object({ caseId: import_zod10.z.string().uuid() });
+    try {
+      const { caseId } = paramsSchema.parse(request.params);
+      const anexos = await prisma.anexo.findMany({
+        where: { casoId },
+        orderBy: { createdAt: "desc" },
+        include: { autor: { select: { nome: true } } }
+      });
+      return reply.send(anexos);
+    } catch (error) {
+      console.error("Erro ao listar:", error);
+      return reply.status(500).send({ message: "Erro ao listar anexos." });
+    }
+  });
+  app2.delete("/attachments/:id", async (request, reply) => {
+    const paramsSchema = import_zod10.z.object({ id: import_zod10.z.string().uuid() });
+    try {
+      const { id } = paramsSchema.parse(request.params);
+      const { sub: userId, cargo } = request.user;
+      const anexo = await prisma.anexo.findUnique({ where: { id } });
+      if (!anexo) return reply.status(404).send({ message: "Ficheiro n\xE3o encontrado." });
+      if (anexo.autorId !== userId && cargo !== import_client8.Cargo.Gerente) {
+        return reply.status(403).send({ message: "Sem permiss\xE3o." });
+      }
+      await prisma.anexo.delete({ where: { id } });
+      try {
+        const filePath = import_path.default.resolve(process.cwd(), "uploads", import_path.default.basename(anexo.url));
+        if (import_fs.default.existsSync(filePath)) import_fs.default.unlinkSync(filePath);
+      } catch (e) {
+        console.error("Erro ao apagar do disco:", e);
+      }
+      await prisma.caseLog.create({
+        data: {
+          casoId: anexo.casoId,
+          autorId: userId,
+          acao: import_client8.LogAction.OUTRO,
+          descricao: `Removeu anexo: ${anexo.nome}`
+        }
+      });
+      return reply.status(204).send();
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao remover." });
+    }
+  });
+}
+
 // src/server.ts
 var app = (0, import_fastify.default)({
   logger: {
     transport: {
       target: "pino-pretty"
     }
+  }
+});
+var uploadDir = import_path2.default.join(__dirname, "../uploads");
+if (!import_fs2.default.existsSync(uploadDir)) {
+  import_fs2.default.mkdirSync(uploadDir, { recursive: true });
+}
+app.register(import_multipart.default, {
+  limits: {
+    fileSize: 5 * 1024 * 1024
+    // Limite de 5MB por arquivo
   }
 });
 app.register(import_cors.default, {
@@ -1545,17 +1640,22 @@ app.register(import_cors.default, {
 app.register(import_jwt.default, {
   secret: process.env.JWT_SECRET
 });
-app.register(import_static.default, {
-  root: import_path.default.join(__dirname, "../../frontend/dist"),
-  prefix: "/"
-  // Serve na raiz
-});
 app.decorate("authenticate", async (request, reply) => {
   try {
     await request.jwtVerify();
   } catch (err) {
     await reply.send(err);
   }
+});
+app.register(import_static.default, {
+  root: uploadDir,
+  prefix: "/uploads/",
+  decorateReply: false
+});
+app.register(import_static.default, {
+  root: import_path2.default.join(__dirname, "../../frontend/dist"),
+  prefix: "/",
+  constraints: {}
 });
 app.register(authRoutes);
 app.register(caseRoutes);
@@ -1567,9 +1667,10 @@ app.register(appointmentRoutes);
 app.register(reportRoutes);
 app.register(alertRoutes);
 app.register(auditRoutes);
+app.register(attachmentRoutes);
 app.setNotFoundHandler((req, reply) => {
-  if (req.raw.url && req.raw.url.startsWith("/api")) {
-    return reply.status(404).send({ message: "Rota n\xE3o encontrada" });
+  if (req.raw.url && (req.raw.url.startsWith("/api") || req.raw.url.startsWith("/uploads"))) {
+    return reply.status(404).send({ message: "Recurso n\xE3o encontrado" });
   }
   return reply.sendFile("index.html");
 });
@@ -1578,4 +1679,5 @@ app.listen({
   host: "0.0.0.0"
 }).then(() => {
   console.log("\u{1F680} Servidor Fullstack rodando em http://localhost:3333");
+  console.log(`\u{1F4C2} Pasta de uploads: ${uploadDir}`);
 });

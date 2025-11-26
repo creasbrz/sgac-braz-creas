@@ -2,8 +2,10 @@
 import fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
-import fastifyStatic from '@fastify/static' // [NOVO]
-import path from 'path' // [NOVO]
+import fastifyStatic from '@fastify/static'
+import multipart from '@fastify/multipart'
+import path from 'path'
+import fs from 'fs'
 
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
@@ -15,6 +17,7 @@ import { appointmentRoutes } from './routes/appointments'
 import { reportRoutes } from './routes/reports'
 import { alertRoutes } from './routes/alerts'
 import { auditRoutes } from './routes/audit'
+import { attachmentRoutes } from './routes/attachments' // [NOVO]
 
 const app = fastify({
   logger: {
@@ -24,7 +27,19 @@ const app = fastify({
   },
 })
 
-// CORS (Em produção, você pode restringir a origem se tiver domínio)
+// 1. Garante que a pasta de uploads existe na raiz
+const uploadDir = path.join(__dirname, '../uploads')
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true })
+}
+
+// 2. Registrar Multipart (Uploads)
+app.register(multipart, {
+  limits: {
+    fileSize: 5 * 1024 * 1024, // Limite de 5MB por arquivo
+  }
+})
+
 app.register(cors, {
   origin: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -32,13 +47,6 @@ app.register(cors, {
 
 app.register(jwt, {
   secret: process.env.JWT_SECRET as string,
-})
-
-// [NOVO] Configuração para servir o Frontend
-// Ele busca a pasta 'dist' que está dentro de 'frontend' (voltando um nível ../)
-app.register(fastifyStatic, {
-  root: path.join(__dirname, '../../frontend/dist'),
-  prefix: '/', // Serve na raiz
 })
 
 app.decorate('authenticate', async (request, reply) => {
@@ -49,7 +57,22 @@ app.decorate('authenticate', async (request, reply) => {
   }
 })
 
-// Registo das Rotas da API
+// 3. Servir Arquivos de Upload (Rota: /uploads/arquivo.pdf)
+// Importante: decorateReply: false evita conflito com o static do frontend
+app.register(fastifyStatic, {
+  root: uploadDir,
+  prefix: '/uploads/',
+  decorateReply: false 
+})
+
+// 4. Servir o Frontend (Produção)
+app.register(fastifyStatic, {
+  root: path.join(__dirname, '../../frontend/dist'),
+  prefix: '/',
+  constraints: {}
+})
+
+// 5. Registro das Rotas da API
 app.register(authRoutes)
 app.register(caseRoutes)
 app.register(userRoutes)
@@ -60,14 +83,15 @@ app.register(appointmentRoutes)
 app.register(reportRoutes)
 app.register(alertRoutes)
 app.register(auditRoutes)
+app.register(attachmentRoutes) // [NOVO]
 
-// [NOVO] Rota "Catch-all" para o React Router
-// Se não for uma rota de API e não for arquivo estático, entrega o index.html
-// Isso permite que o refresh da página funcione em rotas como /dashboard/cases
+// Rota Catch-all para o React Router (Single Page Application)
 app.setNotFoundHandler((req, reply) => {
-  if (req.raw.url && req.raw.url.startsWith('/api')) {
-    return reply.status(404).send({ message: 'Rota não encontrada' })
+  // Se for API ou Upload, retorna 404 JSON
+  if (req.raw.url && (req.raw.url.startsWith('/api') || req.raw.url.startsWith('/uploads'))) {
+    return reply.status(404).send({ message: 'Recurso não encontrado' })
   }
+  // Se for navegação, entrega o index.html do React
   return reply.sendFile('index.html')
 })
 
@@ -78,4 +102,5 @@ app
   })
   .then(() => {
     console.log('🚀 Servidor Fullstack rodando em http://localhost:3333')
+    console.log(`📂 Pasta de uploads: ${uploadDir}`)
   })

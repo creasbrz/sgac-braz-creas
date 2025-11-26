@@ -1,7 +1,7 @@
 // backend/src/routes/stats.ts
 import { type FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
-import { startOfMonth, endOfMonth, startOfDay, endOfDay, addDays, subMonths, format } from "date-fns";
+import { startOfMonth, endOfMonth, startOfDay, subMonths, format, addDays } from "date-fns";
 import { Cargo, CaseStatus } from "@prisma/client"; 
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   /**
-   * [GET] /stats/advanced — Dados Gerais e Insights
+   * [GET] /stats/advanced — Dashboard Inteligente
    */
   app.get("/stats/advanced", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
@@ -44,7 +44,6 @@ export async function statsRoutes(app: FastifyInstance) {
         whereClause.violacao = violacao;
       }
 
-      // 1. Buscar dados
       const cases = await prisma.case.findMany({
         where: whereClause,
         select: {
@@ -52,7 +51,6 @@ export async function statsRoutes(app: FastifyInstance) {
         }
       });
 
-      // 2. Timeline (Tendência)
       const monthlyStats = new Map<string, { name: string; novos: number; fechados: number }>();
       for (let i = 0; i < months; i++) {
         const d = subMonths(today, (months - 1) - i);
@@ -63,11 +61,10 @@ export async function statsRoutes(app: FastifyInstance) {
         });
       }
 
-      // 3. Distribuição de Violações (CORREÇÃO APLICADA AQUI)
+      // Contagem de violações para Pizza
       const violationCount: Record<string, number> = {};
 
       cases.forEach(c => {
-        // Timeline
         const inKey = `${c.dataEntrada.getFullYear()}-${c.dataEntrada.getMonth()}`;
         if (monthlyStats.has(inKey)) monthlyStats.get(inKey)!.novos++;
         
@@ -76,25 +73,21 @@ export async function statsRoutes(app: FastifyInstance) {
           if (monthlyStats.has(outKey)) monthlyStats.get(outKey)!.fechados++;
         }
 
-        // Contagem de Violações
         const v = c.violacao || "Não Informado";
         violationCount[v] = (violationCount[v] || 0) + 1;
       });
 
-      // Transforma o objeto de contagem em array para o gráfico
       const pieData = Object.entries(violationCount)
         .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value) // Ordena do maior para o menor
-        .slice(0, 5); // Pega apenas os top 5
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
 
-      // 4. Tempo Médio
       const closedCases = cases.filter(c => c.dataDesligamento);
       const totalDays = closedCases.reduce((acc, c) => {
         return acc + Math.ceil(Math.abs(c.dataDesligamento!.getTime() - c.dataEntrada.getTime()) / (86400000));
       }, 0);
       const avgHandlingTime = closedCases.length > 0 ? Math.round(totalDays / closedCases.length) : 0;
 
-      // 5. Insights
       const activeTotal = await prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } });
       const insights: string[] = [];
       const trendData = Array.from(monthlyStats.values());
@@ -107,27 +100,24 @@ export async function statsRoutes(app: FastifyInstance) {
         else if (diff < -15) insights.push(`📉 Queda de ${Math.abs(Math.round(diff))}% na demanda.`);
       }
       if (avgHandlingTime > 120) insights.push(`⚠️ Tempo médio alto (${avgHandlingTime} dias).`);
-      
-      // Insight sobre violação
-      if (pieData.length > 0) {
-        insights.push(`🔍 Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
-      }
+      if (pieData.length > 0) insights.push(`🔍 Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
 
       return reply.send({
         trendData,
         avgHandlingTime,
         totalActive: activeTotal,
         insights,
-        pieData // Agora enviamos os dados reais
+        pieData
       });
 
     } catch (error) {
-      console.error(error);
       return reply.status(500).send({ message: "Erro interno." });
     }
   });
 
-  // [GET] /stats/productivity
+  /**
+   * [GET] /stats/productivity
+   */
   app.get("/stats/productivity", async (request, reply) => {
     try {
       const users = await prisma.user.findMany({
@@ -155,7 +145,9 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
-  // [GET] /stats/heatmap
+  /**
+   * [GET] /stats/heatmap
+   */
   app.get("/stats/heatmap", async (request, reply) => {
     const querySchema = z.object({ months: z.coerce.number().default(12) });
     const { months } = querySchema.parse(request.query);
@@ -180,7 +172,9 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
-  // [GET] /stats (Legado/Operacional)
+  /**
+   * [GET] /stats - Dashboard Operacional
+   */
   app.get("/stats", async (request, reply) => {
     const { cargo, sub: userId } = request.user as { cargo: string; sub: string };
     const today = new Date();
@@ -251,15 +245,20 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
+  // [CORREÇÃO] Rota de Agenda Pessoal ajustada
+  // Removemos o 'lte: cutoffDate' para pegar os próximos 5 independentemente da data
   app.get("/stats/my-agenda", async (request, reply) => {
     const { sub: userId } = request.user as { sub: string };
     try {
       const start = startOfDay(new Date());
-      const end = endOfDay(addDays(start, 30));
+      // Não definimos data final, apenas data inicial (hoje/futuro)
       const appointments = await prisma.agendamento.findMany({
-        where: { responsavelId: userId, data: { gte: start, lte: end } },
+        where: { 
+          responsavelId: userId, 
+          data: { gte: start } 
+        },
         orderBy: { data: "asc" },
-        take: 5,
+        take: 5, // Pega os 5 próximos
         include: { caso: { select: { id: true, nomeCompleto: true } } }
       });
       return reply.send(appointments);

@@ -1,67 +1,55 @@
 // frontend/src/schemas/caseSchemas.ts
-import { z } from 'zod' //
+import { z } from 'zod'
 
-// --- Funções de Validação Customizadas ---
-function validaCPF(cpf: string): boolean { //
-  cpf = cpf.replace(/[^\d]+/g, '') //
-  if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false //
-  let add = 0
-  for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i) //
-  let rev = 11 - (add % 11) //
-  if (rev === 10 || rev === 11) rev = 0 //
-  if (rev !== parseInt(cpf.charAt(9))) return false //
-  add = 0
-  for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i) //
-  rev = 11 - (add % 11) //
-  if (rev === 10 || rev === 11) rev = 0 //
-  if (rev !== parseInt(cpf.charAt(10))) return false //
-  return true //
-}
-
-const requiredFieldMessage = 'Este campo é obrigatório.' //
-
-// --- Schemas de Formulário ---
-export const createCaseFormSchema = z.object({ //
-  nomeCompleto: z.string().min(3, 'O nome deve ter no mínimo 3 caracteres.'), //
-  cpf: z.string().refine(validaCPF, { message: 'CPF inválido.' }), //
-  nascimento: z.string().min(1, requiredFieldMessage), //
-  sexo: z.string().min(1, requiredFieldMessage), //
-  telefone: z.string().refine((tel) => tel.replace(/\D/g, '').length >= 10, { //
-    message: 'Telefone inválido.', //
-  }),
-  endereco: z.string().min(5, 'O endereço é obrigatório.'), //
-  dataEntrada: z.string(), //
-  urgencia: z.string().min(1, requiredFieldMessage), //
-  violacao: z.string().min(1, requiredFieldMessage), //
-  categoria: z.string().min(1, requiredFieldMessage), //
-  orgaoDemandante: z.string().min(1, requiredFieldMessage), //
-  numeroSei: z.string().optional(), //
-  linkSei: z.string().url('URL inválida.').optional().or(z.literal('')), //
-  agenteAcolhidaId: z.string().min(1, 'É obrigatório selecionar um agente.'), //
-  observacoes: z.string().optional(), //
-  beneficios: z.array(z.string()).optional(), //
-})
-
-export type CreateCaseFormData = z.infer<typeof createCaseFormSchema> //
-
-export const evolutionFormSchema = z.object({ //
-  conteudo: z.string().min(10, 'A evolução deve ter no mínimo 10 caracteres.'), //
-})
-
-// --- ALTERAÇÃO APLICADA AQUI ---
-export const pafFormSchema = z.object({ //
-  diagnostico: z.string().min(10, 'O diagnóstico é muito curto.'), //
-  objetivos: z.string().min(10, 'Defina objetivos claros.'), //
-  estrategias: z.string().min(10, 'Defina estratégias claras.'), //
+// Esquema para criação/edição de casos
+export const createCaseFormSchema = z.object({
+  nomeCompleto: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
+  cpf: z.string().min(11, 'CPF inválido.'),
+  nascimento: z.string().refine((val) => val !== '', 'Data de nascimento obrigatória.'),
+  sexo: z.string().min(1, 'Selecione o sexo.'),
+  telefone: z.string().min(10, 'Telefone inválido.'),
+  endereco: z.string().min(5, 'Endereço muito curto.'),
+  dataEntrada: z.string(), // Aceita qualquer string de data ISO
   
-  // Trocado 'prazos' (String) por 'deadline' (Data)
-  deadline: z.string().refine((val) => val && !isNaN(Date.parse(val)), { // Valida que é uma string de data não vazia
-    message: 'A data do prazo é obrigatória.',
-  }),
-})
-// --- FIM DA ALTERAÇÃO ---
+  urgencia: z.string().min(1, 'Selecione a urgência.'),
+  violacao: z.string().min(1, 'Selecione a violação.'),
+  categoria: z.string().min(1, 'Selecione a categoria.'),
+  
+  orgaoDemandante: z.string().min(2, 'Informe o órgão demandante.'),
+  agenteAcolhidaId: z.string().uuid('Selecione um agente válido.'),
+  
+  // Campos Opcionais (tratamento para string vazia ou null)
+  numeroSei: z.string().optional().nullable().or(z.literal('')),
+  
+  // Aceita: URL válida, string vazia ("") ou null/undefined
+  linkSei: z.union([
+    z.string().url('URL inválida (ex: https://...)'), 
+    z.literal(''), 
+    z.null(), 
+    z.undefined()
+  ]).optional(),
 
-export const closeCaseFormSchema = z.object({ //
-  motivoDesligamento: z.string().min(1, 'O motivo é obrigatório.'), //
-  parecerFinal: z.string().min(10, 'O parecer final é muito curto.'), //
+  observacoes: z.string().optional().nullable().or(z.literal('')),
+  beneficios: z.array(z.string()).optional(),
+})
+
+export type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
+
+// Esquema para o PAF
+export const pafFormSchema = z.object({
+  diagnostico: z.string().min(10, 'O diagnóstico deve ser mais detalhado.'),
+  objetivos: z.string().min(10, 'Descreva os objetivos.'),
+  estrategias: z.string().min(10, 'Descreva as estratégias.'),
+  deadline: z.string().refine((val) => val !== '', 'Data de reavaliação obrigatória.'),
+})
+
+// [RECUPERADO] Esquema para Evolução
+export const evolutionFormSchema = z.object({
+  conteudo: z.string().min(5, 'A evolução deve ter pelo menos 5 caracteres.'),
+})
+
+// [RECUPERADO] Esquema para Desligamento
+export const closeCaseFormSchema = z.object({
+  motivoDesligamento: z.string().min(1, 'Selecione um motivo de desligamento.'),
+  parecerFinal: z.string().min(10, 'O parecer final deve ser detalhado.'),
 })

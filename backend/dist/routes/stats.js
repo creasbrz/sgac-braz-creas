@@ -107,19 +107,15 @@ async function statsRoutes(app) {
         else if (diff < -15) insights.push(`\u{1F4C9} Queda de ${Math.abs(Math.round(diff))}% na demanda.`);
       }
       if (avgHandlingTime > 120) insights.push(`\u26A0\uFE0F Tempo m\xE9dio alto (${avgHandlingTime} dias).`);
-      if (pieData.length > 0) {
-        insights.push(`\u{1F50D} Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
-      }
+      if (pieData.length > 0) insights.push(`\u{1F50D} Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
       return reply.send({
         trendData,
         avgHandlingTime,
         totalActive: activeTotal,
         insights,
         pieData
-        // Agora enviamos os dados reais
       });
     } catch (error) {
-      console.error(error);
       return reply.status(500).send({ message: "Erro interno." });
     }
   });
@@ -241,11 +237,14 @@ async function statsRoutes(app) {
     const { sub: userId } = request.user;
     try {
       const start = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
-      const end = (0, import_date_fns.endOfDay)((0, import_date_fns.addDays)(start, 30));
       const appointments = await prisma.agendamento.findMany({
-        where: { responsavelId: userId, data: { gte: start, lte: end } },
+        where: {
+          responsavelId: userId,
+          data: { gte: start }
+        },
         orderBy: { data: "asc" },
         take: 5,
+        // Pega os 5 próximos
         include: { caso: { select: { id: true, nomeCompleto: true } } }
       });
       return reply.send(appointments);

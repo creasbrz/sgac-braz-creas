@@ -58,9 +58,9 @@ export const Sidebar = memo(function Sidebar() {
         </nav>
       </div>
 
-      {/* FOOTER */}
+      {/* FOOTER COM VERSÃO DINÂMICA */}
       <div className="border-t p-4 text-center text-xs text-muted-foreground">
-        v2.0.0 • SEDES/DF
+        v{__APP_VERSION__} • SEDES/DF
       </div>
     </aside>
   )

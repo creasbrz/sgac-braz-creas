@@ -40,11 +40,20 @@ async function appointmentRoutes(app) {
   });
   app.get("/appointments", async (request, reply) => {
     const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid().optional() }).parse(request.query);
-    const where = caseId ? { casoId } : {};
+    const where = caseId ? { casoId: caseId } : {};
     const appointments = await prisma.agendamento.findMany({
       where,
       orderBy: { data: "asc" },
-      include: { responsavel: { select: { nome: true } } }
+      include: {
+        responsavel: { select: { nome: true } },
+        // [CORREÇÃO]: Incluindo os dados do caso para não quebrar o frontend
+        caso: {
+          select: {
+            id: true,
+            nomeCompleto: true
+          }
+        }
+      }
     });
     return reply.send(appointments);
   });
@@ -59,7 +68,7 @@ async function appointmentRoutes(app) {
       casoId: import_zod.z.string().uuid("ID do caso inv\xE1lido")
     });
     try {
-      const { titulo, data, observacoes, casoId: casoId2 } = bodySchema.parse(request.body);
+      const { titulo, data, observacoes, casoId } = bodySchema.parse(request.body);
       const { sub: userId } = request.user;
       const action = import_client2.LogAction.AGENDAMENTO_CRIADO ? import_client2.LogAction.AGENDAMENTO_CRIADO : import_client2.LogAction.OUTRO;
       const agendamento = await prisma.agendamento.create({
@@ -67,13 +76,13 @@ async function appointmentRoutes(app) {
           titulo,
           data,
           observacoes: typeof observacoes === "string" ? observacoes : null,
-          casoId: casoId2,
+          casoId,
           responsavelId: userId
         }
       });
       await prisma.caseLog.create({
         data: {
-          casoId: casoId2,
+          casoId,
           autorId: userId,
           acao: action,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString("pt-BR")}`

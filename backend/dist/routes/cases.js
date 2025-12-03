@@ -104,6 +104,13 @@ async function createLog(casoId, autorId, acao, descricao, valorAnterior, valorN
   });
 }
 async function caseRoutes(app) {
+  app.decorate("authenticate", async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch (err) {
+      await reply.send(err);
+    }
+  });
   app.post("/cases", { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = import_zod.z.object({
       nomeCompleto: import_zod.z.string(),
@@ -234,11 +241,20 @@ async function caseRoutes(app) {
       urgencia: import_zod.z.string().optional(),
       violacao: import_zod.z.string().optional(),
       categoria: import_zod.z.string().optional(),
-      sexo: import_zod.z.string().optional()
+      sexo: import_zod.z.string().optional(),
+      // [NOVO] Parâmetro para controlar a visão: 'my' (padrão) ou 'all'
+      view: import_zod.z.enum(["my", "all"]).default("my").optional()
     });
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo } = schema.parse(request.query);
-      let where = buildActiveCaseWhereClause(request.user);
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view } = schema.parse(request.query);
+      let where = {};
+      if (view === "all") {
+        where = {
+          status: { not: import_client2.CaseStatus.DESLIGADO }
+        };
+      } else {
+        where = buildActiveCaseWhereClause(request.user);
+      }
       if (search) {
         where.AND = [
           ...where.AND || [],
@@ -341,7 +357,7 @@ async function caseRoutes(app) {
     try {
       const { id } = paramsSchema.parse(request.params);
       const { status } = bodySchema.parse(request.body);
-      const { sub: userId, cargo } = request.user;
+      const { sub: userId } = request.user;
       const caso = await prisma.case.findUnique({ where: { id } });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       let updateData = { status };

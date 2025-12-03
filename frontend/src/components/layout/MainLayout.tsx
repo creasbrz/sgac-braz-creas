@@ -20,7 +20,9 @@ export function MainLayout() {
 
           {/* CONTEÚDO SCROLLÁVEL */}
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-background/50">
-            <div className="mx-auto max-w-6xl space-y-6">
+            {/* [CORREÇÃO v3.2] Removido 'max-w-6xl mx-auto' */}
+            {/* Agora usamos h-full e w-full para permitir que páginas como o Kanban usem todo o espaço */}
+            <div className="h-full w-full space-y-6">
               <Outlet />
             </div>
           </main>

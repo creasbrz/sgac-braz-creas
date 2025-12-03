@@ -1,11 +1,12 @@
 // frontend/src/components/layout/Header.tsx
-import { LogOut, Slash } from "lucide-react"
+import { LogOut, Slash, Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { MobileSidebar } from "./MobileSidebar"
 import { useLocation } from "react-router-dom"
 import { NotificationBell } from "./NotificationBell"
+import { useState, useEffect } from "react"
 
 // Mapa de nomes amigáveis para as rotas
 const PAGE_TITLES: Record<string, string> = {
@@ -23,6 +24,18 @@ export function Header() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const pathname = location.pathname
+  
+  // [NOVO] Estado para o Modo Privacidade
+  const [privacyMode, setPrivacyMode] = useState(false)
+
+  // [NOVO] Efeito para aplicar a classe no body
+  useEffect(() => {
+    if (privacyMode) {
+      document.body.classList.add('privacy-mode')
+    } else {
+      document.body.classList.remove('privacy-mode')
+    }
+  }, [privacyMode])
 
   // Lógica para determinar o título da página
   let pageTitle = PAGE_TITLES[pathname]
@@ -30,7 +43,7 @@ export function Header() {
   // Se não achou no mapa exato, verifica padrões dinâmicos
   if (!pageTitle) {
     if (pathname.includes('/dashboard/cases/')) {
-      pageTitle = 'Prontuário Eletrônico' // Para a tela de detalhes
+      pageTitle = 'Prontuário Eletrônico' 
     } else {
       // Fallback genérico: pega o último pedaço da URL
       const parts = pathname.split('/')
@@ -60,10 +73,21 @@ export function Header() {
       {/* AÇÕES */}
       <div className="ml-auto flex items-center gap-2 md:gap-4">
         
+        {/* [NOVO] Botão Modo Privacidade */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setPrivacyMode(!privacyMode)}
+          className={privacyMode ? "text-primary bg-primary/10" : "text-muted-foreground"}
+          title={privacyMode ? "Desativar Modo Privacidade" : "Ativar Modo Privacidade (Ocultar dados)"}
+        >
+          {privacyMode ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+        </Button>
+
         <NotificationBell />
         <ThemeToggle />
 
-        <div className="hidden md:flex flex-col items-end border-l pl-4 ml-2">
+        <div className="hidden md:flex flex-col items-end border-l pl-4 ml-2 privacy-exempt">
           <span className="text-sm font-medium leading-none">
             {user?.nome}
           </span>

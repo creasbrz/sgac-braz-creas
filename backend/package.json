@@ -1,6 +1,6 @@
 {
   "name": "sgac-braz-backend",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Backend para o Sistema de Gestão de Atendimentos do CREAS Brazlândia",
   "main": "src/server.ts",
   "scripts": {

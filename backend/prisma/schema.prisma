@@ -33,7 +33,7 @@ enum LogAction {
   ATRIBUICAO
   DESLIGAMENTO
   EVOLUCAO_CRIADA
-  AGENDAMENTO_CRIADO // Essencial para a aba Agendamentos
+  AGENDAMENTO_CRIADO
   PAF_CRIADO
   PAF_ATUALIZADO
   ANEXO_ADICIONADO
@@ -55,20 +55,23 @@ model User {
   updatedAt             DateTime  @updatedAt
 
   // Relações com Casos
-  casosCriados          Case[]        @relation("CasosCriados")
-  casosDeAcolhida       Case[]        @relation("AgenteAcolhida")
-  casosDeAcompanhamento Case[]        @relation("EspecialistaPAEFI")
+  casosCriados          Case[]         @relation("CasosCriados")
+  casosDeAcolhida       Case[]         @relation("AgenteAcolhida")
+  casosDeAcompanhamento Case[]         @relation("EspecialistaPAEFI")
   
   // Relações com Atividades
-  evolucoes             Evolucao[]    @relation("EvolucoesDoAutor")
-  pafsCriados           Paf[]         @relation("PafsDoAutor")
-  pafVersoes            PafVersion[]  @relation("VersoesDoAutor")
-  agendamentos          Agendamento[] @relation("AgendamentosDoResponsavel")
-  logsGerados           CaseLog[]     @relation("LogsDoAutor")
-  anexosEnviados        Anexo[]       @relation("AnexosDoAutor")
+  evolucoes             Evolucao[]     @relation("EvolucoesDoAutor")
+  pafsCriados           Paf[]          @relation("PafsDoAutor")
+  pafVersoes            PafVersion[]   @relation("VersoesDoAutor")
+  agendamentos          Agendamento[]  @relation("AgendamentosDoResponsavel")
+  logsGerados           CaseLog[]      @relation("LogsDoAutor")
+  anexosEnviados        Anexo[]        @relation("AnexosDoAutor")
   
   // Filtros Personalizados
-  filtrosSalvos         SavedFilter[] @relation("FiltrosDoUsuario")
+  filtrosSalvos         SavedFilter[]  @relation("FiltrosDoUsuario")
+
+  // [CORREÇÃO] Relação inversa adicionada aqui:
+  encaminhamentosRealizados Encaminhamento[] 
 
   @@index([cargo])
 }
@@ -84,60 +87,63 @@ model SavedFilter {
 }
 
 model Case {
-  id                  String    @id @default(uuid())
+  id                    String    @id @default(uuid())
   
   // Identificação
-  nomeCompleto        String
-  cpf                 String    @unique
-  nascimento          DateTime
-  sexo                String    // String livre para flexibilidade
-  telefone            String
-  endereco            String
+  nomeCompleto          String
+  cpf                   String    @unique
+  nascimento            DateTime
+  sexo                  String    // String livre para flexibilidade
+  telefone              String
+  endereco              String
   
   // Dados Técnicos
-  urgencia            String
-  pesoUrgencia        Int       @default(1) // 1=Baixa, 4=Crítica (Para ordenação)
-  violacao            String
-  categoria           String
+  urgencia              String
+  pesoUrgencia          Int       @default(1) // 1=Baixa, 4=Crítica (Para ordenação)
+  violacao              String
+  categoria             String
   
   // Dados Administrativos
-  dataEntrada         DateTime  @default(now())
-  orgaoDemandante     String
-  numeroSei           String?
-  linkSei             String?
-  observacoes         String?
-  beneficios          String[]  @default([])
+  dataEntrada           DateTime  @default(now())
+  orgaoDemandante       String
+  numeroSei             String?
+  linkSei               String?
+  observacoes           String?
+  beneficios            String[]  @default([])
   
-  status              CaseStatus @default(AGUARDANDO_ACOLHIDA)
+  status                CaseStatus @default(AGUARDANDO_ACOLHIDA)
   
   // Responsáveis
-  criadoPor           User      @relation("CasosCriados", fields: [criadoPorId], references: [id])
-  criadoPorId         String
+  criadoPor             User      @relation("CasosCriados", fields: [criadoPorId], references: [id])
+  criadoPorId           String
 
-  agenteAcolhida      User?     @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
-  agenteAcolhidaId    String?
+  agenteAcolhida        User?     @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
+  agenteAcolhidaId      String?
 
-  especialistaPAEFI   User?     @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
-  especialistaPAEFIId String?
+  especialistaPAEFI     User?     @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
+  especialistaPAEFIId   String?
 
   // Dados de Gestão
-  dataInicioPAEFI     DateTime?
-  dataDesligamento    DateTime?
-  motivoDesligamento  String?
-  parecerFinal        String?
+  dataInicioPAEFI       DateTime?
+  dataDesligamento      DateTime?
+  motivoDesligamento    String?
+  parecerFinal          String?
   
   // Logs e Soft Delete
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  deletado            Boolean   @default(false)
-  dataDeletado        DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletado              Boolean   @default(false)
+  dataDeletado          DateTime?
 
   // Relacionamentos
-  evolucoes           Evolucao[]
-  paf                 Paf?
-  agendamentos        Agendamento[]
-  logs                CaseLog[]
-  anexos              Anexo[]
+  evolucoes             Evolucao[]
+  paf                   Paf?
+  agendamentos          Agendamento[]
+  logs                  CaseLog[]
+  anexos                Anexo[]
+
+  // [CORREÇÃO] Relação inversa adicionada aqui:
+  encaminhamentos       Encaminhamento[]
 
   @@index([status])
   @@index([dataEntrada])
@@ -191,7 +197,7 @@ model PafVersion {
   autor       User     @relation("VersoesDoAutor", fields: [autorId], references: [id])
   autorId     String
   
-  versaoNumero Int     @default(1)
+  versaoNumero Int      @default(1)
 }
 
 model Agendamento {
@@ -202,10 +208,10 @@ model Agendamento {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   
-  responsavel   User   @relation("AgendamentosDoResponsavel", fields: [responsavelId], references: [id])
+  responsavel   User     @relation("AgendamentosDoResponsavel", fields: [responsavelId], references: [id])
   responsavelId String
   
-  caso          Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  caso          Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   casoId        String
 }
 
@@ -225,16 +231,38 @@ model CaseLog {
 }
 
 model Anexo {
-  id          String   @id @default(uuid())
-  nome        String
-  tipo        String
-  url         String
-  tamanho     Int?
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  nome      String
+  tipo      String
+  url       String
+  tamanho   Int?
+  createdAt DateTime @default(now())
   
-  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  casoId      String
+  caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  casoId    String
   
-  autor       User     @relation("AnexosDoAutor", fields: [autorId], references: [id])
-  autorId     String
+  autor     User     @relation("AnexosDoAutor", fields: [autorId], references: [id])
+  autorId   String
+}
+
+// [NOVO MODELO]
+model Encaminhamento {
+  id            String   @id @default(uuid())
+  tipo          String   // Ex: Saúde, Educação, Jurídico
+  instituicao   String   // Ex: UBS 01, Escola Classe 02
+  motivo        String
+  status        String   @default("PENDENTE") // PENDENTE, CONCLUIDO, NEGADO
+  dataEnvio     DateTime @default(now())
+  retorno       String?  // Contra-referência
+  
+  // Relaciona com o Caso (Obrigatório ter o campo oposto em Case)
+  casoId        String
+  caso          Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
+  // Relaciona com o Autor (Obrigatório ter o campo oposto em User)
+  autorId       String
+  autor         User     @relation(fields: [autorId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

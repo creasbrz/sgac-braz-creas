@@ -3,7 +3,6 @@ import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns'
-// [CORREÇÃO IMPORTANTE] Importar Enums para garantir que o Prisma não quebre
 import { Cargo, CaseStatus, Sexo } from '@prisma/client'
 
 export async function reportRoutes(app: FastifyInstance) {
@@ -13,7 +12,6 @@ export async function reportRoutes(app: FastifyInstance) {
       await request.jwtVerify()
       const { cargo } = request.user as { cargo: string }
       
-      // Verifica se é Gerente usando o Enum correto
       if (cargo !== Cargo.Gerente) {
         return reply.status(403).send({ message: 'Acesso negado.' })
       }
@@ -24,35 +22,43 @@ export async function reportRoutes(app: FastifyInstance) {
 
   /**
    * [GET] /reports/team-overview
+   * Retorna a estrutura hierárquica Técnico -> Casos com detalhes completos para tabela
    */
   app.get('/reports/team-overview', async (request, reply) => {
     try {
-      // 1. Busca técnicos (Usando Enum)
+      // 1. Busca técnicos
       const technicians = await prisma.user.findMany({
         where: {
-          cargo: {
-            in: [Cargo.Agente_Social, Cargo.Especialista], 
-          },
+          cargo: { in: [Cargo.Agente_Social, Cargo.Especialista] },
           ativo: true,
         },
         select: { id: true, nome: true, cargo: true },
         orderBy: { cargo: 'asc' },
       })
 
-      // 2. Busca casos ativos (Usando Enum)
+      // 2. Busca casos ativos com TODOS os campos necessários para a tabela
       const activeCases = await prisma.case.findMany({
         where: {
-          status: {
-            not: CaseStatus.DESLIGADO, 
-          },
+          status: { not: CaseStatus.DESLIGADO },
         },
         select: {
-          id: true, nomeCompleto: true, status: true,
-          agenteAcolhidaId: true, especialistaPAEFIId: true,
+          id: true, 
+          nomeCompleto: true, 
+          cpf: true,         // [NOVO]
+          sexo: true,        // [NOVO]
+          urgencia: true,    // [NOVO]
+          violacao: true,    // [NOVO]
+          dataEntrada: true, // [NOVO]
+          status: true,
+          agenteAcolhidaId: true, 
+          especialistaPAEFIId: true,
+          agenteAcolhida: { select: { nome: true } },      // [NOVO] Para exibir nome na tabela
+          especialistaPAEFI: { select: { nome: true } },   // [NOVO] Para exibir nome na tabela
         },
+        orderBy: { pesoUrgencia: 'desc' } // Ordenar por prioridade dentro da equipe
       })
 
-      // 3. Processamento em memória
+      // 3. Processamento em memória (Distribuição)
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
           if (tech.cargo === Cargo.Agente_Social) {
@@ -68,13 +74,12 @@ export async function reportRoutes(app: FastifyInstance) {
             )
           }
           return false
-        }).map(c => ({ id: c.id, nomeCompleto: c.nomeCompleto }))
+        })
 
         return {
           nome: tech.nome,
-          // Formata o nome do cargo para ficar bonito na tela (remove o underline)
           cargo: tech.cargo === Cargo.Agente_Social ? 'Agente Social' : 'Especialista',
-          cases: techCases,
+          cases: techCases, // Agora contém o objeto completo do caso
         }
       })
 
@@ -85,9 +90,7 @@ export async function reportRoutes(app: FastifyInstance) {
     }
   })
 
-  /**
-   * [GET] /reports/rma
-   */
+  // ... (Resto do arquivo mantido igual: /reports/rma)
   app.get('/reports/rma', async (request, reply) => {
     const querySchema = z.object({
       month: z.string().regex(/^\d{4}-\d{2}$/, 'Formato inválido (YYYY-MM).'),
@@ -99,10 +102,9 @@ export async function reportRoutes(app: FastifyInstance) {
       const firstDay = startOfMonth(targetMonth)
       const lastDay = endOfMonth(targetMonth)
 
-      // B1: Em acompanhamento no início
       const initialCount = await prisma.case.count({
         where: {
-          status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, // Enum
+          status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
           dataInicioPAEFI: { lt: firstDay },
           OR: [
             { dataDesligamento: null },
@@ -111,7 +113,6 @@ export async function reportRoutes(app: FastifyInstance) {
         },
       })
 
-      // B2: Novas entradas
       const newEntries = await prisma.case.findMany({
         where: {
           dataInicioPAEFI: { gte: firstDay, lte: lastDay },
@@ -119,26 +120,22 @@ export async function reportRoutes(app: FastifyInstance) {
         select: { id: true, sexo: true, nascimento: true },
       })
 
-      // B3: Desligados
       const closedCases = await prisma.case.count({
         where: {
-          status: CaseStatus.DESLIGADO, // Enum
+          status: CaseStatus.DESLIGADO,
           dataDesligamento: { gte: firstDay, lte: lastDay },
         },
       })
 
-      // B4: Final
       const finalCount = initialCount + newEntries.length - closedCases
 
-      // C1: Sexo (Usando Enum Sexo)
       const profileBySex = { masculino: 0, feminino: 0, outro: 0 }
       newEntries.forEach(c => {
-        if (c.sexo === Sexo.M) profileBySex.masculino++
-        else if (c.sexo === Sexo.F) profileBySex.feminino++
+        if (c.sexo === 'Masculino') profileBySex.masculino++
+        else if (c.sexo === 'Feminino') profileBySex.feminino++
         else profileBySex.outro++
       })
 
-      // C2: Idade
       const profileByAgeGroup = {
         '0-6': 0, '7-12': 0, '13-17': 0,
         '18-29': 0, '30-59': 0, '60+': 0,

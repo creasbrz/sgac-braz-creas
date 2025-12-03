@@ -47,9 +47,7 @@ async function reportRoutes(app) {
     try {
       const technicians = await prisma.user.findMany({
         where: {
-          cargo: {
-            in: [import_client2.Cargo.Agente_Social, import_client2.Cargo.Especialista]
-          },
+          cargo: { in: [import_client2.Cargo.Agente_Social, import_client2.Cargo.Especialista] },
           ativo: true
         },
         select: { id: true, nome: true, cargo: true },
@@ -57,17 +55,31 @@ async function reportRoutes(app) {
       });
       const activeCases = await prisma.case.findMany({
         where: {
-          status: {
-            not: import_client2.CaseStatus.DESLIGADO
-          }
+          status: { not: import_client2.CaseStatus.DESLIGADO }
         },
         select: {
           id: true,
           nomeCompleto: true,
+          cpf: true,
+          // [NOVO]
+          sexo: true,
+          // [NOVO]
+          urgencia: true,
+          // [NOVO]
+          violacao: true,
+          // [NOVO]
+          dataEntrada: true,
+          // [NOVO]
           status: true,
           agenteAcolhidaId: true,
-          especialistaPAEFIId: true
-        }
+          especialistaPAEFIId: true,
+          agenteAcolhida: { select: { nome: true } },
+          // [NOVO] Para exibir nome na tabela
+          especialistaPAEFI: { select: { nome: true } }
+          // [NOVO] Para exibir nome na tabela
+        },
+        orderBy: { pesoUrgencia: "desc" }
+        // Ordenar por prioridade dentro da equipe
       });
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
@@ -78,12 +90,12 @@ async function reportRoutes(app) {
             return c.especialistaPAEFIId === tech.id && c.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI;
           }
           return false;
-        }).map((c) => ({ id: c.id, nomeCompleto: c.nomeCompleto }));
+        });
         return {
           nome: tech.nome,
-          // Formata o nome do cargo para ficar bonito na tela (remove o underline)
           cargo: tech.cargo === import_client2.Cargo.Agente_Social ? "Agente Social" : "Especialista",
           cases: techCases
+          // Agora contém o objeto completo do caso
         };
       });
       return reply.status(200).send(overview);
@@ -104,7 +116,6 @@ async function reportRoutes(app) {
       const initialCount = await prisma.case.count({
         where: {
           status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-          // Enum
           dataInicioPAEFI: { lt: firstDay },
           OR: [
             { dataDesligamento: null },
@@ -121,15 +132,14 @@ async function reportRoutes(app) {
       const closedCases = await prisma.case.count({
         where: {
           status: import_client2.CaseStatus.DESLIGADO,
-          // Enum
           dataDesligamento: { gte: firstDay, lte: lastDay }
         }
       });
       const finalCount = initialCount + newEntries.length - closedCases;
       const profileBySex = { masculino: 0, feminino: 0, outro: 0 };
       newEntries.forEach((c) => {
-        if (c.sexo === import_client2.Sexo.M) profileBySex.masculino++;
-        else if (c.sexo === import_client2.Sexo.F) profileBySex.feminino++;
+        if (c.sexo === "Masculino") profileBySex.masculino++;
+        else if (c.sexo === "Feminino") profileBySex.feminino++;
         else profileBySex.outro++;
       });
       const profileByAgeGroup = {

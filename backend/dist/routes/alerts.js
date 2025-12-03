@@ -53,10 +53,36 @@ async function alertRoutes(app) {
     for (const ag of agenda) {
       notifications.push({
         id: `agenda-${ag.id}`,
-        title: "Agendamento Pr\xF3ximo",
+        title: "Compromisso Pr\xF3ximo",
         description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: "/dashboard/agenda",
+        link: `/dashboard/cases/${ag.casoId}`,
+        // Link direto para o caso
         type: "info"
+      });
+    }
+    const dataLimiteInatividade = (0, import_date_fns.subDays)(/* @__PURE__ */ new Date(), 30);
+    const casosInativos = await prisma.case.findMany({
+      where: {
+        status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+        // Se for Especialista, filtra pelos dele. Se Gerente, vê todos.
+        especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
+        // Lógica: Nenhuma evolução criada DEPOIS da data limite
+        evolucoes: {
+          none: {
+            createdAt: { gte: dataLimiteInatividade }
+          }
+        }
+      },
+      select: { id: true, nomeCompleto: true }
+    });
+    for (const caso of casosInativos) {
+      notifications.push({
+        id: `inativo-${caso.id}`,
+        title: "Caso sem Movimenta\xE7\xE3o",
+        description: `${caso.nomeCompleto} n\xE3o tem evolu\xE7\xE3o h\xE1 +30 dias.`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: "critical"
+        // Alerta vermelho
       });
     }
     if (cargo === import_client2.Cargo.Gerente) {
@@ -67,9 +93,8 @@ async function alertRoutes(app) {
         notifications.push({
           id: "dist-queue",
           title: "Distribui\xE7\xE3o Pendente",
-          description: `${distCount} casos aguardam atribui\xE7\xE3o de t\xE9cnico.`,
-          link: "/dashboard/cases",
-          // Link para lista geral
+          description: `${distCount} casos aguardam atribui\xE7\xE3o.`,
+          link: "/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI",
           type: "critical"
         });
       }
@@ -84,9 +109,9 @@ async function alertRoutes(app) {
       if (acolhidaCount > 0) {
         notifications.push({
           id: "acolhida-queue",
-          title: "Novos Casos para Acolhida",
-          description: `Voc\xEA tem ${acolhidaCount} casos aguardando atendimento inicial.`,
-          link: "/dashboard/cases",
+          title: "Novos na Acolhida",
+          description: `Voc\xEA tem ${acolhidaCount} casos para triagem inicial.`,
+          link: "/dashboard/cases?status=AGUARDANDO_ACOLHIDA",
           type: "critical"
         });
       }
@@ -103,28 +128,30 @@ async function alertRoutes(app) {
         notifications.push({
           id: "missing-paf",
           title: "Casos sem PAF",
-          description: `${casesWithoutPaf} casos precisam de Plano de Acompanhamento.`,
+          description: `${casesWithoutPaf} casos precisam do plano inicial.`,
           link: "/dashboard/cases",
+          // Idealmente filtrar na lista
           type: "critical"
         });
       }
       const pafDeadline = (0, import_date_fns.addDays)(/* @__PURE__ */ new Date(), 15);
       const pafsExpiring = await prisma.paf.findMany({
         where: {
-          autorId: userId,
-          // Ou filtrar pelo caso especialistaPAEFIId
-          deadline: { gte: today, lte: pafDeadline },
-          caso: { status: { not: import_client2.CaseStatus.DESLIGADO } }
-          // Ignora casos já fechados
+          // O PAF pode ter sido criado por outro, mas o alerta vai para o responsável atual do caso
+          caso: {
+            especialistaPAEFIId: userId,
+            status: { not: import_client2.CaseStatus.DESLIGADO }
+          },
+          deadline: { gte: today, lte: pafDeadline }
         },
-        include: { caso: { select: { nomeCompleto: true } } }
+        include: { caso: { select: { nomeCompleto: true, id: true } } }
       });
       for (const p of pafsExpiring) {
         notifications.push({
           id: `paf-exp-${p.id}`,
-          title: "PAF Vencendo",
-          description: `Revis\xE3o necess\xE1ria: ${p.caso.nomeCompleto}`,
-          link: `/dashboard/cases/${p.casoId}`,
+          title: "Reavalia\xE7\xE3o de PAF",
+          description: `Prazo pr\xF3ximo: ${p.caso.nomeCompleto}`,
+          link: `/dashboard/cases/${p.caso.id}`,
           type: "critical"
         });
       }

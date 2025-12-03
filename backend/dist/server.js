@@ -222,6 +222,13 @@ async function createLog(casoId2, autorId, acao, descricao, valorAnterior, valor
   });
 }
 async function caseRoutes(app2) {
+  app2.decorate("authenticate", async (request, reply) => {
+    try {
+      await request.jwtVerify();
+    } catch (err) {
+      await reply.send(err);
+    }
+  });
   app2.post("/cases", { onRequest: [app2.authenticate] }, async (request, reply) => {
     const schema = import_zod2.z.object({
       nomeCompleto: import_zod2.z.string(),
@@ -352,11 +359,20 @@ async function caseRoutes(app2) {
       urgencia: import_zod2.z.string().optional(),
       violacao: import_zod2.z.string().optional(),
       categoria: import_zod2.z.string().optional(),
-      sexo: import_zod2.z.string().optional()
+      sexo: import_zod2.z.string().optional(),
+      // [NOVO] Parâmetro para controlar a visão: 'my' (padrão) ou 'all'
+      view: import_zod2.z.enum(["my", "all"]).default("my").optional()
     });
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo } = schema.parse(request.query);
-      let where = buildActiveCaseWhereClause(request.user);
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view } = schema.parse(request.query);
+      let where = {};
+      if (view === "all") {
+        where = {
+          status: { not: import_client2.CaseStatus.DESLIGADO }
+        };
+      } else {
+        where = buildActiveCaseWhereClause(request.user);
+      }
       if (search) {
         where.AND = [
           ...where.AND || [],
@@ -459,7 +475,7 @@ async function caseRoutes(app2) {
     try {
       const { id } = paramsSchema.parse(request.params);
       const { status } = bodySchema.parse(request.body);
-      const { sub: userId, cargo } = request.user;
+      const { sub: userId } = request.user;
       const caso = await prisma.case.findUnique({ where: { id } });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       let updateData = { status };
@@ -1097,11 +1113,20 @@ async function appointmentRoutes(app2) {
   });
   app2.get("/appointments", async (request, reply) => {
     const { caseId } = import_zod7.z.object({ caseId: import_zod7.z.string().uuid().optional() }).parse(request.query);
-    const where = caseId ? { casoId } : {};
+    const where = caseId ? { casoId: caseId } : {};
     const appointments = await prisma.agendamento.findMany({
       where,
       orderBy: { data: "asc" },
-      include: { responsavel: { select: { nome: true } } }
+      include: {
+        responsavel: { select: { nome: true } },
+        // [CORREÇÃO]: Incluindo os dados do caso para não quebrar o frontend
+        caso: {
+          select: {
+            id: true,
+            nomeCompleto: true
+          }
+        }
+      }
     });
     return reply.send(appointments);
   });
@@ -1168,9 +1193,7 @@ async function reportRoutes(app2) {
     try {
       const technicians = await prisma.user.findMany({
         where: {
-          cargo: {
-            in: [import_client8.Cargo.Agente_Social, import_client8.Cargo.Especialista]
-          },
+          cargo: { in: [import_client8.Cargo.Agente_Social, import_client8.Cargo.Especialista] },
           ativo: true
         },
         select: { id: true, nome: true, cargo: true },
@@ -1178,17 +1201,31 @@ async function reportRoutes(app2) {
       });
       const activeCases = await prisma.case.findMany({
         where: {
-          status: {
-            not: import_client8.CaseStatus.DESLIGADO
-          }
+          status: { not: import_client8.CaseStatus.DESLIGADO }
         },
         select: {
           id: true,
           nomeCompleto: true,
+          cpf: true,
+          // [NOVO]
+          sexo: true,
+          // [NOVO]
+          urgencia: true,
+          // [NOVO]
+          violacao: true,
+          // [NOVO]
+          dataEntrada: true,
+          // [NOVO]
           status: true,
           agenteAcolhidaId: true,
-          especialistaPAEFIId: true
-        }
+          especialistaPAEFIId: true,
+          agenteAcolhida: { select: { nome: true } },
+          // [NOVO] Para exibir nome na tabela
+          especialistaPAEFI: { select: { nome: true } }
+          // [NOVO] Para exibir nome na tabela
+        },
+        orderBy: { pesoUrgencia: "desc" }
+        // Ordenar por prioridade dentro da equipe
       });
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
@@ -1199,12 +1236,12 @@ async function reportRoutes(app2) {
             return c.especialistaPAEFIId === tech.id && c.status === import_client8.CaseStatus.EM_ACOMPANHAMENTO_PAEFI;
           }
           return false;
-        }).map((c) => ({ id: c.id, nomeCompleto: c.nomeCompleto }));
+        });
         return {
           nome: tech.nome,
-          // Formata o nome do cargo para ficar bonito na tela (remove o underline)
           cargo: tech.cargo === import_client8.Cargo.Agente_Social ? "Agente Social" : "Especialista",
           cases: techCases
+          // Agora contém o objeto completo do caso
         };
       });
       return reply.status(200).send(overview);
@@ -1225,7 +1262,6 @@ async function reportRoutes(app2) {
       const initialCount = await prisma.case.count({
         where: {
           status: import_client8.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-          // Enum
           dataInicioPAEFI: { lt: firstDay },
           OR: [
             { dataDesligamento: null },
@@ -1242,15 +1278,14 @@ async function reportRoutes(app2) {
       const closedCases = await prisma.case.count({
         where: {
           status: import_client8.CaseStatus.DESLIGADO,
-          // Enum
           dataDesligamento: { gte: firstDay, lte: lastDay }
         }
       });
       const finalCount = initialCount + newEntries.length - closedCases;
       const profileBySex = { masculino: 0, feminino: 0, outro: 0 };
       newEntries.forEach((c) => {
-        if (c.sexo === import_client8.Sexo.M) profileBySex.masculino++;
-        else if (c.sexo === import_client8.Sexo.F) profileBySex.feminino++;
+        if (c.sexo === "Masculino") profileBySex.masculino++;
+        else if (c.sexo === "Feminino") profileBySex.feminino++;
         else profileBySex.outro++;
       });
       const profileByAgeGroup = {
@@ -1312,10 +1347,36 @@ async function alertRoutes(app2) {
     for (const ag of agenda) {
       notifications.push({
         id: `agenda-${ag.id}`,
-        title: "Agendamento Pr\xF3ximo",
+        title: "Compromisso Pr\xF3ximo",
         description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: "/dashboard/agenda",
+        link: `/dashboard/cases/${ag.casoId}`,
+        // Link direto para o caso
         type: "info"
+      });
+    }
+    const dataLimiteInatividade = (0, import_date_fns4.subDays)(/* @__PURE__ */ new Date(), 30);
+    const casosInativos = await prisma.case.findMany({
+      where: {
+        status: import_client9.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+        // Se for Especialista, filtra pelos dele. Se Gerente, vê todos.
+        especialistaPAEFIId: cargo === import_client9.Cargo.Especialista ? userId : void 0,
+        // Lógica: Nenhuma evolução criada DEPOIS da data limite
+        evolucoes: {
+          none: {
+            createdAt: { gte: dataLimiteInatividade }
+          }
+        }
+      },
+      select: { id: true, nomeCompleto: true }
+    });
+    for (const caso of casosInativos) {
+      notifications.push({
+        id: `inativo-${caso.id}`,
+        title: "Caso sem Movimenta\xE7\xE3o",
+        description: `${caso.nomeCompleto} n\xE3o tem evolu\xE7\xE3o h\xE1 +30 dias.`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: "critical"
+        // Alerta vermelho
       });
     }
     if (cargo === import_client9.Cargo.Gerente) {
@@ -1326,9 +1387,8 @@ async function alertRoutes(app2) {
         notifications.push({
           id: "dist-queue",
           title: "Distribui\xE7\xE3o Pendente",
-          description: `${distCount} casos aguardam atribui\xE7\xE3o de t\xE9cnico.`,
-          link: "/dashboard/cases",
-          // Link para lista geral
+          description: `${distCount} casos aguardam atribui\xE7\xE3o.`,
+          link: "/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI",
           type: "critical"
         });
       }
@@ -1343,9 +1403,9 @@ async function alertRoutes(app2) {
       if (acolhidaCount > 0) {
         notifications.push({
           id: "acolhida-queue",
-          title: "Novos Casos para Acolhida",
-          description: `Voc\xEA tem ${acolhidaCount} casos aguardando atendimento inicial.`,
-          link: "/dashboard/cases",
+          title: "Novos na Acolhida",
+          description: `Voc\xEA tem ${acolhidaCount} casos para triagem inicial.`,
+          link: "/dashboard/cases?status=AGUARDANDO_ACOLHIDA",
           type: "critical"
         });
       }
@@ -1362,28 +1422,30 @@ async function alertRoutes(app2) {
         notifications.push({
           id: "missing-paf",
           title: "Casos sem PAF",
-          description: `${casesWithoutPaf} casos precisam de Plano de Acompanhamento.`,
+          description: `${casesWithoutPaf} casos precisam do plano inicial.`,
           link: "/dashboard/cases",
+          // Idealmente filtrar na lista
           type: "critical"
         });
       }
       const pafDeadline = (0, import_date_fns4.addDays)(/* @__PURE__ */ new Date(), 15);
       const pafsExpiring = await prisma.paf.findMany({
         where: {
-          autorId: userId,
-          // Ou filtrar pelo caso especialistaPAEFIId
-          deadline: { gte: today, lte: pafDeadline },
-          caso: { status: { not: import_client9.CaseStatus.DESLIGADO } }
-          // Ignora casos já fechados
+          // O PAF pode ter sido criado por outro, mas o alerta vai para o responsável atual do caso
+          caso: {
+            especialistaPAEFIId: userId,
+            status: { not: import_client9.CaseStatus.DESLIGADO }
+          },
+          deadline: { gte: today, lte: pafDeadline }
         },
-        include: { caso: { select: { nomeCompleto: true } } }
+        include: { caso: { select: { nomeCompleto: true, id: true } } }
       });
       for (const p of pafsExpiring) {
         notifications.push({
           id: `paf-exp-${p.id}`,
-          title: "PAF Vencendo",
-          description: `Revis\xE3o necess\xE1ria: ${p.caso.nomeCompleto}`,
-          link: `/dashboard/cases/${p.casoId}`,
+          title: "Reavalia\xE7\xE3o de PAF",
+          description: `Prazo pr\xF3ximo: ${p.caso.nomeCompleto}`,
+          link: `/dashboard/cases/${p.caso.id}`,
           type: "critical"
         });
       }
@@ -1477,8 +1539,28 @@ async function auditRoutes(app2) {
 var import_zod10 = require("zod");
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
-var import_promises = require("stream/promises");
 var import_client10 = require("@prisma/client");
+async function validateFileSignature(buffer) {
+  const bytes = buffer.subarray(0, 4).toString("hex").toUpperCase();
+  const signatures = {
+    "25504446": ["pdf"],
+    // %PDF
+    "FFD8FFE0": ["image"],
+    // JPEG
+    "FFD8FFE1": ["image"],
+    // JPEG
+    "FFD8FFEE": ["image"],
+    // JPEG
+    "FFD8FFDB": ["image"],
+    // JPEG
+    "89504E47": ["image"]
+    // PNG
+  };
+  for (const [sig, types] of Object.entries(signatures)) {
+    if (bytes.startsWith(sig)) return types[0];
+  }
+  return null;
+}
 async function attachmentRoutes(app2) {
   app2.addHook("onRequest", async (request, reply) => {
     try {
@@ -1488,7 +1570,6 @@ async function attachmentRoutes(app2) {
     }
   });
   app2.post("/cases/:caseId/attachments", async (request, reply) => {
-    console.log("\u{1F4E5} [API] Recebendo upload...");
     const paramsSchema = import_zod10.z.object({ caseId: import_zod10.z.string().uuid() });
     try {
       const { caseId } = paramsSchema.parse(request.params);
@@ -1497,10 +1578,12 @@ async function attachmentRoutes(app2) {
       if (!data) {
         return reply.status(400).send({ message: "Nenhum arquivo enviado." });
       }
-      const allowedMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-      if (!allowedMimeTypes.includes(data.mimetype)) {
-        await data.toBuffer();
-        return reply.status(400).send({ message: "Formato inv\xE1lido. Use PDF ou Imagens." });
+      const buffer = await data.toBuffer();
+      const fileType = await validateFileSignature(buffer);
+      if (!fileType) {
+        return reply.status(400).send({
+          message: "Arquivo inv\xE1lido ou corrompido. Apenas PDF, JPG e PNG reais s\xE3o permitidos."
+        });
       }
       const safeFilename = data.filename.replace(/[^a-zA-Z0-9.]/g, "_");
       const fileName = `${Date.now()}-${safeFilename}`;
@@ -1509,15 +1592,17 @@ async function attachmentRoutes(app2) {
         import_fs.default.mkdirSync(uploadDir2, { recursive: true });
       }
       const uploadPath = import_path.default.join(uploadDir2, fileName);
-      await (0, import_promises.pipeline)(data.file, import_fs.default.createWriteStream(uploadPath));
+      import_fs.default.writeFileSync(uploadPath, buffer);
       const anexo = await prisma.anexo.create({
         data: {
           nome: data.filename,
+          // Mantém nome original para exibição
           tipo: data.mimetype,
           url: `/uploads/${fileName}`,
           casoId: caseId,
           autorId: userId,
-          tamanho: 0
+          tamanho: buffer.length
+          // Salva o tamanho em bytes
         }
       });
       await prisma.caseLog.create({
@@ -1525,13 +1610,13 @@ async function attachmentRoutes(app2) {
           casoId: caseId,
           autorId: userId,
           acao: import_client10.LogAction.ANEXO_ADICIONADO,
-          descricao: `Anexou: ${data.filename}`
+          descricao: `Anexou documento: ${data.filename}`
         }
       });
       return reply.status(201).send(anexo);
     } catch (error) {
       console.error("\u274C Erro no Upload:", error);
-      return reply.status(500).send({ message: "Erro interno ao salvar." });
+      return reply.status(500).send({ message: "Erro interno ao salvar arquivo." });
     }
   });
   app2.get("/cases/:caseId/attachments", async (request, reply) => {
@@ -1539,15 +1624,12 @@ async function attachmentRoutes(app2) {
     try {
       const { caseId } = paramsSchema.parse(request.params);
       const anexos = await prisma.anexo.findMany({
-        // [CORREÇÃO CRÍTICA AQUI]
-        // Mapeamos a variável da URL 'caseId' para o campo do banco 'casoId'
         where: { casoId: caseId },
         orderBy: { createdAt: "desc" },
         include: { autor: { select: { nome: true } } }
       });
       return reply.send(anexos);
     } catch (error) {
-      console.error("\u274C Erro ao listar anexos:", error);
       return reply.status(500).send({ message: "Erro ao listar anexos." });
     }
   });
@@ -1559,26 +1641,26 @@ async function attachmentRoutes(app2) {
       const anexo = await prisma.anexo.findUnique({ where: { id } });
       if (!anexo) return reply.status(404).send({ message: "Arquivo n\xE3o encontrado." });
       if (anexo.autorId !== userId && cargo !== import_client10.Cargo.Gerente) {
-        return reply.status(403).send({ message: "Sem permiss\xE3o." });
+        return reply.status(403).send({ message: "Sem permiss\xE3o para excluir este anexo." });
       }
       await prisma.anexo.delete({ where: { id } });
       try {
         const filePath = import_path.default.resolve(process.cwd(), "uploads", import_path.default.basename(anexo.url));
         if (import_fs.default.existsSync(filePath)) import_fs.default.unlinkSync(filePath);
       } catch (e) {
-        console.error("Erro ao apagar arquivo:", e);
+        console.error("Erro ao apagar arquivo f\xEDsico:", e);
       }
       await prisma.caseLog.create({
         data: {
           casoId: anexo.casoId,
           autorId: userId,
           acao: import_client10.LogAction.OUTRO,
-          descricao: `Removeu: ${anexo.nome}`
+          descricao: `Removeu anexo: ${anexo.nome}`
         }
       });
       return reply.status(204).send();
     } catch (error) {
-      return reply.status(500).send({ message: "Erro ao remover." });
+      return reply.status(500).send({ message: "Erro ao remover anexo." });
     }
   });
 }
@@ -1587,7 +1669,7 @@ async function attachmentRoutes(app2) {
 var import_fast_csv2 = require("fast-csv");
 var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
-var import_promises2 = require("stream/promises");
+var import_promises = require("stream/promises");
 var import_client11 = require("@prisma/client");
 async function importRoutes(app2) {
   app2.addHook("onRequest", async (request, reply) => {
@@ -1610,7 +1692,7 @@ async function importRoutes(app2) {
     const uploadDir2 = import_path2.default.resolve(__dirname, "../../uploads");
     if (!import_fs2.default.existsSync(uploadDir2)) import_fs2.default.mkdirSync(uploadDir2, { recursive: true });
     const tempFilePath = import_path2.default.join(uploadDir2, `import_${Date.now()}.csv`);
-    await (0, import_promises2.pipeline)(data.file, import_fs2.default.createWriteStream(tempFilePath));
+    await (0, import_promises.pipeline)(data.file, import_fs2.default.createWriteStream(tempFilePath));
     const results = [];
     const errors = [];
     let successCount = 0;
@@ -1758,6 +1840,109 @@ async function filterRoutes(app2) {
   });
 }
 
+// src/routes/referrals.ts
+var import_zod12 = require("zod");
+var import_client12 = require("@prisma/client");
+async function referralRoutes(app2) {
+  app2.addHook("onRequest", async (req, reply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.status(401).send({ message: "N\xE3o autorizado." });
+    }
+  });
+  app2.post("/cases/:caseId/referrals", async (req, reply) => {
+    const paramsSchema = import_zod12.z.object({
+      caseId: import_zod12.z.string().uuid()
+    });
+    const bodySchema = import_zod12.z.object({
+      tipo: import_zod12.z.string().min(3, "O tipo \xE9 obrigat\xF3rio (ex: Sa\xFAde, Educa\xE7\xE3o)"),
+      instituicao: import_zod12.z.string().min(3, "Informe o nome da institui\xE7\xE3o"),
+      motivo: import_zod12.z.string().min(5, "Descreva o motivo do encaminhamento")
+    });
+    try {
+      const { caseId } = paramsSchema.parse(req.params);
+      const { tipo, instituicao, motivo } = bodySchema.parse(req.body);
+      const userId = req.user.sub;
+      const referral = await prisma.encaminhamento.create({
+        data: {
+          tipo,
+          instituicao,
+          motivo,
+          // [CORREÇÃO]: Mapeamento explícito. O campo do banco é 'casoId', a variável é 'caseId'
+          casoId: caseId,
+          autorId: userId,
+          status: "PENDENTE"
+        }
+      });
+      await prisma.caseLog.create({
+        data: {
+          // [CORREÇÃO]: Mapeamento explícito também no log
+          casoId: caseId,
+          autorId: userId,
+          acao: import_client12.LogAction.OUTRO,
+          descricao: `Realizou encaminhamento para ${tipo} - ${instituicao}`
+        }
+      });
+      return reply.status(201).send(referral);
+    } catch (error) {
+      console.error("Erro ao criar encaminhamento:", error);
+      return reply.status(500).send({ message: "Erro ao criar encaminhamento." });
+    }
+  });
+  app2.get("/cases/:caseId/referrals", async (req, reply) => {
+    const paramsSchema = import_zod12.z.object({ caseId: import_zod12.z.string().uuid() });
+    try {
+      const { caseId } = paramsSchema.parse(req.params);
+      const referrals = await prisma.encaminhamento.findMany({
+        // [CORREÇÃO]: Mapeamento explícito aqui também
+        where: { casoId: caseId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          autor: { select: { nome: true } }
+        }
+      });
+      return reply.send(referrals);
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao buscar encaminhamentos." });
+    }
+  });
+  app2.patch("/referrals/:id", async (req, reply) => {
+    const paramsSchema = import_zod12.z.object({ id: import_zod12.z.string().uuid() });
+    const bodySchema = import_zod12.z.object({
+      status: import_zod12.z.enum(["PENDENTE", "CONCLUIDO", "NEGADO"]),
+      retorno: import_zod12.z.string().optional()
+    });
+    try {
+      const { id } = paramsSchema.parse(req.params);
+      const { status, retorno } = bodySchema.parse(req.body);
+      const userId = req.user.sub;
+      const oldRef = await prisma.encaminhamento.findUnique({ where: { id } });
+      if (!oldRef) return reply.status(404).send({ message: "Encaminhamento n\xE3o encontrado." });
+      const updated = await prisma.encaminhamento.update({
+        where: { id },
+        data: {
+          status,
+          retorno,
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+      await prisma.caseLog.create({
+        data: {
+          casoId: oldRef.casoId,
+          // Aqui usamos o valor que já veio do banco, então está correto
+          autorId: userId,
+          acao: import_client12.LogAction.OUTRO,
+          descricao: `Atualizou encaminhamento (${oldRef.instituicao}) para: ${status}`
+        }
+      });
+      return reply.send(updated);
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao atualizar encaminhamento." });
+    }
+  });
+}
+
 // src/server.ts
 var app = (0, import_fastify.default)({
   logger: { transport: { target: "pino-pretty" } }
@@ -1789,10 +1974,11 @@ app.register(auditRoutes);
 app.register(attachmentRoutes);
 app.register(importRoutes);
 app.register(filterRoutes);
+app.register(referralRoutes);
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith("/api") || req.raw.url.startsWith("/uploads"))) {
     return reply.status(404).send({ message: "Recurso n\xE3o encontrado" });
   }
   return reply.sendFile("index.html");
 });
-app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando!"));
+app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando na porta 3333!"));

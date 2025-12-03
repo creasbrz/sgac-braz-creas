@@ -41,8 +41,28 @@ var prisma = new import_client.PrismaClient();
 var import_zod = require("zod");
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
-var import_promises = require("stream/promises");
 var import_client2 = require("@prisma/client");
+async function validateFileSignature(buffer) {
+  const bytes = buffer.subarray(0, 4).toString("hex").toUpperCase();
+  const signatures = {
+    "25504446": ["pdf"],
+    // %PDF
+    "FFD8FFE0": ["image"],
+    // JPEG
+    "FFD8FFE1": ["image"],
+    // JPEG
+    "FFD8FFEE": ["image"],
+    // JPEG
+    "FFD8FFDB": ["image"],
+    // JPEG
+    "89504E47": ["image"]
+    // PNG
+  };
+  for (const [sig, types] of Object.entries(signatures)) {
+    if (bytes.startsWith(sig)) return types[0];
+  }
+  return null;
+}
 async function attachmentRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
@@ -52,7 +72,6 @@ async function attachmentRoutes(app) {
     }
   });
   app.post("/cases/:caseId/attachments", async (request, reply) => {
-    console.log("\u{1F4E5} [API] Recebendo upload...");
     const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
     try {
       const { caseId } = paramsSchema.parse(request.params);
@@ -61,10 +80,12 @@ async function attachmentRoutes(app) {
       if (!data) {
         return reply.status(400).send({ message: "Nenhum arquivo enviado." });
       }
-      const allowedMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-      if (!allowedMimeTypes.includes(data.mimetype)) {
-        await data.toBuffer();
-        return reply.status(400).send({ message: "Formato inv\xE1lido. Use PDF ou Imagens." });
+      const buffer = await data.toBuffer();
+      const fileType = await validateFileSignature(buffer);
+      if (!fileType) {
+        return reply.status(400).send({
+          message: "Arquivo inv\xE1lido ou corrompido. Apenas PDF, JPG e PNG reais s\xE3o permitidos."
+        });
       }
       const safeFilename = data.filename.replace(/[^a-zA-Z0-9.]/g, "_");
       const fileName = `${Date.now()}-${safeFilename}`;
@@ -73,15 +94,17 @@ async function attachmentRoutes(app) {
         import_fs.default.mkdirSync(uploadDir, { recursive: true });
       }
       const uploadPath = import_path.default.join(uploadDir, fileName);
-      await (0, import_promises.pipeline)(data.file, import_fs.default.createWriteStream(uploadPath));
+      import_fs.default.writeFileSync(uploadPath, buffer);
       const anexo = await prisma.anexo.create({
         data: {
           nome: data.filename,
+          // Mantém nome original para exibição
           tipo: data.mimetype,
           url: `/uploads/${fileName}`,
           casoId: caseId,
           autorId: userId,
-          tamanho: 0
+          tamanho: buffer.length
+          // Salva o tamanho em bytes
         }
       });
       await prisma.caseLog.create({
@@ -89,13 +112,13 @@ async function attachmentRoutes(app) {
           casoId: caseId,
           autorId: userId,
           acao: import_client2.LogAction.ANEXO_ADICIONADO,
-          descricao: `Anexou: ${data.filename}`
+          descricao: `Anexou documento: ${data.filename}`
         }
       });
       return reply.status(201).send(anexo);
     } catch (error) {
       console.error("\u274C Erro no Upload:", error);
-      return reply.status(500).send({ message: "Erro interno ao salvar." });
+      return reply.status(500).send({ message: "Erro interno ao salvar arquivo." });
     }
   });
   app.get("/cases/:caseId/attachments", async (request, reply) => {
@@ -103,15 +126,12 @@ async function attachmentRoutes(app) {
     try {
       const { caseId } = paramsSchema.parse(request.params);
       const anexos = await prisma.anexo.findMany({
-        // [CORREÇÃO CRÍTICA AQUI]
-        // Mapeamos a variável da URL 'caseId' para o campo do banco 'casoId'
         where: { casoId: caseId },
         orderBy: { createdAt: "desc" },
         include: { autor: { select: { nome: true } } }
       });
       return reply.send(anexos);
     } catch (error) {
-      console.error("\u274C Erro ao listar anexos:", error);
       return reply.status(500).send({ message: "Erro ao listar anexos." });
     }
   });
@@ -123,26 +143,26 @@ async function attachmentRoutes(app) {
       const anexo = await prisma.anexo.findUnique({ where: { id } });
       if (!anexo) return reply.status(404).send({ message: "Arquivo n\xE3o encontrado." });
       if (anexo.autorId !== userId && cargo !== import_client2.Cargo.Gerente) {
-        return reply.status(403).send({ message: "Sem permiss\xE3o." });
+        return reply.status(403).send({ message: "Sem permiss\xE3o para excluir este anexo." });
       }
       await prisma.anexo.delete({ where: { id } });
       try {
         const filePath = import_path.default.resolve(process.cwd(), "uploads", import_path.default.basename(anexo.url));
         if (import_fs.default.existsSync(filePath)) import_fs.default.unlinkSync(filePath);
       } catch (e) {
-        console.error("Erro ao apagar arquivo:", e);
+        console.error("Erro ao apagar arquivo f\xEDsico:", e);
       }
       await prisma.caseLog.create({
         data: {
           casoId: anexo.casoId,
           autorId: userId,
           acao: import_client2.LogAction.OUTRO,
-          descricao: `Removeu: ${anexo.nome}`
+          descricao: `Removeu anexo: ${anexo.nome}`
         }
       });
       return reply.status(204).send();
     } catch (error) {
-      return reply.status(500).send({ message: "Erro ao remover." });
+      return reply.status(500).send({ message: "Erro ao remover anexo." });
     }
   });
 }

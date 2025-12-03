@@ -13,19 +13,28 @@ export async function appointmentRoutes(app: FastifyInstance) {
   // [GET] Listar
   app.get('/appointments', async (request, reply) => {
     const { caseId } = z.object({ caseId: z.string().uuid().optional() }).parse(request.query)
-    const where = caseId ? { casoId } : {}
+    // Mapeamento explícito de 'caseId' (URL) para 'casoId' (Banco)
+    const where = caseId ? { casoId: caseId } : {}
     
     const appointments = await prisma.agendamento.findMany({
       where,
       orderBy: { data: 'asc' },
-      include: { responsavel: { select: { nome: true } } }
+      include: { 
+        responsavel: { select: { nome: true } },
+        // [CORREÇÃO]: Incluindo os dados do caso para não quebrar o frontend
+        caso: { 
+          select: { 
+            id: true, 
+            nomeCompleto: true 
+          } 
+        }
+      }
     })
     return reply.send(appointments)
   })
 
   // [POST] Criar
   app.post('/appointments', async (request, reply) => {
-    // 🔍 LOG PARA DEPURAÇÃO: Ver o que chega do Frontend
     console.log("📥 Recebido no Backend:", request.body)
 
     const bodySchema = z.object({
@@ -39,7 +48,6 @@ export async function appointmentRoutes(app: FastifyInstance) {
       const { titulo, data, observacoes, casoId } = bodySchema.parse(request.body)
       const { sub: userId } = request.user as { sub: string }
 
-      // Verifica se o Enum existe para evitar crash do Prisma
       const action = LogAction.AGENDAMENTO_CRIADO ? LogAction.AGENDAMENTO_CRIADO : LogAction.OUTRO
 
       const agendamento = await prisma.agendamento.create({
@@ -65,7 +73,6 @@ export async function appointmentRoutes(app: FastifyInstance) {
       return reply.status(201).send(agendamento)
 
     } catch (error) {
-      // 🔍 LOG DE ERRO DETALHADO
       if (error instanceof z.ZodError) {
         console.error("❌ Erro de Validação Zod:", JSON.stringify(error.format(), null, 2))
         return reply.status(400).send({ message: 'Dados inválidos', errors: error.format() })

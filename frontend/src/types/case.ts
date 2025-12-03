@@ -1,6 +1,6 @@
 // frontend/src/types/case.ts
-// Tipagens otimizadas, padronizadas e preparadas para expansão futura.
 
+// Interface para o Histórico de Versões do PAF
 export interface PafVersion {
   id: string
   diagnostico: string
@@ -9,9 +9,10 @@ export interface PafVersion {
   deadline: string
   savedAt: string
   autor: { nome: string }
-  versaoNumero?: number // preparado para versionamento incremental
+  versaoNumero?: number
 }
 
+// Interface para o PAF Atual
 export interface PafData {
   id: string
   diagnostico: string
@@ -27,6 +28,7 @@ export interface PafData {
   }
 }
 
+// Interface para Logs do Caso
 export interface CaseLog {
   id: string
   acao: string
@@ -39,6 +41,22 @@ export interface CaseLog {
   }
 }
 
+// [NOVO] Interface para Encaminhamentos (Referrals)
+export interface Referral {
+  id: string
+  tipo: string        // ex: Saúde, Educação
+  instituicao: string // ex: UBS 05
+  motivo: string
+  status: 'PENDENTE' | 'CONCLUIDO' | 'NEGADO'
+  dataEnvio: string
+  retorno?: string | null // Contra-referência
+  createdAt: string
+  autor: {
+    nome: string
+  }
+}
+
+// Dados completos do Caso (Detail)
 export interface CaseDetailData {
   id: string
   nomeCompleto: string
@@ -80,6 +98,7 @@ export interface CaseDetailData {
   dataDesligamento?: string
 }
 
+// Interface simplificada para listas
 export interface Evolution {
   id: string
   conteudo: string
@@ -100,9 +119,9 @@ export interface CaseSummary {
   cpf: string
   status: string
   dataEntrada: string
-  urgencia: string // Adicionado
+  urgencia: string
   dataDesligamento?: string | null
-  motivoDesligamento?: string | null // [NOVO]
+  motivoDesligamento?: string | null
   
   agenteAcolhida: {
     nome: string

@@ -4,8 +4,29 @@ import { prisma } from '../lib/prisma'
 import { z } from 'zod'
 import fs from 'fs'
 import path from 'path'
-import { pipeline } from 'stream/promises'
 import { LogAction, Cargo } from '@prisma/client'
+
+// Função auxiliar para validar Assinatura de Arquivo (Magic Numbers)
+// Isso impede que alguém renomeie um .exe para .pdf e faça upload
+async function validateFileSignature(buffer: Buffer): Promise<'pdf' | 'image' | null> {
+  const bytes = buffer.subarray(0, 4).toString('hex').toUpperCase()
+  
+  // Assinaturas conhecidas
+  const signatures: Record<string, string[]> = {
+    '25504446': ['pdf'], // %PDF
+    'FFD8FFE0': ['image'], // JPEG
+    'FFD8FFE1': ['image'], // JPEG
+    'FFD8FFEE': ['image'], // JPEG
+    'FFD8FFDB': ['image'], // JPEG
+    '89504E47': ['image'], // PNG
+  }
+
+  for (const [sig, types] of Object.entries(signatures)) {
+    if (bytes.startsWith(sig)) return types[0] as 'pdf' | 'image'
+  }
+  
+  return null
+}
 
 export async function attachmentRoutes(app: FastifyInstance) {
   
@@ -17,10 +38,8 @@ export async function attachmentRoutes(app: FastifyInstance) {
     }
   })
 
-  // [POST] Upload de arquivo
+  // [POST] Upload de arquivo com Validação de Segurança
   app.post('/cases/:caseId/attachments', async (request, reply) => {
-    console.log("📥 [API] Recebendo upload...")
-
     const paramsSchema = z.object({ caseId: z.string().uuid() })
     
     try {
@@ -33,14 +52,20 @@ export async function attachmentRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
       }
 
-      // Validação de Tipo
-      const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
-      if (!allowedMimeTypes.includes(data.mimetype)) {
-        await data.toBuffer() // Consome o stream para evitar travamento
-        return reply.status(400).send({ message: 'Formato inválido. Use PDF ou Imagens.' })
+      // 1. Converte o stream para Buffer para análise de segurança
+      const buffer = await data.toBuffer()
+
+      // 2. Validação de Magic Numbers (Anti-Malware básico)
+      const fileType = await validateFileSignature(buffer)
+      
+      if (!fileType) {
+        return reply.status(400).send({ 
+          message: 'Arquivo inválido ou corrompido. Apenas PDF, JPG e PNG reais são permitidos.' 
+        })
       }
 
-      // Nome e Caminho
+      // 3. Sanitização do Nome e Caminho
+      // Remove caracteres especiais e espaços para evitar problemas no sistema de arquivos
       const safeFilename = data.filename.replace(/[^a-zA-Z0-9.]/g, '_')
       const fileName = `${Date.now()}-${safeFilename}`
       
@@ -51,28 +76,28 @@ export async function attachmentRoutes(app: FastifyInstance) {
 
       const uploadPath = path.join(uploadDir, fileName)
 
-      // Salvar no Disco
-      await pipeline(data.file, fs.createWriteStream(uploadPath))
+      // 4. Salvar no Disco
+      fs.writeFileSync(uploadPath, buffer)
 
-      // Salvar no Banco
+      // 5. Salvar Metadados no Banco
       const anexo = await prisma.anexo.create({
         data: {
-          nome: data.filename,
+          nome: data.filename, // Mantém nome original para exibição
           tipo: data.mimetype,
           url: `/uploads/${fileName}`,
           casoId: caseId,
           autorId: userId,
-          tamanho: 0
+          tamanho: buffer.length // Salva o tamanho em bytes
         }
       })
 
-      // Log (Corrigido: usa caseId)
+      // 6. Log de Auditoria
       await prisma.caseLog.create({
         data: {
           casoId: caseId, 
           autorId: userId,
           acao: LogAction.ANEXO_ADICIONADO,
-          descricao: `Anexou: ${data.filename}`
+          descricao: `Anexou documento: ${data.filename}`
         }
       })
 
@@ -80,7 +105,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
 
     } catch (error) {
       console.error("❌ Erro no Upload:", error)
-      return reply.status(500).send({ message: "Erro interno ao salvar." })
+      return reply.status(500).send({ message: "Erro interno ao salvar arquivo." })
     }
   })
 
@@ -91,8 +116,6 @@ export async function attachmentRoutes(app: FastifyInstance) {
       const { caseId } = paramsSchema.parse(request.params)
 
       const anexos = await prisma.anexo.findMany({
-        // [CORREÇÃO CRÍTICA AQUI]
-        // Mapeamos a variável da URL 'caseId' para o campo do banco 'casoId'
         where: { casoId: caseId }, 
         orderBy: { createdAt: 'desc' },
         include: { autor: { select: { nome: true } } }
@@ -100,7 +123,6 @@ export async function attachmentRoutes(app: FastifyInstance) {
       
       return reply.send(anexos)
     } catch (error) {
-      console.error("❌ Erro ao listar anexos:", error)
       return reply.status(500).send({ message: "Erro ao listar anexos." })
     }
   })
@@ -115,29 +137,34 @@ export async function attachmentRoutes(app: FastifyInstance) {
       const anexo = await prisma.anexo.findUnique({ where: { id } })
       if (!anexo) return reply.status(404).send({ message: 'Arquivo não encontrado.' })
 
+      // Apenas o autor ou Gerente pode apagar
       if (anexo.autorId !== userId && cargo !== Cargo.Gerente) {
-        return reply.status(403).send({ message: 'Sem permissão.' })
+        return reply.status(403).send({ message: 'Sem permissão para excluir este anexo.' })
       }
 
       await prisma.anexo.delete({ where: { id } })
 
+      // Remove do disco
       try {
         const filePath = path.resolve(process.cwd(), 'uploads', path.basename(anexo.url))
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-      } catch (e) { console.error("Erro ao apagar arquivo:", e) }
+      } catch (e) { 
+        console.error("Erro ao apagar arquivo físico:", e) 
+      }
 
+      // Log da exclusão
       await prisma.caseLog.create({
         data: {
           casoId: anexo.casoId,
           autorId: userId,
           acao: LogAction.OUTRO, 
-          descricao: `Removeu: ${anexo.nome}`
+          descricao: `Removeu anexo: ${anexo.nome}`
         }
       })
 
       return reply.status(204).send()
     } catch (error) {
-      return reply.status(500).send({ message: "Erro ao remover." })
+      return reply.status(500).send({ message: "Erro ao remover anexo." })
     }
   })
 }

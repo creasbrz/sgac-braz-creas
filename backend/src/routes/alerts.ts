@@ -2,7 +2,7 @@
 import { type FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { Cargo, CaseStatus } from '@prisma/client'
-import { addDays, startOfDay } from 'date-fns'
+import { addDays, startOfDay, subDays } from 'date-fns'
 
 export async function alertRoutes(app: FastifyInstance) {
   
@@ -14,16 +14,15 @@ export async function alertRoutes(app: FastifyInstance) {
     }
   })
 
-  // [GET] /alerts - Retorna notificações unificadas por perfil
+  // [GET] /alerts - Central de Notificações Inteligente
   app.get('/alerts', async (request, reply) => {
     const { sub: userId, cargo } = request.user as { sub: string, cargo: Cargo }
     const notifications = []
 
-    // 1. AGENDAMENTOS (Comum a todos)
-    // Busca agendamentos de hoje e amanhã para alertar
     const today = startOfDay(new Date())
-    const tomorrowEnd = addDays(today, 2) // Próximos 2 dias
+    const tomorrowEnd = addDays(today, 2)
 
+    // 1. AGENDAMENTOS (Agenda Pessoal)
     const agenda = await prisma.agendamento.findMany({
       where: {
         responsavelId: userId,
@@ -35,18 +34,48 @@ export async function alertRoutes(app: FastifyInstance) {
     for (const ag of agenda) {
       notifications.push({
         id: `agenda-${ag.id}`,
-        title: 'Agendamento Próximo',
+        title: 'Compromisso Próximo',
         description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: '/dashboard/agenda',
+        link: `/dashboard/cases/${ag.casoId}`, // Link direto para o caso
         type: 'info'
       })
     }
 
-    // 2. REGRAS POR CARGO
+    // 2. REGRAS GERAIS
+    
+    // [NOVO] Alerta de Inatividade (Casos "Esquecidos")
+    // Busca casos do usuário que não têm evolução nos últimos 30 dias
+    const dataLimiteInatividade = subDays(new Date(), 30)
+    
+    const casosInativos = await prisma.case.findMany({
+      where: {
+        status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+        // Se for Especialista, filtra pelos dele. Se Gerente, vê todos.
+        especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
+        // Lógica: Nenhuma evolução criada DEPOIS da data limite
+        evolucoes: {
+          none: {
+            createdAt: { gte: dataLimiteInatividade }
+          }
+        }
+      },
+      select: { id: true, nomeCompleto: true }
+    })
+
+    for (const caso of casosInativos) {
+      notifications.push({
+        id: `inativo-${caso.id}`,
+        title: 'Caso sem Movimentação',
+        description: `${caso.nomeCompleto} não tem evolução há +30 dias.`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: 'critical' // Alerta vermelho
+      })
+    }
+
+    // 3. REGRAS POR CARGO ESPECÍFICAS
 
     // --- GERENTE ---
     if (cargo === Cargo.Gerente) {
-      // Alerta de Casos para Distribuição
       const distCount = await prisma.case.count({
         where: { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
       })
@@ -55,8 +84,8 @@ export async function alertRoutes(app: FastifyInstance) {
         notifications.push({
           id: 'dist-queue',
           title: 'Distribuição Pendente',
-          description: `${distCount} casos aguardam atribuição de técnico.`,
-          link: '/dashboard/cases', // Link para lista geral
+          description: `${distCount} casos aguardam atribuição.`,
+          link: '/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI',
           type: 'critical'
         })
       }
@@ -64,7 +93,6 @@ export async function alertRoutes(app: FastifyInstance) {
 
     // --- AGENTE SOCIAL ---
     if (cargo === Cargo.Agente_Social) {
-      // Alerta de Casos na Caixa de Entrada (Aguardando Acolhida)
       const acolhidaCount = await prisma.case.count({
         where: {
           agenteAcolhidaId: userId,
@@ -75,9 +103,9 @@ export async function alertRoutes(app: FastifyInstance) {
       if (acolhidaCount > 0) {
         notifications.push({
           id: 'acolhida-queue',
-          title: 'Novos Casos para Acolhida',
-          description: `Você tem ${acolhidaCount} casos aguardando atendimento inicial.`,
-          link: '/dashboard/cases',
+          title: 'Novos na Acolhida',
+          description: `Você tem ${acolhidaCount} casos para triagem inicial.`,
+          link: '/dashboard/cases?status=AGUARDANDO_ACOLHIDA',
           type: 'critical'
         })
       }
@@ -85,11 +113,7 @@ export async function alertRoutes(app: FastifyInstance) {
 
     // --- ESPECIALISTA ---
     if (cargo === Cargo.Especialista) {
-      // Alerta de Casos em Acompanhamento (Inbox de trabalho)
-      // Podemos filtrar por "recente" se quisermos apenas novidades, mas mostrar o total ativo é útil.
-      // Vamos mostrar apenas se houver casos onde o PAF ainda não foi criado? Seria mais inteligente.
-      
-      // Casos em acompanhamento SEM PAF (Prioridade máxima)
+      // Casos sem PAF
       const casesWithoutPaf = await prisma.case.count({
         where: {
           especialistaPAEFIId: userId,
@@ -102,29 +126,32 @@ export async function alertRoutes(app: FastifyInstance) {
         notifications.push({
           id: 'missing-paf',
           title: 'Casos sem PAF',
-          description: `${casesWithoutPaf} casos precisam de Plano de Acompanhamento.`,
-          link: '/dashboard/cases',
+          description: `${casesWithoutPaf} casos precisam do plano inicial.`,
+          link: '/dashboard/cases', // Idealmente filtrar na lista
           type: 'critical'
         })
       }
 
-      // Alerta de PAFs Vencendo (Próximos 15 dias)
+      // PAFs Vencendo
       const pafDeadline = addDays(new Date(), 15)
       const pafsExpiring = await prisma.paf.findMany({
         where: {
-          autorId: userId, // Ou filtrar pelo caso especialistaPAEFIId
+          // O PAF pode ter sido criado por outro, mas o alerta vai para o responsável atual do caso
+          caso: {
+            especialistaPAEFIId: userId,
+            status: { not: CaseStatus.DESLIGADO }
+          },
           deadline: { gte: today, lte: pafDeadline },
-          caso: { status: { not: CaseStatus.DESLIGADO } } // Ignora casos já fechados
         },
-        include: { caso: { select: { nomeCompleto: true } } }
+        include: { caso: { select: { nomeCompleto: true, id: true } } }
       })
 
       for (const p of pafsExpiring) {
         notifications.push({
           id: `paf-exp-${p.id}`,
-          title: 'PAF Vencendo',
-          description: `Revisão necessária: ${p.caso.nomeCompleto}`,
-          link: `/dashboard/cases/${p.casoId}`,
+          title: 'Reavaliação de PAF',
+          description: `Prazo próximo: ${p.caso.nomeCompleto}`,
+          link: `/dashboard/cases/${p.caso.id}`,
           type: 'critical'
         })
       }
@@ -132,7 +159,4 @@ export async function alertRoutes(app: FastifyInstance) {
 
     return reply.send(notifications)
   })
-  
-  // Rota legada de paf-deadlines pode ser removida se não usada em outro lugar, 
-  // mas mantivemos a lógica acima integrada na rota principal.
 }

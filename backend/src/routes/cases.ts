@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma'
 import { format as formatCsv } from 'fast-csv'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CaseStatus, Cargo, LogAction, Sexo, Urgencia, Violacao, CategoriaPublico } from '@prisma/client'
+import { CaseStatus, Cargo, LogAction } from '@prisma/client'
 
 // -------------------------------------------------------
 // 🔧 UTILITÁRIOS
@@ -37,6 +37,9 @@ function internalError(reply: FastifyReply, message: string, error: unknown) {
   return reply.status(500).send({ message })
 }
 
+/**
+ * Constrói o filtro padrão baseado no CARGO do usuário ("Meus Casos").
+ */
 function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
   switch (user.cargo) {
     case Cargo.Agente_Social:
@@ -50,14 +53,17 @@ function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
         status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI
       }
     case Cargo.Gerente:
+      // Gerente vê por padrão o que está na fila de distribuição na tabela "Meus Casos"
+      // (Para ver tudo, ele usa o Kanban ou filtros)
       return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
     default:
-      return { id: '-1' }
+      return { id: '-1' } // Retorna nada por segurança
   }
 }
 
 function buildClosedCaseWhereClause(user: { cargo: string; sub: string }) {
   const where: any = { status: CaseStatus.DESLIGADO }
+  // Se não for gerente, vê apenas os que participou
   if (user.cargo === Cargo.Agente_Social) where.agenteAcolhidaId = user.sub
   if (user.cargo === Cargo.Especialista) where.especialistaPAEFIId = user.sub
   return where
@@ -104,6 +110,10 @@ async function createLog(casoId: string, autorId: string, acao: LogAction, descr
 // -------------------------------------------------------
 
 export async function caseRoutes(app: FastifyInstance) {
+
+  app.decorate('authenticate', async (request: any, reply: any) => {
+    try { await request.jwtVerify() } catch (err) { await reply.send(err) }
+  })
 
   // 1. Criar Caso
   app.post('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
@@ -211,10 +221,8 @@ export async function caseRoutes(app: FastifyInstance) {
         },
       })
 
-      // Detecção de Mudanças (Diff)
       const changes = detectChanges(oldCase, data)
       
-      // Se mudou agente, troca o ID pelo Nome no log
       if (changes['agenteAcolhidaId']) {
         const newAgentId = changes['agenteAcolhidaId'].to
         const newAgent = await prisma.user.findUnique({ where: { id: newAgentId } })
@@ -248,7 +256,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos Ativos
+  // 2. Listar Casos Ativos (COM FILTRO DE VISÃO)
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -259,12 +267,27 @@ export async function caseRoutes(app: FastifyInstance) {
       violacao: z.string().optional(),
       categoria: z.string().optional(),
       sexo: z.string().optional(),
+      // [NOVO] Parâmetro para controlar a visão: 'my' (padrão) ou 'all'
+      view: z.enum(['my', 'all']).default('my').optional(),
     })
 
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo } = schema.parse(request.query)
-      let where = buildActiveCaseWhereClause(request.user) as any
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view } = schema.parse(request.query)
+      
+      let where: any = {}
 
+      // Lógica de Visão (View)
+      if (view === 'all') {
+        // Visão Global (Kanban): Mostra tudo que NÃO está desligado
+        where = {
+          status: { not: CaseStatus.DESLIGADO }
+        }
+      } else {
+        // Visão Padrão (Tabela): Filtra pelo responsável (regra de negócio original)
+        where = buildActiveCaseWhereClause(request.user as any)
+      }
+
+      // Filtros Adicionais (Busca, Status Específico, etc)
       if (search) {
         where.AND = [
           ...(where.AND || []),
@@ -316,7 +339,7 @@ export async function caseRoutes(app: FastifyInstance) {
 
     try {
       const { search, page, pageSize } = schema.parse(request.query)
-      let where = buildClosedCaseWhereClause(request.user)
+      let where = buildClosedCaseWhereClause(request.user as any)
 
       if (search) {
         where.OR = [
@@ -375,7 +398,7 @@ export async function caseRoutes(app: FastifyInstance) {
     try {
       const { id } = paramsSchema.parse(request.params)
       const { status } = bodySchema.parse(request.body)
-      const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+      const { sub: userId } = request.user as { sub: string, cargo: string }
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
@@ -422,8 +445,11 @@ export async function caseRoutes(app: FastifyInstance) {
       const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+      
+      // Permite desligamento se for gerente ou o responsável
       const isManager = cargo === Cargo.Gerente
       if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: 'Sem permissão.' })
+      
       const updated = await prisma.case.update({ where: { id }, data: { status: CaseStatus.DESLIGADO, parecerFinal, motivoDesligamento, dataDesligamento: new Date() } })
       await createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}`)
       return reply.send(updated)
@@ -434,6 +460,7 @@ export async function caseRoutes(app: FastifyInstance) {
   app.get('/cases/export', { onRequest: [app.authenticate] }, async (request, reply) => {
     if ((request.user as any).cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
     try {
+      // Exporta TODOS os casos para análise, sem filtro de visão
       const casos = await prisma.case.findMany({ orderBy: { createdAt: 'desc' }, include: { criadoPor: true, agenteAcolhida: true, especialistaPAEFI: true } })
       reply.header('Content-Disposition', `attachment; filename="export_casos_${format(new Date(), 'yyyy-MM-dd')}.csv"`)
       reply.type('text/csv; charset=utf-8')

@@ -1,22 +1,20 @@
 // frontend/src/pages/CaseDetail.tsx
-import React, { useState, Suspense, lazy } from "react"
+import { useState, Suspense, lazy } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, MapPin, Phone, FileText, Clock, AlertTriangle,
-  Paperclip, Activity, Edit, CheckCircle2, Circle, User, ShieldCheck, Loader2
+  Paperclip, Activity, Edit, CheckCircle2, Circle, ShieldCheck, Network, 
+  Loader2
 } from "lucide-react"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 import { clsx } from "clsx"
 
-import { api } from "@/lib/api"
+import { api } from '@/lib/api'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-// [CORREÇÃO AQUI]: Adicionado DialogDescription aos imports
 import { 
   Dialog, 
   DialogContent, 
@@ -34,7 +32,14 @@ import { toast } from "sonner"
 
 import { CaseStatusBadge } from "@/components/CaseStatusBadge"
 import { getUrgencyColor } from "@/constants/caseConstants"
-import { isValidBrazilianPhone } from "@/utils/phone" 
+import { isValidBrazilianPhone } from "@/utils/phone"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { formatCPF, formatPhone } from '@/utils/formatters'
+
+// --- NOVAS IMPORTAÇÕES v3.2 ---
+import { OverviewTab } from '@/components/case/tabs/OverviewTab'
+import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
 
 // --- LAZY IMPORTS ---
 const CaseForm = lazy(() => import("@/components/CaseForm").then(module => ({ default: module.CaseForm })))
@@ -43,34 +48,10 @@ const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").the
 const CaseAttachments = lazy(() => import("@/components/case/CaseAttachments").then(module => ({ default: module.CaseAttachments })))
 const WhatsAppButton = lazy(() => import("@/components/common/WhatsAppButton").then(module => ({ default: module.WhatsAppButton })))
 const CaseActions = lazy(() => import("@/components/case/CaseActions").then(module => ({ default: module.CaseActions })))
+const PafSection = lazy(() => import("@/components/case/PafSection").then(module => ({ default: module.PafSection })))
 
-// --- TYPES ---
-interface CaseDetailData {
-  id: string
-  nomeCompleto: string
-  cpf: string
-  status: string
-  urgencia: string
-  violacao: string
-  categoria: string
-  orgaoDemandante: string
-  telefone?: string
-  endereco?: string
-  dataEntrada: string
-  dataDesligamento?: string
-  motivoDesligamento?: string
-  observacoes?: string
-  numeroSei?: string
-  beneficios?: string[]
-  agenteAcolhida?: { id: string; nome: string }
-  especialistaPAEFI?: { id: string; nome: string }
-}
-
-// --- UTILS ---
-function formatDateSafe(date?: string | Date | null) {
-  if (!date) return "-"
-  try { return format(new Date(date), "dd/MM/yyyy", { locale: ptBR }) } catch { return "-" }
-}
+// Types
+import type { CaseDetailData } from '@/types/case'
 
 function TabSkeleton() {
   return (
@@ -84,7 +65,6 @@ function TabSkeleton() {
   )
 }
 
-// --- COMPONENTE: WORKFLOW VISUAL ---
 function CaseWorkflow({ status }: { status: string }) {
   const steps = [
     { id: 'AGUARDANDO_ACOLHIDA', label: 'Triagem' },
@@ -132,7 +112,6 @@ function CaseWorkflow({ status }: { status: string }) {
   )
 }
 
-// --- COMPONENTE: HEADER ---
 function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: () => void }) {
   const initial = (caseData.nomeCompleto || "U").charAt(0).toUpperCase()
   
@@ -167,12 +146,12 @@ function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: ()
 
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mt-4 pl-1 sm:pl-20">
           <div className="flex items-center gap-1.5" title="CPF">
-            <FileText className="h-4 w-4" /> {caseData.cpf}
+            <FileText className="h-4 w-4" /> {formatCPF(caseData.cpf)}
           </div>
           
           <div className="flex items-center gap-1.5 group cursor-pointer" title="Telefone">
             <Phone className="h-4 w-4" />
-            <span>{caseData.telefone || "Sem telefone"}</span>
+            <span>{formatPhone(caseData.telefone) || "Sem telefone"}</span>
             {isValidBrazilianPhone(caseData.telefone) && (
               <Suspense fallback={null}>
                 <WhatsAppButton 
@@ -214,7 +193,6 @@ function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: ()
   )
 }
 
-// --- COMPONENTE PRINCIPAL ---
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -229,7 +207,6 @@ export function CaseDetail() {
   const [apptDate, setApptDate] = useState("")
   const [apptObs, setApptObs] = useState("")
 
-  // 1. Fetch Principal
   const { data: caseData, isLoading, isError, refetch } = useQuery<CaseDetailData>({
     queryKey: ["case", id],
     queryFn: async () => (await api.get(`/cases/${id}`)).data,
@@ -241,19 +218,14 @@ export function CaseDetail() {
   const appointmentsQuery = useQuery({
     queryKey: ["appointments", id],
     queryFn: async () => {
-      try { return (await api.get(`/cases/${id}/appointments`)).data }
-      catch { return (await api.get(`/appointments`, { params: { caseId: id } })).data }
+      try { return (await api.get(`/appointments`, { params: { caseId: id } })).data }
+      catch { return [] }
     },
     enabled: !!id && activeTab === "appointments",
     staleTime: 1000 * 30,
   })
 
-  const appointmentsList = React.useMemo(() => {
-    const data = appointmentsQuery.data
-    if (Array.isArray(data)) return data
-    if (data && Array.isArray(data.items)) return data.items 
-    return [] 
-  }, [appointmentsQuery.data])
+  const appointmentsList = Array.isArray(appointmentsQuery.data) ? appointmentsQuery.data : []
 
   // 3. Mutação: Criar Agendamento
   const { mutate: createAppointment, isPending: isCreatingAppt } = useMutation({
@@ -323,9 +295,21 @@ export function CaseDetail() {
           <TabsTrigger value="overview" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Activity className="h-4 w-4" /> Visão Geral
           </TabsTrigger>
+          
+          {(caseData.status === 'EM_ACOMPANHAMENTO_PAEFI' || caseData.status === 'DESLIGADO') && (
+            <TabsTrigger value="paf" className="gap-2 data-[state=active]:bg-background">
+              <FileText className="h-4 w-4" /> PAF
+            </TabsTrigger>
+          )}
+
           <TabsTrigger value="evolutions" className="gap-2 data-[state=active]:bg-background">
             <FileText className="h-4 w-4" /> Evoluções
           </TabsTrigger>
+          
+          <TabsTrigger value="referrals" className="gap-2 data-[state=active]:bg-background">
+            <Network className="h-4 w-4" /> Rede
+          </TabsTrigger>
+
           <TabsTrigger value="appointments" className="gap-2 data-[state=active]:bg-background">
             <Calendar className="h-4 w-4" /> Agendamentos
           </TabsTrigger>
@@ -337,53 +321,28 @@ export function CaseDetail() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6 mt-6 focus-visible:outline-none">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="md:col-span-2 shadow-sm border-border/60">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /> Ficha Técnica</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8 text-sm">
-                  <div><span className="text-xs font-medium text-muted-foreground uppercase">Violação</span><p className="font-medium">{caseData.violacao}</p></div>
-                  <div><span className="text-xs font-medium text-muted-foreground uppercase">Categoria</span><p className="font-medium">{caseData.categoria}</p></div>
-                  <div><span className="text-xs font-medium text-muted-foreground uppercase">Entrada</span><p className="font-medium">{formatDateSafe(caseData.dataEntrada)}</p></div>
-                  <div><span className="text-xs font-medium text-muted-foreground uppercase">SEI</span><p className="font-mono">{caseData.numeroSei || "-"}</p></div>
-                </div>
-                {caseData.observacoes && (
-                  <div className="pt-4 mt-2 border-t border-border/50">
-                    <span className="text-xs font-medium text-muted-foreground uppercase mb-2 block">Observações</span>
-                    <div className="bg-muted/30 p-3 rounded-md text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{caseData.observacoes}</div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        {/* --- CONTEÚDO DAS ABAS --- */}
 
-            <div className="space-y-6">
-              <Card className="shadow-sm border-border/60">
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4 text-primary" /> Equipe Técnica</CardTitle></CardHeader>
-                <CardContent className="pt-4 space-y-4">
-                  <div><span className="text-xs text-muted-foreground block mb-1">Agente (Acolhida)</span><div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-emerald-500" /><span className="text-sm font-medium">{caseData.agenteAcolhida?.nome || "Pendente"}</span></div></div>
-                  <Separator />
-                  <div><span className="text-xs text-muted-foreground block mb-1">Especialista (PAEFI)</span><div className="flex items-center gap-2"><div className={`h-2 w-2 rounded-full ${caseData.especialistaPAEFI ? 'bg-blue-500' : 'bg-gray-300'}`} /><span className="text-sm font-medium">{caseData.especialistaPAEFI?.nome || "Aguardando"}</span></div></div>
-                </CardContent>
-              </Card>
+        <TabsContent value="overview" className="mt-6 focus-visible:outline-none">
+          <OverviewTab caseData={caseData} />
+        </TabsContent>
 
-              <Card className="shadow-sm border-border/60">
-                <CardHeader className="pb-2"><CardTitle className="text-base">Benefícios</CardTitle></CardHeader>
-                <CardContent className="pt-4">
-                  <div className="flex flex-wrap gap-2">
-                    {caseData.beneficios && caseData.beneficios.length > 0 ? caseData.beneficios.map(b => <Badge key={b} variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">{b}</Badge>) : <span className="text-xs text-muted-foreground italic">Nenhum declarado.</span>}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+        <TabsContent value="paf" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <PafSection caseData={caseData} />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="evolutions" className="mt-6">
           <Suspense fallback={<TabSkeleton />}>
             <CaseEvolutions caseId={id!} />
+          </Suspense>
+        </TabsContent>
+
+        {/* 4. Encaminhamentos */}
+        <TabsContent value="referrals" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <ReferralsTab caseId={id!} />
           </Suspense>
         </TabsContent>
 
@@ -402,14 +361,14 @@ export function CaseDetail() {
               <CardContent>
                 {appointmentsQuery.isLoading ? <TabSkeleton /> : (appointmentsList.length === 0 ? <div className="text-center py-10 text-muted-foreground">Nenhum agendamento.</div> : (
                    <div className="space-y-3">
-                     {appointmentsList.map((app: any) => (
+                      {appointmentsList.map((app: any) => (
                        <div key={app.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/5 transition-all">
                          <div className="flex gap-4"><div className="bg-primary/10 p-2.5 rounded-lg h-fit text-primary"><Clock className="h-5 w-5"/></div><div><h4 className="font-semibold text-sm">{app.titulo}</h4><p className="text-sm text-muted-foreground capitalize">{format(new Date(app.data), "eeee, dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p></div></div>
                          <Suspense fallback={null}>{isValidBrazilianPhone(caseData.telefone) && <WhatsAppButton phone={caseData.telefone!} name={caseData.nomeCompleto} template="agendamento" data={{ date: app.data }} label="Confirmar" size="sm" />}</Suspense>
                        </div>
                      ))}
                    </div>
-                 ))}
+                ))}
               </CardContent>
             </Card>
           </Suspense>

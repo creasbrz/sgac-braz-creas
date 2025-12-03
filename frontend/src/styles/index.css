@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ----------------------------- */
-/*      TEMA GOV.BR MODERNO      */
+/* TEMA GOV.BR MODERNO      */
 /* ----------------------------- */
 
 @layer base {
@@ -48,7 +48,7 @@
   }
 
   /* ------------------------------ */
-  /*        MODO ESCURO GOV-BR      */
+  /* MODO ESCURO GOV-BR      */
   /* ------------------------------ */
 
   .dark {
@@ -83,7 +83,7 @@
 }
 
 /* ------------------------------ */
-/*      ESTILOS BASE COMUNS       */
+/* ESTILOS BASE COMUNS       */
 /* ------------------------------ */
 
 @layer base {
@@ -95,4 +95,25 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+}
+
+/* ------------------------------------------- */
+/* [NOVO] MODO PRIVACIDADE v3.2               */
+/* Borra dados sensíveis quando ativado       */
+/* ------------------------------------------- */
+body.privacy-mode .font-medium, /* Geralmente nomes em destaque */
+body.privacy-mode h1,           /* Títulos de página com nomes */
+body.privacy-mode h3,           /* Subtítulos em cards */
+body.privacy-mode td:first-child, /* Geralmente o nome na tabela */
+body.privacy-mode td:nth-child(2) /* Geralmente o CPF na tabela */
+{
+  filter: blur(5px);
+  user-select: none;
+  transition: filter 0.3s ease;
+  cursor: default;
+}
+
+/* Exceção para elementos que não devem ser borrados mesmo no modo privado */
+body.privacy-mode .privacy-exempt {
+  filter: none !important;
 }

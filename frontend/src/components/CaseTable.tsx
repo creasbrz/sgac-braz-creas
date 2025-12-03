@@ -27,7 +27,12 @@ import { DataTableFilters } from './DataTableFilters'
 import { ImportCasesModal } from '@/components/modals/ImportCasesModal'
 import { SavedFilters } from '@/components/SavedFilters'
 
-interface ExtendedCaseSummary extends CaseSummary { urgencia: string }
+interface ExtendedCaseSummary extends CaseSummary { 
+  urgencia: string
+  violacao?: string
+  sexo?: string
+}
+
 interface PaginatedCasesResponse { items: ExtendedCaseSummary[]; total: number; page: number; pageSize: number; totalPages: number }
 interface CaseTableProps { endpoint: '/cases' | '/cases/closed'; title: string; description: string }
 
@@ -114,38 +119,99 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
       </div>
 
       <div className="flex-1 overflow-hidden rounded-md border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nome</TableHead><TableHead className="w-[140px]">CPF</TableHead>
-              {endpoint === '/cases' && <TableHead className="w-[100px]">Urgência</TableHead>}
-              <TableHead className="w-[180px]">{endpoint === '/cases/closed' ? 'Desligamento' : 'Entrada'}</TableHead>
-              {endpoint === '/cases/closed' && <TableHead className="w-[180px]">Motivo</TableHead>}
-              <TableHead className="w-[200px]">Responsável</TableHead><TableHead className="w-[160px]">Status</TableHead><TableHead className="w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && Array.from({ length: 5 }).map((_, i) => <TableRow key={i}><TableCell colSpan={8}><Skeleton className="h-12 w-full" /></TableCell></TableRow>)}
-            {!isLoading && result?.items.length === 0 && <TableRow><TableCell colSpan={8} className="h-32 text-center">Nenhum caso encontrado.</TableCell></TableRow>}
-            {result?.items.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell className="font-medium"><Link to={ROUTES.CASE_DETAIL(item.id)} className="hover:underline hover:text-primary transition-colors block truncate max-w-[250px]" title={item.nomeCompleto}>{item.nomeCompleto}</Link></TableCell>
-                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatCPF(item.cpf)}</TableCell>
-                {endpoint === '/cases' && <TableCell><Badge variant="outline" className={`${getUrgencyColor(item.urgencia)} border px-2 py-0.5 text-[10px] uppercase truncate max-w-[160px] block text-center`} title={item.urgencia}>{item.urgencia}</Badge></TableCell>}
-                <TableCell className="text-muted-foreground text-sm">{endpoint === '/cases/closed' ? formatDateSafe(item.dataDesligamento) : formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })}</TableCell>
-                {endpoint === '/cases/closed' && <TableCell className="text-sm text-muted-foreground truncate max-w-[180px]" title={item.motivoDesligamento ?? ''}>{item.motivoDesligamento ?? '-'}</TableCell>}
-                <TableCell className="text-muted-foreground text-sm truncate max-w-[200px]">{item.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && item.especialistaPAEFI) ? item.especialistaPAEFI?.nome ?? 'N/A' : item.agenteAcolhida?.nome ?? 'N/A'}</TableCell>
-                <TableCell><CaseStatusBadge status={item.status} /></TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="end"><DropdownMenuItem className="p-0"><Link to={ROUTES.CASE_DETAIL(item.id)} className="flex w-full items-center px-2 py-1.5 cursor-pointer"><Edit className="mr-2 h-4 w-4" /> Ver Detalhes</Link></DropdownMenuItem></DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+        {/* [CORREÇÃO] Adicionado overflow-auto para permitir scroll horizontal se a tabela expandir muito */}
+        <div className="overflow-auto h-full">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="whitespace-nowrap">Nome</TableHead>
+                <TableHead className="whitespace-nowrap">Sexo</TableHead>
+                <TableHead className="whitespace-nowrap">CPF</TableHead>
+                
+                {endpoint === '/cases' && <TableHead className="whitespace-nowrap">Urgência</TableHead>}
+                {endpoint === '/cases' && <TableHead className="whitespace-nowrap">Violação</TableHead>}
+
+                <TableHead className="whitespace-nowrap">{endpoint === '/cases/closed' ? 'Desligamento' : 'Entrada'}</TableHead>
+                {endpoint === '/cases/closed' && <TableHead className="whitespace-nowrap">Motivo</TableHead>}
+                
+                <TableHead className="whitespace-nowrap">Responsável</TableHead>
+                <TableHead className="whitespace-nowrap">Status</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {isLoading && Array.from({ length: 5 }).map((_, i) => <TableRow key={i}><TableCell colSpan={10}><Skeleton className="h-12 w-full" /></TableCell></TableRow>)}
+              {!isLoading && result?.items.length === 0 && <TableRow><TableCell colSpan={10} className="h-32 text-center">Nenhum caso encontrado.</TableCell></TableRow>}
+              
+              {result?.items.map((item) => (
+                <TableRow key={item.id}>
+                  {/* [CORREÇÃO] Removido truncate/max-w, adicionado whitespace-nowrap para exibir nome completo */}
+                  <TableCell className="font-medium whitespace-nowrap">
+                    <Link to={ROUTES.CASE_DETAIL(item.id)} className="hover:underline hover:text-primary transition-colors block" title={item.nomeCompleto}>
+                      {item.nomeCompleto}
+                    </Link>
+                  </TableCell>
+                  
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{item.sexo || '-'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatCPF(item.cpf)}</TableCell>
+                  
+                  {endpoint === '/cases' && (
+                    <TableCell className="whitespace-nowrap">
+                      <Badge variant="outline" className={`${getUrgencyColor(item.urgencia)} border px-2 py-0.5 text-[10px] uppercase block text-center w-fit`} title={item.urgencia}>
+                        {item.urgencia}
+                      </Badge>
+                    </TableCell>
+                  )}
+
+                  {endpoint === '/cases' && (
+                    /* [CORREÇÃO] Removido truncate para exibir violação completa */
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {item.violacao || '-'}
+                    </TableCell>
+                  )}
+
+                  <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                    {endpoint === '/cases/closed' 
+                      ? formatDateSafe(item.dataDesligamento) 
+                      : formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })
+                    }
+                  </TableCell>
+
+                  {endpoint === '/cases/closed' && (
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {item.motivoDesligamento ?? '-'}
+                    </TableCell>
+                  )}
+
+                  {/* [CORREÇÃO] Removido truncate do responsável */}
+                  <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                    {item.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && item.especialistaPAEFI) 
+                      ? item.especialistaPAEFI?.nome ?? 'N/A' 
+                      : item.agenteAcolhida?.nome ?? 'N/A'
+                    }
+                  </TableCell>
+                  
+                  <TableCell className="whitespace-nowrap">
+                    <CaseStatusBadge status={item.status} />
+                  </TableCell>
+                  
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="p-0">
+                          <Link to={ROUTES.CASE_DETAIL(item.id)} className="flex w-full items-center px-2 py-1.5 cursor-pointer">
+                            <Edit className="mr-2 h-4 w-4" /> Ver Detalhes
+                          </Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
       {result && result.total > 0 && <Pagination currentPage={currentPage} totalPages={result.totalPages} totalItems={result.total} pageSize={result.pageSize} onPageChange={handlePageChange} />}
       <ImportCasesModal isOpen={isImportOpen} onOpenChange={setIsImportOpen} />

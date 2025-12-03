@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, MapPin, Phone, FileText, Clock, AlertTriangle,
   Paperclip, Activity, Edit, CheckCircle2, Circle, ShieldCheck, Network, 
-  Loader2
+  Loader2, Users
 } from "lucide-react"
 import { clsx } from "clsx"
 
@@ -37,11 +37,10 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { formatCPF, formatPhone } from '@/utils/formatters'
 
-// --- NOVAS IMPORTAÇÕES v3.2 ---
 import { OverviewTab } from '@/components/case/tabs/OverviewTab'
 import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
+import { FamilyTab } from '@/components/case/tabs/FamilyTab'
 
-// --- LAZY IMPORTS ---
 const CaseForm = lazy(() => import("@/components/CaseForm").then(module => ({ default: module.CaseForm })))
 const CaseHistory = lazy(() => import("@/components/case/CaseHistory").then(module => ({ default: module.CaseHistory })))
 const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").then(module => ({ default: module.CaseEvolutions })))
@@ -50,7 +49,6 @@ const WhatsAppButton = lazy(() => import("@/components/common/WhatsAppButton").t
 const CaseActions = lazy(() => import("@/components/case/CaseActions").then(module => ({ default: module.CaseActions })))
 const PafSection = lazy(() => import("@/components/case/PafSection").then(module => ({ default: module.PafSection })))
 
-// Types
 import type { CaseDetailData } from '@/types/case'
 
 function TabSkeleton() {
@@ -201,7 +199,6 @@ export function CaseDetail() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
   
-  // Estados para Novo Agendamento
   const [isApptOpen, setIsApptOpen] = useState(false)
   const [apptTitle, setApptTitle] = useState("")
   const [apptDate, setApptDate] = useState("")
@@ -214,7 +211,6 @@ export function CaseDetail() {
     staleTime: 1000 * 60,
   })
 
-  // 2. Fetch Agendamentos
   const appointmentsQuery = useQuery({
     queryKey: ["appointments", id],
     queryFn: async () => {
@@ -227,7 +223,6 @@ export function CaseDetail() {
 
   const appointmentsList = Array.isArray(appointmentsQuery.data) ? appointmentsQuery.data : []
 
-  // 3. Mutação: Criar Agendamento
   const { mutate: createAppointment, isPending: isCreatingAppt } = useMutation({
     mutationFn: async () => {
       await api.post("/appointments", {
@@ -296,6 +291,10 @@ export function CaseDetail() {
             <Activity className="h-4 w-4" /> Visão Geral
           </TabsTrigger>
           
+          <TabsTrigger value="family" className="gap-2 data-[state=active]:bg-background">
+            <Users className="h-4 w-4" /> Família
+          </TabsTrigger>
+
           {(caseData.status === 'EM_ACOMPANHAMENTO_PAEFI' || caseData.status === 'DESLIGADO') && (
             <TabsTrigger value="paf" className="gap-2 data-[state=active]:bg-background">
               <FileText className="h-4 w-4" /> PAF
@@ -321,10 +320,14 @@ export function CaseDetail() {
           </TabsTrigger>
         </TabsList>
 
-        {/* --- CONTEÚDO DAS ABAS --- */}
-
         <TabsContent value="overview" className="mt-6 focus-visible:outline-none">
           <OverviewTab caseData={caseData} />
+        </TabsContent>
+
+        <TabsContent value="family" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <FamilyTab caseId={id!} />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="paf" className="mt-6">
@@ -339,7 +342,6 @@ export function CaseDetail() {
           </Suspense>
         </TabsContent>
 
-        {/* 4. Encaminhamentos */}
         <TabsContent value="referrals" className="mt-6">
           <Suspense fallback={<TabSkeleton />}>
             <ReferralsTab caseId={id!} />
@@ -387,7 +389,6 @@ export function CaseDetail() {
         </TabsContent>
       </Tabs>
 
-      {/* MODAL DE EDIÇÃO */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Editar Prontuário</DialogTitle></DialogHeader>
@@ -397,7 +398,6 @@ export function CaseDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE NOVO AGENDAMENTO */}
       <Dialog open={isApptOpen} onOpenChange={setIsApptOpen}>
         <DialogContent>
           <DialogHeader>

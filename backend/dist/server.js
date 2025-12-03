@@ -693,25 +693,36 @@ async function evolutionRoutes(app2) {
   });
   app2.get("/cases/:caseId/evolutions", async (request, reply) => {
     const { caseId } = import_zod4.z.object({ caseId: import_zod4.z.string().uuid() }).parse(request.params);
+    const { sub: userId, cargo } = request.user;
     const evolucoes = await prisma.evolucao.findMany({
       where: { casoId: caseId },
       orderBy: { createdAt: "desc" },
-      // Mais recentes primeiro
       include: {
         autor: { select: { id: true, nome: true, cargo: true } }
       }
     });
-    return reply.send(evolucoes);
+    const filteredEvolucoes = evolucoes.filter((evo) => {
+      if (!evo.sigilo) return true;
+      if (cargo === import_client4.Cargo.Gerente) return true;
+      if (evo.autorId === userId) return true;
+      return false;
+    });
+    return reply.send(filteredEvolucoes);
   });
   app2.post("/cases/:caseId/evolutions", async (request, reply) => {
     const { caseId } = import_zod4.z.object({ caseId: import_zod4.z.string().uuid() }).parse(request.params);
-    const { conteudo } = import_zod4.z.object({ conteudo: import_zod4.z.string().min(1) }).parse(request.body);
+    const bodySchema = import_zod4.z.object({
+      conteudo: import_zod4.z.string().min(1),
+      sigilo: import_zod4.z.boolean().optional().default(false)
+      // [NOVO]
+    });
+    const { conteudo, sigilo } = bodySchema.parse(request.body);
     const { sub: userId } = request.user;
     const evolucao = await prisma.evolucao.create({
       data: {
         conteudo,
+        sigilo,
         casoId: caseId,
-        // Mapeia a variável caseId para o campo casoId do banco
         autorId: userId
       },
       include: { autor: true }
@@ -719,10 +730,10 @@ async function evolutionRoutes(app2) {
     await prisma.caseLog.create({
       data: {
         casoId: caseId,
-        // [CORREÇÃO] Aqui estava apenas 'casoId', que não existia. Agora usa 'caseId'
         autorId: userId,
         acao: import_client4.LogAction.EVOLUCAO_CRIADA,
-        descricao: "Adicionou uma nova evolu\xE7\xE3o t\xE9cnica."
+        // Se for sigiloso, não mostra detalhes no log público
+        descricao: sigilo ? "Registrou uma evolu\xE7\xE3o SIGILOSA." : "Adicionou uma nova evolu\xE7\xE3o t\xE9cnica."
       }
     });
     return reply.status(201).send(evolucao);
@@ -1943,6 +1954,93 @@ async function referralRoutes(app2) {
   });
 }
 
+// src/routes/family.ts
+var import_zod13 = require("zod");
+var import_client13 = require("@prisma/client");
+async function familyRoutes(app2) {
+  app2.addHook("onRequest", async (req, reply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.status(401).send();
+    }
+  });
+  app2.post("/cases/:caseId/family", async (req, reply) => {
+    const paramsSchema = import_zod13.z.object({ caseId: import_zod13.z.string().uuid() });
+    const bodySchema = import_zod13.z.object({
+      nome: import_zod13.z.string().min(2),
+      parentesco: import_zod13.z.string().min(2),
+      idade: import_zod13.z.number().int().nonnegative().optional(),
+      // [NOVOS CAMPOS]
+      cpf: import_zod13.z.string().optional().nullable(),
+      nascimento: import_zod13.z.coerce.date().optional().nullable(),
+      telefone: import_zod13.z.string().optional().nullable(),
+      ocupacao: import_zod13.z.string().optional(),
+      renda: import_zod13.z.number().nonnegative().optional(),
+      observacoes: import_zod13.z.string().optional()
+    });
+    try {
+      const { caseId } = paramsSchema.parse(req.params);
+      const data = bodySchema.parse(req.body);
+      const userId = req.user.sub;
+      const cpfLimpo = data.cpf ? data.cpf.replace(/\D/g, "") : null;
+      const telefoneLimpo = data.telefone ? data.telefone.replace(/\D/g, "") : null;
+      const member = await prisma.membroFamilia.create({
+        data: {
+          ...data,
+          cpf: cpfLimpo,
+          telefone: telefoneLimpo,
+          // [CORREÇÃO]: Mapeamento explícito (banco: variável)
+          casoId: caseId
+        }
+      });
+      await prisma.caseLog.create({
+        data: {
+          // [CORREÇÃO]: Mapeamento explícito aqui também
+          casoId: caseId,
+          autorId: userId,
+          acao: import_client13.LogAction.MEMBRO_FAMILIA_ADICIONADO,
+          descricao: `Adicionou familiar: ${data.nome} (${data.parentesco})`
+        }
+      });
+      return reply.status(201).send(member);
+    } catch (error) {
+      console.error(error);
+      return reply.status(500).send({ message: "Erro ao adicionar familiar." });
+    }
+  });
+  app2.get("/cases/:caseId/family", async (req, reply) => {
+    const { caseId } = import_zod13.z.object({ caseId: import_zod13.z.string().uuid() }).parse(req.params);
+    const members = await prisma.membroFamilia.findMany({
+      // [CORREÇÃO]: Mapeamento explícito
+      where: { casoId: caseId },
+      orderBy: { createdAt: "asc" }
+    });
+    return reply.send(members);
+  });
+  app2.delete("/family/:id", async (req, reply) => {
+    const { id } = import_zod13.z.object({ id: import_zod13.z.string().uuid() }).parse(req.params);
+    const userId = req.user.sub;
+    try {
+      const member = await prisma.membroFamilia.findUnique({ where: { id } });
+      if (!member) return reply.status(404).send();
+      await prisma.membroFamilia.delete({ where: { id } });
+      await prisma.caseLog.create({
+        data: {
+          casoId: member.casoId,
+          // Aqui 'member' vem do banco, então já tem 'casoId' correto
+          autorId: userId,
+          acao: import_client13.LogAction.OUTRO,
+          descricao: `Removeu familiar: ${member.nome}`
+        }
+      });
+      return reply.status(204).send();
+    } catch (error) {
+      return reply.status(500).send();
+    }
+  });
+}
+
 // src/server.ts
 var app = (0, import_fastify.default)({
   logger: { transport: { target: "pino-pretty" } }
@@ -1975,10 +2073,11 @@ app.register(attachmentRoutes);
 app.register(importRoutes);
 app.register(filterRoutes);
 app.register(referralRoutes);
+app.register(familyRoutes);
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith("/api") || req.raw.url.startsWith("/uploads"))) {
     return reply.status(404).send({ message: "Recurso n\xE3o encontrado" });
   }
   return reply.sendFile("index.html");
 });
-app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando na porta 3333!"));
+app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando!"));

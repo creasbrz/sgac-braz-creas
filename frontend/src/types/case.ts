@@ -1,6 +1,21 @@
 // frontend/src/types/case.ts
 
-// Interface para o Histórico de Versões do PAF
+export interface FamilyMember {
+  id: string
+  nome: string
+  parentesco: string
+  idade?: number | null
+  // [NOVOS CAMPOS]
+  cpf?: string | null
+  nascimento?: string | null
+  telefone?: string | null
+  
+  ocupacao?: string | null
+  renda?: number | null
+  observacoes?: string | null
+  createdAt: string
+}
+
 export interface PafVersion {
   id: string
   diagnostico: string
@@ -12,7 +27,6 @@ export interface PafVersion {
   versaoNumero?: number
 }
 
-// Interface para o PAF Atual
 export interface PafData {
   id: string
   diagnostico: string
@@ -28,7 +42,6 @@ export interface PafData {
   }
 }
 
-// Interface para Logs do Caso
 export interface CaseLog {
   id: string
   acao: string
@@ -41,22 +54,20 @@ export interface CaseLog {
   }
 }
 
-// [NOVO] Interface para Encaminhamentos (Referrals)
 export interface Referral {
   id: string
-  tipo: string        // ex: Saúde, Educação
-  instituicao: string // ex: UBS 05
+  tipo: string
+  instituicao: string
   motivo: string
   status: 'PENDENTE' | 'CONCLUIDO' | 'NEGADO'
   dataEnvio: string
-  retorno?: string | null // Contra-referência
+  retorno?: string | null
   createdAt: string
   autor: {
     nome: string
   }
 }
 
-// Dados completos do Caso (Detail)
 export interface CaseDetailData {
   id: string
   nomeCompleto: string
@@ -98,13 +109,15 @@ export interface CaseDetailData {
   dataDesligamento?: string
 }
 
-// Interface simplificada para listas
 export interface Evolution {
   id: string
   conteudo: string
+  sigilo: boolean
   createdAt: string
   autor: {
+    id: string
     nome: string
+    cargo?: string
   }
 }
 
@@ -120,6 +133,8 @@ export interface CaseSummary {
   status: string
   dataEntrada: string
   urgencia: string
+  violacao?: string
+  sexo?: string
   dataDesligamento?: string | null
   motivoDesligamento?: string | null
   

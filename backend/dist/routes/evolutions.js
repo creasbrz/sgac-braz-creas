@@ -40,25 +40,36 @@ async function evolutionRoutes(app) {
   });
   app.get("/cases/:caseId/evolutions", async (request, reply) => {
     const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(request.params);
+    const { sub: userId, cargo } = request.user;
     const evolucoes = await prisma.evolucao.findMany({
       where: { casoId: caseId },
       orderBy: { createdAt: "desc" },
-      // Mais recentes primeiro
       include: {
         autor: { select: { id: true, nome: true, cargo: true } }
       }
     });
-    return reply.send(evolucoes);
+    const filteredEvolucoes = evolucoes.filter((evo) => {
+      if (!evo.sigilo) return true;
+      if (cargo === import_client2.Cargo.Gerente) return true;
+      if (evo.autorId === userId) return true;
+      return false;
+    });
+    return reply.send(filteredEvolucoes);
   });
   app.post("/cases/:caseId/evolutions", async (request, reply) => {
     const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(request.params);
-    const { conteudo } = import_zod.z.object({ conteudo: import_zod.z.string().min(1) }).parse(request.body);
+    const bodySchema = import_zod.z.object({
+      conteudo: import_zod.z.string().min(1),
+      sigilo: import_zod.z.boolean().optional().default(false)
+      // [NOVO]
+    });
+    const { conteudo, sigilo } = bodySchema.parse(request.body);
     const { sub: userId } = request.user;
     const evolucao = await prisma.evolucao.create({
       data: {
         conteudo,
+        sigilo,
         casoId: caseId,
-        // Mapeia a variável caseId para o campo casoId do banco
         autorId: userId
       },
       include: { autor: true }
@@ -66,10 +77,10 @@ async function evolutionRoutes(app) {
     await prisma.caseLog.create({
       data: {
         casoId: caseId,
-        // [CORREÇÃO] Aqui estava apenas 'casoId', que não existia. Agora usa 'caseId'
         autorId: userId,
         acao: import_client2.LogAction.EVOLUCAO_CRIADA,
-        descricao: "Adicionou uma nova evolu\xE7\xE3o t\xE9cnica."
+        // Se for sigiloso, não mostra detalhes no log público
+        descricao: sigilo ? "Registrou uma evolu\xE7\xE3o SIGILOSA." : "Adicionou uma nova evolu\xE7\xE3o t\xE9cnica."
       }
     });
     return reply.status(201).send(evolucao);

@@ -10,7 +10,7 @@ generator client {
 }
 
 // ----------------------------------------------------------------------
-// ENUMS (Estruturais do Sistema)
+// ENUMS
 // ----------------------------------------------------------------------
 
 enum Cargo {
@@ -33,7 +33,7 @@ enum LogAction {
   ATRIBUICAO
   DESLIGAMENTO
   EVOLUCAO_CRIADA
-  AGENDAMENTO_CRIADO
+  AGENDAMENTO_CRIADO // Essencial para a aba Agendamentos
   PAF_CRIADO
   PAF_ATUALIZADO
   ANEXO_ADICIONADO
@@ -54,49 +54,63 @@ model User {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  // Relações
+  // Relações com Casos
+  casosCriados          Case[]        @relation("CasosCriados")
   casosDeAcolhida       Case[]        @relation("AgenteAcolhida")
   casosDeAcompanhamento Case[]        @relation("EspecialistaPAEFI")
-  casosCriados          Case[]        @relation("CasosCriados")
+  
+  // Relações com Atividades
   evolucoes             Evolucao[]    @relation("EvolucoesDoAutor")
   pafsCriados           Paf[]         @relation("PafsDoAutor")
   pafVersoes            PafVersion[]  @relation("VersoesDoAutor")
   agendamentos          Agendamento[] @relation("AgendamentosDoResponsavel")
   logsGerados           CaseLog[]     @relation("LogsDoAutor")
   anexosEnviados        Anexo[]       @relation("AnexosDoAutor")
+  
+  // Filtros Personalizados
+  filtrosSalvos         SavedFilter[] @relation("FiltrosDoUsuario")
 
   @@index([cargo])
 }
 
+model SavedFilter {
+  id        String   @id @default(uuid())
+  nome      String   
+  config    Json     // Armazena { status: '...', urgencia: '...' }
+  createdAt DateTime @default(now())
+
+  user      User     @relation("FiltrosDoUsuario", fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+}
+
 model Case {
   id                  String    @id @default(uuid())
+  
+  // Identificação
   nomeCompleto        String
   cpf                 String    @unique
   nascimento          DateTime
+  sexo                String    // String livre para flexibilidade
+  telefone            String
+  endereco            String
   
-  // Campos descritivos (String) para aceitar listas detalhadas do frontend
-  sexo                String
+  // Dados Técnicos
   urgencia            String
+  pesoUrgencia        Int       @default(1) // 1=Baixa, 4=Crítica (Para ordenação)
   violacao            String
   categoria           String
   
-  // Campo auxiliar para ordenação (4=Crítica ... 1=Baixa)
-  pesoUrgencia        Int       @default(1)
-
-  telefone            String
-  endereco            String
+  // Dados Administrativos
   dataEntrada         DateTime  @default(now())
   orgaoDemandante     String
   numeroSei           String?
   linkSei             String?
   observacoes         String?
+  beneficios          String[]  @default([])
   
   status              CaseStatus @default(AGUARDANDO_ACOLHIDA)
   
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  // Relacionamentos de Usuários
+  // Responsáveis
   criadoPor           User      @relation("CasosCriados", fields: [criadoPorId], references: [id])
   criadoPorId         String
 
@@ -106,25 +120,25 @@ model Case {
   especialistaPAEFI   User?     @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
   especialistaPAEFIId String?
 
-  // Listas Relacionadas
+  // Dados de Gestão
+  dataInicioPAEFI     DateTime?
+  dataDesligamento    DateTime?
+  motivoDesligamento  String?
+  parecerFinal        String?
+  
+  // Logs e Soft Delete
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletado            Boolean   @default(false)
+  dataDeletado        DateTime?
+
+  // Relacionamentos
   evolucoes           Evolucao[]
   paf                 Paf?
   agendamentos        Agendamento[]
   logs                CaseLog[]
   anexos              Anexo[]
 
-  // Campos de Dados Adicionais / Fechamento
-  beneficios          String[]   @default([])
-  dataInicioPAEFI     DateTime?
-  dataDesligamento    DateTime?
-  motivoDesligamento  String?
-  parecerFinal        String?
-  
-  // Soft Delete (opcional para o futuro)
-  deletado            Boolean    @default(false)
-  dataDeletado        DateTime?
-
-  // Índices para performance
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])

@@ -11,6 +11,13 @@ import { CaseStatus, Cargo, LogAction, Sexo, Urgencia, Violacao, CategoriaPublic
 // 🔧 UTILITÁRIOS
 // -------------------------------------------------------
 
+/** Remove o componente de horas (00:00:00 UTC) */
+const stripTime = (date: Date | string): Date => {
+  const d = new Date(date)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+/** Calcula o peso numérico da urgência para ordenação correta */
 const calculateUrgencyWeight = (urgencia: string): number => {
   const term = urgencia.trim()
   if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
@@ -56,9 +63,39 @@ function buildClosedCaseWhereClause(user: { cargo: string; sub: string }) {
   return where
 }
 
-async function createLog(casoId: string, autorId: string, acao: LogAction, descricao: string) {
+/** Detecta mudanças ignorando horas e campos de sistema */
+function detectChanges(oldData: any, newData: any) {
+  const changes: Record<string, { from: any, to: any }> = {}
+  const ignoreFields = ['updatedAt', 'createdAt', 'pesoUrgencia', 'numeroSei', 'linkSei', 'observacoes', 'beneficios', 'criadoPorId', 'id'] 
+
+  for (const key in newData) {
+    if (ignoreFields.includes(key)) continue;
+    
+    let val1 = oldData[key]
+    let val2 = newData[key]
+
+    // Normalização de Datas
+    if ((val1 instanceof Date || typeof val1 === 'string') && (val2 instanceof Date || typeof val2 === 'string')) {
+      const d1 = new Date(val1)
+      const d2 = new Date(val2)
+      if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+        const s1 = d1.toISOString().split('T')[0]
+        const s2 = d2.toISOString().split('T')[0]
+        if (s1 === s2) continue;
+      }
+    }
+    
+    if (val1 !== val2) {
+      if (!val1 && !val2) continue; 
+      changes[key] = { from: val1, to: val2 }
+    }
+  }
+  return changes
+}
+
+async function createLog(casoId: string, autorId: string, acao: LogAction, descricao: string, valorAnterior?: string | null, valorNovo?: string | null) {
   await prisma.caseLog.create({
-    data: { casoId, autorId, acao, descricao },
+    data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo },
   })
 }
 
@@ -83,10 +120,8 @@ export async function caseRoutes(app: FastifyInstance) {
       categoria: z.string(),
       orgaoDemandante: z.string(),
       agenteAcolhidaId: z.string().uuid(),
-      // [CORREÇÃO] Aceita null (nullable) explicitamente
       numeroSei: z.string().nullable().optional(),
-      // Link: Aceita URL válida, string vazia OU null
-      linkSei: z.union([z.string().url(), z.literal(''), z.null()]).optional(),
+      linkSei: z.string().url().nullable().optional().or(z.literal('')),
       observacoes: z.string().nullable().optional(),
       beneficios: z.array(z.string()).optional(),
     })
@@ -99,10 +134,12 @@ export async function caseRoutes(app: FastifyInstance) {
       const novoCaso = await prisma.case.create({
         data: {
           ...data,
+          nascimento: stripTime(data.nascimento),
+          dataEntrada: stripTime(data.dataEntrada),
           pesoUrgencia,
-          // Garante que undefined vire null no banco
+          criadoPorId: userId,
           numeroSei: data.numeroSei ?? null,
-          linkSei: data.linkSei || null, // Se for string vazia, vira null
+          linkSei: data.linkSei || null, 
           observacoes: data.observacoes ?? null,
           beneficios: data.beneficios || [],
         },
@@ -113,8 +150,6 @@ export async function caseRoutes(app: FastifyInstance) {
       return reply.status(201).send(novoCaso)
     } catch (error) {
       if (error instanceof z.ZodError) {
-        // Log para ajudar a debugar qual campo falhou
-        console.log('Erro validação POST:', error.flatten())
         return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
       }
       return internalError(reply, 'Erro interno ao criar caso.', error)
@@ -125,7 +160,6 @@ export async function caseRoutes(app: FastifyInstance) {
   app.put('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
     const paramsSchema = z.object({ id: z.string().uuid() })
     
-    // Schema robusto que aceita null nos campos opcionais
     const bodySchema = z.object({
       nomeCompleto: z.string(),
       cpf: z.string().length(11),
@@ -139,18 +173,29 @@ export async function caseRoutes(app: FastifyInstance) {
       categoria: z.string(),
       orgaoDemandante: z.string(),
       agenteAcolhidaId: z.string().uuid(),
-      // [CORREÇÃO] .nullable() adicionado para aceitar null vindo do front
       numeroSei: z.string().nullable().optional(),
-      // Link: Aceita URL, string vazia ou null
-      linkSei: z.union([z.string().url(), z.literal(''), z.null()]).optional(),
+      linkSei: z.string().url().nullable().optional().or(z.literal('')),
       observacoes: z.string().nullable().optional(),
       beneficios: z.array(z.string()).optional(),
     })
 
     try {
       const { id } = paramsSchema.parse(request.params)
-      const data = bodySchema.parse(request.body)
+      const rawData = bodySchema.parse(request.body)
       const userId = request.user.sub
+
+      const data = {
+        ...rawData,
+        nascimento: stripTime(rawData.nascimento),
+        dataEntrada: stripTime(rawData.dataEntrada),
+      }
+
+      const oldCase = await prisma.case.findUnique({ 
+        where: { id },
+        include: { agenteAcolhida: { select: { nome: true } } }
+      })
+      
+      if (!oldCase) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
       const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
 
@@ -160,18 +205,43 @@ export async function caseRoutes(app: FastifyInstance) {
           ...data,
           pesoUrgencia,
           numeroSei: data.numeroSei ?? null,
-          linkSei: data.linkSei || null, // String vazia vira null
+          linkSei: data.linkSei || null,
           observacoes: data.observacoes ?? null,
           beneficios: data.beneficios || [],
         },
       })
 
-      await createLog(id, userId, LogAction.OUTRO, 'Editou dados cadastrais do caso.')
+      // Detecção de Mudanças (Diff)
+      const changes = detectChanges(oldCase, data)
+      
+      // Se mudou agente, troca o ID pelo Nome no log
+      if (changes['agenteAcolhidaId']) {
+        const newAgentId = changes['agenteAcolhidaId'].to
+        const newAgent = await prisma.user.findUnique({ where: { id: newAgentId } })
+        
+        changes['Agente Responsável'] = {
+          from: oldCase.agenteAcolhida?.nome || 'Sem agente',
+          to: newAgent?.nome || 'Desconhecido'
+        }
+        delete changes['agenteAcolhidaId']
+      }
+
+      const keys = Object.keys(changes)
+
+      if (keys.length > 0) {
+        await createLog(
+          id, 
+          userId, 
+          LogAction.OUTRO, 
+          `Editou ${keys.length} campos: ${keys.join(', ')}`,
+          JSON.stringify(changes), 
+          null
+        )
+      }
 
       return reply.send(updatedCaso)
     } catch (error) {
       if (error instanceof z.ZodError) {
-        console.log('Erro validação PUT:', error.flatten())
         return reply.status(400).send({ message: 'Dados inválidos na edição.', errors: error.flatten().fieldErrors })
       }
       return internalError(reply, 'Erro ao editar caso.', error)
@@ -187,10 +257,12 @@ export async function caseRoutes(app: FastifyInstance) {
       status: z.nativeEnum(CaseStatus).optional(),
       urgencia: z.string().optional(),
       violacao: z.string().optional(),
+      categoria: z.string().optional(),
+      sexo: z.string().optional(),
     })
 
     try {
-      const { search, page, pageSize, status, urgencia, violacao } = schema.parse(request.query)
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo } = schema.parse(request.query)
       let where = buildActiveCaseWhereClause(request.user) as any
 
       if (search) {
@@ -208,6 +280,8 @@ export async function caseRoutes(app: FastifyInstance) {
       if (status) where.status = status
       if (urgencia && urgencia !== 'all') where.urgencia = urgencia
       if (violacao && violacao !== 'all') where.violacao = { equals: violacao }
+      if (categoria && categoria !== 'all') where.categoria = { equals: categoria }
+      if (sexo && sexo !== 'all') where.sexo = { equals: sexo }
 
       const [items, total] = await Promise.all([
         prisma.case.findMany({
@@ -305,7 +379,6 @@ export async function caseRoutes(app: FastifyInstance) {
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-      // Permissão aberta para reabertura e mudança de status (registrado em log)
       let updateData: any = { status }
       if (caso.status === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO) {
         updateData = { status: CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, dataDesligamento: null, parecerFinal: null }
@@ -313,7 +386,7 @@ export async function caseRoutes(app: FastifyInstance) {
 
       const updated = await prisma.case.update({ where: { id }, data: updateData })
 
-      if (caso.status !== status) await createLog(id, userId, LogAction.MUDANCA_STATUS, `Alterou status para ${status}`)
+      if (caso.status !== status) await createLog(id, userId, LogAction.MUDANCA_STATUS, `Alterou status para ${status}`, caso.status, status)
       else await createLog(id, userId, LogAction.MUDANCA_STATUS, `Reabriu caso.`)
       
       return reply.send(updated)
@@ -329,14 +402,17 @@ export async function caseRoutes(app: FastifyInstance) {
       const { specialistId } = body.parse(request.body)
       const { cargo, sub: userId } = request.user as { sub: string, cargo: string }
       if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+      
+      const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
       const spec = await prisma.user.findUnique({ where: { id: specialistId } })
       const updated = await prisma.case.update({ where: { id }, data: { especialistaPAEFIId: specialistId, status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: new Date() } })
-      await createLog(id, userId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`)
+      const oldName = oldCase?.especialistaPAEFI?.nome || 'Nenhum'
+      await createLog(id, userId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldName, spec?.nome)
       return reply.send(updated)
     } catch (error) { return internalError(reply, 'Erro ao atribuir.', error) }
   })
 
-  // 7. Close
+  // 7. Desligar
   app.patch('/cases/:id/close', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ parecerFinal: z.string().min(10), motivoDesligamento: z.string().min(1) })

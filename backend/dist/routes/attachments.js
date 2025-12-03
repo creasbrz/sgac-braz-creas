@@ -52,17 +52,15 @@ async function attachmentRoutes(app) {
     }
   });
   app.post("/cases/:caseId/attachments", async (request, reply) => {
-    console.log("\u{1F4E5} [API] Recebendo pedido de upload...");
+    console.log("\u{1F4E5} [API] Recebendo upload...");
     const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
     try {
       const { caseId } = paramsSchema.parse(request.params);
       const { sub: userId } = request.user;
       const data = await request.file();
       if (!data) {
-        console.log("\u274C [API] Erro: Nenhum ficheiro detetado.");
-        return reply.status(400).send({ message: "Nenhum ficheiro enviado." });
+        return reply.status(400).send({ message: "Nenhum arquivo enviado." });
       }
-      console.log(`\u{1F4C4} [API] Ficheiro: ${data.filename} (${data.mimetype})`);
       const allowedMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
       if (!allowedMimeTypes.includes(data.mimetype)) {
         await data.toBuffer();
@@ -72,12 +70,10 @@ async function attachmentRoutes(app) {
       const fileName = `${Date.now()}-${safeFilename}`;
       const uploadDir = import_path.default.resolve(process.cwd(), "uploads");
       if (!import_fs.default.existsSync(uploadDir)) {
-        console.log(`\u{1F4C1} [API] Criando diret\xF3rio: ${uploadDir}`);
         import_fs.default.mkdirSync(uploadDir, { recursive: true });
       }
       const uploadPath = import_path.default.join(uploadDir, fileName);
       await (0, import_promises.pipeline)(data.file, import_fs.default.createWriteStream(uploadPath));
-      console.log("\u2705 [API] Ficheiro gravado no disco.");
       const anexo = await prisma.anexo.create({
         data: {
           nome: data.filename,
@@ -86,12 +82,11 @@ async function attachmentRoutes(app) {
           casoId: caseId,
           autorId: userId,
           tamanho: 0
-          // Opcional
         }
       });
       await prisma.caseLog.create({
         data: {
-          casoId,
+          casoId: caseId,
           autorId: userId,
           acao: import_client2.LogAction.ANEXO_ADICIONADO,
           descricao: `Anexou: ${data.filename}`
@@ -99,8 +94,8 @@ async function attachmentRoutes(app) {
       });
       return reply.status(201).send(anexo);
     } catch (error) {
-      console.error("\u274C [API] Erro Cr\xEDtico no Upload:", error);
-      return reply.status(500).send({ message: "Falha interna ao salvar ficheiro." });
+      console.error("\u274C Erro no Upload:", error);
+      return reply.status(500).send({ message: "Erro interno ao salvar." });
     }
   });
   app.get("/cases/:caseId/attachments", async (request, reply) => {
@@ -108,13 +103,15 @@ async function attachmentRoutes(app) {
     try {
       const { caseId } = paramsSchema.parse(request.params);
       const anexos = await prisma.anexo.findMany({
-        where: { casoId },
+        // [CORREÇÃO CRÍTICA AQUI]
+        // Mapeamos a variável da URL 'caseId' para o campo do banco 'casoId'
+        where: { casoId: caseId },
         orderBy: { createdAt: "desc" },
         include: { autor: { select: { nome: true } } }
       });
       return reply.send(anexos);
     } catch (error) {
-      console.error("Erro ao listar:", error);
+      console.error("\u274C Erro ao listar anexos:", error);
       return reply.status(500).send({ message: "Erro ao listar anexos." });
     }
   });
@@ -124,7 +121,7 @@ async function attachmentRoutes(app) {
       const { id } = paramsSchema.parse(request.params);
       const { sub: userId, cargo } = request.user;
       const anexo = await prisma.anexo.findUnique({ where: { id } });
-      if (!anexo) return reply.status(404).send({ message: "Ficheiro n\xE3o encontrado." });
+      if (!anexo) return reply.status(404).send({ message: "Arquivo n\xE3o encontrado." });
       if (anexo.autorId !== userId && cargo !== import_client2.Cargo.Gerente) {
         return reply.status(403).send({ message: "Sem permiss\xE3o." });
       }
@@ -133,14 +130,14 @@ async function attachmentRoutes(app) {
         const filePath = import_path.default.resolve(process.cwd(), "uploads", import_path.default.basename(anexo.url));
         if (import_fs.default.existsSync(filePath)) import_fs.default.unlinkSync(filePath);
       } catch (e) {
-        console.error("Erro ao apagar do disco:", e);
+        console.error("Erro ao apagar arquivo:", e);
       }
       await prisma.caseLog.create({
         data: {
           casoId: anexo.casoId,
           autorId: userId,
           acao: import_client2.LogAction.OUTRO,
-          descricao: `Removeu anexo: ${anexo.nome}`
+          descricao: `Removeu: ${anexo.nome}`
         }
       });
       return reply.status(204).send();

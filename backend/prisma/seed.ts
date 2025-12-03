@@ -1,15 +1,16 @@
 // backend/prisma/seed.ts
 /**
  * Seed Realista e Blindado para SGAC-BRAZ (CREAS)
- * - Correção: Tratamento de datas para evitar erro "from date > to date"
- * - Textos técnicos baseados no SUAS (Sistema Único de Assistência Social).
- * - Distribuição de dados ponderada para simular a realidade de um território.
+ * - Textos técnicos baseados no SUAS.
+ * - Cálculo automático de peso de urgência.
+ * - Tratamento de datas para evitar erros de geração.
+ * - Inserção em lotes (chunks) para performance.
  */
 
 import { PrismaClient, CaseStatus, Cargo, LogAction } from '@prisma/client'
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
-import { addDays, addMonths, subDays, isAfter, isBefore } from 'date-fns'
+import { addDays, addMonths, subDays, startOfDay, isAfter } from 'date-fns'
 
 const prisma = new PrismaClient()
 
@@ -20,6 +21,45 @@ const NUM_CASOS = 150
 const MAX_EVOLUCOES = 8
 const MAX_AGENDAMENTOS = 3
 const CONCURRENCY = 10
+
+/* --------------------------- UTILITÁRIOS --------------------------- */
+
+// Remove horas da data para consistência
+const stripTime = (date: Date): Date => {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
+
+function randWeighted<T>(arr: [T, number][]): T {
+  const total = arr.reduce((s, [, w]) => s + w, 0)
+  let r = Math.random() * total
+  for (const [item, weight] of arr) {
+    if (r < weight) return item
+    r -= weight
+  }
+  return arr[0][0]
+}
+
+function pickMultiple<T>(arr: T[], min = 0, max = 2): T[] {
+  const n = faker.number.int({ min, max })
+  return faker.helpers.arrayElements(arr, n)
+}
+
+function chunkArray<T>(arr: T[], size = 10): T[][] {
+  const res: T[][] = []
+  for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size))
+  return res
+}
+
+// Calcula Peso da Urgência (Sincronizado com o Backend)
+const calculateWeight = (urgencia: string): number => {
+  const term = urgencia.trim()
+  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
+  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
+  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
+  return 1;
+}
 
 /* --------------------------- DADOS TÉCNICOS (SUAS) --------------------------- */
 
@@ -58,7 +98,7 @@ const pafEstrategias = [
   "Acompanhamento sistemático da equipe técnica; Encaminhamento para qualificação profissional; Solicitação de benefícios eventuais."
 ]
 
-/* --------------------------- LISTAS DE CLASSIFICAÇÃO --------------------------- */
+/* --------------------------- LISTAS DETALHADAS (STRINGS) --------------------------- */
 const urgenciasWeighted: [string, number][] = [
   ['Convive com agressor', 0.15],
   ['Risco de morte', 0.05],
@@ -118,39 +158,6 @@ const titulosAgendamento = [
   'Estudo de Caso'
 ]
 
-/* --------------------------- UTILITÁRIOS --------------------------- */
-
-const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
-
-function randWeighted<T>(arr: [T, number][]): T {
-  const total = arr.reduce((s, [, w]) => s + w, 0)
-  let r = Math.random() * total
-  for (const [item, weight] of arr) {
-    if (r < weight) return item
-    r -= weight
-  }
-  return arr[0][0]
-}
-
-function pickMultiple<T>(arr: T[], min = 0, max = 2): T[] {
-  const n = faker.number.int({ min, max })
-  return faker.helpers.arrayElements(arr, n)
-}
-
-function chunkArray<T>(arr: T[], size = 10): T[][] {
-  const res: T[][] = []
-  for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size))
-  return res
-}
-
-const calculateWeight = (urgencia: string): number => {
-  const term = urgencia.trim()
-  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
-  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
-  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
-  return 1;
-}
-
 /* --------------------------- SEED PRINCIPAL --------------------------- */
 
 async function main() {
@@ -188,7 +195,7 @@ async function main() {
     }))
   }
 
-  // 2. Casos
+  // 2. Preparar Casos
   console.log(`📂 Gerando ${NUM_CASOS} prontuários detalhados...`)
   const now = new Date()
   const casePayloads: any[] = []
@@ -198,7 +205,7 @@ async function main() {
       [CaseStatus.AGUARDANDO_ACOLHIDA, 0.10],
       [CaseStatus.EM_ACOLHIDA, 0.15],
       [CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI, 0.10],
-      [CaseStatus.EM_ACOMPANHAMENTO_PAEFI, 0.50],
+      [CaseStatus.EM_ACOMPANHAMENTO_PAEFI, 0.50], 
       [CaseStatus.DESLIGADO, 0.15]
     ]
     const status = randWeighted(statusOptionsWeighted)
@@ -206,8 +213,9 @@ async function main() {
     const agente = rand(agentes)
     const especialista = rand(especialistas)
     
-    // [SEGURANÇA] Data de entrada até ontem para evitar "futuro" no log
-    const dataEntrada = faker.date.between({ from: subDays(now, 365), to: subDays(now, 1) })
+    // Data de entrada no passado (até ontem)
+    const rawDataEntrada = faker.date.between({ from: subDays(now, 365), to: subDays(now, 1) })
+    const dataEntrada = stripTime(rawDataEntrada)
     
     const urgencia = randWeighted(urgenciasWeighted)
     const violacao = randWeighted(violacoesWeighted)
@@ -216,7 +224,7 @@ async function main() {
     const base: any = {
       nomeCompleto: faker.person.fullName(),
       cpf: faker.string.numeric(11),
-      nascimento: faker.date.birthdate({ min: 0, max: 90 }),
+      nascimento: stripTime(faker.date.birthdate({ min: 0, max: 90 })),
       sexo: rand(sexos),
       telefone: faker.string.numeric(11),
       endereco: `${faker.location.street()}, ${faker.location.buildingNumber()} - ${faker.location.city()}`,
@@ -239,16 +247,15 @@ async function main() {
 
     if (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.DESLIGADO) {
       updates.especialistaPAEFIId = especialista.id
-      const diasTriagem = faker.number.int({ min: 2, max: 45 })
-      updates.dataInicioPAEFI = addDays(dataEntrada, diasTriagem)
+      const diasTriagem = faker.number.int({ min: 5, max: 45 })
+      updates.dataInicioPAEFI = stripTime(addDays(dataEntrada, diasTriagem))
     }
 
     if (status === CaseStatus.DESLIGADO) {
       const baseStart = updates.dataInicioPAEFI ?? dataEntrada
-      const diasAteDeslig = faker.number.int({ min: 10, max: 180 })
+      const diasAteDeslig = faker.number.int({ min: 30, max: 180 })
       const dataDeslig = addDays(baseStart, diasAteDeslig)
-      // Garante que não desliga no futuro
-      updates.dataDesligamento = isAfter(dataDeslig, now) ? now : dataDeslig
+      updates.dataDesligamento = stripTime(isAfter(dataDeslig, now) ? now : dataDeslig)
       updates.motivoDesligamento = rand(motivosDesligamento)
       updates.parecerFinal = `Caso desligado após cumprimento dos objetivos. ${faker.lorem.sentence()}`
     }
@@ -266,6 +273,7 @@ async function main() {
       const { base, updates } = item
       try {
         await prisma.$transaction(async (tx) => {
+          // Cria Caso
           const novoCaso = await tx.case.create({ data: { ...base, ...updates } })
           createdCount++
 
@@ -310,23 +318,17 @@ async function main() {
 
           if (logsToCreate.length > 0) await tx.caseLog.createMany({ data: logsToCreate })
 
-          // Evoluções (Com correção de data)
+          // Evoluções
           const numEvos = faker.number.int({ min: 2, max: MAX_EVOLUCOES })
           const evolutionsData: any[] = []
           for (let e = 0; e < numEvos; e++) {
             const maxDate = novoCaso.dataDesligamento ?? now
-            let start = addDays(base.dataEntrada, 1)
+            let start = addDays(base.dataEntrada, 2)
             
-            // [CORREÇÃO] Garante que start < end
             if (isAfter(start, maxDate) || start.getTime() === maxDate.getTime()) {
                 start = base.dataEntrada
             }
-            if (isAfter(start, maxDate)) {
-                // Se ainda assim der erro (caso criado hoje), usa a data de entrada exata
-                start = maxDate 
-            }
-
-            // Se as datas forem iguais, faker quebra, então evitamos chamar between
+            
             const evoDate = start.getTime() === maxDate.getTime() 
                 ? start 
                 : faker.date.between({ from: start, to: maxDate })
@@ -335,14 +337,14 @@ async function main() {
               conteudo: rand(textosEvolucao),
               casoId: novoCaso.id,
               autorId: rand([novoCaso.agenteAcolhidaId!, novoCaso.especialistaPAEFIId ?? novoCaso.agenteAcolhidaId!]),
-              createdAt: evoDate
+              createdAt: stripTime(evoDate)
             })
           }
           if (evolutionsData.length) await tx.evolucao.createMany({ data: evolutionsData })
 
           // PAF
           if (novoCaso.status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || novoCaso.dataDesligamento) {
-            const dataInicio = novoCaso.dataInicioPAEFI ?? addDays(base.dataEntrada, 3)
+            const dataInicio = novoCaso.dataInicioPAEFI ?? addDays(base.dataEntrada, 10)
             const deadline = addMonths(dataInicio, 6)
 
             const paf = await tx.paf.create({
@@ -357,6 +359,7 @@ async function main() {
               }
             })
 
+            // Versão anterior do PAF
             if (faker.datatype.boolean()) {
               await tx.pafVersion.create({
                 data: {
@@ -387,11 +390,10 @@ async function main() {
             const numAg = faker.number.int({ min: 0, max: MAX_AGENDAMENTOS })
             const agendas: any[] = []
             for (let a = 0; a < numAg; a++) {
-              // Agendamentos apenas no futuro próximo
               const dataAg = addDays(now, faker.number.int({ min: 1, max: 30 }))
               agendas.push({
                 titulo: rand(titulosAgendamento),
-                data: dataAg,
+                data: stripTime(dataAg),
                 observacoes: 'Confirmar presença.',
                 responsavelId: novoCaso.especialistaPAEFIId ?? novoCaso.agenteAcolhidaId!,
                 casoId: novoCaso.id,
@@ -406,9 +408,16 @@ async function main() {
     await new Promise((res) => setTimeout(res, 50))
   }
 
-  console.log('🎉 Seed finalizado!')
+  console.log('🎉 Seed concluído!')
   console.log(`📊 ${createdCount} prontuários gerados.`)
   console.log('🔐 Login: gerente@creas.test | Senha: senha-segura-123')
 }
 
-main().catch((e) => { console.error('❌ Erro Fatal:', e); process.exit(1) }).finally(async () => { await prisma.$disconnect() })
+main()
+  .catch((e) => {
+    console.error('❌ Erro Fatal:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })

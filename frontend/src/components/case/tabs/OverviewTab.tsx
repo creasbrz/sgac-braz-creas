@@ -2,7 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { FileText, User, AlertTriangle } from 'lucide-react'
+import { FileText, User, AlertTriangle, ExternalLink } from 'lucide-react' // [NOVO] Adicionado ExternalLink
 import { formatDateSafe } from '@/utils/formatters'
 import type { CaseDetailData } from '@/types/case'
 
@@ -49,13 +49,36 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                 {formatDateSafe(caseData.dataEntrada)}
               </p>
             </div>
+
+            {/* [ATUALIZAÇÃO] Lógica do Link SEI */}
             <div>
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
                 Processo SEI
               </span>
-              <p className="font-mono mt-1 text-primary font-medium">
-                {caseData.numeroSei || "Não informado"}
-              </p>
+              
+              {caseData.numeroSei ? (
+                caseData.linkSei ? (
+                  // Caso tenha número e link -> Torna clicável
+                  <a 
+                    href={caseData.linkSei} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="font-mono mt-1 text-primary font-bold hover:underline hover:text-blue-700 flex items-center gap-1.5 w-fit transition-colors"
+                    title="Clique para abrir o processo no SEI"
+                  >
+                    {caseData.numeroSei}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  // Caso tenha só número -> Texto simples
+                  <p className="font-mono mt-1 text-foreground/80 font-medium">
+                    {caseData.numeroSei}
+                  </p>
+                )
+              ) : (
+                // Caso não tenha nada
+                <p className="text-muted-foreground italic mt-1">Não informado</p>
+              )}
             </div>
           </div>
 

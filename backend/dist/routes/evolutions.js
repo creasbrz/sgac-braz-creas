@@ -39,29 +39,65 @@ async function evolutionRoutes(app) {
     }
   });
   app.get("/cases/:caseId/evolutions", async (request, reply) => {
-    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(request.params);
+    const paramsSchema = import_zod.z.object({
+      caseId: import_zod.z.string().uuid()
+    });
+    const querySchema = import_zod.z.object({
+      page: import_zod.z.coerce.number().min(1).default(1),
+      pageSize: import_zod.z.coerce.number().min(1).max(50).default(10)
+    });
+    const { caseId } = paramsSchema.parse(request.params);
+    const { page, pageSize } = querySchema.parse(request.query);
     const { sub: userId, cargo } = request.user;
-    const evolucoes = await prisma.evolucao.findMany({
-      where: { casoId: caseId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        autor: { select: { id: true, nome: true, cargo: true } }
+    const caso = await prisma.case.findUnique({
+      where: { id: caseId },
+      select: {
+        agenteAcolhidaId: true,
+        especialistaPAEFIId: true,
+        status: true
       }
     });
-    const filteredEvolucoes = evolucoes.filter((evo) => {
-      if (!evo.sigilo) return true;
-      if (cargo === import_client2.Cargo.Gerente) return true;
-      if (evo.autorId === userId) return true;
-      return false;
+    if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
+    const isGerente = cargo === import_client2.Cargo.Gerente;
+    const isResponsavelAtual = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId;
+    const canViewSigilo = isGerente || isResponsavelAtual;
+    const whereCondition = {
+      casoId: caseId
+    };
+    if (!canViewSigilo) {
+      whereCondition.OR = [
+        { sigilo: false },
+        // Pode ver qualquer pública
+        { autorId: userId }
+        // Pode ver as suas próprias (mesmo sigilosas)
+      ];
+    }
+    const [evolucoes, total] = await Promise.all([
+      prisma.evolucao.findMany({
+        where: whereCondition,
+        orderBy: { createdAt: "desc" },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        include: {
+          autor: {
+            select: { id: true, nome: true, cargo: true }
+          }
+        }
+      }),
+      prisma.evolucao.count({ where: whereCondition })
+    ]);
+    return reply.send({
+      items: evolucoes,
+      total,
+      page,
+      totalPages: Math.ceil(total / pageSize)
     });
-    return reply.send(filteredEvolucoes);
   });
   app.post("/cases/:caseId/evolutions", async (request, reply) => {
     const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(request.params);
     const bodySchema = import_zod.z.object({
-      conteudo: import_zod.z.string().min(1),
+      conteudo: import_zod.z.string().min(5, "A evolu\xE7\xE3o deve ter conte\xFAdo relevante."),
       sigilo: import_zod.z.boolean().optional().default(false)
-      // [NOVO]
     });
     const { conteudo, sigilo } = bodySchema.parse(request.body);
     const { sub: userId } = request.user;
@@ -72,15 +108,15 @@ async function evolutionRoutes(app) {
         casoId: caseId,
         autorId: userId
       },
-      include: { autor: true }
+      include: { autor: { select: { id: true, nome: true, cargo: true } } }
+      // Retorno otimizado
     });
     await prisma.caseLog.create({
       data: {
         casoId: caseId,
         autorId: userId,
         acao: import_client2.LogAction.EVOLUCAO_CRIADA,
-        // Se for sigiloso, não mostra detalhes no log público
-        descricao: sigilo ? "Registrou uma evolu\xE7\xE3o SIGILOSA." : "Adicionou uma nova evolu\xE7\xE3o t\xE9cnica."
+        descricao: sigilo ? "Registrou uma evolu\xE7\xE3o t\xE9cnica (SIGILOSA)." : "Registrou uma evolu\xE7\xE3o t\xE9cnica p\xFAblica."
       }
     });
     return reply.status(201).send(evolucao);

@@ -37,23 +37,24 @@ export function getCaseStatusInfo(status: string | null | undefined) {
 }
 
 // ----------------------------------------------------------------------
-// 2. MOTIVOS DE DESLIGAMENTO (Sincronizado com o Seed)
+// 2. MOTIVOS DE DESLIGAMENTO
 // ----------------------------------------------------------------------
 
 export const MOTIVOS_DESLIGAMENTO = [
   'Superação da situação de violação',
+  'Usuário não localizado (Busca Ativa esgotada)', // [NOVO - Pedido 2]
   'Mudança de endereço para outra região',
   'Óbito do usuário',
   'Recusa de atendimento persistente',
   'Encaminhamento para Proteção Básica (CRAS)',
-  'Acolhimento Institucional'
+  'Acolhimento Institucional',
+  'Transferência de Município'
 ]
 
 // ----------------------------------------------------------------------
 // 3. CLASSIFICAÇÃO DE URGÊNCIA (Semáforo de Cores)
 // ----------------------------------------------------------------------
 
-// Grupo 1: Gravíssimas (Vermelho)
 const URGENCIA_GRAVISSIMA = [
   'Convive com agressor',
   'Idoso 80+',
@@ -61,7 +62,6 @@ const URGENCIA_GRAVISSIMA = [
   'Risco de morte'
 ]
 
-// Grupo 2: Muito Graves (Laranja)
 const URGENCIA_MUITO_GRAVE = [
   'Risco de reincidência',
   'Sofre ameaça',
@@ -69,7 +69,6 @@ const URGENCIA_MUITO_GRAVE = [
   'Criança/Adolescente'
 ]
 
-// Grupo 3: Graves (Amarelo)
 const URGENCIA_GRAVE = [
   'PCD',
   'Idoso',
@@ -78,36 +77,24 @@ const URGENCIA_GRAVE = [
   'Gestante/Lactante'
 ]
 
-// Grupo 4: Sem Gravidade Imediata (Verde) - O resto cai aqui
-
-/**
- * Retorna a classe CSS de cor (Tailwind) baseada no texto da urgência.
- * Usado nas Badges da Tabela e Detalhes.
- */
 export function getUrgencyColor(urgencia: string | null | undefined): string {
-  if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200' // Padrão Cinza
+  if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200'
 
   const term = urgencia.trim()
 
-  // Nível 1: Gravíssima (Vermelho)
   if (URGENCIA_GRAVISSIMA.includes(term)) {
     return 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200'
   }
 
-  // Nível 2: Muito Grave (Laranja)
   if (URGENCIA_MUITO_GRAVE.includes(term)) {
     return 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200'
   }
 
-  // Nível 3: Grave (Amarelo)
   if (URGENCIA_GRAVE.includes(term)) {
     return 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200'
   }
 
-  // Nível 4: Sem risco imediato / Outros (Verde)
   return 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200'
 }
 
-// Exportamos um objeto vazio apenas para compatibilidade se algum arquivo antigo ainda importar
-// (Mas o ideal é usar a função getUrgencyColor diretamente)
 export const URGENCY_STYLES = {}

@@ -1,85 +1,101 @@
 // frontend/src/pages/Agenda.tsx
-import { useState, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format, startOfMonth } from 'date-fns'
+import { useState, useEffect, useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { DayPicker } from 'react-day-picker'
-import 'react-day-picker/dist/style.css'
-import { Link, useSearchParams } from 'react-router-dom'
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
+import { useSearchParams, Link } from 'react-router-dom'
+import { useForm, type SubmitHandler, Controller, type Resolver } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import {
+  Loader2, Calendar as CalendarIcon, Plus,
+  ChevronRight, Tag
+} from 'lucide-react'
 
 import { api } from '@/lib/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getErrorMessage } from '@/utils/error'
+import { combineDateAndTime } from '@/utils/date'
+import { FullCalendarWidget } from '@/components/agenda/FullCalendarWidget'
 import { ROUTES } from '@/constants/routes'
+
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { getErrorMessage } from '@/utils/error'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-interface Appointment {
-  id: string
-  titulo: string
-  data: string
-  caso: {
-    id: string
-    nomeCompleto: string
-  }
+// --- CONFIGURAÇÃO VISUAL ---
+const TYPE_COLORS: Record<string, string> = {
+  'Atendimento': '#2563eb', // Azul
+  'Visita': '#16a34a',      // Verde
+  'Retorno': '#f97316',     // Laranja
+  'Reunião': '#9333ea',     // Roxo
+  'Outro': '#64748b'        // Cinza
 }
 
-interface CaseOption {
-  id: string
-  nomeCompleto: string
-}
-
+// --- SCHEMA (Opção A: moderna) ---
+// Usamos .optional().default(...) + .transform(...) para garantir que a *SAÍDA* do schema seja `string`
+// e assim `z.infer` produza tipos sem `undefined`.
 const appointmentFormSchema = z.object({
   titulo: z.string().min(3, 'O título é muito curto.'),
-  data: z.string().min(1, 'A data é obrigatória.'),
-  time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Hora inválida.'),
+  data: z.string().min(1, 'Data obrigatória'),
+  time: z.string().regex(/^([0-1]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (HH:MM).'),
+
+  tipo: z.string()
+    .optional()
+    .default('Atendimento')
+    .transform((v) => (v ?? 'Atendimento')),
+
   casoId: z.string().uuid('Selecione um caso.'),
-  observacoes: z.string().optional(),
+
+  observacoes: z.string()
+    .optional()
+    .default('')
+    .transform((v) => (v ?? '')),
 })
 
+// Tipo inferido a partir do schema — garantido sem `undefined` nos campos que precisam ser obrigatórios.
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
 
+// --- MODAL DE NOVO AGENDAMENTO ---
 function NewAppointmentModal({
+  open,
   onOpenChange,
   defaultCaseId,
+  defaultDate,
+  defaultTime
 }: {
+  open: boolean
   onOpenChange: (isOpen: boolean) => void
   defaultCaseId?: string | null
+  defaultDate?: string
+  defaultTime?: string
 }) {
   const queryClient = useQueryClient()
 
-  const { data: casesResponse } = useQuery<{ items: CaseOption[] }>({
-    queryKey: ['cases'],
+  const { data: casesResponse } = useQuery<{ items: { id: string, nomeCompleto: string }[] }>( {
+    queryKey: ['cases', 'all-select'],
     queryFn: async () => {
-      const response = await api.get('/cases')
+      const response = await api.get('/cases', { params: { pageSize: 100 } })
       return response.data
     },
+    staleTime: 1000 * 60 * 5
   })
 
-  const cases = casesResponse?.items
+  const cases = casesResponse?.items || []
+
+  // OBS: para evitar o erro de compatibilidade de tipos entre zodResolver e react-hook-form,
+  // fazemos um cast do resolver para o tipo Resolver<AppointmentFormData>.
+  // Isso é seguro porque nosso schema, via transform(), garante os tipos de saída.
+  const resolver = zodResolver(appointmentFormSchema) as unknown as Resolver<AppointmentFormData>
 
   const {
     control,
@@ -88,28 +104,40 @@ function NewAppointmentModal({
     reset,
     setValue,
   } = useForm<AppointmentFormData>({
-    resolver: zodResolver(appointmentFormSchema),
+    resolver,
     defaultValues: {
       titulo: '',
-      data: '',
-      time: '',
+      data: defaultDate || '',
+      time: defaultTime || '09:00',
+      tipo: 'Atendimento',
       casoId: defaultCaseId ?? '',
+      observacoes: '',
     },
   })
 
+  // Atualiza o form quando abre o modal com dados pré-definidos
   useEffect(() => {
-    if (defaultCaseId) {
-      setValue('casoId', defaultCaseId)
+    if (open) {
+      if (defaultCaseId) setValue('casoId', defaultCaseId)
+      if (defaultDate) setValue('data', defaultDate)
+      if (defaultTime) setValue('time', defaultTime)
     }
-  }, [defaultCaseId, setValue])
+  }, [open, defaultCaseId, defaultDate, defaultTime, setValue])
 
-  const { mutate: createAppointment, isPending } = useMutation({
+  const { mutate: createAppointment, isPending: isCreating } = useMutation({
     mutationFn: async (data: AppointmentFormData) => {
-      return await api.post('/appointments', data)
+      const isoDate = combineDateAndTime(data.data, data.time)
+      return await api.post('/appointments', {
+        titulo: data.titulo,
+        casoId: data.casoId,
+        observacoes: data.observacoes || null,
+        data: isoDate,
+      })
     },
     onSuccess: () => {
       toast.success('Agendamento criado com sucesso!')
       queryClient.invalidateQueries({ queryKey: ['appointments'] })
+      queryClient.invalidateQueries({ queryKey: ['myAgendaStats'] })
       onOpenChange(false)
       reset()
     },
@@ -118,234 +146,301 @@ function NewAppointmentModal({
     },
   })
 
-  const onSubmit: SubmitHandler<AppointmentFormData> = (data) => {
-    createAppointment(data)
-  }
+  const onSubmit: SubmitHandler<AppointmentFormData> = (data) => createAppointment(data)
 
   return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Novo Agendamento</DialogTitle>
-        <DialogDescription>
-          Preencha os dados para criar um novo evento na sua agenda.
-        </DialogDescription>
-      </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Novo Agendamento</DialogTitle>
+          <DialogDescription>Preencha os detalhes do atendimento.</DialogDescription>
+        </DialogHeader>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="titulo">Título do Agendamento</Label>
-          <Controller
-            name="titulo"
-            control={control}
-            render={({ field }) => <Input id="titulo" {...field} />}
-          />
-          {errors.titulo && (
-            <p className="text-sm text-destructive">{errors.titulo.message}</p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="data">Data</Label>
+            <Label htmlFor="titulo">Título</Label>
             <Controller
-              name="data"
+              name="titulo"
               control={control}
-              render={({ field }) => <Input type="date" id="data" {...field} />}
+              render={({ field }) => <Input id="titulo" placeholder="Ex: Visita Domiciliar" {...field} />}
             />
-            {errors.data && (
-              <p className="text-sm text-destructive">{errors.data.message}</p>
-            )}
+            {errors.titulo && <p className="text-xs text-destructive">{errors.titulo.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="data">Data</Label>
+              <Controller
+                name="data"
+                control={control}
+                render={({ field }) => <Input type="date" id="data" {...field} />}
+              />
+              {errors.data && <p className="text-xs text-destructive">{errors.data.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="time">Hora</Label>
+              <Controller
+                name="time"
+                control={control}
+                render={({ field }) => <Input type="time" id="time" {...field} />}
+              />
+              {errors.time && <p className="text-xs text-destructive">{errors.time.message}</p>}
+            </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="time">Hora</Label>
+            <Label>Tipo de Agenda (Visual)</Label>
             <Controller
-              name="time"
+              name="tipo"
               control={control}
-              render={({ field }) => <Input type="time" id="time" {...field} />}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(TYPE_COLORS).map(type => (
+                      <SelectItem key={type} value={type}>
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+                          {type}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
-            {errors.time && (
-              <p className="text-sm text-destructive">{errors.time.message}</p>
-            )}
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <Label>Vincular ao Caso</Label>
-          <Controller
-            name="casoId"
-            control={control}
-            render={({ field }) => (
-              <Select
-                onValueChange={field.onChange}
-                value={field.value}
-                disabled={!!defaultCaseId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um caso..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {cases?.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nomeCompleto}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {errors.casoId && (
-            <p className="text-sm text-destructive">{errors.casoId.message}</p>
-          )}
-        </div>
+          <div className="space-y-2">
+            <Label>Vincular ao Caso</Label>
+            <Controller
+              name="casoId"
+              control={control}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value} disabled={!!defaultCaseId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um caso..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cases.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.nomeCompleto}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.casoId && <p className="text-xs text-destructive">{errors.casoId.message}</p>}
+          </div>
 
-        <div className="space-y-2">
-          <Label>Observações (Opcional)</Label>
-          <Controller
-            name="observacoes"
-            control={control}
-            render={({ field }) => (
-              <Textarea placeholder="Detalhes adicionais..." {...field} />
-            )}
-          />
-        </div>
+          <div className="space-y-2">
+            <Label>Observações</Label>
+            <Controller
+              name="observacoes"
+              control={control}
+              render={({ field }) => (
+                <Textarea
+                  placeholder="Detalhes adicionais..."
+                  className="resize-none"
+                  {...field}
+                  value={field.value}
+                />
+              )}
+            />
+          </div>
 
-        <DialogFooter>
-          <Button type="submit" disabled={isPending}>
-            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Agendar
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="submit" disabled={isCreating}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Agendar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-// =====================================================
-// ===================  PÁGINA PRINCIPAL  ===============
-// =====================================================
+// --- MODAL DE DETALHES DO EVENTO ---
+function EventDetailModal({ event, onClose }: { event: any, onClose: () => void }) {
+  if (!event) return null
 
+  // Recupera dados extendidos
+  const { casoId, nomeCompleto, observacoes } = event.extendedProps
+
+  return (
+    <Dialog open={!!event} onOpenChange={() => onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: event.backgroundColor }}></span>
+            {event.title}
+          </DialogTitle>
+          <DialogDescription>
+            {event.start ? format(event.start, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground uppercase">Usuário / Caso</Label>
+            <p className="font-medium text-base">
+              {nomeCompleto ? (
+                <Link to={ROUTES.CASE_DETAIL(casoId)} className="hover:underline text-primary flex items-center gap-1">
+                  {nomeCompleto} <ChevronRight className="h-3 w-3" />
+                </Link>
+              ) : 'N/A'}
+            </p>
+          </div>
+
+          {observacoes && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground uppercase">Observações</Label>
+              <p className="text-sm bg-muted/50 p-3 rounded-md">{observacoes}</p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={onClose}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// --- PÁGINA PRINCIPAL ---
 export function Agenda() {
-  const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date())
-  const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()))
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  // Estados do FullCalendar
+  const { data: appointments = [], isLoading } = useQuery({
+    queryKey: ['appointments', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/appointments', { params: { pageSize: 500 } })
+      return response.data
+    },
+    staleTime: 1000 * 60 * 2
+  })
+
+  // Estados dos Modais
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<string | undefined>()
+
+  const [selectedEvent, setSelectedEvent] = useState<any>(null)
 
   const [searchParams] = useSearchParams()
   const defaultCaseId = searchParams.get('caseId')
 
   useEffect(() => {
-    if (defaultCaseId) setIsModalOpen(true)
+    if (defaultCaseId) {
+      setIsCreateOpen(true)
+    }
   }, [defaultCaseId])
 
-  const monthQuery = format(currentMonth, 'yyyy-MM')
+  // Transforma dados da API para o formato do FullCalendar
+  const calendarEvents = useMemo(() => {
+    return appointments.map((app: any) => {
+      let color = TYPE_COLORS['Outro']
+      const lowerTitle = app.titulo?.toLowerCase?.() ?? ''
 
-  const { data: appointments, isLoading: isLoadingAppointments } =
-    useQuery<Appointment[]>({
-      queryKey: ['appointments', monthQuery],
-      queryFn: async () => {
-        const response = await api.get('/appointments', {
-          params: { month: monthQuery },
-        })
-        return response.data
-      },
+      if (lowerTitle.includes('visita')) color = TYPE_COLORS['Visita']
+      else if (lowerTitle.includes('atendimento')) color = TYPE_COLORS['Atendimento']
+      else if (lowerTitle.includes('reunião')) color = TYPE_COLORS['Reunião']
+      else if (lowerTitle.includes('retorno')) color = TYPE_COLORS['Retorno']
+
+      return {
+        id: app.id,
+        title: app.titulo,
+        start: app.data,
+        backgroundColor: color,
+        borderColor: color,
+        extendedProps: {
+          casoId: app.caso?.id,
+          nomeCompleto: app.caso?.nomeCompleto,
+          observacoes: app.observacoes,
+          telefone: app.caso?.telefone
+        }
+      }
     })
+  }, [appointments])
 
-  const appointmentsOnSelectedDay =
-    selectedDay && appointments
-      ? appointments.filter(
-          (app) =>
-            format(new Date(app.data), 'yyyy-MM-dd') ===
-            format(selectedDay, 'yyyy-MM-dd'),
-        )
-      : []
+  const handleDateClick = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    setSelectedDate(dateStr)
+    setIsCreateOpen(true)
+  }
+
+  const handleEventClick = (info: any) => {
+    setSelectedEvent(info.event)
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Agenda de Atendimentos</h2>
+    <div className="flex flex-col h-[calc(100vh-100px)] gap-6 animate-in fade-in duration-500">
 
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogTrigger asChild>
-            <Button>Novo Agendamento</Button>
-          </DialogTrigger>
+      {/* HEADER */}
+      <div className="flex-none flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <CalendarIcon className="h-8 w-8 text-primary" /> Agenda
+          </h1>
+          <p className="text-muted-foreground">Visão completa dos atendimentos.</p>
+        </div>
 
-          <NewAppointmentModal
-            onOpenChange={setIsModalOpen}
-            defaultCaseId={defaultCaseId}
-          />
-        </Dialog>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1">
-          <CardContent className="p-0 flex justify-center">
-            <DayPicker
-              mode="single"
-              selected={selectedDay}
-              onSelect={setSelectedDay}
-              month={currentMonth}
-              onMonthChange={setCurrentMonth}
-              locale={ptBR}
-              modifiers={{
-                scheduled: appointments?.map((app) => new Date(app.data)) ?? [],
-              }}
-              modifiersClassNames={{
-                scheduled: 'font-bold text-primary',
-              }}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>
-              Agendamentos para{' '}
-              {selectedDay
-                ? format(selectedDay, 'PPP', { locale: ptBR })
-                : 'Nenhum dia selecionado'}
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            {isLoadingAppointments && (
-              <p className="text-sm text-muted-foreground">
-                Carregando agendamentos...
-              </p>
-            )}
-
-            {!isLoadingAppointments &&
-            appointmentsOnSelectedDay.length > 0 ? (
-              <ul className="space-y-4">
-                {appointmentsOnSelectedDay.map((app) => (
-                  <li
-                    key={app.id}
-                    className="border-l-4 border-primary pl-4"
-                  >
-                    <p className="font-semibold">{app.titulo}</p>
-
-                    <Link
-                      to={ROUTES.CASE_DETAIL(app.caso.id)}
-                      className="text-sm text-muted-foreground hover:underline"
-                    >
-                      Caso: {app.caso.nomeCompleto}
-                    </Link>
-
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(app.data), 'HH:mm')}
-                    </p>
-                  </li>
+        <div className="flex items-center gap-3">
+          {/* LEGENDA (Popover) */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Tag className="h-4 w-4" /> Legenda
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-48 p-3">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none text-xs text-muted-foreground uppercase mb-2">Tipos</h4>
+                {Object.entries(TYPE_COLORS).map(([name, color]) => (
+                  <div key={name} className="flex items-center gap-2 text-sm">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                    {name}
+                  </div>
                 ))}
-              </ul>
-            ) : (
-              !isLoadingAppointments && (
-                <p className="text-muted-foreground">
-                  Nenhum agendamento para este dia.
-                </p>
-              )
-            )}
-          </CardContent>
-        </Card>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Button size="lg" className="shadow-sm" onClick={() => { setSelectedDate(undefined); setIsCreateOpen(true); }}>
+            <Plus className="mr-2 h-5 w-5" /> Novo Agendamento
+          </Button>
+        </div>
       </div>
+
+      {/* FULLCALENDAR (Ocupa o resto da tela) */}
+      <div className="flex-1 min-h-0 relative">
+        {isLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          </div>
+        ) : null}
+
+        <FullCalendarWidget
+          events={calendarEvents}
+          onDateClick={handleDateClick}
+          onEventClick={handleEventClick}
+        />
+      </div>
+
+      {/* MODAIS */}
+      <NewAppointmentModal
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        defaultCaseId={defaultCaseId}
+        defaultDate={selectedDate}
+        defaultTime="09:00"
+      />
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+      />
     </div>
   )
 }

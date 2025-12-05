@@ -10,22 +10,34 @@ export async function appointmentRoutes(app: FastifyInstance) {
     try { await request.jwtVerify() } catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar
+  // [GET] Listar (Atualizado para incluir telefone)
   app.get('/appointments', async (request, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid().optional() }).parse(request.query)
-    // Mapeamento explícito de 'caseId' (URL) para 'casoId' (Banco)
-    const where = caseId ? { casoId: caseId } : {}
+    const { caseId, month } = z.object({ 
+      caseId: z.string().uuid().optional(),
+      month: z.string().regex(/^\d{4}-\d{2}$/).optional() // YYYY-MM
+    }).parse(request.query)
+    
+    const where: any = {}
+    if (caseId) where.casoId = caseId
+
+    // Filtro por mês (se fornecido)
+    if (month) {
+      const start = new Date(`${month}-01T00:00:00`)
+      const end = new Date(new Date(start).setMonth(start.getMonth() + 1))
+      where.data = { gte: start, lt: end }
+    }
     
     const appointments = await prisma.agendamento.findMany({
       where,
       orderBy: { data: 'asc' },
       include: { 
         responsavel: { select: { nome: true } },
-        // [CORREÇÃO]: Incluindo os dados do caso para não quebrar o frontend
+        // [CORREÇÃO] Incluindo telefone para o botão de WhatsApp
         caso: { 
           select: { 
             id: true, 
-            nomeCompleto: true 
+            nomeCompleto: true,
+            telefone: true 
           } 
         }
       }
@@ -33,22 +45,18 @@ export async function appointmentRoutes(app: FastifyInstance) {
     return reply.send(appointments)
   })
 
-  // [POST] Criar
+  // [POST] Criar (Mantido igual)
   app.post('/appointments', async (request, reply) => {
-    console.log("📥 Recebido no Backend:", request.body)
-
     const bodySchema = z.object({
-      titulo: z.string().min(3, "O título deve ter pelo menos 3 letras"),
-      data: z.coerce.date(), // Converte string ISO para Date
-      observacoes: z.any().optional(), // Aceita string ou null
-      casoId: z.string().uuid("ID do caso inválido"),
+      titulo: z.string().min(3),
+      data: z.coerce.date(),
+      observacoes: z.any().optional(),
+      casoId: z.string().uuid(),
     })
 
     try {
       const { titulo, data, observacoes, casoId } = bodySchema.parse(request.body)
       const { sub: userId } = request.user as { sub: string }
-
-      const action = LogAction.AGENDAMENTO_CRIADO ? LogAction.AGENDAMENTO_CRIADO : LogAction.OUTRO
 
       const agendamento = await prisma.agendamento.create({
         data: {
@@ -60,12 +68,11 @@ export async function appointmentRoutes(app: FastifyInstance) {
         }
       })
 
-      // Log de Auditoria
       await prisma.caseLog.create({
         data: {
           casoId,
           autorId: userId,
-          acao: action,
+          acao: LogAction.AGENDAMENTO_CRIADO || LogAction.OUTRO,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString('pt-BR')}`
         }
       })
@@ -73,13 +80,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
       return reply.status(201).send(agendamento)
 
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        console.error("❌ Erro de Validação Zod:", JSON.stringify(error.format(), null, 2))
-        return reply.status(400).send({ message: 'Dados inválidos', errors: error.format() })
-      }
-      
-      console.error("❌ Erro Interno:", error)
-      return reply.status(500).send({ message: 'Erro interno ao criar agendamento.' })
+      return reply.status(500).send({ message: 'Erro ao criar agendamento.' })
     }
   })
 }

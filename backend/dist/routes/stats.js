@@ -31,12 +31,114 @@ var prisma = new import_client.PrismaClient();
 var import_date_fns = require("date-fns");
 var import_client2 = require("@prisma/client");
 var import_zod = require("zod");
+var CACHE_TTL_MS = 10 * 60 * 1e3;
+var statsCache = null;
 async function statsRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
     } catch {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
+    }
+  });
+  app.get("/stats", async (request, reply) => {
+    const { cargo, sub: userId } = request.user;
+    if (cargo === import_client2.Cargo.Gerente) {
+      const now = Date.now();
+      if (statsCache && now - statsCache.timestamp < CACHE_TTL_MS) {
+        reply.header("X-Cache", "HIT");
+        return reply.send(statsCache.data);
+      }
+      const today2 = /* @__PURE__ */ new Date();
+      const firstDayOfMonth2 = (0, import_date_fns.startOfMonth)(today2);
+      const lastDayOfMonth2 = (0, import_date_fns.endOfMonth)(today2);
+      try {
+        const [
+          totalCases,
+          acolhidasCount,
+          acompanhamentosCount,
+          newCases,
+          closedCases,
+          agentWorkload,
+          specialistWorkload,
+          urgencyGroups,
+          categoryGroups,
+          violationGroups
+        ] = await Promise.all([
+          // Contagens Gerais
+          prisma.case.count(),
+          prisma.case.count({ where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } }),
+          prisma.case.count({ where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } }),
+          // Métricas do Mês
+          prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth2, lte: lastDayOfMonth2 } } }),
+          prisma.case.count({ where: { status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth2, lte: lastDayOfMonth2 } } }),
+          // Carga de Trabalho por Técnico
+          prisma.user.findMany({
+            where: { cargo: import_client2.Cargo.Agente_Social, ativo: true },
+            select: { nome: true, casosDeAcolhida: { where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } } }
+          }),
+          prisma.user.findMany({
+            where: { cargo: import_client2.Cargo.Especialista, ativo: true },
+            select: { nome: true, casosDeAcompanhamento: { where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } } }
+          }),
+          // Agrupamentos Estatísticos
+          prisma.case.groupBy({ by: ["urgencia"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
+          prisma.case.groupBy({ by: ["categoria"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
+          prisma.case.groupBy({ by: ["violacao"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } })
+        ]);
+        const result = {
+          role: "Gerente",
+          totalCases,
+          acolhidasCount,
+          acompanhamentosCount,
+          newCasesThisMonth: newCases,
+          closedCasesThisMonth: closedCases,
+          workloadByAgent: agentWorkload.map((u) => ({ name: u.nome, value: u.casosDeAcolhida.length })),
+          workloadBySpecialist: specialistWorkload.map((u) => ({ name: u.nome, value: u.casosDeAcompanhamento.length })),
+          casesByUrgency: urgencyGroups.map((g) => ({ name: g.urgencia, value: g._count._all })),
+          casesByCategory: categoryGroups.map((g) => ({ name: g.categoria, value: g._count._all })),
+          productivity: [...agentWorkload, ...specialistWorkload].map((u) => {
+            var _a, _b;
+            return { name: u.nome, value: (((_a = u.casosDeAcolhida) == null ? void 0 : _a.length) || 0) + (((_b = u.casosDeAcompanhamento) == null ? void 0 : _b.length) || 0) };
+          }),
+          // Adiciona timestamp para o frontend saber quão "fresco" é o dado
+          lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        statsCache = {
+          data: result,
+          timestamp: now
+        };
+        reply.header("X-Cache", "MISS");
+        return reply.send(result);
+      } catch (error) {
+        console.error("Erro ao gerar estat\xEDsticas gerenciais:", error);
+        return reply.status(500).send({ message: "Erro ao processar dados anal\xEDticos." });
+      }
+    }
+    const today = /* @__PURE__ */ new Date();
+    const firstDayOfMonth = (0, import_date_fns.startOfMonth)(today);
+    const lastDayOfMonth = (0, import_date_fns.endOfMonth)(today);
+    try {
+      if (cargo === import_client2.Cargo.Agente_Social) {
+        const [myActive, myClosed, myNew] = await Promise.all([
+          prisma.case.count({ where: { agenteAcolhidaId: userId, status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } }),
+          prisma.case.count({ where: { agenteAcolhidaId: userId, status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
+          prisma.case.count({ where: { agenteAcolhidaId: userId, dataEntrada: { gte: firstDayOfMonth, lte: lastDayOfMonth } } })
+        ]);
+        return reply.send({ role: "Agente_Social", myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
+      }
+      if (cargo === import_client2.Cargo.Especialista) {
+        const [myActive, myClosed, myNew] = await Promise.all([
+          prisma.case.count({ where: { especialistaPAEFIId: userId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } }),
+          prisma.case.count({ where: { especialistaPAEFIId: userId, status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
+          prisma.case.count({ where: { especialistaPAEFIId: userId, dataInicioPAEFI: { gte: firstDayOfMonth, lte: lastDayOfMonth } } })
+        ]);
+        return reply.send({ role: "Especialista", myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
+      }
+      return reply.status(200).send({ message: "Sem dados dispon\xEDveis para este perfil." });
+    } catch (error) {
+      console.error("Erro ao buscar estat\xEDsticas pessoais:", error);
+      return reply.status(500).send({ message: "Erro interno no servidor." });
     }
   });
   app.get("/stats/advanced", async (request, reply) => {
@@ -103,11 +205,11 @@ async function statsRoutes(app) {
       const prev = trendData[trendData.length - 2];
       if (last && prev && prev.novos > 0) {
         const diff = (last.novos - prev.novos) / prev.novos * 100;
-        if (diff > 15) insights.push(`\u{1F4C8} Aumento de ${Math.round(diff)}% na demanda.`);
-        else if (diff < -15) insights.push(`\u{1F4C9} Queda de ${Math.abs(Math.round(diff))}% na demanda.`);
+        if (diff > 15) insights.push(`\u{1F4C8} Aumento s\xFAbito de ${Math.round(diff)}% na demanda este m\xEAs.`);
+        else if (diff < -15) insights.push(`\u{1F4C9} Queda de ${Math.abs(Math.round(diff))}% na demanda este m\xEAs.`);
       }
-      if (avgHandlingTime > 120) insights.push(`\u26A0\uFE0F Tempo m\xE9dio alto (${avgHandlingTime} dias).`);
-      if (pieData.length > 0) insights.push(`\u{1F50D} Principal demanda: ${pieData[0].name} (${pieData[0].value} casos).`);
+      if (avgHandlingTime > 120) insights.push(`\u26A0\uFE0F Tempo m\xE9dio de acompanhamento alto (${avgHandlingTime} dias).`);
+      if (pieData.length > 0) insights.push(`\u{1F50D} Principal demanda local: ${pieData[0].name} (${pieData[0].value} casos).`);
       return reply.send({
         trendData,
         avgHandlingTime,
@@ -116,7 +218,7 @@ async function statsRoutes(app) {
         pieData
       });
     } catch (error) {
-      return reply.status(500).send({ message: "Erro interno." });
+      return reply.status(500).send({ message: "Erro interno ao processar analytics." });
     }
   });
   app.get("/stats/productivity", async (request, reply) => {
@@ -165,74 +267,6 @@ async function statsRoutes(app) {
       return reply.status(500).send([]);
     }
   });
-  app.get("/stats", async (request, reply) => {
-    const { cargo, sub: userId } = request.user;
-    const today = /* @__PURE__ */ new Date();
-    const firstDayOfMonth = (0, import_date_fns.startOfMonth)(today);
-    const lastDayOfMonth = (0, import_date_fns.endOfMonth)(today);
-    try {
-      if (cargo === import_client2.Cargo.Gerente) {
-        const [totalCases, acolhidasCount, acompanhamentosCount, newCases, closedCases] = await Promise.all([
-          prisma.case.count(),
-          prisma.case.count({ where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } }),
-          prisma.case.count({ where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } }),
-          prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
-          prisma.case.count({ where: { status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } })
-        ]);
-        const [agentWorkload, specialistWorkload] = await Promise.all([
-          prisma.user.findMany({
-            where: { cargo: import_client2.Cargo.Agente_Social, ativo: true },
-            select: { nome: true, casosDeAcolhida: { where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } } }
-          }),
-          prisma.user.findMany({
-            where: { cargo: import_client2.Cargo.Especialista, ativo: true },
-            select: { nome: true, casosDeAcompanhamento: { where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } } }
-          })
-        ]);
-        const [urgencyGroups, categoryGroups, violationGroups] = await Promise.all([
-          prisma.case.groupBy({ by: ["urgencia"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
-          prisma.case.groupBy({ by: ["categoria"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
-          prisma.case.groupBy({ by: ["violacao"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } })
-        ]);
-        return reply.send({
-          role: "Gerente",
-          totalCases,
-          acolhidasCount,
-          acompanhamentosCount,
-          newCasesThisMonth: newCases,
-          closedCasesThisMonth: closedCases,
-          workloadByAgent: agentWorkload.map((u) => ({ name: u.nome, value: u.casosDeAcolhida.length })),
-          workloadBySpecialist: specialistWorkload.map((u) => ({ name: u.nome, value: u.casosDeAcompanhamento.length })),
-          casesByUrgency: urgencyGroups.map((g) => ({ name: g.urgencia, value: g._count._all })),
-          casesByCategory: categoryGroups.map((g) => ({ name: g.categoria, value: g._count._all })),
-          productivity: [...agentWorkload, ...specialistWorkload].map((u) => {
-            var _a, _b;
-            return { name: u.nome, value: (((_a = u.casosDeAcolhida) == null ? void 0 : _a.length) || 0) + (((_b = u.casosDeAcompanhamento) == null ? void 0 : _b.length) || 0) };
-          })
-        });
-      }
-      if (cargo === import_client2.Cargo.Agente_Social) {
-        const [myActive, myClosed, myNew] = await Promise.all([
-          prisma.case.count({ where: { agenteAcolhidaId: userId, status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } }),
-          prisma.case.count({ where: { agenteAcolhidaId: userId, status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
-          prisma.case.count({ where: { agenteAcolhidaId: userId, dataEntrada: { gte: firstDayOfMonth, lte: lastDayOfMonth } } })
-        ]);
-        return reply.send({ role: "Agente Social", myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
-      }
-      if (cargo === import_client2.Cargo.Especialista) {
-        const [myActive, myClosed, myNew] = await Promise.all([
-          prisma.case.count({ where: { especialistaPAEFIId: userId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } }),
-          prisma.case.count({ where: { especialistaPAEFIId: userId, status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
-          prisma.case.count({ where: { especialistaPAEFIId: userId, dataInicioPAEFI: { gte: firstDayOfMonth, lte: lastDayOfMonth } } })
-        ]);
-        return reply.send({ role: "Especialista", myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
-      }
-      return reply.status(200).send({ message: "Sem dados." });
-    } catch (error) {
-      console.error(error);
-      return reply.status(500).send({ message: "Erro no servidor." });
-    }
-  });
   app.get("/stats/my-agenda", async (request, reply) => {
     const { sub: userId } = request.user;
     try {
@@ -244,7 +278,6 @@ async function statsRoutes(app) {
         },
         orderBy: { data: "asc" },
         take: 5,
-        // Pega os 5 próximos
         include: { caso: { select: { id: true, nomeCompleto: true } } }
       });
       return reply.send(appointments);

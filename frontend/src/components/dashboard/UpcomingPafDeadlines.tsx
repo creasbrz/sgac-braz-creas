@@ -8,7 +8,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
-// Interface baseada na nova rota /alerts
 interface AlertItem {
   id: string
   title: string
@@ -19,16 +18,13 @@ interface AlertItem {
 
 export function UpcomingPafDeadlines() {
   const { data: alerts, isLoading, isError } = useQuery<AlertItem[]>({
-    queryKey: ['alerts'], // Mesmo queryKey do sininho para aproveitar cache
+    queryKey: ['alerts'],
     queryFn: async () => {
       try {
-        // Agora consumimos a rota unificada
         const res = await api.get('/alerts')
-        
-        // Segurança: Garante que retorna array
         if (!Array.isArray(res.data)) return []
         
-        // Filtra apenas notificações relacionadas a PAF ou Prazos Críticos
+        // Filtra apenas notificações relevantes
         return res.data.filter((item: AlertItem) => 
           item.title.includes('PAF') || 
           item.id.startsWith('paf-') ||
@@ -38,7 +34,6 @@ export function UpcomingPafDeadlines() {
         return []
       }
     },
-    // Atualiza a cada 1 minuto
     refetchInterval: 1000 * 60 
   })
 
@@ -68,7 +63,6 @@ export function UpcomingPafDeadlines() {
     )
   }
 
-  // Garante que alerts é um array antes de checar tamanho
   const safeAlerts = Array.isArray(alerts) ? alerts : []
 
   return (
@@ -96,7 +90,8 @@ export function UpcomingPafDeadlines() {
           </div>
         ) : (
           <div className="space-y-3">
-            {safeAlerts.map((item) => (
+            {/* [CORREÇÃO - Pedido 3] Limitando a 6 notificações */}
+            {safeAlerts.slice(0, 6).map((item) => (
               <div 
                 key={item.id} 
                 className="flex flex-col gap-2 p-3 rounded-lg border bg-card hover:bg-muted/40 transition-colors"
@@ -126,6 +121,11 @@ export function UpcomingPafDeadlines() {
                 </Button>
               </div>
             ))}
+            {safeAlerts.length > 6 && (
+               <p className="text-xs text-center text-muted-foreground mt-2">
+                 + {safeAlerts.length - 6} outras notificações
+               </p>
+            )}
           </div>
         )}
       </CardContent>

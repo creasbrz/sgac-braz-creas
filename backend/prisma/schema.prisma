@@ -49,6 +49,7 @@ model User {
   id                    String    @id @default(uuid())
   nome                  String
   email                 String    @unique
+  matricula             String?   @unique // [NOVO] Campo para matrícula
   senha                 String
   cargo                 Cargo
   ativo                 Boolean   @default(true)

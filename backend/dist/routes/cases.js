@@ -69,12 +69,6 @@ function buildActiveCaseWhereClause(user) {
       return { id: "-1" };
   }
 }
-function buildClosedCaseWhereClause(user) {
-  const where = { status: import_client2.CaseStatus.DESLIGADO };
-  if (user.cargo === import_client2.Cargo.Agente_Social) where.agenteAcolhidaId = user.sub;
-  if (user.cargo === import_client2.Cargo.Especialista) where.especialistaPAEFIId = user.sub;
-  return where;
-}
 function detectChanges(oldData, newData) {
   const changes = {};
   const ignoreFields = ["updatedAt", "createdAt", "pesoUrgencia", "numeroSei", "linkSei", "observacoes", "beneficios", "criadoPorId", "id"];
@@ -242,7 +236,6 @@ async function caseRoutes(app) {
       violacao: import_zod.z.string().optional(),
       categoria: import_zod.z.string().optional(),
       sexo: import_zod.z.string().optional(),
-      // [NOVO] Parâmetro para controlar a visão: 'my' (padrão) ou 'all'
       view: import_zod.z.enum(["my", "all"]).default("my").optional()
     });
     try {
@@ -274,9 +267,10 @@ async function caseRoutes(app) {
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where,
+          // [ORDENAÇÃO CORRIGIDA]: Urgência DESC -> Data Entrada DESC
           orderBy: [
             { pesoUrgencia: "desc" },
-            { createdAt: "desc" }
+            { dataEntrada: "desc" }
           ],
           take: pageSize,
           skip: (page - 1) * pageSize,
@@ -300,7 +294,7 @@ async function caseRoutes(app) {
     });
     try {
       const { search, page, pageSize } = schema.parse(request.query);
-      let where = buildClosedCaseWhereClause(request.user);
+      const where = { status: import_client2.CaseStatus.DESLIGADO };
       if (search) {
         where.OR = [
           { nomeCompleto: { contains: search, mode: "insensitive" } },

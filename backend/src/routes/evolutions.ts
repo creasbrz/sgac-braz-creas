@@ -2,7 +2,7 @@
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction, Cargo } from '@prisma/client'
+import { LogAction, Cargo, CaseStatus } from '@prisma/client'
 
 export async function evolutionRoutes(app: FastifyInstance) {
   
@@ -11,38 +11,85 @@ export async function evolutionRoutes(app: FastifyInstance) {
     catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar Evoluções (Com filtro de Sigilo)
+  // [GET] Listar Evoluções (Paginado + Lógica de Acesso SUAS)
   app.get('/cases/:caseId/evolutions', async (request, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(request.params)
-    const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+    const paramsSchema = z.object({ 
+      caseId: z.string().uuid() 
+    })
     
-    const evolucoes = await prisma.evolucao.findMany({
-      where: { casoId: caseId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        autor: { select: { id: true, nome: true, cargo: true } }
+    const querySchema = z.object({
+      page: z.coerce.number().min(1).default(1),
+      pageSize: z.coerce.number().min(1).max(50).default(10)
+    })
+
+    const { caseId } = paramsSchema.parse(request.params)
+    const { page, pageSize } = querySchema.parse(request.query)
+    const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+
+    // 1. Verificar permissão de acesso ao caso atual
+    const caso = await prisma.case.findUnique({
+      where: { id: caseId },
+      select: { 
+        agenteAcolhidaId: true, 
+        especialistaPAEFIId: true,
+        status: true
       }
     })
 
-    // FILTRO DE SEGURANÇA v3.3
-    // Se for sigiloso, só mostra se eu for o autor OU se eu for Gerente
-    const filteredEvolucoes = evolucoes.filter(evo => {
-      if (!evo.sigilo) return true
-      if (cargo === Cargo.Gerente) return true
-      if (evo.autorId === userId) return true
-      return false
-    })
+    if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-    return reply.send(filteredEvolucoes)
+    // 2. Determinar se o usuário tem "Privilégio de Sigilo" neste caso
+    // Regra SUAS: Gerente VÊ TUDO. Técnico VÊ se for o Autor OU se for o Responsável Atual pelo caso.
+    const isGerente = cargo === Cargo.Gerente
+    const isResponsavelAtual = 
+      caso.agenteAcolhidaId === userId || 
+      caso.especialistaPAEFIId === userId
+
+    const canViewSigilo = isGerente || isResponsavelAtual
+
+    // 3. Query Otimizada (Filtro direto no Banco)
+    const whereCondition: any = {
+      casoId: caseId,
+    }
+
+    // Se NÃO pode ver sigilo, filtramos no banco para não trazer registros sigilosos de terceiros
+    if (!canViewSigilo) {
+      whereCondition.OR = [
+        { sigilo: false },           // Pode ver qualquer pública
+        { autorId: userId }          // Pode ver as suas próprias (mesmo sigilosas)
+      ]
+    }
+
+    const [evolucoes, total] = await Promise.all([
+      prisma.evolucao.findMany({
+        where: whereCondition,
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        include: {
+          autor: { 
+            select: { id: true, nome: true, cargo: true } 
+          }
+        }
+      }),
+      prisma.evolucao.count({ where: whereCondition })
+    ])
+
+    return reply.send({
+      items: evolucoes,
+      total,
+      page,
+      totalPages: Math.ceil(total / pageSize)
+    })
   })
 
-  // [POST] Criar Nova Evolução (Com suporte a Sigilo)
+  // [POST] Criar Nova Evolução (Mantido similar, apenas reforçando validação)
   app.post('/cases/:caseId/evolutions', async (request, reply) => {
     const { caseId } = z.object({ caseId: z.string().uuid() }).parse(request.params)
     
     const bodySchema = z.object({
-      conteudo: z.string().min(1),
-      sigilo: z.boolean().optional().default(false) // [NOVO]
+      conteudo: z.string().min(5, "A evolução deve ter conteúdo relevante."),
+      sigilo: z.boolean().optional().default(false)
     })
 
     const { conteudo, sigilo } = bodySchema.parse(request.body)
@@ -55,18 +102,18 @@ export async function evolutionRoutes(app: FastifyInstance) {
         casoId: caseId,
         autorId: userId
       },
-      include: { autor: true }
+      include: { autor: { select: { id: true, nome: true, cargo: true } } } // Retorno otimizado
     })
 
+    // Log de Auditoria
     await prisma.caseLog.create({
       data: {
         casoId: caseId,
         autorId: userId,
         acao: LogAction.EVOLUCAO_CRIADA,
-        // Se for sigiloso, não mostra detalhes no log público
         descricao: sigilo 
-          ? 'Registrou uma evolução SIGILOSA.' 
-          : 'Adicionou uma nova evolução técnica.'
+          ? 'Registrou uma evolução técnica (SIGILOSA).' 
+          : 'Registrou uma evolução técnica pública.'
       }
     })
 

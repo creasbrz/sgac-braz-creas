@@ -39,18 +39,29 @@ async function appointmentRoutes(app) {
     }
   });
   app.get("/appointments", async (request, reply) => {
-    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid().optional() }).parse(request.query);
-    const where = caseId ? { casoId: caseId } : {};
+    const { caseId, month } = import_zod.z.object({
+      caseId: import_zod.z.string().uuid().optional(),
+      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/).optional()
+      // YYYY-MM
+    }).parse(request.query);
+    const where = {};
+    if (caseId) where.casoId = caseId;
+    if (month) {
+      const start = /* @__PURE__ */ new Date(`${month}-01T00:00:00`);
+      const end = new Date(new Date(start).setMonth(start.getMonth() + 1));
+      where.data = { gte: start, lt: end };
+    }
     const appointments = await prisma.agendamento.findMany({
       where,
       orderBy: { data: "asc" },
       include: {
         responsavel: { select: { nome: true } },
-        // [CORREÇÃO]: Incluindo os dados do caso para não quebrar o frontend
+        // [CORREÇÃO] Incluindo telefone para o botão de WhatsApp
         caso: {
           select: {
             id: true,
-            nomeCompleto: true
+            nomeCompleto: true,
+            telefone: true
           }
         }
       }
@@ -58,19 +69,15 @@ async function appointmentRoutes(app) {
     return reply.send(appointments);
   });
   app.post("/appointments", async (request, reply) => {
-    console.log("\u{1F4E5} Recebido no Backend:", request.body);
     const bodySchema = import_zod.z.object({
-      titulo: import_zod.z.string().min(3, "O t\xEDtulo deve ter pelo menos 3 letras"),
+      titulo: import_zod.z.string().min(3),
       data: import_zod.z.coerce.date(),
-      // Converte string ISO para Date
       observacoes: import_zod.z.any().optional(),
-      // Aceita string ou null
-      casoId: import_zod.z.string().uuid("ID do caso inv\xE1lido")
+      casoId: import_zod.z.string().uuid()
     });
     try {
       const { titulo, data, observacoes, casoId } = bodySchema.parse(request.body);
       const { sub: userId } = request.user;
-      const action = import_client2.LogAction.AGENDAMENTO_CRIADO ? import_client2.LogAction.AGENDAMENTO_CRIADO : import_client2.LogAction.OUTRO;
       const agendamento = await prisma.agendamento.create({
         data: {
           titulo,
@@ -84,18 +91,13 @@ async function appointmentRoutes(app) {
         data: {
           casoId,
           autorId: userId,
-          acao: action,
+          acao: import_client2.LogAction.AGENDAMENTO_CRIADO || import_client2.LogAction.OUTRO,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString("pt-BR")}`
         }
       });
       return reply.status(201).send(agendamento);
     } catch (error) {
-      if (error instanceof import_zod.z.ZodError) {
-        console.error("\u274C Erro de Valida\xE7\xE3o Zod:", JSON.stringify(error.format(), null, 2));
-        return reply.status(400).send({ message: "Dados inv\xE1lidos", errors: error.format() });
-      }
-      console.error("\u274C Erro Interno:", error);
-      return reply.status(500).send({ message: "Erro interno ao criar agendamento." });
+      return reply.status(500).send({ message: "Erro ao criar agendamento." });
     }
   });
 }

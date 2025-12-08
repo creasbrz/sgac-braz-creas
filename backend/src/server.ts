@@ -21,8 +21,9 @@ import { attachmentRoutes } from './routes/attachments'
 import { importRoutes } from './routes/import'
 import { filterRoutes } from './routes/filters'
 import { referralRoutes } from './routes/referrals'
-// [NOVO v3.3]
 import { familyRoutes } from './routes/family'
+// [NOVO] Importa rota de benefícios
+import { deliverableRoutes } from './routes/deliverables'
 
 const app = fastify({
   logger: { transport: { target: 'pino-pretty' } },
@@ -42,7 +43,7 @@ app.decorate('authenticate', async (request, reply) => {
 app.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/', decorateReply: false })
 app.register(fastifyStatic, { root: path.join(__dirname, '../../frontend/dist'), prefix: '/', constraints: {} })
 
-// Rotas
+// Registro de Rotas
 app.register(authRoutes)
 app.register(caseRoutes)
 app.register(userRoutes)
@@ -57,7 +58,8 @@ app.register(attachmentRoutes)
 app.register(importRoutes)
 app.register(filterRoutes)
 app.register(referralRoutes)
-app.register(familyRoutes) // [NOVO v3.3]
+app.register(familyRoutes)
+app.register(deliverableRoutes) // [NOVO]
 
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith('/api') || req.raw.url.startsWith('/uploads'))) {
@@ -66,4 +68,4 @@ app.setNotFoundHandler((req, reply) => {
   return reply.sendFile('index.html')
 })
 
-app.listen({ port: 3333, host: '0.0.0.0' }).then(() => console.log('🚀 Servidor rodando!'))
+app.listen({ port: 3333, host: '0.0.0.0' }).then(() => console.log('🚀 Servidor rodando v4.2.0!'))

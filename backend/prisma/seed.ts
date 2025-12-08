@@ -1,8 +1,8 @@
 // backend/prisma/seed.ts
-import { PrismaClient, CaseStatus, Cargo, LogAction } from '@prisma/client'
+import { PrismaClient, CaseStatus, Cargo, LogAction, CaseOrigin } from '@prisma/client'
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
-import { addDays } from 'date-fns'
+import { addDays, subDays } from 'date-fns'
 
 const prisma = new PrismaClient()
 
@@ -62,6 +62,12 @@ const ESTRATEGIAS_PAF = [
   "Atendimentos psicossociais semanais; Grupo de convivência para mulheres; Encaminhamento para qualificação profissional."
 ]
 
+// [NOVO v4.2.0] Lista de Entregas/Benefícios para popular a nova tabela
+const ENTREGAS_INICIAIS = [
+  'Prato Cheio', 'BPC', 'Auxílio Natalidade', 'Auxílio por Morte', 
+  'CNH Social', 'Carteira do Idoso', 'Isenção de RG', 'Cesta de Alimentos'
+]
+
 // --- UTILITÁRIOS ---
 const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
 const randInt = (min: number, max: number) => faker.number.int({ min, max })
@@ -70,10 +76,11 @@ const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3}
 // --- EXECUÇÃO ---
 
 async function main() {
-  console.log('🌱 [SEED v4.0.1] Iniciando povoamento com Equipe Oficial...')
+  console.log('🌱 [SEED v4.2.0] Iniciando povoamento com Equipe Oficial...')
 
-  // 1. Limpeza
+  // 1. Limpeza (Adicionado ServiceDeliverable)
   console.log('🧹 Limpando base de dados antiga...')
+  await prisma.serviceDeliverable.deleteMany() // [NOVO]
   await prisma.encaminhamento.deleteMany()
   await prisma.membroFamilia.deleteMany()
   await prisma.caseLog.deleteMany()
@@ -117,6 +124,9 @@ async function main() {
     const sexo = rand(['Masculino', 'Feminino'])
     const dataEntrada = faker.date.past({ years: 2 })
     
+    // [NOVO v4.2.0] Definição da Origem
+    const origem = faker.helpers.arrayElement(Object.values(CaseOrigin))
+
     // Distribuição de Status
     const statusRoll = Math.random()
     let status = CaseStatus.AGUARDANDO_ACOLHIDA
@@ -125,7 +135,7 @@ async function main() {
     if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI
     if (statusRoll > 0.85) status = CaseStatus.DESLIGADO
 
-    const criador = rand(gerentes) || rand(agentes) // Fallback se não houver gerente
+    const criador = rand(gerentes) || rand(agentes)
     const agenteResp = rand(agentes)
     const especialistaResp = (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.DESLIGADO) 
       ? rand(especialistas) 
@@ -159,12 +169,19 @@ async function main() {
         pesoUrgencia: calculateUrgencyWeight(urgencia),
         violacao: rand(['Negligência', 'Violência Patrimonial', 'Violência Psicológica', 'Abandono', 'Trabalho Infantil', 'Violência Física']),
         categoria: rand(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente']),
+        
+        // [NOVO] Origem e Órgão Demandante Lógico
+        origem: origem,
         dataEntrada,
-        orgaoDemandante: rand(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS Brazlândia', 'Conselho Tutelar', 'Demanda Espontânea']),
+        orgaoDemandante: origem === CaseOrigin.ESPONTANEA ? 'Demanda Espontânea' : rand(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS Brazlândia', 'Conselho Tutelar']),
+        
         numeroSei: `00431-${faker.string.numeric(8)}/2025-${faker.string.numeric(2)}`,
         linkSei: 'https://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar',
         observacoes: "Família reside em área de vulnerabilidade social. Relato inicial de conflitos intergeracionais.",
-        beneficios: faker.helpers.arrayElements(['BPC', 'Bolsa Família', 'DF Social', 'Prato Cheio'], randInt(0, 3)),
+        
+        // Mantém array de strings para legado, mas popularemos a nova tabela abaixo
+        beneficios: [], 
+        
         status,
         criadoPorId: criador?.id,
         agenteAcolhidaId: agenteResp?.id,
@@ -186,6 +203,23 @@ async function main() {
             createdAt: dataEntrada
         }
     })
+
+    // [NOVO v4.2.0] Criar Entregas Iniciais (Benefícios) na nova tabela
+    if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
+      const numEntregas = faker.number.int({ min: 0, max: 3 })
+      for (let j = 0; j < numEntregas; j++) {
+        await prisma.serviceDeliverable.create({
+          data: {
+            casoId: newCase.id,
+            responsavelId: agenteResp?.id || criador.id,
+            tipo: faker.helpers.arrayElement(ENTREGAS_INICIAIS),
+            status: faker.helpers.arrayElement(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE']),
+            dataSolicitacao: subDays(new Date(), faker.number.int({ min: 1, max: 30 })),
+            observacoes: 'Solicitação realizada conforme protocolo.'
+          }
+        })
+      }
+    }
 
     // Membros
     const numMembros = randInt(1, 5)

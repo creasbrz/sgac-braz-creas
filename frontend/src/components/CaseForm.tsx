@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -35,7 +34,7 @@ import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSch
 import { useAgents } from '@/hooks/api/useCaseQueries'
 
 // ------------------------------------------------------------
-// 🔧 CONSTANTES DE LISTAS (Sincronizadas com o Banco/Seed)
+// 🔧 CONSTANTES DE LISTAS
 // ------------------------------------------------------------
 
 const LISTS = {
@@ -46,7 +45,6 @@ const LISTS = {
     'Não Informado'
   ],
 
-  // Lista detalhada de urgências (Strings)
   urgencia: [
     'Convive com agressor',
     'Idoso 80+',
@@ -65,7 +63,6 @@ const LISTS = {
     'Visita periódica'
   ],
 
-  // Lista detalhada de violações (Strings)
   violacao: [
     'Abandono',
     'Negligência',
@@ -80,7 +77,6 @@ const LISTS = {
     'Outros'
   ],
 
-  // Lista detalhada de categorias (Strings)
   categoria: [
     'Mulher',
     'POP RUA',
@@ -93,25 +89,20 @@ const LISTS = {
     'Família em vulnerabilidade'
   ],
 
-  // Lista de Benefícios (IDs fixos)
-  beneficios: [
-    { id: 'BPC', label: 'BPC (Benefício de Prestação Continuada)' },
-    { id: 'Bolsa Família', label: 'Bolsa Família' },
-    { id: 'Prato Cheio', label: 'Prato Cheio' },
-    { id: 'Vulnerabilidade', label: 'Auxílio Vulnerabilidade' },
-    { id: 'Excepcional', label: 'Auxílio Excepcional' },
-    { id: 'Calamidade', label: 'Auxílio Calamidade' },
-    { id: 'DF Social', label: 'DF Social' }
+  // [NOVO] Lista de Origem da Demanda
+  origem: [
+    { id: 'ESPONTANEA', label: 'Demanda Espontânea (Balcão)' },
+    { id: 'DOCUMENTAL', label: 'Demanda Documental (SEI/Ofício)' },
+    { id: 'REFERENCIADA', label: 'Encaminhamento de Rede' },
+    { id: 'BUSCA_ATIVA', label: 'Busca Ativa' }
   ]
 }
 
 // Máscaras
 const CPF_MASK = { mask: '000.000.000-00' }
 const PHONE_MASK = { mask: '(00) 00000-0000' }
-// [CORREÇÃO] Máscara SEI ajustada conforme solicitado: 00000-00000000/0000-00
 const SEI_MASK = { mask: '00000-00000000/0000-00' }
 
-// 🔧 Função que retorna SOMENTE a data local (sem UTC bug)
 const getLocalDateOnly = (date = new Date()) =>
   new Date(date.getTime() - date.getTimezoneOffset() * 60000)
     .toISOString()
@@ -132,7 +123,7 @@ const defaultValues: Partial<CreateCaseFormData> = {
   linkSei: '',
   observacoes: '',
   numeroSei: '',
-  beneficios: [],
+  origem: 'ESPONTANEA', // Default
   dataEntrada: '', 
 }
 
@@ -146,7 +137,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
   const queryClient = useQueryClient()
   const { data: agents, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgents()
   
-  // Se tiver caseId, estamos a editar
   const isEditing = !!caseId
 
   const form = useForm<CreateCaseFormData>({
@@ -154,13 +144,12 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     defaultValues: initialData 
       ? { 
           ...initialData, 
-          // Se vier do banco, a data pode vir com hora, cortamos para YYYY-MM-DD
           dataEntrada: initialData.dataEntrada?.split('T')[0],
           nascimento: initialData.nascimento?.split('T')[0],
-          // Garante string vazia se vier null do banco para não quebrar o input
           numeroSei: initialData.numeroSei ?? '',
           linkSei: initialData.linkSei ?? '',
           observacoes: initialData.observacoes ?? '',
+          origem: initialData.origem ?? 'ESPONTANEA'
         } 
       : { 
           ...defaultValues, 
@@ -168,7 +157,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         },
   })
 
-  // Efeito para atualizar o formulário se os dados iniciais mudarem (ex: reabrir modal com outro caso)
+  // Efeito para atualizar form se dados iniciais mudarem
   useEffect(() => {
     if (initialData) {
       form.reset({ 
@@ -178,6 +167,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         numeroSei: initialData.numeroSei ?? '',
         linkSei: initialData.linkSei ?? '',
         observacoes: initialData.observacoes ?? '',
+        origem: initialData.origem ?? 'ESPONTANEA'
       })
     }
   }, [initialData, form])
@@ -186,22 +176,18 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     mutationFn: async (data: CreateCaseFormData) => {
       const payload = {
         ...data,
-        // Remove formatação de máscaras antes de enviar para o backend
         cpf: data.cpf.replace(/\D/g, ''),
         telefone: data.telefone.replace(/\D/g, ''),
         nascimento: data.nascimento,     
         dataEntrada: data.dataEntrada,
-        // Envia null se a string for vazia para limpar no banco
         numeroSei: data.numeroSei || null,
         linkSei: data.linkSei || null,
         observacoes: data.observacoes || null
       }
 
       if (isEditing && caseId) {
-        // PUT: Atualizar
         return await api.put(`/cases/${caseId}`, payload)
       } else {
-        // POST: Criar
         return await api.post('/cases', payload)
       }
     },
@@ -209,15 +195,12 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     onSuccess: () => {
       toast.success(isEditing ? 'Dados atualizados com sucesso!' : 'Caso cadastrado com sucesso!')
       
-      // Invalida queries para atualizar listas e gráficos
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
       
       if (isEditing) {
-        // Se for edição, atualiza também a query de detalhes específica
         queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       } else {
-        // Se for criação, limpa o formulário
         form.reset({
           ...defaultValues,
           dataEntrada: getLocalDateOnly(),
@@ -249,7 +232,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           <h3 className="text-lg font-semibold">Identificação Pessoal</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
             
-            {/* Nome */}
             <FormField
               control={form.control}
               name="nomeCompleto"
@@ -262,7 +244,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* CPF */}
             <FormField
               control={form.control}
               name="cpf"
@@ -283,7 +264,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Data de Nascimento */}
             <FormField
               control={form.control}
               name="nascimento"
@@ -298,7 +278,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Sexo */}
             <FormField
               control={form.control}
               name="sexo"
@@ -320,7 +299,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Telefone */}
             <FormField
               control={form.control}
               name="telefone"
@@ -341,7 +319,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Endereço */}
             <FormField
               control={form.control}
               name="endereco"
@@ -356,52 +333,31 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           </div>
         </div>
 
-        {/* 2. BENEFÍCIOS */}
+        {/* 2. DETALHES DA DEMANDA E ORIGEM */}
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Benefícios Recebidos</h3>
-          <div className="p-4 border rounded-lg bg-card">
+          <h3 className="text-lg font-semibold">Dados da Demanda</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+            
+            {/* [NOVO] Campo Origem */}
             <FormField
               control={form.control}
-              name="beneficios"
+              name="origem"
               render={({ field }) => (
                 <FormItem>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {LISTS.beneficios.map(item => (
-                      <FormItem
-                        key={item.id}
-                        className="flex flex-row items-start space-x-3 space-y-0"
-                      >
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value?.includes(item.id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                field.onChange([...(field.value || []), item.id])
-                              } else {
-                                field.onChange(field.value?.filter(v => v !== item.id))
-                              }
-                            }}
-                          />
-                        </FormControl>
-                        <FormLabel className="cursor-pointer font-normal leading-none">
-                          {item.label}
-                        </FormLabel>
-                      </FormItem>
-                    ))}
-                  </div>
+                  <FormLabel>Origem da Demanda</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione a origem" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {LISTS.origem.map(o => (
+                        <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </div>
-        </div>
 
-        {/* 3. DETALHES DO CASO */}
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Detalhes do Caso</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
-            
-            {/* Data Entrada */}
             <FormField
               control={form.control}
               name="dataEntrada"
@@ -424,7 +380,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Urgência (Lista Detalhada) */}
             <FormField
               control={form.control}
               name="urgencia"
@@ -444,7 +399,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Violação (Lista Detalhada) */}
             <FormField
               control={form.control}
               name="violacao"
@@ -464,7 +418,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Categoria (Lista Detalhada) */}
             <FormField
               control={form.control}
               name="categoria"
@@ -486,12 +439,11 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           </div>
         </div>
 
-        {/* 4. ATRIBUIÇÃO E ORIGEM */}
+        {/* 3. ATRIBUIÇÃO E PROTOCOLO */}
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Atribuição e Origem</h3>
+          <h3 className="text-lg font-semibold">Atribuição e Protocolo</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
             
-            {/* Órgão Demandante */}
             <FormField
               control={form.control}
               name="orgaoDemandante"
@@ -504,7 +456,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Número SEI (Máscara Corrigida) */}
             <FormField
               control={form.control}
               name="numeroSei"
@@ -526,7 +477,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Link SEI */}
             <FormField
               control={form.control}
               name="linkSei"
@@ -541,7 +491,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
               )}
             />
 
-            {/* Agente Responsável */}
             <FormField
               control={form.control}
               name="agenteAcolhidaId"
@@ -592,7 +541,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           </div>
         </div>
 
-        {/* 5. OBSERVAÇÕES */}
+        {/* 4. OBSERVAÇÕES */}
         <FormField
           control={form.control}
           name="observacoes"
@@ -613,7 +562,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
             {isPending && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
             {isPending 
               ? 'Salvando Dados...' 
-              : (isEditing ? 'Atualizar Dados' : 'Cadastrar Novo Caso')
+              : (isEditing ? 'Atualizar Dados' : 'Cadastrar Caso')
             }
           </Button>
         </div>

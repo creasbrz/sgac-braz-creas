@@ -1,6 +1,6 @@
 {
   "name": "sgac-braz-backend",
-  "version": "4.0.1",
+  "version": "4.2.0",
   "description": "Backend para o Sistema de Gestão de Atendimentos do CREAS Brazlândia",
   "main": "src/server.ts",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "prisma generate && tsup src --out-dir dist",
     "start": "node dist/server.js",
     "postinstall": "prisma generate",
-    "db:backup": "tsx scripts/backup.ts"
+    "db:backup": "tsx scripts/backup.ts",
+    "prisma:seed": "tsx prisma/seed.ts"
   },
   "keywords": [
     "creas",

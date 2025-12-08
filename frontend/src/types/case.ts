@@ -1,15 +1,24 @@
 // frontend/src/types/case.ts
 
+// [NOVO] Interface para Benefícios/Entregas
+export interface ServiceDeliverable {
+  id: string
+  tipo: string
+  status: 'SOLICITADO' | 'CONCEDIDO' | 'NEGADO' | 'ENTREGUE'
+  dataSolicitacao: string
+  dataEntrega?: string | null
+  observacoes?: string | null
+  responsavel: { nome: string }
+}
+
 export interface FamilyMember {
   id: string
   nome: string
   parentesco: string
   idade?: number | null
-  // [NOVOS CAMPOS]
   cpf?: string | null
   nascimento?: string | null
   telefone?: string | null
-  
   ocupacao?: string | null
   renda?: number | null
   observacoes?: string | null
@@ -81,6 +90,10 @@ export interface CaseDetailData {
   violacao: string
   categoria: string
   orgaoDemandante: string
+  
+  // [NOVO v4.2.0]
+  origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA'
+
   numeroSei: string | null
   linkSei: string | null
   observacoes: string | null
@@ -100,7 +113,9 @@ export interface CaseDetailData {
     nome: string
   } | null
 
-  beneficios: string[]
+  // benefícios (array de strings) foi removido na prática, mas mantido na interface se necessário para legado
+  beneficios: string[] 
+  
   logs: CaseLog[]
 
   motivoDesligamento: string | null

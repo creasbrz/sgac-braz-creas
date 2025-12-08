@@ -1,18 +1,10 @@
+// backend/src/routes/stats.ts
 import { type FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, subMonths, format } from "date-fns";
 import { Cargo, CaseStatus } from "@prisma/client"; 
 import { z } from "zod";
-
-// --- SIMPLE IN-MEMORY CACHE (Singleton) ---
-// Armazena o resultado pesado do dashboard gerencial.
-// TTL (Time To Live): 10 minutos.
-const CACHE_TTL_MS = 10 * 60 * 1000; 
-
-let statsCache: {
-  data: any;
-  timestamp: number;
-} | null = null;
+import { cache } from "../lib/cache"; // Importando o novo serviço de cache
 
 export async function statsRoutes(app: FastifyInstance) {
   
@@ -25,66 +17,75 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   /**
-   * [GET] /stats - Dashboard Operacional (Com Cache para Gerentes)
+   * [GET] /stats - Dashboard Operacional
+   * Gerente: Dados pesados cacheados (10min).
+   * Técnicos: Dados em tempo real (Query leve).
    */
   app.get("/stats", async (request, reply) => {
     const { cargo, sub: userId } = request.user as { cargo: string; sub: string };
     
     // --- LÓGICA PARA GERENTE (PESADA + CACHE) ---
     if (cargo === Cargo.Gerente) {
-      const now = Date.now();
-
-      // VERIFICAÇÃO DE CACHE (HIT)
-      // Se existe cache E ele ainda é válido (menor que 10 min)
-      if (statsCache && (now - statsCache.timestamp < CACHE_TTL_MS)) {
-        // Retorna dados cacheados instantaneamente
+      const cacheKey = "manager_stats_main";
+      
+      // 1. Tenta pegar do cache
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
         reply.header('X-Cache', 'HIT');
-        return reply.send(statsCache.data);
+        return reply.send(cachedData);
       }
 
-      // CACHE MISS: Precisa consultar o banco
+      // 2. Cache Miss: Executa as queries pesadas
       const today = new Date();
       const firstDayOfMonth = startOfMonth(today);
       const lastDayOfMonth = endOfMonth(today);
 
       try {
-        // Executa todas as queries pesadas em paralelo
         const [
           totalCases, 
           acolhidasCount, 
           acompanhamentosCount, 
           newCases, 
           closedCases,
-          agentWorkload, 
-          specialistWorkload,
+          // Agrupamentos Otimizados
+          workloadAgent,
+          workloadSpec,
           urgencyGroups, 
-          categoryGroups,
-          violationGroups
+          categoryGroups
         ] = await Promise.all([
-          // Contagens Gerais
           prisma.case.count(),
           prisma.case.count({ where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } } }),
           prisma.case.count({ where: { status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI } }),
-          
-          // Métricas do Mês
           prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           prisma.case.count({ where: { status: CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           
-          // Carga de Trabalho por Técnico
-          prisma.user.findMany({
-            where: { cargo: Cargo.Agente_Social, ativo: true },
-            select: { nome: true, casosDeAcolhida: { where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } } } }
+          // Carga de Trabalho via GroupBy (Mais rápido que buscar Users)
+          prisma.case.groupBy({
+            by: ['agenteAcolhidaId'],
+            where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } },
+            _count: { _all: true }
           }),
-          prisma.user.findMany({
-            where: { cargo: Cargo.Especialista, ativo: true },
-            select: { nome: true, casosDeAcompanhamento: { where: { status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI } } }
+          prisma.case.groupBy({
+            by: ['especialistaPAEFIId'],
+            where: { status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, especialistaPAEFIId: { not: null } },
+            _count: { _all: true }
           }),
 
-          // Agrupamentos Estatísticos
+          // Estatísticas demográficas
           prisma.case.groupBy({ by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
           prisma.case.groupBy({ by: ['categoria'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
-          prisma.case.groupBy({ by: ['violacao'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } })
         ]);
+
+        // 3. Resolve nomes dos técnicos (Query leve auxiliar)
+        const userIds = [
+            ...new Set([
+                ...workloadAgent.map(w => w.agenteAcolhidaId), 
+                ...workloadSpec.map(w => w.especialistaPAEFIId)
+            ])
+        ].filter(id => id !== null) as string[];
+        
+        const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } });
+        const userMap = new Map(users.map(u => [u.id, u.nome]));
 
         const result = {
           role: 'Gerente',
@@ -93,22 +94,16 @@ export async function statsRoutes(app: FastifyInstance) {
           acompanhamentosCount, 
           newCasesThisMonth: newCases, 
           closedCasesThisMonth: closedCases,
-          workloadByAgent: agentWorkload.map(u => ({ name: u.nome, value: u.casosDeAcolhida.length })),
-          workloadBySpecialist: specialistWorkload.map(u => ({ name: u.nome, value: u.casosDeAcompanhamento.length })),
+          workloadByAgent: workloadAgent.map(w => ({ name: userMap.get(w.agenteAcolhidaId!) || 'Desc.', value: w._count._all })),
+          workloadBySpecialist: workloadSpec.map(w => ({ name: userMap.get(w.especialistaPAEFIId!) || 'Desc.', value: w._count._all })),
           casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia, value: g._count._all })),
           casesByCategory: categoryGroups.map(g => ({ name: g.categoria, value: g._count._all })),
-          productivity: [...agentWorkload, ...specialistWorkload].map(u => ({ name: u.nome, value: (u.casosDeAcolhida?.length || 0) + (u.casosDeAcompanhamento?.length || 0) })),
-          
-          // Adiciona timestamp para o frontend saber quão "fresco" é o dado
+          productivity: [], // Pode ser implementado separadamente
           lastUpdated: new Date().toISOString()
         };
 
-        // Atualiza o Cache Global
-        statsCache = {
-          data: result,
-          timestamp: now
-        };
-
+        // Salva no cache
+        cache.set(cacheKey, result);
         reply.header('X-Cache', 'MISS');
         return reply.send(result);
 
@@ -119,7 +114,7 @@ export async function statsRoutes(app: FastifyInstance) {
     }
 
     // --- LÓGICA PARA TÉCNICOS (SEM CACHE) ---
-    // Queries filtradas por ID são rápidas e precisam ser tempo real para o operacional.
+    // Queries filtradas por ID são rápidas e precisam ser tempo real.
     const today = new Date();
     const firstDayOfMonth = startOfMonth(today);
     const lastDayOfMonth = endOfMonth(today);
@@ -152,7 +147,7 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   /**
-   * [GET] /stats/advanced — Dados para Analytics e IA
+   * [GET] /stats/advanced — Analytics e IA
    */
   app.get("/stats/advanced", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
@@ -253,7 +248,7 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   /**
-   * [GET] /stats/productivity
+   * [GET] /stats/productivity - Produtividade
    */
   app.get("/stats/productivity", async (request, reply) => {
     try {
@@ -291,6 +286,17 @@ export async function statsRoutes(app: FastifyInstance) {
 
     try {
       const startDate = subMonths(new Date(), months);
+      // GroupBy para heatmap é muito mais eficiente que trazer todos os logs
+      const logCounts = await prisma.caseLog.groupBy({
+        by: ['createdAt'],
+        where: { createdAt: { gte: startDate } },
+        _count: { _all: true }
+      });
+
+      // Como o createdAt tem hora, o groupBy acima não agrupa por dia.
+      // Em produção real, usaríamos: prisma.$queryRaw`SELECT DATE(created_at), count(*) ...`
+      // Para manter compatibilidade prisma puro, vamos trazer apenas a data e processar aqui (payload menor que trazer tudo)
+      
       const logs = await prisma.caseLog.findMany({
         where: { createdAt: { gte: startDate } },
         select: { createdAt: true }

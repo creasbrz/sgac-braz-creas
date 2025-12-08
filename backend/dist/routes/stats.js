@@ -31,8 +31,61 @@ var prisma = new import_client.PrismaClient();
 var import_date_fns = require("date-fns");
 var import_client2 = require("@prisma/client");
 var import_zod = require("zod");
-var CACHE_TTL_MS = 10 * 60 * 1e3;
-var statsCache = null;
+
+// src/lib/cache.ts
+var CacheService = class _CacheService {
+  static instance;
+  store = /* @__PURE__ */ new Map();
+  constructor() {
+  }
+  static getInstance() {
+    if (!_CacheService.instance) {
+      _CacheService.instance = new _CacheService();
+    }
+    return _CacheService.instance;
+  }
+  /**
+   * Recupera um valor do cache se não tiver expirado.
+   * @param key Chave única
+   * @param ttlMs Tempo de vida em milissegundos (Padrão: 5 min)
+   */
+  get(key, ttlMs = 5 * 60 * 1e3) {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    const now = Date.now();
+    if (now - entry.timestamp > ttlMs) {
+      this.store.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+  /**
+   * Salva um valor no cache.
+   */
+  set(key, data) {
+    this.store.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+  /**
+   * Invalida chaves que começam com um prefixo.
+   * Útil para limpar "stats_*" quando um novo caso é criado.
+   */
+  invalidate(keyPrefix) {
+    for (const key of this.store.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.store.delete(key);
+      }
+    }
+  }
+  clearAll() {
+    this.store.clear();
+  }
+};
+var cache = CacheService.getInstance();
+
+// src/routes/stats.ts
 async function statsRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
@@ -44,10 +97,11 @@ async function statsRoutes(app) {
   app.get("/stats", async (request, reply) => {
     const { cargo, sub: userId } = request.user;
     if (cargo === import_client2.Cargo.Gerente) {
-      const now = Date.now();
-      if (statsCache && now - statsCache.timestamp < CACHE_TTL_MS) {
+      const cacheKey = "manager_stats_main";
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
         reply.header("X-Cache", "HIT");
-        return reply.send(statsCache.data);
+        return reply.send(cachedData);
       }
       const today2 = /* @__PURE__ */ new Date();
       const firstDayOfMonth2 = (0, import_date_fns.startOfMonth)(today2);
@@ -59,33 +113,40 @@ async function statsRoutes(app) {
           acompanhamentosCount,
           newCases,
           closedCases,
-          agentWorkload,
-          specialistWorkload,
+          // Agrupamentos Otimizados
+          workloadAgent,
+          workloadSpec,
           urgencyGroups,
-          categoryGroups,
-          violationGroups
+          categoryGroups
         ] = await Promise.all([
-          // Contagens Gerais
           prisma.case.count(),
           prisma.case.count({ where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } }),
           prisma.case.count({ where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } }),
-          // Métricas do Mês
           prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth2, lte: lastDayOfMonth2 } } }),
           prisma.case.count({ where: { status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth2, lte: lastDayOfMonth2 } } }),
-          // Carga de Trabalho por Técnico
-          prisma.user.findMany({
-            where: { cargo: import_client2.Cargo.Agente_Social, ativo: true },
-            select: { nome: true, casosDeAcolhida: { where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } } }
+          // Carga de Trabalho via GroupBy (Mais rápido que buscar Users)
+          prisma.case.groupBy({
+            by: ["agenteAcolhidaId"],
+            where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } },
+            _count: { _all: true }
           }),
-          prisma.user.findMany({
-            where: { cargo: import_client2.Cargo.Especialista, ativo: true },
-            select: { nome: true, casosDeAcompanhamento: { where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI } } }
+          prisma.case.groupBy({
+            by: ["especialistaPAEFIId"],
+            where: { status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, especialistaPAEFIId: { not: null } },
+            _count: { _all: true }
           }),
-          // Agrupamentos Estatísticos
+          // Estatísticas demográficas
           prisma.case.groupBy({ by: ["urgencia"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
-          prisma.case.groupBy({ by: ["categoria"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
-          prisma.case.groupBy({ by: ["violacao"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } })
+          prisma.case.groupBy({ by: ["categoria"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } })
         ]);
+        const userIds = [
+          .../* @__PURE__ */ new Set([
+            ...workloadAgent.map((w) => w.agenteAcolhidaId),
+            ...workloadSpec.map((w) => w.especialistaPAEFIId)
+          ])
+        ].filter((id) => id !== null);
+        const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } });
+        const userMap = new Map(users.map((u) => [u.id, u.nome]));
         const result = {
           role: "Gerente",
           totalCases,
@@ -93,21 +154,15 @@ async function statsRoutes(app) {
           acompanhamentosCount,
           newCasesThisMonth: newCases,
           closedCasesThisMonth: closedCases,
-          workloadByAgent: agentWorkload.map((u) => ({ name: u.nome, value: u.casosDeAcolhida.length })),
-          workloadBySpecialist: specialistWorkload.map((u) => ({ name: u.nome, value: u.casosDeAcompanhamento.length })),
+          workloadByAgent: workloadAgent.map((w) => ({ name: userMap.get(w.agenteAcolhidaId) || "Desc.", value: w._count._all })),
+          workloadBySpecialist: workloadSpec.map((w) => ({ name: userMap.get(w.especialistaPAEFIId) || "Desc.", value: w._count._all })),
           casesByUrgency: urgencyGroups.map((g) => ({ name: g.urgencia, value: g._count._all })),
           casesByCategory: categoryGroups.map((g) => ({ name: g.categoria, value: g._count._all })),
-          productivity: [...agentWorkload, ...specialistWorkload].map((u) => {
-            var _a, _b;
-            return { name: u.nome, value: (((_a = u.casosDeAcolhida) == null ? void 0 : _a.length) || 0) + (((_b = u.casosDeAcompanhamento) == null ? void 0 : _b.length) || 0) };
-          }),
-          // Adiciona timestamp para o frontend saber quão "fresco" é o dado
+          productivity: [],
+          // Pode ser implementado separadamente
           lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
         };
-        statsCache = {
-          data: result,
-          timestamp: now
-        };
+        cache.set(cacheKey, result);
         reply.header("X-Cache", "MISS");
         return reply.send(result);
       } catch (error) {
@@ -252,6 +307,11 @@ async function statsRoutes(app) {
     const { months } = querySchema.parse(request.query);
     try {
       const startDate = (0, import_date_fns.subMonths)(/* @__PURE__ */ new Date(), months);
+      const logCounts = await prisma.caseLog.groupBy({
+        by: ["createdAt"],
+        where: { createdAt: { gte: startDate } },
+        _count: { _all: true }
+      });
       const logs = await prisma.caseLog.findMany({
         where: { createdAt: { gte: startDate } },
         select: { createdAt: true }

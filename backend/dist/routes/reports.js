@@ -37,7 +37,7 @@ async function reportRoutes(app) {
       await request.jwtVerify();
       const { cargo } = request.user;
       if (cargo !== import_client2.Cargo.Gerente) {
-        return reply.status(403).send({ message: "Acesso negado." });
+        return reply.status(403).send({ message: "Acesso negado. Apenas Ger\xEAncia." });
       }
     } catch (err) {
       await reply.status(401).send({ message: "N\xE3o autorizado." });
@@ -61,25 +61,17 @@ async function reportRoutes(app) {
           id: true,
           nomeCompleto: true,
           cpf: true,
-          // [NOVO]
           sexo: true,
-          // [NOVO]
           urgencia: true,
-          // [NOVO]
           violacao: true,
-          // [NOVO]
           dataEntrada: true,
-          // [NOVO]
           status: true,
           agenteAcolhidaId: true,
           especialistaPAEFIId: true,
           agenteAcolhida: { select: { nome: true } },
-          // [NOVO] Para exibir nome na tabela
           especialistaPAEFI: { select: { nome: true } }
-          // [NOVO] Para exibir nome na tabela
         },
         orderBy: { pesoUrgencia: "desc" }
-        // Ordenar por prioridade dentro da equipe
       });
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
@@ -95,7 +87,6 @@ async function reportRoutes(app) {
           nome: tech.nome,
           cargo: tech.cargo === import_client2.Cargo.Agente_Social ? "Agente Social" : "Especialista",
           cases: techCases
-          // Agora contém o objeto completo do caso
         };
       });
       return reply.status(200).send(overview);
@@ -105,42 +96,56 @@ async function reportRoutes(app) {
     }
   });
   app.get("/reports/rma", async (request, reply) => {
+    var _a, _b, _c;
     const querySchema = import_zod.z.object({
       month: import_zod.z.string().regex(/^\d{4}-\d{2}$/, "Formato inv\xE1lido (YYYY-MM).")
     });
     try {
       const { month } = querySchema.parse(request.query);
-      const targetMonth = (0, import_date_fns.parseISO)(month);
-      const firstDay = (0, import_date_fns.startOfMonth)(targetMonth);
-      const lastDay = (0, import_date_fns.endOfMonth)(targetMonth);
-      const initialCount = await prisma.case.count({
-        where: {
-          status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-          dataInicioPAEFI: { lt: firstDay },
-          OR: [
-            { dataDesligamento: null },
-            { dataDesligamento: { gte: firstDay } }
-          ]
-        }
-      });
-      const newEntries = await prisma.case.findMany({
+      const targetDate = /* @__PURE__ */ new Date(month + "-01T00:00:00");
+      const firstDay = (0, import_date_fns.startOfMonth)(targetDate);
+      const lastDay = (0, import_date_fns.endOfMonth)(targetDate);
+      const [initialCount, newEntriesCount, closedCasesCount] = await Promise.all([
+        // B1: Saldo anterior
+        prisma.case.count({
+          where: {
+            status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+            dataInicioPAEFI: { lt: firstDay },
+            OR: [
+              { dataDesligamento: null },
+              { dataDesligamento: { gte: firstDay } }
+            ]
+          }
+        }),
+        // B2: Novos entrados no mês
+        prisma.case.count({
+          where: {
+            dataInicioPAEFI: { gte: firstDay, lte: lastDay }
+          }
+        }),
+        // B3: Desligados no mês
+        prisma.case.count({
+          where: {
+            status: import_client2.CaseStatus.DESLIGADO,
+            dataDesligamento: { gte: firstDay, lte: lastDay }
+          }
+        })
+      ]);
+      const sexGroups = await prisma.case.groupBy({
+        by: ["sexo"],
         where: {
           dataInicioPAEFI: { gte: firstDay, lte: lastDay }
         },
-        select: { id: true, sexo: true, nascimento: true }
+        _count: { sexo: true }
       });
-      const closedCases = await prisma.case.count({
-        where: {
-          status: import_client2.CaseStatus.DESLIGADO,
-          dataDesligamento: { gte: firstDay, lte: lastDay }
-        }
-      });
-      const finalCount = initialCount + newEntries.length - closedCases;
-      const profileBySex = { masculino: 0, feminino: 0, outro: 0 };
-      newEntries.forEach((c) => {
-        if (c.sexo === "Masculino") profileBySex.masculino++;
-        else if (c.sexo === "Feminino") profileBySex.feminino++;
-        else profileBySex.outro++;
+      const profileBySex = {
+        masculino: ((_a = sexGroups.find((g) => g.sexo === "Masculino")) == null ? void 0 : _a._count.sexo) || 0,
+        feminino: ((_b = sexGroups.find((g) => g.sexo === "Feminino")) == null ? void 0 : _b._count.sexo) || 0,
+        outro: ((_c = sexGroups.find((g) => !["Masculino", "Feminino"].includes(g.sexo))) == null ? void 0 : _c._count.sexo) || 0
+      };
+      const newEntriesAges = await prisma.case.findMany({
+        where: { dataInicioPAEFI: { gte: firstDay, lte: lastDay } },
+        select: { nascimento: true }
       });
       const profileByAgeGroup = {
         "0-6": 0,
@@ -151,19 +156,20 @@ async function reportRoutes(app) {
         "60+": 0
       };
       const now = /* @__PURE__ */ new Date();
-      newEntries.forEach((c) => {
-        const age = now.getFullYear() - new Date(c.nascimento).getFullYear();
+      for (const c of newEntriesAges) {
+        const age = (0, import_date_fns.differenceInYears)(now, c.nascimento);
         if (age <= 6) profileByAgeGroup["0-6"]++;
         else if (age <= 12) profileByAgeGroup["7-12"]++;
         else if (age <= 17) profileByAgeGroup["13-17"]++;
         else if (age <= 29) profileByAgeGroup["18-29"]++;
         else if (age <= 59) profileByAgeGroup["30-59"]++;
         else profileByAgeGroup["60+"]++;
-      });
+      }
+      const finalCount = initialCount + newEntriesCount - closedCasesCount;
       return reply.status(200).send({
         initialCount,
-        newEntries: newEntries.length,
-        closedCases,
+        newEntries: newEntriesCount,
+        closedCases: closedCasesCount,
         finalCount,
         profileBySex,
         profileByAgeGroup

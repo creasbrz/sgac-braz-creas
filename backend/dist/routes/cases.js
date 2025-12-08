@@ -33,6 +33,61 @@ var import_fast_csv = require("fast-csv");
 var import_date_fns = require("date-fns");
 var import_locale = require("date-fns/locale");
 var import_client2 = require("@prisma/client");
+
+// src/lib/cache.ts
+var CacheService = class _CacheService {
+  static instance;
+  store = /* @__PURE__ */ new Map();
+  constructor() {
+  }
+  static getInstance() {
+    if (!_CacheService.instance) {
+      _CacheService.instance = new _CacheService();
+    }
+    return _CacheService.instance;
+  }
+  /**
+   * Recupera um valor do cache se não tiver expirado.
+   * @param key Chave única
+   * @param ttlMs Tempo de vida em milissegundos (Padrão: 5 min)
+   */
+  get(key, ttlMs = 5 * 60 * 1e3) {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    const now = Date.now();
+    if (now - entry.timestamp > ttlMs) {
+      this.store.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+  /**
+   * Salva um valor no cache.
+   */
+  set(key, data) {
+    this.store.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+  /**
+   * Invalida chaves que começam com um prefixo.
+   * Útil para limpar "stats_*" quando um novo caso é criado.
+   */
+  invalidate(keyPrefix) {
+    for (const key of this.store.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.store.delete(key);
+      }
+    }
+  }
+  clearAll() {
+    this.store.clear();
+  }
+};
+var cache = CacheService.getInstance();
+
+// src/routes/cases.ts
 var stripTime = (date) => {
   const d = new Date(date);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -118,11 +173,12 @@ async function caseRoutes(app) {
       violacao: import_zod.z.string(),
       categoria: import_zod.z.string(),
       orgaoDemandante: import_zod.z.string(),
+      // [NOVO] Origem
+      origem: import_zod.z.nativeEnum(import_client2.CaseOrigin).default(import_client2.CaseOrigin.ESPONTANEA),
       agenteAcolhidaId: import_zod.z.string().uuid(),
       numeroSei: import_zod.z.string().nullable().optional(),
       linkSei: import_zod.z.string().url().nullable().optional().or(import_zod.z.literal("")),
-      observacoes: import_zod.z.string().nullable().optional(),
-      beneficios: import_zod.z.array(import_zod.z.string()).optional()
+      observacoes: import_zod.z.string().nullable().optional()
     });
     try {
       const data = schema.parse(request.body);
@@ -137,11 +193,11 @@ async function caseRoutes(app) {
           criadoPorId: userId,
           numeroSei: data.numeroSei ?? null,
           linkSei: data.linkSei || null,
-          observacoes: data.observacoes ?? null,
-          beneficios: data.beneficios || []
+          observacoes: data.observacoes ?? null
         }
       });
-      await createLog(novoCaso.id, userId, import_client2.LogAction.CRIACAO, "Caso cadastrado no sistema.");
+      cache.invalidate("manager_stats");
+      await createLog(novoCaso.id, userId, import_client2.LogAction.CRIACAO, `Caso criado via ${data.origem}`);
       return reply.status(201).send(novoCaso);
     } catch (error) {
       if (error instanceof import_zod.z.ZodError) {
@@ -151,7 +207,6 @@ async function caseRoutes(app) {
     }
   });
   app.put("/cases/:id", { onRequest: [app.authenticate] }, async (request, reply) => {
-    var _a;
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
     const bodySchema = import_zod.z.object({
       nomeCompleto: import_zod.z.string(),
@@ -165,11 +220,12 @@ async function caseRoutes(app) {
       violacao: import_zod.z.string(),
       categoria: import_zod.z.string(),
       orgaoDemandante: import_zod.z.string(),
+      // [NOVO] Origem editável
+      origem: import_zod.z.nativeEnum(import_client2.CaseOrigin).optional(),
       agenteAcolhidaId: import_zod.z.string().uuid(),
       numeroSei: import_zod.z.string().nullable().optional(),
       linkSei: import_zod.z.string().url().nullable().optional().or(import_zod.z.literal("")),
-      observacoes: import_zod.z.string().nullable().optional(),
-      beneficios: import_zod.z.array(import_zod.z.string()).optional()
+      observacoes: import_zod.z.string().nullable().optional()
     });
     try {
       const { id } = paramsSchema.parse(request.params);
@@ -193,30 +249,14 @@ async function caseRoutes(app) {
           pesoUrgencia,
           numeroSei: data.numeroSei ?? null,
           linkSei: data.linkSei || null,
-          observacoes: data.observacoes ?? null,
-          beneficios: data.beneficios || []
+          observacoes: data.observacoes ?? null
         }
       });
+      cache.invalidate("manager_stats");
       const changes = detectChanges(oldCase, data);
-      if (changes["agenteAcolhidaId"]) {
-        const newAgentId = changes["agenteAcolhidaId"].to;
-        const newAgent = await prisma.user.findUnique({ where: { id: newAgentId } });
-        changes["Agente Respons\xE1vel"] = {
-          from: ((_a = oldCase.agenteAcolhida) == null ? void 0 : _a.nome) || "Sem agente",
-          to: (newAgent == null ? void 0 : newAgent.nome) || "Desconhecido"
-        };
-        delete changes["agenteAcolhidaId"];
-      }
       const keys = Object.keys(changes);
       if (keys.length > 0) {
-        await createLog(
-          id,
-          userId,
-          import_client2.LogAction.OUTRO,
-          `Editou ${keys.length} campos: ${keys.join(", ")}`,
-          JSON.stringify(changes),
-          null
-        );
+        await createLog(id, userId, import_client2.LogAction.OUTRO, `Editou ${keys.length} campos.`, JSON.stringify(changes), null);
       }
       return reply.send(updatedCaso);
     } catch (error) {
@@ -242,21 +282,14 @@ async function caseRoutes(app) {
       const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view } = schema.parse(request.query);
       let where = {};
       if (view === "all") {
-        where = {
-          status: { not: import_client2.CaseStatus.DESLIGADO }
-        };
+        where = { status: { not: import_client2.CaseStatus.DESLIGADO } };
       } else {
         where = buildActiveCaseWhereClause(request.user);
       }
       if (search) {
         where.AND = [
           ...where.AND || [],
-          {
-            OR: [
-              { nomeCompleto: { contains: search, mode: "insensitive" } },
-              { cpf: { contains: search } }
-            ]
-          }
+          { OR: [{ nomeCompleto: { contains: search, mode: "insensitive" } }, { cpf: { contains: search } }] }
         ];
       }
       if (status) where.status = status;
@@ -267,11 +300,7 @@ async function caseRoutes(app) {
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where,
-          // [ORDENAÇÃO CORRIGIDA]: Urgência DESC -> Data Entrada DESC
-          orderBy: [
-            { pesoUrgencia: "desc" },
-            { dataEntrada: "desc" }
-          ],
+          orderBy: [{ pesoUrgencia: "desc" }, { dataEntrada: "desc" }],
           take: pageSize,
           skip: (page - 1) * pageSize,
           include: {
@@ -283,7 +312,7 @@ async function caseRoutes(app) {
       ]);
       return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
-      return internalError(reply, "Erro interno ao listar casos ativos.", error);
+      return internalError(reply, "Erro interno ao listar casos.", error);
     }
   });
   app.get("/cases/closed", { onRequest: [app.authenticate] }, async (request, reply) => {
@@ -296,10 +325,7 @@ async function caseRoutes(app) {
       const { search, page, pageSize } = schema.parse(request.query);
       const where = { status: import_client2.CaseStatus.DESLIGADO };
       if (search) {
-        where.OR = [
-          { nomeCompleto: { contains: search, mode: "insensitive" } },
-          { cpf: { contains: search } }
-        ];
+        where.OR = [{ nomeCompleto: { contains: search, mode: "insensitive" } }, { cpf: { contains: search } }];
       }
       const [items, total] = await Promise.all([
         prisma.case.findMany({
@@ -324,7 +350,7 @@ async function caseRoutes(app) {
       ]);
       return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     } catch (error) {
-      return internalError(reply, "Erro interno ao listar casos finalizados.", error);
+      return internalError(reply, "Erro ao listar casos finalizados.", error);
     }
   });
   app.get("/cases/:id", { onRequest: [app.authenticate] }, async (request, reply) => {
@@ -359,8 +385,8 @@ async function caseRoutes(app) {
         updateData = { status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, dataDesligamento: null, parecerFinal: null };
       }
       const updated = await prisma.case.update({ where: { id }, data: updateData });
-      if (caso.status !== status) await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Alterou status para ${status}`, caso.status, status);
-      else await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Reabriu caso.`);
+      cache.invalidate("manager_stats");
+      await createLog(id, userId, import_client2.LogAction.MUDANCA_STATUS, `Alterou status para ${status}`, caso.status, status);
       return reply.send(updated);
     } catch (error) {
       return internalError(reply, "Erro ao alterar status.", error);
@@ -378,6 +404,7 @@ async function caseRoutes(app) {
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } });
       const spec = await prisma.user.findUnique({ where: { id: specialistId } });
       const updated = await prisma.case.update({ where: { id }, data: { especialistaPAEFIId: specialistId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: /* @__PURE__ */ new Date() } });
+      cache.invalidate("manager_stats");
       const oldName = ((_a = oldCase == null ? void 0 : oldCase.especialistaPAEFI) == null ? void 0 : _a.nome) || "Nenhum";
       await createLog(id, userId, import_client2.LogAction.ATRIBUICAO, `Atribuiu a ${(spec == null ? void 0 : spec.nome) || "Desconhecido"}`, oldName, spec == null ? void 0 : spec.nome);
       return reply.send(updated);
@@ -397,6 +424,7 @@ async function caseRoutes(app) {
       const isManager = cargo === import_client2.Cargo.Gerente;
       if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: "Sem permiss\xE3o." });
       const updated = await prisma.case.update({ where: { id }, data: { status: import_client2.CaseStatus.DESLIGADO, parecerFinal, motivoDesligamento, dataDesligamento: /* @__PURE__ */ new Date() } });
+      cache.invalidate("manager_stats");
       await createLog(id, userId, import_client2.LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}`);
       return reply.send(updated);
     } catch (error) {
@@ -413,7 +441,7 @@ async function caseRoutes(app) {
       csv.pipe(reply.raw);
       casos.forEach((c) => {
         var _a, _b;
-        csv.write({ ID: c.id, Nome: c.nomeCompleto, CPF: c.cpf, Nascimento: formatDateForCsv(c.nascimento), Sexo: c.sexo, Telefone: c.telefone, Endereco: c.endereco, Entrada: formatDateForCsv(c.dataEntrada), Urgencia: c.urgencia, Violacao: c.violacao, Categoria: c.categoria, Orgao: c.orgaoDemandante, Status: c.status, Agente: ((_a = c.agenteAcolhida) == null ? void 0 : _a.nome) ?? "N/A", Especialista: ((_b = c.especialistaPAEFI) == null ? void 0 : _b.nome) ?? "N/A", Data_Desligamento: formatDateForCsv(c.dataDesligamento), Parecer_Final: c.parecerFinal ?? "N/A" });
+        csv.write({ ID: c.id, Nome: c.nomeCompleto, CPF: c.cpf, Nascimento: formatDateForCsv(c.nascimento), Sexo: c.sexo, Telefone: c.telefone, Endereco: c.endereco, Entrada: formatDateForCsv(c.dataEntrada), Urgencia: c.urgencia, Violacao: c.violacao, Categoria: c.categoria, Orgao: c.orgaoDemandante, Status: c.status, Agente: ((_a = c.agenteAcolhida) == null ? void 0 : _a.nome) ?? "N/A", Especialista: ((_b = c.especialistaPAEFI) == null ? void 0 : _b.nome) ?? "N/A", Data_Desligamento: formatDateForCsv(c.dataDesligamento), Parecer_Final: c.parecerFinal ?? "N/A", Origem: c.origem });
       });
       csv.end();
     } catch (error) {

@@ -6,7 +6,7 @@ import { addDays } from 'date-fns'
 
 const prisma = new PrismaClient()
 
-// --- DADOS REAIS DA EQUIPE ---
+// --- 1. DADOS MESTRES (EQUIPE FIXA) ---
 const TEAM_DATA = [
   { nome: 'Alecio Marques', cargo: Cargo.Agente_Social, email: 'alecio.marques@sedes.df.gov.br', matricula: '0280473-5' },
   { nome: 'Gilberto Félix', cargo: Cargo.Agente_Social, email: 'gilberto.felix@sedes.df.gov.br', matricula: '1847597-7' },
@@ -18,42 +18,62 @@ const TEAM_DATA = [
   { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
 ]
 
-const DEFAULT_PASSWORD = 'senha-segura-123'
-const NUM_CASES = 80
-const FIXED_SEI = '00431-00005359/2025-14'
-const FIXED_LINK_SEI = 'http://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar&id_procedimento=184671104'
+// Motivos v4.0.1
+const MOTIVOS_DESLIGAMENTO = [
+  'Transferência de território',
+  'Falecimento do(a) usuário(a)',
+  'Recusa do atendimento por parte do(a) usuário(a)',
+  'Usuário(a) não localizado(a), após tentativas de contato sem êxito',
+  'Usuário(a) acolhido(a)',
+  'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
+  'Minimização dos riscos, com possibilidade de retorno',
+  'Situação identificada como não pertencente à demanda do CREAS'
+]
 
-const EVOLUCOES_TEXTOS = [
-  "Realizada visita domiciliar. Família reside em condições precárias de habitabilidade. Identificada insegurança alimentar.",
-  "Atendimento presencial na unidade. O usuário relata conflitos familiares intensos e solicita orientação jurídica.",
-  "Contato telefônico com a rede de saúde (CAPS) para verificar adesão ao tratamento. Confirmado comparecimento regular.",
-  "Usuário compareceu para atualização cadastral. Documentação apresentada está completa.",
-  "Realizada escuta especializada. O relato sugere violação de direitos patrimoniais contra a pessoa idosa.",
-  "Encaminhamento realizado para o CRAS visando inserção no PAIF e acesso a benefícios eventuais.",
-  "Participação em estudo de caso com a rede intersetorial. Definido plano de cuidados conjunto.",
-  "Família não localizada no endereço informado. Vizinhos relataram mudança para local desconhecido.",
+// Textos Técnicos para Evolução (Simulação de Especialista)
+const EVOLUCOES_TECNICAS = [
+  "Realizada visita domiciliar. Observa-se precariedade habitacional e saneamento básico insuficiente. Família demonstra vínculos afetivos fortalecidos, apesar da vulnerabilidade econômica.",
+  "Atendimento psicossocial realizado na unidade. Usuária relata episódios recorrentes de violência patrimonial por parte do filho. Orientada quanto às medidas protetivas e encaminhada à Defensoria Pública.",
+  "Articulação com a rede de saúde (CAPS AD) para verificar a adesão do adolescente ao tratamento proposto no PIA. Equipe de saúde relata frequência irregular.",
+  "Realizada escuta qualificada. Identificada demanda de segurança alimentar. Família inserida no Programa Prato Cheio e orientada sobre atualização do CadÚnico.",
+  "Reunião de estudo de caso com o Conselho Tutelar. Definido plano conjunto para garantir a frequência escolar das crianças, que apresentam evasão.",
+  "Usuário compareceu para atendimento espontâneo solicitando segunda via de documentação civil. Realizado encaminhamento para o Na Hora.",
+  "Tentativa de contato telefônico sem êxito. Enviada mensagem via WhatsApp solicitando comparecimento para renovação do PAF.",
+  "Acompanhamento da medida socioeducativa. O adolescente demonstra reflexão sobre o ato infracional e boa adesão às oficinas ofertadas."
+]
+
+const DIAGNOSTICOS_PAF = [
+  "Família vivencia situação de negligência e insegurança alimentar grave. Genitora solo com sobrecarga de cuidados.",
+  "Idoso em situação de violência patrimonial e psicológica intrafamiliar. Rede de apoio fragilizada.",
+  "Adolescente em cumprimento de MSE (Liberdade Assistida). Família com histórico de desproteção social.",
+  "Mulher vítima de violência doméstica com medida protetiva. Necessidade de fortalecimento da autonomia financeira."
+]
+
+const OBJETIVOS_PAF = [
+  "Fortalecer a função protetiva da família e superar a situação de violação de direitos.",
+  "Promover o acesso à rede de serviços públicos e garantir direitos básicos.",
+  "Romper o ciclo de violência e fortalecer a autonomia do usuário.",
+  "Garantir a convivência familiar e comunitária livre de violência."
+]
+
+const ESTRATEGIAS_PAF = [
+  "Acompanhamento quinzenal presencial; Inserção no SCFV; Encaminhamento para BPC.",
+  "Visitas domiciliares mensais; Articulação com CRAS para benefícios eventuais; Orientação jurídica.",
+  "Atendimentos psicossociais semanais; Grupo de convivência para mulheres; Encaminhamento para qualificação profissional."
 ]
 
 // --- UTILITÁRIOS ---
 const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
 const randInt = (min: number, max: number) => faker.number.int({ min, max })
-function generateCPF() {
-  const n = () => randInt(0, 9)
-  return `${n()}${n()}${n()}.${n()}${n()}${n()}.${n()}${n()}${n()}-${n()}${n()}`
-}
+const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 
-const calculateUrgencyWeight = (urgencia: string): number => {
-  const term = urgencia.trim()
-  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
-  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
-  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
-  return 1;
-}
+// --- EXECUÇÃO ---
 
 async function main() {
-  console.log('🌱 Iniciando Seed v3.3 (Atualizado)...')
+  console.log('🌱 [SEED v4.0.1] Iniciando povoamento com Equipe Oficial...')
 
-  console.log('🧹 Limpando banco de dados...')
+  // 1. Limpeza
+  console.log('🧹 Limpando base de dados antiga...')
   await prisma.encaminhamento.deleteMany()
   await prisma.membroFamilia.deleteMany()
   await prisma.caseLog.deleteMany()
@@ -66,13 +86,11 @@ async function main() {
   await prisma.savedFilter.deleteMany()
   await prisma.user.deleteMany()
 
-  console.log('👥 Criando equipe técnica...')
-  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 6)
+  // 2. Criar Usuários (Equipe Fixa)
+  console.log('👥 Cadastrando equipe técnica...')
+  const passwordHash = await bcrypt.hash('123456', 6)
   
-  const agentes: any[] = []
-  const especialistas: any[] = []
-  let gerente: any = null
-
+  const users = []
   for (const u of TEAM_DATA) {
     const user = await prisma.user.create({
       data: {
@@ -84,135 +102,190 @@ async function main() {
         ativo: true
       }
     })
-    
-    if (u.cargo === Cargo.Agente_Social) agentes.push(user)
-    if (u.cargo === Cargo.Especialista) especialistas.push(user)
-    if (u.cargo === Cargo.Gerente) gerente = user
+    users.push(user)
   }
 
-  console.log(`📂 Gerando ${NUM_CASES} casos completos...`)
-  
+  const gerentes = users.filter(u => u.cargo === Cargo.Gerente)
+  const especialistas = users.filter(u => u.cargo === Cargo.Especialista)
+  const agentes = users.filter(u => u.cargo === Cargo.Agente_Social)
+
+  // 3. Criar Casos
+  const NUM_CASES = 60
+  console.log(`📂 Gerando ${NUM_CASES} prontuários detalhados...`)
+
   for (let i = 0; i < NUM_CASES; i++) {
     const sexo = rand(['Masculino', 'Feminino'])
-    const dataEntrada = faker.date.past({ years: 1 })
-    const urgencia = rand(['Sem risco imediato', 'Visita periódica', 'Idoso 80+', 'Risco de desabrigo', 'Sofre ameaça'])
-    const pesoUrgencia = calculateUrgencyWeight(urgencia)
+    const dataEntrada = faker.date.past({ years: 2 })
     
+    // Distribuição de Status
     const statusRoll = Math.random()
     let status = CaseStatus.AGUARDANDO_ACOLHIDA
-    if (statusRoll > 0.2) status = CaseStatus.EM_ACOLHIDA
-    if (statusRoll > 0.4) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI
-    if (statusRoll > 0.5) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI
-    if (statusRoll > 0.9) status = CaseStatus.DESLIGADO
+    if (statusRoll > 0.15) status = CaseStatus.EM_ACOLHIDA
+    if (statusRoll > 0.30) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI
+    if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+    if (statusRoll > 0.85) status = CaseStatus.DESLIGADO
 
-    const agente = rand(agentes)
-    const especialista = (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.DESLIGADO) 
+    const criador = rand(gerentes) || rand(agentes) // Fallback se não houver gerente
+    const agenteResp = rand(agentes)
+    const especialistaResp = (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.DESLIGADO) 
       ? rand(especialistas) 
       : null
 
     // Motivo de desligamento
     let motivoDesligamento = null
     if (status === CaseStatus.DESLIGADO) {
-        // [NOVO - Pedido 2] Incluindo "Usuário não localizado"
-        motivoDesligamento = rand(['Superação da situação de violação', 'Usuário não localizado (Busca Ativa esgotada)', 'Mudança de endereço para outra região'])
+        motivoDesligamento = rand(MOTIVOS_DESLIGAMENTO)
     }
+
+    const calculateUrgencyWeight = (urgencia: string): number => {
+        const term = urgencia.trim()
+        if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
+        if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
+        if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
+        return 1;
+    }
+
+    const urgencia = rand(['Sem risco imediato', 'Visita periódica', 'Idoso 80+', 'Risco de desabrigo', 'Violência física', 'Conflito familiar'])
 
     const newCase = await prisma.case.create({
       data: {
         nomeCompleto: faker.person.fullName({ sex: sexo === 'Masculino' ? 'male' : 'female' }),
         cpf: generateCPF(),
-        nascimento: faker.date.birthdate({ min: 18, max: 90, mode: 'age' }),
+        nascimento: faker.date.birthdate({ min: 14, max: 85, mode: 'age' }),
         sexo,
-        telefone: faker.helpers.fromRegExp(/\(61\) 9[0-9]{4}-[0-9]{4}/),
-        endereco: `${faker.location.street()}, Qd ${randInt(1, 50)} Casa ${randInt(1, 30)} - Brazlândia`,
+        telefone: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`,
+        endereco: `Qd ${randInt(1, 50)} Conjunto ${String.fromCharCode(65 + randInt(0, 20))} Casa ${randInt(1, 40)} - Brazlândia`,
         urgencia,
-        pesoUrgencia,
-        violacao: rand(['Negligência', 'Violência Patrimonial', 'Violência Psicológica', 'Abandono', 'Conflito Familiar']),
-        categoria: rand(['Idoso', 'PCD', 'Mulher', 'Família']),
+        pesoUrgencia: calculateUrgencyWeight(urgencia),
+        violacao: rand(['Negligência', 'Violência Patrimonial', 'Violência Psicológica', 'Abandono', 'Trabalho Infantil', 'Violência Física']),
+        categoria: rand(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente']),
         dataEntrada,
-        orgaoDemandante: rand(['Disque 100', 'MPDFT', 'UBS', 'CRAS', 'Demanda Espontânea']),
-        numeroSei: FIXED_SEI,
-        linkSei: FIXED_LINK_SEI,
-        observacoes: faker.lorem.paragraph(),
-        beneficios: faker.helpers.arrayElements(['BPC', 'Bolsa Família', 'DF Social'], randInt(0, 2)),
+        orgaoDemandante: rand(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS Brazlândia', 'Conselho Tutelar', 'Demanda Espontânea']),
+        numeroSei: `00431-${faker.string.numeric(8)}/2025-${faker.string.numeric(2)}`,
+        linkSei: 'https://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar',
+        observacoes: "Família reside em área de vulnerabilidade social. Relato inicial de conflitos intergeracionais.",
+        beneficios: faker.helpers.arrayElements(['BPC', 'Bolsa Família', 'DF Social', 'Prato Cheio'], randInt(0, 3)),
         status,
-        criadoPorId: gerente.id,
-        agenteAcolhidaId: agente.id,
-        especialistaPAEFIId: especialista?.id,
-        dataInicioPAEFI: especialista ? addDays(dataEntrada, randInt(5, 20)) : null,
-        dataDesligamento: status === CaseStatus.DESLIGADO ? new Date() : null,
-        motivoDesligamento
+        criadoPorId: criador?.id,
+        agenteAcolhidaId: agenteResp?.id,
+        especialistaPAEFIId: especialistaResp?.id,
+        dataInicioPAEFI: especialistaResp ? addDays(dataEntrada, randInt(10, 30)) : null,
+        dataDesligamento: status === CaseStatus.DESLIGADO ? addDays(dataEntrada, randInt(60, 300)) : null,
+        motivoDesligamento,
+        parecerFinal: status === CaseStatus.DESLIGADO ? "Família superou a situação de vulnerabilidade e foi referenciada ao CRAS para acompanhamento na proteção básica." : null
       }
     })
 
-    // [NOVO - Pedido 1] Log de Criação via Sistema
+    // Log Inicial
     await prisma.caseLog.create({
         data: {
             casoId: newCase.id,
-            autorId: gerente.id,
+            autorId: criador?.id,
             acao: LogAction.CRIACAO,
             descricao: 'Caso importado via sistema (Seed/Migração).',
             createdAt: dataEntrada
         }
     })
 
-    // 3. Sub-dados
-
-    const numMembros = randInt(1, 4)
+    // Membros
+    const numMembros = randInt(1, 5)
     for (let m = 0; m < numMembros; m++) {
       await prisma.membroFamilia.create({
         data: {
           casoId: newCase.id,
           nome: faker.person.fullName(),
-          parentesco: rand(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)']),
-          idade: randInt(5, 80),
-          cpf: generateCPF(),
-          nascimento: faker.date.birthdate(),
-          telefone: Math.random() > 0.5 ? faker.helpers.fromRegExp(/\(61\) 9[0-9]{4}-[0-9]{4}/) : null,
-          ocupacao: rand(['Estudante', 'Desempregado', 'Aposentado', 'Autônomo']),
-          renda: faker.number.float({ min: 0, max: 2000, fractionDigits: 2 })
+          parentesco: rand(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)', 'Sobrinho(a)', 'Tio(a)']),
+          idade: randInt(2, 90),
+          cpf: Math.random() > 0.3 ? generateCPF() : null,
+          ocupacao: rand(['Estudante', 'Desempregado', 'Aposentado', 'Autônomo', 'Do Lar', 'Bico']),
+          renda: faker.number.float({ min: 0, max: 1412, fractionDigits: 2 }),
+          observacoes: Math.random() > 0.8 ? "Apresenta problemas de saúde." : null
         }
       })
     }
 
-    const numEvos = randInt(3, 8)
+    // Evoluções
+    const numEvos = randInt(2, 8)
     for (let e = 0; e < numEvos; e++) {
-      const isSecret = Math.random() > 0.9
-      await prisma.evolucao.create({
+      const dataEvo = addDays(dataEntrada, randInt(1, 100))
+      if (newCase.dataDesligamento && dataEvo > newCase.dataDesligamento) continue;
+      if (dataEvo > new Date()) continue;
+
+      const autorEvo = especialistaResp || agenteResp
+
+      if (autorEvo) {
+        await prisma.evolucao.create({
+            data: {
+            casoId: newCase.id,
+            autorId: autorEvo.id,
+            conteudo: rand(EVOLUCOES_TECNICAS),
+            sigilo: Math.random() > 0.8,
+            createdAt: dataEvo
+            }
+        })
+      }
+    }
+
+    // PAF
+    if (especialistaResp) {
+      const pafDate = addDays(dataEntrada, 45)
+      
+      const paf = await prisma.paf.create({
         data: {
           casoId: newCase.id,
-          autorId: especialista?.id || agente.id,
-          conteudo: rand(EVOLUCOES_TEXTOS),
-          sigilo: isSecret,
-          createdAt: faker.date.between({ from: dataEntrada, to: new Date() })
+          autorId: especialistaResp.id,
+          diagnostico: rand(DIAGNOSTICOS_PAF),
+          objetivos: rand(OBJETIVOS_PAF),
+          estrategias: rand(ESTRATEGIAS_PAF),
+          deadline: addDays(pafDate, 180),
+          createdAt: pafDate,
+          versaoAtual: 1
+        }
+      })
+
+      await prisma.caseLog.create({
+        data: {
+          casoId: newCase.id,
+          autorId: especialistaResp.id,
+          acao: LogAction.PAF_CRIADO,
+          descricao: "Elaboração do Plano de Acompanhamento Familiar (PAF) inicial.",
+          createdAt: pafDate
         }
       })
     }
 
-    if (Math.random() > 0.6) {
-      await prisma.encaminhamento.create({
-        data: {
-          casoId: newCase.id,
-          autorId: especialista?.id || agente.id,
-          tipo: rand(['Saúde', 'Jurídico', 'Educação']),
-          instituicao: rand(['UBS 01 Brazlândia', 'Defensoria Pública', 'Escola Classe 06']),
-          motivo: "Necessidade de acompanhamento especializado.",
-          status: rand(['PENDENTE', 'CONCLUIDO']),
-          dataEnvio: faker.date.recent({ days: 30 })
-        }
-      })
+    // Encaminhamentos
+    if (Math.random() > 0.5) {
+      const autorEnc = especialistaResp || agenteResp
+      if (autorEnc) {
+          await prisma.encaminhamento.create({
+            data: {
+            casoId: newCase.id,
+            autorId: autorEnc.id,
+            tipo: rand(['Saúde', 'Jurídico', 'Educação', 'Assistência Social']),
+            instituicao: rand(['UBS 01', 'Defensoria Pública', 'Escola Classe 06', 'CRAS', 'INSS']),
+            motivo: "Necessidade identificada durante atendimento técnico.",
+            status: rand(['PENDENTE', 'CONCLUIDO']),
+            dataEnvio: addDays(dataEntrada, randInt(5, 60))
+            }
+        })
+      }
     }
 
+    // Agendamentos
     if (status !== CaseStatus.DESLIGADO) {
-      await prisma.agendamento.create({
-        data: {
-          casoId: newCase.id,
-          responsavelId: especialista?.id || agente.id,
-          titulo: rand(['Visita Domiciliar', 'Atendimento Psicossocial', 'Reunião de Rede']),
-          data: faker.date.soon({ days: 15 }),
-          observacoes: "Confirmar presença."
-        }
-      })
+      const respAgend = especialistaResp || agenteResp
+      if (respAgend) {
+          await prisma.agendamento.create({
+            data: {
+            casoId: newCase.id,
+            responsavelId: respAgend.id,
+            titulo: rand(['Visita Domiciliar', 'Atendimento Psicossocial', 'Reunião de Rede', 'Renovação de PAF']),
+            data: addDays(new Date(), randInt(1, 30)),
+            observacoes: "Confirmar presença com 24h de antecedência."
+            }
+        })
+      }
     }
 
     process.stdout.write('.')
@@ -223,7 +296,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('Erro fatal no seed:', e)
+    console.error('❌ Erro fatal no seed:', e)
     process.exit(1)
   })
   .finally(async () => {

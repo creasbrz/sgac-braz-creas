@@ -27,6 +27,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/hooks/useAuth"
+// [NOVO] Importando a constante atualizada
+import { MOTIVOS_DESLIGAMENTO } from "@/constants/caseConstants"
 
 interface CaseActionsProps {
   caseId: string
@@ -107,7 +109,7 @@ export function CaseActions({ caseId, status, currentSpecialistId }: CaseActions
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="default" className="gap-2">
-            Gerenciar <MoreVertical className="h-4 w-4" />
+             Gerenciar <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -117,7 +119,7 @@ export function CaseActions({ caseId, status, currentSpecialistId }: CaseActions
           {/* Mudar Status (Fluxo Inicial) */}
           {status === 'AGUARDANDO_ACOLHIDA' && (
             <DropdownMenuItem onClick={() => changeStatus('EM_ACOLHIDA')}>
-              <ArrowRightCircle className="mr-2 h-4 w-4 text-blue-500" /> Iniciar Acolhida
+               <ArrowRightCircle className="mr-2 h-4 w-4 text-blue-500" /> Iniciar Acolhida
             </DropdownMenuItem>
           )}
           
@@ -177,7 +179,7 @@ export function CaseActions({ caseId, status, currentSpecialistId }: CaseActions
         </DialogContent>
       </Dialog>
 
-      {/* --- MODAL: DESLIGAR CASO --- */}
+      {/* --- MODAL: DESLIGAR CASO (Atualizado com novos motivos) --- */}
       <Dialog open={isCloseOpen} onOpenChange={setIsCloseOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -194,11 +196,13 @@ export function CaseActions({ caseId, status, currentSpecialistId }: CaseActions
               <Select value={closeReason} onValueChange={setCloseReason}>
                 <SelectTrigger><SelectValue placeholder="Selecione o motivo..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Superação da situação">Superação da situação de violação</SelectItem>
-                  <SelectItem value="Mudança de endereço">Mudança de endereço (Transferência)</SelectItem>
-                  <SelectItem value="Recusa de atendimento">Recusa de atendimento</SelectItem>
-                  <SelectItem value="Óbito">Óbito</SelectItem>
-                  <SelectItem value="Outros">Outros</SelectItem>
+                  {/* [ATUALIZAÇÃO] Mapeando da constante centralizada */}
+                  {MOTIVOS_DESLIGAMENTO.map((motivo) => (
+                    <SelectItem key={motivo} value={motivo} className="text-xs">
+                      {/* Truncamos visualmente se for muito longo no select, mas o valor é o full */}
+                      {motivo.length > 80 ? motivo.substring(0, 80) + '...' : motivo}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -37,18 +37,18 @@ export function getCaseStatusInfo(status: string | null | undefined) {
 }
 
 // ----------------------------------------------------------------------
-// 2. MOTIVOS DE DESLIGAMENTO
+// 2. MOTIVOS DE DESLIGAMENTO (Atualizado v4.0.1)
 // ----------------------------------------------------------------------
 
 export const MOTIVOS_DESLIGAMENTO = [
-  'Superação da situação de violação',
-  'Usuário não localizado (Busca Ativa esgotada)', // [NOVO - Pedido 2]
-  'Mudança de endereço para outra região',
-  'Óbito do usuário',
-  'Recusa de atendimento persistente',
-  'Encaminhamento para Proteção Básica (CRAS)',
-  'Acolhimento Institucional',
-  'Transferência de Município'
+  'Transferência de território',
+  'Falecimento do(a) usuário(a)',
+  'Recusa do atendimento por parte do(a) usuário(a)',
+  'Usuário(a) não localizado(a), após tentativas de contato sem êxito (por telefone, ligação via WhatsApp, mensagem via WhatsApp, entrega de convite ou visita domiciliar, considerando a acessibilidade do(a) usuário(a) à unidade)',
+  'Usuário(a) acolhido(a)',
+  'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
+  'Minimização dos riscos, com possibilidade de retorno ao processo de referenciamento ou de acompanhamento',
+  'Situação identificada como não pertencente à demanda do CREAS'
 ]
 
 // ----------------------------------------------------------------------

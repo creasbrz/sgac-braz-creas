@@ -1219,34 +1219,74 @@ async function appointmentRoutes(app2) {
     }
   });
   app2.get("/appointments", async (request, reply) => {
-    const { caseId, month } = import_zod7.z.object({
+    const { caseId, month, pageSize } = import_zod7.z.object({
       caseId: import_zod7.z.string().uuid().optional(),
-      month: import_zod7.z.string().regex(/^\d{4}-\d{2}$/).optional()
+      month: import_zod7.z.string().regex(/^\d{4}-\d{2}$/).optional(),
       // YYYY-MM
+      pageSize: import_zod7.z.coerce.number().optional().default(100)
     }).parse(request.query);
-    const where = {};
-    if (caseId) where.casoId = caseId;
+    const userId = request.user.sub;
+    let dateFilter = {};
     if (month) {
       const start = /* @__PURE__ */ new Date(`${month}-01T00:00:00`);
       const end = new Date(new Date(start).setMonth(start.getMonth() + 1));
-      where.data = { gte: start, lt: end };
+      dateFilter = { gte: start, lt: end };
     }
+    const appointmentsWhere = { ...caseId ? { casoId } : {} };
+    if (month) appointmentsWhere.data = dateFilter;
     const appointments = await prisma.agendamento.findMany({
-      where,
+      where: appointmentsWhere,
       orderBy: { data: "asc" },
+      take: pageSize,
       include: {
         responsavel: { select: { nome: true } },
-        // [CORREÇÃO] Incluindo telefone para o botão de WhatsApp
         caso: {
-          select: {
-            id: true,
-            nomeCompleto: true,
-            telefone: true
-          }
+          select: { id: true, nomeCompleto: true, telefone: true }
         }
       }
     });
-    return reply.send(appointments);
+    let groupsWhere = {};
+    if (month) groupsWhere.dataRealizacao = dateFilter;
+    if (caseId) {
+      groupsWhere.participantes = { some: { casoId } };
+    }
+    const groups = await prisma.groupActivity.findMany({
+      where: groupsWhere,
+      orderBy: { dataRealizacao: "asc" },
+      take: pageSize,
+      include: {
+        facilitador: { select: { nome: true } }
+        // Não precisamos dos participantes aqui para o calendário leve
+      }
+    });
+    const mappedAppointments = appointments.map((a) => ({
+      id: a.id,
+      titulo: a.titulo,
+      data: a.data,
+      observacoes: a.observacoes,
+      tipo: "INDIVIDUAL",
+      responsavel: a.responsavel,
+      caso: a.caso,
+      isGroup: false
+    }));
+    const mappedGroups = groups.map((g) => ({
+      id: g.id,
+      titulo: `[GRUPO] ${g.tema}`,
+      // Prefixo para identificar visualmente
+      data: g.dataRealizacao,
+      observacoes: `${g.tipo.replace("_", " ")} - Local: ${g.local || "N/A"}`,
+      tipo: "COLETIVO",
+      responsavel: g.facilitador,
+      caso: null,
+      // Grupo não tem um caso único "pai"
+      isGroup: true,
+      originalId: g.id
+      // ID original do grupo para links
+    }));
+    const combined = [...mappedAppointments, ...mappedGroups].sort(
+      (a, b) => new Date(a.data).getTime() - new Date(b.data).getTime()
+    );
+    return reply.send(combined);
   });
   app2.post("/appointments", async (request, reply) => {
     const bodySchema = import_zod7.z.object({
@@ -1271,7 +1311,7 @@ async function appointmentRoutes(app2) {
         data: {
           casoId: casoId2,
           autorId: userId,
-          acao: import_client7.LogAction.AGENDAMENTO_CRIADO || import_client7.LogAction.OUTRO,
+          acao: import_client7.LogAction.AGENDAMENTO_CRIADO,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString("pt-BR")}`
         }
       });
@@ -2232,6 +2272,164 @@ async function deliverableRoutes(app2) {
   });
 }
 
+// src/routes/groups.ts
+var import_zod15 = require("zod");
+var import_client15 = require("@prisma/client");
+var import_date_fns6 = require("date-fns");
+var import_locale2 = require("date-fns/locale");
+async function groupRoutes(app2) {
+  app2.addHook("onRequest", async (req, reply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.status(401).send();
+    }
+  });
+  app2.get("/groups", async (req, reply) => {
+    try {
+      const groups = await prisma.groupActivity.findMany({
+        orderBy: { dataRealizacao: "desc" },
+        include: {
+          facilitador: { select: { nome: true } },
+          _count: { select: { participantes: true } }
+        }
+      });
+      return reply.send(groups);
+    } catch (error) {
+      console.error("Erro ao listar grupos:", error);
+      return reply.status(500).send({ message: "Erro ao buscar grupos." });
+    }
+  });
+  app2.get("/groups/:id", async (req, reply) => {
+    try {
+      const { id } = import_zod15.z.object({ id: import_zod15.z.string().uuid() }).parse(req.params);
+      const group = await prisma.groupActivity.findUnique({
+        where: { id },
+        include: {
+          facilitador: { select: { id: true, nome: true } },
+          participantes: {
+            include: {
+              caso: { select: { id: true, nomeCompleto: true } }
+            }
+          }
+        }
+      });
+      if (!group) return reply.status(404).send({ message: "Grupo n\xE3o encontrado" });
+      return reply.send(group);
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao buscar detalhes." });
+    }
+  });
+  app2.post("/groups", async (req, reply) => {
+    try {
+      const bodySchema = import_zod15.z.object({
+        tema: import_zod15.z.string().min(3),
+        tipo: import_zod15.z.nativeEnum(import_client15.GroupType),
+        dataRealizacao: import_zod15.z.string(),
+        local: import_zod15.z.string().optional(),
+        descricao: import_zod15.z.string().optional(),
+        orgaosEnvolvidos: import_zod15.z.array(import_zod15.z.string()).default([])
+      });
+      const data = bodySchema.parse(req.body);
+      const userId = req.user.sub;
+      const group = await prisma.groupActivity.create({
+        data: {
+          ...data,
+          dataRealizacao: new Date(data.dataRealizacao),
+          facilitadorId: userId
+        }
+      });
+      return reply.status(201).send(group);
+    } catch (error) {
+      console.error("Erro ao criar grupo:", error);
+      return reply.status(500).send({ message: "Erro ao criar atividade." });
+    }
+  });
+  app2.post("/groups/:id/participants", async (req, reply) => {
+    try {
+      const { id } = import_zod15.z.object({ id: import_zod15.z.string().uuid() }).parse(req.params);
+      const { caseIds } = import_zod15.z.object({ caseIds: import_zod15.z.array(import_zod15.z.string().uuid()) }).parse(req.body);
+      const userId = req.user.sub;
+      const group = await prisma.groupActivity.findUnique({ where: { id } });
+      if (!group) return reply.status(404).send({ message: "Grupo n\xE3o encontrado." });
+      let count = 0;
+      for (const caseId of caseIds) {
+        const exists = await prisma.groupAttendance.findUnique({
+          where: {
+            grupoId_casoId: { grupoId: id, casoId: caseId }
+            // [CORRIGIDO: casoId explicito]
+          }
+        });
+        if (!exists) {
+          await prisma.groupAttendance.create({
+            data: { grupoId: id, casoId: caseId, presente: false }
+            // [CORRIGIDO]
+          });
+          const dataFormatada = (0, import_date_fns6.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale2.ptBR });
+          await prisma.evolucao.create({
+            data: {
+              casoId: caseId,
+              // [CORRIGIDO]
+              autorId: userId,
+              sigilo: false,
+              conteudo: `[SISTEMA] Usu\xE1rio vinculado \xE0 atividade "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
+            }
+          });
+          count++;
+        }
+      }
+      return reply.send({ message: `${count} participantes adicionados.` });
+    } catch (error) {
+      console.error("\u274C Erro ao adicionar participantes:", error);
+      return reply.status(500).send({ message: "Erro interno ao adicionar participantes." });
+    }
+  });
+  app2.patch("/groups/:groupId/attendance/:caseId", async (req, reply) => {
+    try {
+      const paramsSchema = import_zod15.z.object({ groupId: import_zod15.z.string().uuid(), caseId: import_zod15.z.string().uuid() });
+      const bodySchema = import_zod15.z.object({ presente: import_zod15.z.boolean(), observacoes: import_zod15.z.string().optional() });
+      const { groupId, caseId } = paramsSchema.parse(req.params);
+      const { presente, observacoes } = bodySchema.parse(req.body);
+      const userId = req.user.sub;
+      const group = await prisma.groupActivity.findUnique({ where: { id: groupId } });
+      const attendance = await prisma.groupAttendance.update({
+        where: {
+          grupoId_casoId: { grupoId: groupId, casoId: caseId }
+          // [CORRIGIDO]
+        },
+        data: { presente, observacoes }
+      });
+      if (group) {
+        const statusTexto = presente ? "PRESENTE" : "AUSENTE";
+        const obsTexto = observacoes ? ` Observa\xE7\xF5es: ${observacoes}` : "";
+        const dataFormatada = (0, import_date_fns6.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale2.ptBR });
+        await prisma.evolucao.create({
+          data: {
+            casoId: caseId,
+            // [CORRIGIDO]
+            autorId: userId,
+            sigilo: false,
+            conteudo: `[SISTEMA] Registro de Frequ\xEAncia - ${group.tema} (${dataFormatada}). Status: ${statusTexto}.${obsTexto}`
+          }
+        });
+      }
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId,
+          // [CORRIGIDO]
+          autorId: userId,
+          acao: import_client15.LogAction.PRESENCA_REGISTRADA,
+          descricao: `Presen\xE7a em grupo (${presente ? "Presente" : "Ausente"})`
+        }
+      });
+      return reply.send(attendance);
+    } catch (error) {
+      console.error("\u274C Erro ao atualizar presen\xE7a:", error);
+      return reply.status(500).send({ message: "Erro ao atualizar presen\xE7a." });
+    }
+  });
+}
+
 // src/server.ts
 var app = (0, import_fastify.default)({
   logger: { transport: { target: "pino-pretty" } }
@@ -2266,10 +2464,11 @@ app.register(filterRoutes);
 app.register(referralRoutes);
 app.register(familyRoutes);
 app.register(deliverableRoutes);
+app.register(groupRoutes);
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith("/api") || req.raw.url.startsWith("/uploads"))) {
     return reply.status(404).send({ message: "Recurso n\xE3o encontrado" });
   }
   return reply.sendFile("index.html");
 });
-app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando v4.2.0!"));
+app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando v4.3.0!"));

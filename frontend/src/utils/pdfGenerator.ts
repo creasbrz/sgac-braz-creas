@@ -2,10 +2,12 @@
 import pdfMake from "pdfmake/build/pdfmake"
 import pdfFonts from "pdfmake/build/vfs_fonts"
 import type { CaseDetailData } from "@/types/case"
+import type { GroupActivity, GroupAttendance } from "@/types/group"
 import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
 
-// --- CORREÇÃO DO BUG (VFS) ---
-// Verifica a estrutura do pdfFonts antes de atribuir, evitando o erro "undefined"
+// --- CONFIGURAÇÃO VFS (FIX) ---
 // @ts-ignore
 if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
   // @ts-ignore
@@ -14,14 +16,12 @@ if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
   // @ts-ignore
   pdfMake.vfs = (pdfFonts as any).vfs
 } else {
-  // Fallback: às vezes o objeto importado já é o próprio VFS
   // @ts-ignore
   pdfMake.vfs = pdfFonts
 }
-// --- FIM DA CORREÇÃO ---
 
 /**
- * Gera o PDF do Prontuário do Caso
+ * Gera o PDF do Prontuário do Caso Individual
  */
 export const generateCasePDF = (caseData: CaseDetailData) => {
   const beneficiosSection =
@@ -64,8 +64,8 @@ export const generateCasePDF = (caseData: CaseDetailData) => {
         {
           text: [
             { text: "GOVERNO DO DISTRITO FEDERAL\n", bold: true, fontSize: 10 },
-            { text: "SECRETARIA DE DESENVOLVIMENTO SOCIAL\n", fontSize: 9 },
-            { text: "CREAS BRAZLÂNDIA - SGAC", fontSize: 9, italics: true },
+            { text: "SECRETARIA DE ESTADO DE DESENVOLVIMENTO SOCIAL\n", fontSize: 9 },
+            { text: "CREAS BRAZLÂNDIA", fontSize: 9, italics: true },
           ],
           alignment: "center",
           color: "#444444",
@@ -208,6 +208,139 @@ export const generateCasePDF = (caseData: CaseDetailData) => {
         fontSize: 10,
       },
     },
+  }
+
+  pdfMake.createPdf(docDefinition).open()
+}
+
+/**
+ * [NOVO] Gera lista de presença para grupos
+ * @param type 'blank' para assinatura presencial, 'filled' para relatório de sistema
+ */
+export const generateGroupAttendancePDF = (
+  group: GroupActivity, 
+  participants: GroupAttendance[], 
+  type: 'blank' | 'filled' = 'blank'
+) => {
+  const docTitle = type === 'blank' ? "LISTA DE PRESENÇA" : "RELATÓRIO DE PARTICIPAÇÃO"
+  
+  // Cabeçalho da Tabela
+  const tableHeader = type === 'blank' 
+    ? [
+        { text: "NOME COMPLETO", style: 'tableHeader' },
+        { text: "CPF / IDENTIFICAÇÃO", style: 'tableHeader' },
+        { text: "ASSINATURA", style: 'tableHeader' }
+      ]
+    : [
+        { text: "NOME COMPLETO", style: 'tableHeader' },
+        { text: "STATUS", style: 'tableHeader' },
+        { text: "OBSERVAÇÕES", style: 'tableHeader' }
+      ]
+
+  // Corpo da Tabela
+  const tableBody = participants.map(p => {
+    if (type === 'blank') {
+      return [
+        { text: p.caso.nomeCompleto, fontSize: 10, margin: [0, 8, 0, 8] },
+        { text: "__________________", fontSize: 10, alignment: 'center', margin: [0, 8, 0, 8] },
+        { text: "", margin: [0, 15, 0, 15] } // Espaço para assinar
+      ]
+    } else {
+      const statusText = p.presente ? "PRESENTE" : "AUSENTE"
+      const statusColor = p.presente ? "green" : "red"
+      return [
+        { text: p.caso.nomeCompleto, fontSize: 10 },
+        { text: statusText, fontSize: 9, bold: true, color: statusColor },
+        { text: p.observacoes || "-", fontSize: 9, italics: true }
+      ]
+    }
+  })
+
+  // Adiciona linhas vazias para preencher manualmente se for lista em branco
+  if (type === 'blank') {
+    for (let i = 0; i < 5; i++) {
+      // @ts-ignore
+      tableBody.push([
+        { text: "", margin: [0, 15, 0, 15] },
+        { text: "", margin: [0, 15, 0, 15] },
+        { text: "", margin: [0, 15, 0, 15] }
+      ])
+    }
+  }
+
+  const docDefinition: any = {
+    pageSize: "A4",
+    pageMargins: [40, 60, 40, 60],
+    header: {
+      margin: [40, 20, 40, 0],
+      columns: [
+        {
+          text: [
+            { text: "GOVERNO DO DISTRITO FEDERAL\n", bold: true, fontSize: 10 },
+            { text: "SECRETARIA DE ESTADO DE DESENVOLVIMENTO SOCIAL\n", fontSize: 9 },
+            { text: "CREAS BRAZLÂNDIA", fontSize: 9 },
+          ],
+          alignment: "center",
+          color: "#444444",
+        },
+      ],
+    },
+    content: [
+      {
+        text: docTitle,
+        style: "header",
+        alignment: "center",
+        margin: [0, 10, 0, 20],
+      },
+      // Dados da Atividade
+      {
+        style: 'infoTable',
+        table: {
+          widths: ['20%', '80%'],
+          body: [
+            [{ text: 'Atividade:', bold: true }, group.tema],
+            [{ text: 'Tipo:', bold: true }, group.tipo.replace('_', ' ')],
+            [{ text: 'Data:', bold: true }, format(new Date(group.dataRealizacao), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })],
+            [{ text: 'Local:', bold: true }, group.local || 'Não definido'],
+            [{ text: 'Facilitador:', bold: true }, group.facilitador.nome],
+          ]
+        },
+        layout: 'noBorders'
+      },
+      { text: "\n" },
+      // Tabela de Participantes
+      {
+        table: {
+          headerRows: 1,
+          widths: type === 'blank' ? ['40%', '20%', '40%'] : ['50%', '15%', '35%'],
+          body: [
+            tableHeader,
+            ...tableBody
+          ]
+        },
+        layout: {
+          fillColor: function (rowIndex: number) {
+            return (rowIndex === 0) ? '#eeeeee' : null;
+          }
+        }
+      }
+    ],
+    styles: {
+      header: {
+        fontSize: 14,
+        bold: true,
+        color: "#2c3e50",
+      },
+      tableHeader: {
+        bold: true,
+        fontSize: 10,
+        color: 'black',
+      },
+      infoTable: {
+        fontSize: 11,
+        color: '#333'
+      }
+    }
   }
 
   pdfMake.createPdf(docDefinition).open()

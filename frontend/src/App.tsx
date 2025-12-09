@@ -22,7 +22,8 @@ import { UserManagement } from "./pages/UserManagement";
 import { TeamOverview } from "./pages/TeamOverview";
 import { GlobalAudit } from "./pages/GlobalAudit";
 import { NotFound } from "./pages/NotFound";
-import { AdvancedAnalytics } from "./pages/AdvancedAnalytics"; // Se você já criou a página separada
+import { AdvancedAnalytics } from "./pages/AdvancedAnalytics";
+import { GroupManagement } from "./pages/GroupManagement"; // [NOVO]
 
 export function App() {
   return (
@@ -35,7 +36,6 @@ export function App() {
                 <Route path={ROUTE_PATHS.LOGIN} element={<Login />} />
 
                 <Route path={ROUTE_PATHS.DASHBOARD} element={<MainLayout />}>
-                  {/* Rota Index (Dashboard) */}
                   <Route
                     index
                     element={
@@ -45,21 +45,21 @@ export function App() {
                     }
                   />
 
-                  {/* Rotas Gerais (Todos acessam) */}
                   <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
                     <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
                     <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
                     <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
                   </Route>
 
-                  {/* Rotas Técnicas (Gerente + Especialista) */}
-                  {/* Nota: Agente Social não vê detalhes completos nem edita PAF */}
                   <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
-                    {/* Liberei Agente_Social aqui para ele poder ver o caso que criou/atendeu */}
                     <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
                   </Route>
 
-                  {/* Rotas de Gerência */}
+                  {/* [NOVO] Rota de Grupos - Apenas Gerente e Especialista */}
+                  <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista"]} />}>
+                     <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
+                  </Route>
+
                   <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
                     <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
                     <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
@@ -74,7 +74,6 @@ export function App() {
               </Routes>
 
               <Toaster richColors />
-              {/* ReactQueryDevtools removido em produção se quiser, ou mantenha false */}
               <ReactQueryDevtools initialIsOpen={false} />
             </ModalProvider>
           </AuthProvider>

@@ -7,6 +7,7 @@ import multipart from '@fastify/multipart'
 import path from 'path'
 import fs from 'fs'
 
+// Importação das rotas
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
@@ -22,8 +23,8 @@ import { importRoutes } from './routes/import'
 import { filterRoutes } from './routes/filters'
 import { referralRoutes } from './routes/referrals'
 import { familyRoutes } from './routes/family'
-// [NOVO] Importa rota de benefícios
 import { deliverableRoutes } from './routes/deliverables'
+import { groupRoutes } from './routes/groups' // [NOVO]
 
 const app = fastify({
   logger: { transport: { target: 'pino-pretty' } },
@@ -43,7 +44,7 @@ app.decorate('authenticate', async (request, reply) => {
 app.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/', decorateReply: false })
 app.register(fastifyStatic, { root: path.join(__dirname, '../../frontend/dist'), prefix: '/', constraints: {} })
 
-// Registro de Rotas
+// Rotas
 app.register(authRoutes)
 app.register(caseRoutes)
 app.register(userRoutes)
@@ -59,7 +60,8 @@ app.register(importRoutes)
 app.register(filterRoutes)
 app.register(referralRoutes)
 app.register(familyRoutes)
-app.register(deliverableRoutes) // [NOVO]
+app.register(deliverableRoutes)
+app.register(groupRoutes) // [NOVO]
 
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith('/api') || req.raw.url.startsWith('/uploads'))) {
@@ -68,4 +70,4 @@ app.setNotFoundHandler((req, reply) => {
   return reply.sendFile('index.html')
 })
 
-app.listen({ port: 3333, host: '0.0.0.0' }).then(() => console.log('🚀 Servidor rodando v4.2.0!'))
+app.listen({ port: 3333, host: '0.0.0.0' }).then(() => console.log('🚀 Servidor rodando v4.3.0!'))

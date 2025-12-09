@@ -10,42 +10,96 @@ export async function appointmentRoutes(app: FastifyInstance) {
     try { await request.jwtVerify() } catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar (Atualizado para incluir telefone)
+  // [GET] Listar (Unificado: Agendamentos Individuais + Grupos)
   app.get('/appointments', async (request, reply) => {
-    const { caseId, month } = z.object({ 
+    const { caseId, month, pageSize } = z.object({ 
       caseId: z.string().uuid().optional(),
-      month: z.string().regex(/^\d{4}-\d{2}$/).optional() // YYYY-MM
+      month: z.string().regex(/^\d{4}-\d{2}$/).optional(), // YYYY-MM
+      pageSize: z.coerce.number().optional().default(100)
     }).parse(request.query)
     
-    const where: any = {}
-    if (caseId) where.casoId = caseId
+    const userId = (request.user as any).sub
 
-    // Filtro por mês (se fornecido)
+    // Filtros de Data
+    let dateFilter: any = {}
     if (month) {
       const start = new Date(`${month}-01T00:00:00`)
       const end = new Date(new Date(start).setMonth(start.getMonth() + 1))
-      where.data = { gte: start, lt: end }
+      dateFilter = { gte: start, lt: end }
     }
+
+    // 1. Buscar Agendamentos Individuais
+    const appointmentsWhere: any = { ... (caseId ? { casoId } : {}) }
+    if (month) appointmentsWhere.data = dateFilter
+
+    // *Regra de Negócio*: Se não tem caseId (visão geral), filtra por responsabilidade ou permissão?
+    // Por enquanto, trazemos tudo (visão de equipe), mas poderia ser filtrado por userId aqui.
     
     const appointments = await prisma.agendamento.findMany({
-      where,
+      where: appointmentsWhere,
       orderBy: { data: 'asc' },
+      take: pageSize,
       include: { 
         responsavel: { select: { nome: true } },
-        // [CORREÇÃO] Incluindo telefone para o botão de WhatsApp
         caso: { 
-          select: { 
-            id: true, 
-            nomeCompleto: true,
-            telefone: true 
-          } 
+          select: { id: true, nomeCompleto: true, telefone: true } 
         }
       }
     })
-    return reply.send(appointments)
+
+    // 2. Buscar Atividades em Grupo (Apenas se não estiver filtrando por um caso específico)
+    // Se estiver filtrando por caso, buscamos apenas os grupos onde ele participa.
+    let groupsWhere: any = {}
+    if (month) groupsWhere.dataRealizacao = dateFilter
+
+    if (caseId) {
+      groupsWhere.participantes = { some: { casoId } }
+    }
+
+    const groups = await prisma.groupActivity.findMany({
+      where: groupsWhere,
+      orderBy: { dataRealizacao: 'asc' },
+      take: pageSize,
+      include: {
+        facilitador: { select: { nome: true } },
+        // Não precisamos dos participantes aqui para o calendário leve
+      }
+    })
+
+    // 3. Unificar e Padronizar Resposta
+    const mappedAppointments = appointments.map(a => ({
+      id: a.id,
+      titulo: a.titulo,
+      data: a.data,
+      observacoes: a.observacoes,
+      tipo: 'INDIVIDUAL',
+      responsavel: a.responsavel,
+      caso: a.caso,
+      isGroup: false
+    }))
+
+    const mappedGroups = groups.map(g => ({
+      id: g.id,
+      titulo: `[GRUPO] ${g.tema}`, // Prefixo para identificar visualmente
+      data: g.dataRealizacao,
+      observacoes: `${g.tipo.replace('_', ' ')} - Local: ${g.local || 'N/A'}`,
+      tipo: 'COLETIVO',
+      responsavel: g.facilitador,
+      caso: null, // Grupo não tem um caso único "pai"
+      isGroup: true,
+      originalId: g.id // ID original do grupo para links
+    }))
+
+    // Mesclar e ordenar por data
+    const combined = [...mappedAppointments, ...mappedGroups].sort((a, b) => 
+      new Date(a.data).getTime() - new Date(b.data).getTime()
+    )
+
+    return reply.send(combined)
   })
 
-  // [POST] Criar (Mantido igual)
+  // [POST] Criar (Mantido igual - cria apenas agendamento individual)
+  // Agendamentos de grupo são criados na rota /groups
   app.post('/appointments', async (request, reply) => {
     const bodySchema = z.object({
       titulo: z.string().min(3),
@@ -72,7 +126,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
         data: {
           casoId,
           autorId: userId,
-          acao: LogAction.AGENDAMENTO_CRIADO || LogAction.OUTRO,
+          acao: LogAction.AGENDAMENTO_CRIADO,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString('pt-BR')}`
         }
       })

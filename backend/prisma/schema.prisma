@@ -9,7 +9,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums conforme documentação do CREAS
 enum Cargo {
   Gerente
   Agente_Social
@@ -24,12 +23,18 @@ enum CaseStatus {
   DESLIGADO
 }
 
-// [NOVO v4.2.0] Origem da demanda conforme fluxos
 enum CaseOrigin {
-  ESPONTANEA    // Usuário comparece à unidade (Fluxo 2)
-  DOCUMENTAL    // Ofício, SEI, Ministério Público (Fluxo 1)
-  REFERENCIADA  // Encaminhado por outro serviço da rede
-  BUSCA_ATIVA   // Equipe vai até o território
+  ESPONTANEA
+  DOCUMENTAL
+  REFERENCIADA
+  BUSCA_ATIVA
+}
+
+enum GroupType {
+  ACOLHIDA_COLETIVA
+  OFICINA
+  GRUPO_PAEFI
+  REUNIAO_REDE
 }
 
 enum LogAction {
@@ -43,9 +48,10 @@ enum LogAction {
   PAF_ATUALIZADO
   ANEXO_ADICIONADO
   MEMBRO_FAMILIA_ADICIONADO
-  // [NOVO v4.2.0]
   ENTREGA_BENEFICIO_CRIADA
   ENTREGA_BENEFICIO_ATUALIZADA
+  ATIVIDADE_GRUPO_CRIADA
+  PRESENCA_REGISTRADA
   OUTRO
 }
 
@@ -62,7 +68,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relacionamentos
   casosCriados           Case[]           @relation("CriadoPor")
   casosAcolhida          Case[]           @relation("AgenteAcolhida")
   casosPAEFI             Case[]           @relation("EspecialistaPAEFI")
@@ -74,9 +79,8 @@ model User {
   anexos                 Anexo[]
   savedFilters           SavedFilter[]
   encaminhamentos        Encaminhamento[]
-  
-  // [NOVO v4.2.0] Responsável pela entrega do benefício
   entregasRealizadas     ServiceDeliverable[]
+  gruposFacilitados      GroupActivity[]
 }
 
 model Case {
@@ -91,8 +95,6 @@ model Case {
   categoria       String
   telefone        String
   endereco        String
-  
-  // [NOVO v4.2.0] Origem da Demanda
   origem          CaseOrigin  @default(ESPONTANEA)
 
   dataEntrada     DateTime    @default(now())
@@ -106,7 +108,6 @@ model Case {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   
-  // Relacionamentos de Equipe
   criadoPorId         String
   criadoPor           User     @relation("CriadoPor", fields: [criadoPorId], references: [id])
   
@@ -116,7 +117,6 @@ model Case {
   especialistaPAEFIId String?
   especialistaPAEFI   User?    @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
 
-  // Dados do Acompanhamento
   dataInicioPAEFI    DateTime?
   dataDesligamento   DateTime?
   motivoDesligamento String?
@@ -125,7 +125,6 @@ model Case {
   deletado           Boolean   @default(false)
   dataDeletado       DateTime?
 
-  // Relacionamentos das Tabelas Filhas
   evolucoes       Evolucao[]
   paf             Paf?
   agendamentos    Agendamento[]
@@ -133,23 +132,57 @@ model Case {
   anexos          Anexo[]
   encaminhamentos Encaminhamento[]
   membrosFamilia  MembroFamilia[]
-  
-  // [NOVO v4.2.0] Substitui o array de strings antigo por uma tabela estruturada
-  entregas        ServiceDeliverable[] 
-  
-  // Campo legado, mantido para evitar quebra imediata, mas migraremos para 'entregas'
+  entregas        ServiceDeliverable[]
   beneficios      String[]  @default([])
+
+  participacoesGrupos GroupAttendance[]
 
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
 }
 
-// [NOVO v4.2.0] Tabela para gerir "Entregas Iniciais" (Prato Cheio, CNH, etc.)
+model GroupActivity {
+  id               String    @id @default(uuid())
+  tema             String
+  tipo             GroupType
+  dataRealizacao   DateTime
+  local            String?
+  descricao        String? // Metodologia/Objetivos
+  
+  // [NOVO v4.3.1] Órgãos que participarão (ex: "Conselho Tutelar", "Saúde")
+  orgaosEnvolvidos String[]  @default([])
+
+  facilitadorId    String
+  facilitador      User      @relation(fields: [facilitadorId], references: [id])
+
+  participantes    GroupAttendance[]
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model GroupAttendance {
+  id              String        @id @default(uuid())
+  
+  grupoId         String
+  grupo           GroupActivity @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  
+  casoId          String
+  caso            Case          @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
+  presente        Boolean       @default(false)
+  observacoes     String?
+
+  createdAt       DateTime      @default(now())
+
+  @@unique([grupoId, casoId])
+}
+
 model ServiceDeliverable {
   id            String   @id @default(uuid())
-  tipo          String   // Ex: "Prato Cheio", "CNH Social", "Auxílio Natalidade"
-  status        String   // "SOLICITADO", "CONCEDIDO", "NEGADO", "ENTREGUE"
+  tipo          String
+  status        String 
   dataSolicitacao DateTime @default(now())
   dataEntrega   DateTime?
   observacoes   String?

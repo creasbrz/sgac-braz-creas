@@ -1,13 +1,7 @@
 // frontend/src/constants/navigation.ts
 import {
-  PieChart,
-  LayoutDashboard,
-  Calendar,
-  Users,
-  FolderKanban,
-  Archive,
-  UserCog,
-  ShieldCheck
+  PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
+  UserCog, ShieldCheck, Projector // [NOVO ICONE]
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ROUTES } from './routes'
@@ -34,6 +28,14 @@ export const navLinks: NavLink[] = [
     icon: FolderKanban,
     label: 'Meus Casos Ativos',
     allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
+    section: 'Acompanhamento',
+  },
+  // [NOVO]
+  {
+    to: ROUTES.GROUPS,
+    icon: Projector,
+    label: 'Grupos e Oficinas',
+    allowedRoles: ['Gerente', 'Especialista'], // Geralmente Agente Social não lidera grupos sozinho
     section: 'Acompanhamento',
   },
   {
@@ -72,8 +74,7 @@ export const navLinks: NavLink[] = [
     section: 'Administração',
   },
   {
-    // Usamos a string direta para garantir que funcione mesmo se ROUTES.AUDIT não estiver definido
-    to: '/dashboard/audit', 
+    to: '/dashboard/audit',
     icon: ShieldCheck,
     label: 'Auditoria Global',
     allowedRoles: ['Gerente'],

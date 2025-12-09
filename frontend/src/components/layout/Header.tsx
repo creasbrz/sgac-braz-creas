@@ -17,7 +17,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/reports': 'Relatórios Gerenciais',
   '/dashboard/team-overview': 'Visão de Equipe',
   '/dashboard/users': 'Controle de Usuários',
-  '/dashboard/audit': 'Auditoria do Sistema'
+  '/dashboard/audit': 'Auditoria do Sistema',
+  '/dashboard/groups': 'Grupos e Oficinas', // [CORREÇÃO] Tradução adicionada
 }
 
 export function Header() {
@@ -25,10 +26,8 @@ export function Header() {
   const location = useLocation()
   const pathname = location.pathname
   
-  // [NOVO] Estado para o Modo Privacidade
   const [privacyMode, setPrivacyMode] = useState(false)
 
-  // [NOVO] Efeito para aplicar a classe no body
   useEffect(() => {
     if (privacyMode) {
       document.body.classList.add('privacy-mode')
@@ -40,15 +39,14 @@ export function Header() {
   // Lógica para determinar o título da página
   let pageTitle = PAGE_TITLES[pathname]
 
-  // Se não achou no mapa exato, verifica padrões dinâmicos
   if (!pageTitle) {
     if (pathname.includes('/dashboard/cases/')) {
       pageTitle = 'Prontuário Eletrônico' 
     } else {
-      // Fallback genérico: pega o último pedaço da URL
       const parts = pathname.split('/')
       const lastPart = parts[parts.length - 1]
-      pageTitle = lastPart.charAt(0).toUpperCase() + lastPart.slice(1)
+      // Tenta formatar caso não encontre no mapa (fallback)
+      pageTitle = lastPart ? lastPart.charAt(0).toUpperCase() + lastPart.slice(1) : 'SGAC'
     }
   }
 
@@ -59,9 +57,9 @@ export function Header() {
         <MobileSidebar />
       </div>
 
-      {/* BREADCRUMB (Caminho) */}
+      {/* BREADCRUMB */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="hidden sm:inline-block font-medium text-foreground/80">
+         <span className="hidden sm:inline-block font-medium text-foreground/80">
           SGAC
         </span>
         <Slash className="hidden sm:inline-block h-4 w-4 text-muted-foreground/40" />
@@ -73,7 +71,6 @@ export function Header() {
       {/* AÇÕES */}
       <div className="ml-auto flex items-center gap-2 md:gap-4">
         
-        {/* [NOVO] Botão Modo Privacidade */}
         <Button
           variant="ghost"
           size="icon"

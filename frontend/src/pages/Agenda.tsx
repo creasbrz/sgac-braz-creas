@@ -10,7 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import {
   Loader2, Calendar as CalendarIcon, Plus,
-  ChevronRight, Tag
+  ChevronRight, Tag, Users
 } from 'lucide-react'
 
 import { api } from '@/lib/api'
@@ -31,41 +31,28 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Badge } from '@/components/ui/badge'
 
-// --- CONFIGURAÇÃO VISUAL ---
 const TYPE_COLORS: Record<string, string> = {
-  'Atendimento': '#2563eb', // Azul
-  'Visita': '#16a34a',      // Verde
-  'Retorno': '#f97316',     // Laranja
-  'Reunião': '#9333ea',     // Roxo
-  'Outro': '#64748b'        // Cinza
+  'Atendimento': '#2563eb',
+  'Visita': '#16a34a',
+  'Retorno': '#f97316',
+  'Reunião': '#9333ea',
+  'Grupo': '#7c3aed',
+  'Outro': '#64748b'
 }
 
-// --- SCHEMA (Opção A: moderna) ---
-// Usamos .optional().default(...) + .transform(...) para garantir que a *SAÍDA* do schema seja `string`
-// e assim `z.infer` produza tipos sem `undefined`.
 const appointmentFormSchema = z.object({
   titulo: z.string().min(3, 'O título é muito curto.'),
   data: z.string().min(1, 'Data obrigatória'),
   time: z.string().regex(/^([0-1]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (HH:MM).'),
-
-  tipo: z.string()
-    .optional()
-    .default('Atendimento')
-    .transform((v) => (v ?? 'Atendimento')),
-
+  tipo: z.string().optional().default('Atendimento'),
   casoId: z.string().uuid('Selecione um caso.'),
-
-  observacoes: z.string()
-    .optional()
-    .default('')
-    .transform((v) => (v ?? '')),
+  observacoes: z.string().optional().default(''),
 })
 
-// Tipo inferido a partir do schema — garantido sem `undefined` nos campos que precisam ser obrigatórios.
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
 
-// --- MODAL DE NOVO AGENDAMENTO ---
 function NewAppointmentModal({
   open,
   onOpenChange,
@@ -91,10 +78,6 @@ function NewAppointmentModal({
   })
 
   const cases = casesResponse?.items || []
-
-  // OBS: para evitar o erro de compatibilidade de tipos entre zodResolver e react-hook-form,
-  // fazemos um cast do resolver para o tipo Resolver<AppointmentFormData>.
-  // Isso é seguro porque nosso schema, via transform(), garante os tipos de saída.
   const resolver = zodResolver(appointmentFormSchema) as unknown as Resolver<AppointmentFormData>
 
   const {
@@ -115,7 +98,6 @@ function NewAppointmentModal({
     },
   })
 
-  // Atualiza o form quando abre o modal com dados pré-definidos
   useEffect(() => {
     if (open) {
       if (defaultCaseId) setValue('casoId', defaultCaseId)
@@ -152,8 +134,8 @@ function NewAppointmentModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Novo Agendamento</DialogTitle>
-          <DialogDescription>Preencha os detalhes do atendimento.</DialogDescription>
+          <DialogTitle>Novo Agendamento Individual</DialogTitle>
+          <DialogDescription>Para grupos e oficinas, use a aba "Grupos".</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
@@ -195,11 +177,9 @@ function NewAppointmentModal({
               control={control}
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
-                    {Object.keys(TYPE_COLORS).map(type => (
+                    {Object.keys(TYPE_COLORS).filter(t => t !== 'Grupo').map(type => (
                       <SelectItem key={type} value={type}>
                         <div className="flex items-center gap-2">
                           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
@@ -221,7 +201,7 @@ function NewAppointmentModal({
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value} disabled={!!defaultCaseId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione um caso..." />
+                     <SelectValue placeholder={cases.length > 0 ? "Selecione um caso..." : "Carregando..."} />
                   </SelectTrigger>
                   <SelectContent>
                     {cases.map((c) => (
@@ -235,23 +215,18 @@ function NewAppointmentModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Observações</Label>
+             <Label>Observações</Label>
             <Controller
               name="observacoes"
               control={control}
               render={({ field }) => (
-                <Textarea
-                  placeholder="Detalhes adicionais..."
-                  className="resize-none"
-                  {...field}
-                  value={field.value}
-                />
+                <Textarea placeholder="Detalhes adicionais..." className="resize-none" {...field} value={field.value} />
               )}
             />
           </div>
 
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancelar</Button>
+             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button type="submit" disabled={isCreating}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Agendar
             </Button>
@@ -262,12 +237,11 @@ function NewAppointmentModal({
   )
 }
 
-// --- MODAL DE DETALHES DO EVENTO ---
 function EventDetailModal({ event, onClose }: { event: any, onClose: () => void }) {
   if (!event) return null
 
-  // Recupera dados extendidos
-  const { casoId, nomeCompleto, observacoes } = event.extendedProps
+  // [CORREÇÃO] Removido originalId que não estava sendo usado
+  const { casoId, nomeCompleto, observacoes, isGroup } = event.extendedProps
 
   return (
     <Dialog open={!!event} onOpenChange={() => onClose()}>
@@ -276,6 +250,7 @@ function EventDetailModal({ event, onClose }: { event: any, onClose: () => void 
           <DialogTitle className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: event.backgroundColor }}></span>
             {event.title}
+            {isGroup && <Badge variant="secondary" className="ml-2">COLETIVO</Badge>}
           </DialogTitle>
           <DialogDescription>
             {event.start ? format(event.start, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : ''}
@@ -283,16 +258,28 @@ function EventDetailModal({ event, onClose }: { event: any, onClose: () => void 
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground uppercase">Usuário / Caso</Label>
-            <p className="font-medium text-base">
-              {nomeCompleto ? (
-                <Link to={ROUTES.CASE_DETAIL(casoId)} className="hover:underline text-primary flex items-center gap-1">
-                  {nomeCompleto} <ChevronRight className="h-3 w-3" />
-                </Link>
-              ) : 'N/A'}
-            </p>
-          </div>
+          {isGroup ? (
+             <div className="bg-muted/30 p-3 rounded-md text-sm border border-l-4 border-l-purple-500">
+               <div className="flex items-center gap-2 font-semibold mb-1">
+                 <Users className="h-4 w-4" /> Atividade Coletiva
+               </div>
+               <p className="mb-2">Esta é uma atividade de grupo. Para gerenciar a lista de presença e detalhes, acesse o módulo de Grupos.</p>
+               <Button asChild size="sm" variant="outline" className="w-full">
+                 <Link to={ROUTES.GROUPS}>Ir para Gestão de Grupos</Link>
+               </Button>
+             </div>
+          ) : (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground uppercase">Usuário / Caso</Label>
+              <p className="font-medium text-base">
+                {nomeCompleto ? (
+                  <Link to={ROUTES.CASE_DETAIL(casoId)} className="hover:underline text-primary flex items-center gap-1">
+                    {nomeCompleto} <ChevronRight className="h-3 w-3" />
+                  </Link>
+                ) : 'N/A'}
+              </p>
+            </div>
+          )}
 
           {observacoes && (
             <div className="space-y-1">
@@ -310,9 +297,7 @@ function EventDetailModal({ event, onClose }: { event: any, onClose: () => void 
   )
 }
 
-// --- PÁGINA PRINCIPAL ---
 export function Agenda() {
-  // Estados do FullCalendar
   const { data: appointments = [], isLoading } = useQuery({
     queryKey: ['appointments', 'all'],
     queryFn: async () => {
@@ -322,12 +307,9 @@ export function Agenda() {
     staleTime: 1000 * 60 * 2
   })
 
-  // Estados dos Modais
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | undefined>()
-
   const [selectedEvent, setSelectedEvent] = useState<any>(null)
-
   const [searchParams] = useSearchParams()
   const defaultCaseId = searchParams.get('caseId')
 
@@ -337,16 +319,19 @@ export function Agenda() {
     }
   }, [defaultCaseId])
 
-  // Transforma dados da API para o formato do FullCalendar
   const calendarEvents = useMemo(() => {
     return appointments.map((app: any) => {
       let color = TYPE_COLORS['Outro']
-      const lowerTitle = app.titulo?.toLowerCase?.() ?? ''
-
-      if (lowerTitle.includes('visita')) color = TYPE_COLORS['Visita']
-      else if (lowerTitle.includes('atendimento')) color = TYPE_COLORS['Atendimento']
-      else if (lowerTitle.includes('reunião')) color = TYPE_COLORS['Reunião']
-      else if (lowerTitle.includes('retorno')) color = TYPE_COLORS['Retorno']
+      
+      if (app.isGroup) {
+        color = TYPE_COLORS['Grupo']
+      } else {
+        const lowerTitle = app.titulo?.toLowerCase?.() ?? ''
+        if (lowerTitle.includes('visita')) color = TYPE_COLORS['Visita']
+        else if (lowerTitle.includes('atendimento')) color = TYPE_COLORS['Atendimento']
+        else if (lowerTitle.includes('reunião')) color = TYPE_COLORS['Reunião']
+        else if (lowerTitle.includes('retorno')) color = TYPE_COLORS['Retorno']
+      }
 
       return {
         id: app.id,
@@ -358,7 +343,9 @@ export function Agenda() {
           casoId: app.caso?.id,
           nomeCompleto: app.caso?.nomeCompleto,
           observacoes: app.observacoes,
-          telefone: app.caso?.telefone
+          telefone: app.caso?.telefone,
+          isGroup: app.isGroup,
+          originalId: app.originalId
         }
       }
     })
@@ -376,18 +363,15 @@ export function Agenda() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] gap-6 animate-in fade-in duration-500">
-
-      {/* HEADER */}
       <div className="flex-none flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarIcon className="h-8 w-8 text-primary" /> Agenda
+           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <CalendarIcon className="h-8 w-8 text-primary" /> Agenda Integrada
           </h1>
-          <p className="text-muted-foreground">Visão completa dos atendimentos.</p>
+          <p className="text-muted-foreground">Atendimentos individuais e atividades coletivas.</p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* LEGENDA (Popover) */}
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
@@ -413,7 +397,6 @@ export function Agenda() {
         </div>
       </div>
 
-      {/* FULLCALENDAR (Ocupa o resto da tela) */}
       <div className="flex-1 min-h-0 relative">
         {isLoading ? (
           <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -428,7 +411,6 @@ export function Agenda() {
         />
       </div>
 
-      {/* MODAIS */}
       <NewAppointmentModal
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}

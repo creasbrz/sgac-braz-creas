@@ -39,34 +39,74 @@ async function appointmentRoutes(app) {
     }
   });
   app.get("/appointments", async (request, reply) => {
-    const { caseId, month } = import_zod.z.object({
+    const { caseId, month, pageSize } = import_zod.z.object({
       caseId: import_zod.z.string().uuid().optional(),
-      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/).optional()
+      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/).optional(),
       // YYYY-MM
+      pageSize: import_zod.z.coerce.number().optional().default(100)
     }).parse(request.query);
-    const where = {};
-    if (caseId) where.casoId = caseId;
+    const userId = request.user.sub;
+    let dateFilter = {};
     if (month) {
       const start = /* @__PURE__ */ new Date(`${month}-01T00:00:00`);
       const end = new Date(new Date(start).setMonth(start.getMonth() + 1));
-      where.data = { gte: start, lt: end };
+      dateFilter = { gte: start, lt: end };
     }
+    const appointmentsWhere = { ...caseId ? { casoId } : {} };
+    if (month) appointmentsWhere.data = dateFilter;
     const appointments = await prisma.agendamento.findMany({
-      where,
+      where: appointmentsWhere,
       orderBy: { data: "asc" },
+      take: pageSize,
       include: {
         responsavel: { select: { nome: true } },
-        // [CORREÇÃO] Incluindo telefone para o botão de WhatsApp
         caso: {
-          select: {
-            id: true,
-            nomeCompleto: true,
-            telefone: true
-          }
+          select: { id: true, nomeCompleto: true, telefone: true }
         }
       }
     });
-    return reply.send(appointments);
+    let groupsWhere = {};
+    if (month) groupsWhere.dataRealizacao = dateFilter;
+    if (caseId) {
+      groupsWhere.participantes = { some: { casoId } };
+    }
+    const groups = await prisma.groupActivity.findMany({
+      where: groupsWhere,
+      orderBy: { dataRealizacao: "asc" },
+      take: pageSize,
+      include: {
+        facilitador: { select: { nome: true } }
+        // Não precisamos dos participantes aqui para o calendário leve
+      }
+    });
+    const mappedAppointments = appointments.map((a) => ({
+      id: a.id,
+      titulo: a.titulo,
+      data: a.data,
+      observacoes: a.observacoes,
+      tipo: "INDIVIDUAL",
+      responsavel: a.responsavel,
+      caso: a.caso,
+      isGroup: false
+    }));
+    const mappedGroups = groups.map((g) => ({
+      id: g.id,
+      titulo: `[GRUPO] ${g.tema}`,
+      // Prefixo para identificar visualmente
+      data: g.dataRealizacao,
+      observacoes: `${g.tipo.replace("_", " ")} - Local: ${g.local || "N/A"}`,
+      tipo: "COLETIVO",
+      responsavel: g.facilitador,
+      caso: null,
+      // Grupo não tem um caso único "pai"
+      isGroup: true,
+      originalId: g.id
+      // ID original do grupo para links
+    }));
+    const combined = [...mappedAppointments, ...mappedGroups].sort(
+      (a, b) => new Date(a.data).getTime() - new Date(b.data).getTime()
+    );
+    return reply.send(combined);
   });
   app.post("/appointments", async (request, reply) => {
     const bodySchema = import_zod.z.object({
@@ -76,22 +116,22 @@ async function appointmentRoutes(app) {
       casoId: import_zod.z.string().uuid()
     });
     try {
-      const { titulo, data, observacoes, casoId } = bodySchema.parse(request.body);
+      const { titulo, data, observacoes, casoId: casoId2 } = bodySchema.parse(request.body);
       const { sub: userId } = request.user;
       const agendamento = await prisma.agendamento.create({
         data: {
           titulo,
           data,
           observacoes: typeof observacoes === "string" ? observacoes : null,
-          casoId,
+          casoId: casoId2,
           responsavelId: userId
         }
       });
       await prisma.caseLog.create({
         data: {
-          casoId,
+          casoId: casoId2,
           autorId: userId,
-          acao: import_client2.LogAction.AGENDAMENTO_CRIADO || import_client2.LogAction.OUTRO,
+          acao: import_client2.LogAction.AGENDAMENTO_CRIADO,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString("pt-BR")}`
         }
       });

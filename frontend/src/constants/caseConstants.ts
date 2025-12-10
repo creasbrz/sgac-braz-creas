@@ -1,9 +1,5 @@
 // frontend/src/constants/caseConstants.ts
 
-// ----------------------------------------------------------------------
-// 1. MAPA DE STATUS (Cores e Labels)
-// ----------------------------------------------------------------------
-
 export const CASE_STATUS_MAP = {
   AGUARDANDO_ACOLHIDA: {
     text: 'Aguardando Acolhida',
@@ -37,7 +33,7 @@ export function getCaseStatusInfo(status: string | null | undefined) {
 }
 
 // ----------------------------------------------------------------------
-// 2. MOTIVOS DE DESLIGAMENTO (Atualizado v4.0.1)
+// MOTIVOS DE DESLIGAMENTO
 // ----------------------------------------------------------------------
 
 export const MOTIVOS_DESLIGAMENTO = [
@@ -51,8 +47,19 @@ export const MOTIVOS_DESLIGAMENTO = [
   'Situação identificada como não pertencente à demanda do CREAS'
 ]
 
+// [NOVO] Destinos
+export const DESTINOS_DESLIGAMENTO = [
+  'Referenciado ao CRAS (PAIF)',
+  'Serviço de Saúde (CAPS/UBS)',
+  'Sistema de Justiça',
+  'Acolhimento Institucional',
+  'Superação da Vulnerabilidade (Autonomia)',
+  'Mudança de Município/Estado',
+  'Outro'
+]
+
 // ----------------------------------------------------------------------
-// 3. CLASSIFICAÇÃO DE URGÊNCIA (Semáforo de Cores)
+// CLASSIFICAÇÃO DE URGÊNCIA (Semáforo de Cores)
 // ----------------------------------------------------------------------
 
 const URGENCIA_GRAVISSIMA = [
@@ -79,22 +86,9 @@ const URGENCIA_GRAVE = [
 
 export function getUrgencyColor(urgencia: string | null | undefined): string {
   if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200'
-
   const term = urgencia.trim()
-
-  if (URGENCIA_GRAVISSIMA.includes(term)) {
-    return 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200'
-  }
-
-  if (URGENCIA_MUITO_GRAVE.includes(term)) {
-    return 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200'
-  }
-
-  if (URGENCIA_GRAVE.includes(term)) {
-    return 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200'
-  }
-
+  if (URGENCIA_GRAVISSIMA.includes(term)) return 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200'
+  if (URGENCIA_MUITO_GRAVE.includes(term)) return 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200'
+  if (URGENCIA_GRAVE.includes(term)) return 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200'
   return 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200'
 }
-
-export const URGENCY_STYLES = {}

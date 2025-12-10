@@ -18,35 +18,92 @@ const TEAM_DATA = [
   { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
 ]
 
-// Motivos v4.0.1
+// --- LISTAS DE NEGÓCIO PADRONIZADAS ---
+
+const LISTA_URGENCIAS = [
+  'Convive com agressor',
+  'Idoso 80+',
+  'Primeira infância',
+  'Risco de morte',
+  'Risco de reincidência',
+  'Sofre ameaça',
+  'Risco de desabrigo',
+  'Criança/Adolescente',
+  'PCD',
+  'Idoso',
+  'Internação',
+  'Acolhimento',
+  'Gestante/Lactante',
+  'Sem risco imediato',
+  'Visita periódica'
+]
+
+const LISTA_VIOLACOES = [
+  'Abandono',
+  'Negligência',
+  'Afastamento do convívio familiar',
+  'Cumprimento de medidas socioeducativas',
+  'Descumprimento de condicionalidade do PBF',
+  'Discriminação',
+  'Situação de rua',
+  'Trabalho infantil',
+  'Violência física e/ou psicológica',
+  'Violência sexual',
+  'Outros'
+]
+
+const LISTA_DESTINOS = [
+  'Referenciado ao CRAS (PAIF)',
+  'Serviço de Saúde (CAPS/UBS)',
+  'Sistema de Justiça',
+  'Acolhimento Institucional',
+  'Superação da Vulnerabilidade (Autonomia)',
+  'Mudança de Município/Estado',
+  'Outro'
+]
+
+const BENEFICIOS_EVENTUAIS = [
+  'Auxilio Natalidade', 
+  'Auxilio Calamidade', 
+  'Benefício Excepcional', 
+  'Prato Cheio', 
+  'Auxilio Vulnerabilidade'
+]
+
+const TRANSFERENCIA_RENDA = [
+  'PROGRAMA BOLSA FAMÍLIA (PBF)', 
+  'PROGRAMA DF SOCIAL', 
+  'PROGRAMA CARTÃO GÁS', 
+  'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
+]
+
 const MOTIVOS_DESLIGAMENTO = [
   'Transferência de território',
   'Falecimento do(a) usuário(a)',
   'Recusa do atendimento por parte do(a) usuário(a)',
-  'Usuário(a) não localizado(a), após tentativas de contato sem êxito',
+  'Usuário(a) não localizado(a)',
   'Usuário(a) acolhido(a)',
-  'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
-  'Minimização dos riscos, com possibilidade de retorno',
-  'Situação identificada como não pertencente à demanda do CREAS'
+  'Minimização dos riscos',
+  'Não pertencente à demanda do CREAS'
 ]
 
 // Textos Técnicos para Evolução
 const EVOLUCOES_TECNICAS = [
-  "Realizada visita domiciliar. Observa-se precariedade habitacional e saneamento básico insuficiente. Família demonstra vínculos afetivos fortalecidos.",
-  "Atendimento psicossocial realizado na unidade. Usuária relata episódios recorrentes de violência patrimonial por parte do filho.",
-  "Articulação com a rede de saúde (CAPS AD) para verificar a adesão do adolescente ao tratamento proposto no PIA.",
-  "Realizada escuta qualificada. Identificada demanda de segurança alimentar. Família orientada sobre atualização do CadÚnico.",
-  "Reunião de estudo de caso com o Conselho Tutelar. Definido plano conjunto para garantir a frequência escolar das crianças.",
+  "Realizada visita domiciliar. Observa-se precariedade habitacional e saneamento básico insuficiente.",
+  "Atendimento psicossocial realizado na unidade. Usuária relata episódios recorrentes de violência.",
+  "Articulação com a rede de saúde (CAPS AD) para verificar a adesão do adolescente ao tratamento.",
+  "Realizada escuta qualificada. Identificada demanda de segurança alimentar.",
+  "Reunião de estudo de caso com o Conselho Tutelar. Definido plano conjunto.",
   "Usuário compareceu para atendimento espontâneo solicitando segunda via de documentação civil.",
-  "Tentativa de contato telefônico sem êxito. Enviada mensagem via WhatsApp solicitando comparecimento.",
+  "Tentativa de contato telefônico sem êxito. Enviada mensagem via WhatsApp.",
   "Acompanhamento da medida socioeducativa. O adolescente demonstra reflexão sobre o ato infracional."
 ]
 
 const DIAGNOSTICOS_PAF = [
-  "Família vivencia situação de negligência e insegurança alimentar grave. Genitora solo com sobrecarga de cuidados.",
-  "Idoso em situação de violência patrimonial e psicológica intrafamiliar. Rede de apoio fragilizada.",
-  "Adolescente em cumprimento de MSE (Liberdade Assistida). Família com histórico de desproteção social.",
-  "Mulher vítima de violência doméstica com medida protetiva. Necessidade de fortalecimento da autonomia financeira."
+  "Família vivencia situação de negligência e insegurança alimentar grave.",
+  "Idoso em situação de violência patrimonial e psicológica intrafamiliar.",
+  "Adolescente em cumprimento de MSE (Liberdade Assistida).",
+  "Mulher vítima de violência doméstica com medida protetiva."
 ]
 
 const OBJETIVOS_PAF = [
@@ -58,24 +115,16 @@ const OBJETIVOS_PAF = [
 
 const ESTRATEGIAS_PAF = [
   "Acompanhamento quinzenal presencial; Inserção no SCFV; Encaminhamento para BPC.",
-  "Visitas domiciliares mensais; Articulação com CRAS para benefícios eventuais; Orientação jurídica.",
-  "Atendimentos psicossociais semanais; Grupo de convivência para mulheres; Encaminhamento para qualificação profissional."
+  "Visitas domiciliares mensais; Articulação com CRAS para benefícios eventuais.",
+  "Atendimentos psicossociais semanais; Grupo de convivência para mulheres."
 ]
 
-// [NOVO] Grupos
 const TEMAS_GRUPO = [
   'Oficina de Parentalidade', 'Grupo de Mulheres', 'Acolhida Coletiva (Novos Casos)',
   'Roda de Conversa sobre BPC', 'Grupo de Convivência para Idosos'
 ]
 
-// [NOVO] Órgãos para grupos
-const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública']
-
-// [NOVO] Entregas/Benefícios
-const ENTREGAS_INICIAIS = [
-  'Prato Cheio', 'BPC', 'Auxílio Natalidade', 'Auxílio por Morte', 
-  'CNH Social', 'Carteira do Idoso', 'Isenção de RG', 'Cesta de Alimentos'
-]
+const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT']
 
 // --- UTILITÁRIOS ---
 const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
@@ -85,9 +134,9 @@ const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3}
 // --- EXECUÇÃO ---
 
 async function main() {
-  console.log('🌱 [SEED v4.3.3] Iniciando povoamento COMPLETO (120 Casos)...')
+  console.log('🌱 [SEED v4.4.1] Iniciando povoamento COMPLETO (120 Casos + Fila + Grupos)...')
 
-  // 1. Limpeza
+  // 1. Limpeza Total
   console.log('🧹 Limpando base de dados antiga...')
   await prisma.groupAttendance.deleteMany()
   await prisma.groupActivity.deleteMany()
@@ -104,7 +153,7 @@ async function main() {
   await prisma.savedFilter.deleteMany()
   await prisma.user.deleteMany()
 
-  // 2. Criar Usuários (Equipe Fixa)
+  // 2. Criar Usuários (Equipe)
   console.log('👥 Cadastrando equipe técnica...')
   const passwordHash = await bcrypt.hash('123456', 6)
   
@@ -126,49 +175,56 @@ async function main() {
   const gerentes = users.filter(u => u.cargo === Cargo.Gerente)
   const especialistas = users.filter(u => u.cargo === Cargo.Especialista)
   const agentes = users.filter(u => u.cargo === Cargo.Agente_Social)
-
-  // Array para guardar os casos criados e usar nos grupos
   const createdCases = []
 
-  // 3. Criar Casos (LOOP COMPLETO)
-  const NUM_CASES = 120 // [ATUALIZADO PARA 120]
-  console.log(`📂 Gerando ${NUM_CASES} prontuários com histórico completo...`)
+  // 3. Criar Casos (120 Registros)
+  const NUM_CASES = 120
+  console.log(`📂 Gerando ${NUM_CASES} prontuários detalhados...`)
 
   for (let i = 0; i < NUM_CASES; i++) {
     const sexo = rand(['Masculino', 'Feminino'])
     const dataEntrada = faker.date.past({ years: 1 })
     const origem = faker.helpers.arrayElement(Object.values(CaseOrigin))
     
-    // Distribuição de Status
+    // Lógica de Status (Com Fila de Espera)
     const statusRoll = Math.random()
     let status = CaseStatus.AGUARDANDO_ACOLHIDA
-    if (statusRoll > 0.15) status = CaseStatus.EM_ACOLHIDA
-    if (statusRoll > 0.30) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI
-    if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+    
+    if (statusRoll > 0.1) status = CaseStatus.EM_ACOLHIDA
+    // Aumentando fila de espera propositalmente para teste
+    if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI 
+    if (statusRoll > 0.5) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI
     if (statusRoll > 0.85) status = CaseStatus.DESLIGADO
 
     const criador = rand(gerentes) || rand(agentes)
     const agenteResp = rand(agentes)
-    const especialistaResp = (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.DESLIGADO) 
-      ? rand(especialistas) 
-      : null
+    const especialistaResp = status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI ? rand(especialistas) : null
 
+    // Dados de Desligamento
     let motivoDesligamento = null
+    let destinoDesligamento = null
+    let dataDesligamento = null
+    let parecerFinal = null
+
     if (status === CaseStatus.DESLIGADO) {
         motivoDesligamento = rand(MOTIVOS_DESLIGAMENTO)
+        destinoDesligamento = rand(LISTA_DESTINOS)
+        dataDesligamento = addDays(dataEntrada, randInt(60, 300))
+        parecerFinal = "Família superou a situação de vulnerabilidade e foi referenciada ao CRAS."
     }
 
-    const calculateUrgencyWeight = (urgencia: string): number => {
-        const term = urgencia.trim()
-        if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
-        if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
-        if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
+    // Cálculo de Urgência
+    const urgencia = rand(LISTA_URGENCIAS)
+    const calculateUrgencyWeight = (u: string) => {
+        if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(u)) return 4;
+        if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
+        if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(u)) return 2;
         return 1;
     }
 
-    const urgencia = rand(['Sem risco imediato', 'Visita periódica', 'Idoso 80+', 'Risco de desabrigo', 'Violência física', 'Conflito familiar'])
+    // Transferência de Renda (Campo Array no Case)
+    const rendaBeneficios = faker.helpers.arrayElements(TRANSFERENCIA_RENDA, randInt(0, 2))
 
-    // --- CRIAR CASO ---
     const newCase = await prisma.case.create({
       data: {
         nomeCompleto: faker.person.fullName({ sex: sexo === 'Masculino' ? 'male' : 'female' }),
@@ -179,7 +235,7 @@ async function main() {
         endereco: `Qd ${randInt(1, 50)} Conjunto ${String.fromCharCode(65 + randInt(0, 20))} Casa ${randInt(1, 40)} - Brazlândia`,
         urgencia,
         pesoUrgencia: calculateUrgencyWeight(urgencia),
-        violacao: rand(['Negligência', 'Violência Patrimonial', 'Violência Psicológica', 'Abandono', 'Trabalho Infantil', 'Violência Física']),
+        violacao: rand(LISTA_VIOLACOES),
         categoria: rand(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente']),
         
         origem,
@@ -190,21 +246,21 @@ async function main() {
         linkSei: 'https://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar',
         observacoes: "Família reside em área de vulnerabilidade social.",
         
-        // Legado (vazio pois usamos ServiceDeliverable agora)
-        beneficios: [], 
+        // Benefícios de Transferência de Renda
+        beneficios: rendaBeneficios, 
         
         status,
-        criadoPorId: criador?.id,
-        agenteAcolhidaId: agenteResp?.id,
+        criadoPorId: criador.id,
+        agenteAcolhidaId: agenteResp.id,
         especialistaPAEFIId: especialistaResp?.id,
         dataInicioPAEFI: especialistaResp ? addDays(dataEntrada, randInt(10, 30)) : null,
-        dataDesligamento: status === CaseStatus.DESLIGADO ? addDays(dataEntrada, randInt(60, 300)) : null,
+        dataDesligamento,
         motivoDesligamento,
-        parecerFinal: status === CaseStatus.DESLIGADO ? "Família superou a situação de vulnerabilidade e foi referenciada ao CRAS." : null
+        destinoDesligamento,
+        parecerFinal
       }
     })
     
-    // Guardar para uso em grupos
     createdCases.push(newCase)
 
     // Log Inicial
@@ -213,14 +269,29 @@ async function main() {
             casoId: newCase.id,
             autorId: criador?.id,
             acao: LogAction.CRIACAO,
-            descricao: 'Caso importado via sistema (Seed).',
+            descricao: 'Caso importado via sistema (Seed/Migração).',
             createdAt: dataEntrada
         }
     })
 
-    // --- SUB-ENTIDADES DO CASO (VOLTARAM!) ---
+    // [NOVO] Benefícios Eventuais (Entregas do CREAS)
+    if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
+      const numEventuais = randInt(0, 2)
+      for (let j = 0; j < numEventuais; j++) {
+        await prisma.serviceDeliverable.create({
+          data: {
+            casoId: newCase.id,
+            responsavelId: agenteResp?.id || criador.id,
+            tipo: rand(BENEFICIOS_EVENTUAIS), // Apenas eventuais na tabela de entregas
+            status: rand(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE']),
+            dataSolicitacao: subDays(new Date(), randInt(1, 30)),
+            observacoes: 'Concessão eventual conforme demanda.'
+          }
+        })
+      }
+    }
 
-    // 1. Membros da Família
+    // Membros da Família
     const numMembros = randInt(1, 4)
     for (let m = 0; m < numMembros; m++) {
       await prisma.membroFamilia.create({
@@ -237,24 +308,7 @@ async function main() {
       })
     }
 
-    // 2. Entregas e Benefícios (ServiceDeliverable)
-    if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
-      const numEntregas = randInt(0, 3)
-      for (let j = 0; j < numEntregas; j++) {
-        await prisma.serviceDeliverable.create({
-          data: {
-            casoId: newCase.id,
-            responsavelId: agenteResp?.id || criador.id,
-            tipo: faker.helpers.arrayElement(ENTREGAS_INICIAIS),
-            status: faker.helpers.arrayElement(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE']),
-            dataSolicitacao: subDays(new Date(), randInt(1, 30)),
-            observacoes: 'Solicitação realizada conforme protocolo.'
-          }
-        })
-      }
-    }
-
-    // 3. Evoluções
+    // Evoluções
     const numEvos = randInt(2, 6)
     for (let e = 0; e < numEvos; e++) {
       const dataEvo = addDays(dataEntrada, randInt(1, 100))
@@ -276,10 +330,9 @@ async function main() {
       }
     }
 
-    // 4. PAF
+    // PAF
     if (especialistaResp) {
       const pafDate = addDays(dataEntrada, 45)
-      
       const paf = await prisma.paf.create({
         data: {
           casoId: newCase.id,
@@ -292,7 +345,6 @@ async function main() {
           versaoAtual: 1
         }
       })
-
       await prisma.caseLog.create({
         data: {
           casoId: newCase.id,
@@ -304,7 +356,7 @@ async function main() {
       })
     }
 
-    // 5. Encaminhamentos
+    // Encaminhamentos
     if (Math.random() > 0.5) {
       const autorEnc = especialistaResp || agenteResp
       if (autorEnc) {
@@ -322,11 +374,10 @@ async function main() {
       }
     }
 
-    // 6. Agendamentos Individuais (Futuros e Passados)
+    // Agendamentos Individuais (Futuros e Passados)
     if (status !== CaseStatus.DESLIGADO) {
       const respAgend = especialistaResp || agenteResp
       if (respAgend) {
-          // Cria um agendamento futuro
           if (Math.random() > 0.6) {
             await prisma.agendamento.create({
               data: {
@@ -344,7 +395,7 @@ async function main() {
     process.stdout.write('.')
   }
 
-  // --- 4. CRIAR GRUPOS E OFICINAS ---
+  // 4. Criar Grupos e Oficinas
   console.log('\n👥 Criando Grupos e Oficinas...')
   const NUM_GROUPS = 12
   for (let i = 0; i < NUM_GROUPS; i++) {
@@ -354,8 +405,6 @@ async function main() {
     const isFuture = Math.random() > 0.5
     const groupDate = isFuture ? faker.date.soon({ days: 60 }) : faker.date.recent({ days: 60 })
     const tema = faker.helpers.arrayElement(TEMAS_GRUPO)
-    
-    // Sorteia órgãos parceiros
     const parceiros = faker.helpers.arrayElements(ORGAOS_REDE, randInt(0, 2))
 
     let tipo = GroupType.GRUPO_PAEFI
@@ -374,24 +423,18 @@ async function main() {
       }
     })
 
-    // Adicionar participantes aos grupos
     const numParticipantes = faker.number.int({ min: 3, max: 10 })
     const participantes = faker.helpers.arrayElements(createdCases, numParticipantes)
 
     for (const p of participantes) {
-      // Evitar duplicação se o caso já foi sorteado para este grupo
-      // O seed faz isso automaticamente pois `arrayElements` retorna únicos do set fornecido.
-      
       await prisma.groupAttendance.create({
         data: {
           grupoId: grupo.id,
           casoId: p.id,
-          // Se for futuro, ninguém está presente ainda. Se for passado, aleatório.
           presente: isFuture ? false : Math.random() > 0.2
         }
       })
 
-      // Se já passou, gera evolução de presença no prontuário
       if (!isFuture) {
          await prisma.evolucao.create({
             data: {
@@ -405,14 +448,7 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Seed v4.3.3 COMPLETO concluído com sucesso!')
+  console.log('\n✅ Seed v4.4.1 COMPLETO concluído com sucesso!')
 }
 
-main()
-  .catch((e) => {
-    console.error('❌ Erro fatal no seed:', e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+main().catch(console.error).finally(() => prisma.$disconnect())

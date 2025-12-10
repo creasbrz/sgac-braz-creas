@@ -120,6 +120,10 @@ model Case {
   dataInicioPAEFI    DateTime?
   dataDesligamento   DateTime?
   motivoDesligamento String?
+  
+  // [NOVO v4.4.0] Destino pós-desligamento
+  destinoDesligamento String?
+  
   parecerFinal       String?
 
   deletado           Boolean   @default(false)
@@ -148,9 +152,7 @@ model GroupActivity {
   tipo             GroupType
   dataRealizacao   DateTime
   local            String?
-  descricao        String? // Metodologia/Objetivos
-  
-  // [NOVO v4.3.1] Órgãos que participarão (ex: "Conselho Tutelar", "Saúde")
+  descricao        String? 
   orgaosEnvolvidos String[]  @default([])
 
   facilitadorId    String

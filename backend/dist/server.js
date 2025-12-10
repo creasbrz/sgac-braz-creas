@@ -266,9 +266,7 @@ function detectChanges(oldData, newData) {
   return changes;
 }
 async function createLog(casoId2, autorId, acao, descricao, valorAnterior, valorNovo) {
-  await prisma.caseLog.create({
-    data: { casoId: casoId2, autorId, acao, descricao, valorAnterior, valorNovo }
-  });
+  await prisma.caseLog.create({ data: { casoId: casoId2, autorId, acao, descricao, valorAnterior, valorNovo } });
 }
 async function caseRoutes(app2) {
   app2.decorate("authenticate", async (request, reply) => {
@@ -291,7 +289,6 @@ async function caseRoutes(app2) {
       violacao: import_zod2.z.string(),
       categoria: import_zod2.z.string(),
       orgaoDemandante: import_zod2.z.string(),
-      // [NOVO] Origem
       origem: import_zod2.z.nativeEnum(import_client2.CaseOrigin).default(import_client2.CaseOrigin.ESPONTANEA),
       agenteAcolhidaId: import_zod2.z.string().uuid(),
       numeroSei: import_zod2.z.string().nullable().optional(),
@@ -311,16 +308,15 @@ async function caseRoutes(app2) {
           criadoPorId: userId,
           numeroSei: data.numeroSei ?? null,
           linkSei: data.linkSei || null,
-          observacoes: data.observacoes ?? null
+          observacoes: data.observacoes ?? null,
+          beneficios: []
         }
       });
       cache.invalidate("manager_stats");
       await createLog(novoCaso.id, userId, import_client2.LogAction.CRIACAO, `Caso criado via ${data.origem}`);
       return reply.status(201).send(novoCaso);
     } catch (error) {
-      if (error instanceof import_zod2.z.ZodError) {
-        return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
-      }
+      if (error instanceof import_zod2.z.ZodError) return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
       return internalError(reply, "Erro interno ao criar caso.", error);
     }
   });
@@ -338,7 +334,6 @@ async function caseRoutes(app2) {
       violacao: import_zod2.z.string(),
       categoria: import_zod2.z.string(),
       orgaoDemandante: import_zod2.z.string(),
-      // [NOVO] Origem editável
       origem: import_zod2.z.nativeEnum(import_client2.CaseOrigin).optional(),
       agenteAcolhidaId: import_zod2.z.string().uuid(),
       numeroSei: import_zod2.z.string().nullable().optional(),
@@ -349,15 +344,8 @@ async function caseRoutes(app2) {
       const { id } = paramsSchema.parse(request.params);
       const rawData = bodySchema.parse(request.body);
       const userId = request.user.sub;
-      const data = {
-        ...rawData,
-        nascimento: stripTime(rawData.nascimento),
-        dataEntrada: stripTime(rawData.dataEntrada)
-      };
-      const oldCase = await prisma.case.findUnique({
-        where: { id },
-        include: { agenteAcolhida: { select: { nome: true } } }
-      });
+      const data = { ...rawData, nascimento: stripTime(rawData.nascimento), dataEntrada: stripTime(rawData.dataEntrada) };
+      const oldCase = await prisma.case.findUnique({ where: { id }, include: { agenteAcolhida: { select: { nome: true } } } });
       if (!oldCase) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       const pesoUrgencia = calculateUrgencyWeight(data.urgencia);
       const updatedCaso = await prisma.case.update({
@@ -373,14 +361,10 @@ async function caseRoutes(app2) {
       cache.invalidate("manager_stats");
       const changes = detectChanges(oldCase, data);
       const keys = Object.keys(changes);
-      if (keys.length > 0) {
-        await createLog(id, userId, import_client2.LogAction.OUTRO, `Editou ${keys.length} campos.`, JSON.stringify(changes), null);
-      }
+      if (keys.length > 0) await createLog(id, userId, import_client2.LogAction.OUTRO, `Editou ${keys.length} campos.`, JSON.stringify(changes), null);
       return reply.send(updatedCaso);
     } catch (error) {
-      if (error instanceof import_zod2.z.ZodError) {
-        return reply.status(400).send({ message: "Dados inv\xE1lidos na edi\xE7\xE3o.", errors: error.flatten().fieldErrors });
-      }
+      if (error instanceof import_zod2.z.ZodError) return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
       return internalError(reply, "Erro ao editar caso.", error);
     }
   });
@@ -404,12 +388,7 @@ async function caseRoutes(app2) {
       } else {
         where = buildActiveCaseWhereClause(request.user);
       }
-      if (search) {
-        where.AND = [
-          ...where.AND || [],
-          { OR: [{ nomeCompleto: { contains: search, mode: "insensitive" } }, { cpf: { contains: search } }] }
-        ];
-      }
+      if (search) where.AND = [...where.AND || [], { OR: [{ nomeCompleto: { contains: search, mode: "insensitive" } }, { cpf: { contains: search } }] }];
       if (status) where.status = status;
       if (urgencia && urgencia !== "all") where.urgencia = urgencia;
       if (violacao && violacao !== "all") where.violacao = { equals: violacao };
@@ -442,9 +421,7 @@ async function caseRoutes(app2) {
     try {
       const { search, page, pageSize } = schema.parse(request.query);
       const where = { status: import_client2.CaseStatus.DESLIGADO };
-      if (search) {
-        where.OR = [{ nomeCompleto: { contains: search, mode: "insensitive" } }, { cpf: { contains: search } }];
-      }
+      if (search) where.OR = [{ nomeCompleto: { contains: search, mode: "insensitive" } }, { cpf: { contains: search } }];
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where,
@@ -460,6 +437,8 @@ async function caseRoutes(app2) {
             parecerFinal: true,
             urgencia: true,
             motivoDesligamento: true,
+            destinoDesligamento: true,
+            // [NOVO]
             agenteAcolhida: { select: { nome: true } },
             especialistaPAEFI: { select: { nome: true } }
           }
@@ -500,7 +479,7 @@ async function caseRoutes(app2) {
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       let updateData = { status };
       if (caso.status === import_client2.CaseStatus.DESLIGADO && status !== import_client2.CaseStatus.DESLIGADO) {
-        updateData = { status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, dataDesligamento: null, parecerFinal: null };
+        updateData = { status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, destinoDesligamento: null, dataDesligamento: null, parecerFinal: null };
       }
       const updated = await prisma.case.update({ where: { id }, data: updateData });
       cache.invalidate("manager_stats");
@@ -532,18 +511,33 @@ async function caseRoutes(app2) {
   });
   app2.patch("/cases/:id/close", { onRequest: [app2.authenticate] }, async (request, reply) => {
     const params = import_zod2.z.object({ id: import_zod2.z.string().uuid() });
-    const body = import_zod2.z.object({ parecerFinal: import_zod2.z.string().min(10), motivoDesligamento: import_zod2.z.string().min(1) });
+    const body = import_zod2.z.object({
+      parecerFinal: import_zod2.z.string().min(10),
+      motivoDesligamento: import_zod2.z.string().min(1),
+      destinoDesligamento: import_zod2.z.string().optional()
+      // [NOVO]
+    });
     try {
       const { id } = params.parse(request.params);
-      const { parecerFinal, motivoDesligamento } = body.parse(request.body);
+      const { parecerFinal, motivoDesligamento, destinoDesligamento } = body.parse(request.body);
       const { sub: userId, cargo } = request.user;
       const caso = await prisma.case.findUnique({ where: { id } });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
       const isManager = cargo === import_client2.Cargo.Gerente;
       if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: "Sem permiss\xE3o." });
-      const updated = await prisma.case.update({ where: { id }, data: { status: import_client2.CaseStatus.DESLIGADO, parecerFinal, motivoDesligamento, dataDesligamento: /* @__PURE__ */ new Date() } });
+      const updated = await prisma.case.update({
+        where: { id },
+        data: {
+          status: import_client2.CaseStatus.DESLIGADO,
+          parecerFinal,
+          motivoDesligamento,
+          destinoDesligamento,
+          // [NOVO]
+          dataDesligamento: /* @__PURE__ */ new Date()
+        }
+      });
       cache.invalidate("manager_stats");
-      await createLog(id, userId, import_client2.LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}`);
+      await createLog(id, userId, import_client2.LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}. Destino: ${destinoDesligamento || "N\xE3o informado"}`);
       return reply.send(updated);
     } catch (error) {
       return internalError(reply, "Erro ao desligar.", error);
@@ -559,7 +553,28 @@ async function caseRoutes(app2) {
       csv.pipe(reply.raw);
       casos.forEach((c) => {
         var _a, _b;
-        csv.write({ ID: c.id, Nome: c.nomeCompleto, CPF: c.cpf, Nascimento: formatDateForCsv(c.nascimento), Sexo: c.sexo, Telefone: c.telefone, Endereco: c.endereco, Entrada: formatDateForCsv(c.dataEntrada), Urgencia: c.urgencia, Violacao: c.violacao, Categoria: c.categoria, Orgao: c.orgaoDemandante, Status: c.status, Agente: ((_a = c.agenteAcolhida) == null ? void 0 : _a.nome) ?? "N/A", Especialista: ((_b = c.especialistaPAEFI) == null ? void 0 : _b.nome) ?? "N/A", Data_Desligamento: formatDateForCsv(c.dataDesligamento), Parecer_Final: c.parecerFinal ?? "N/A", Origem: c.origem });
+        csv.write({
+          ID: c.id,
+          Nome: c.nomeCompleto,
+          CPF: c.cpf,
+          Nascimento: formatDateForCsv(c.nascimento),
+          Sexo: c.sexo,
+          Telefone: c.telefone,
+          Endereco: c.endereco,
+          Entrada: formatDateForCsv(c.dataEntrada),
+          Urgencia: c.urgencia,
+          Violacao: c.violacao,
+          Categoria: c.categoria,
+          Orgao: c.orgaoDemandante,
+          Status: c.status,
+          Agente: ((_a = c.agenteAcolhida) == null ? void 0 : _a.nome) ?? "N/A",
+          Especialista: ((_b = c.especialistaPAEFI) == null ? void 0 : _b.nome) ?? "N/A",
+          Data_Desligamento: formatDateForCsv(c.dataDesligamento),
+          Motivo_Desligamento: c.motivoDesligamento,
+          Destino_Desligamento: c.destinoDesligamento,
+          Parecer_Final: c.parecerFinal ?? "N/A",
+          Origem: c.origem
+        });
       });
       csv.end();
     } catch (error) {

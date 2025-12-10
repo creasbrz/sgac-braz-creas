@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -33,82 +34,55 @@ import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 
-// ------------------------------------------------------------
-// 🔧 CONSTANTES DE LISTAS
-// ------------------------------------------------------------
+// ----------------------------------------------------------------------
+// 1. CONSTANTES E LISTAS
+// ----------------------------------------------------------------------
 
 const LISTS = {
-  sexo: [
-    'Masculino',
-    'Feminino',
-    'Outro',
-    'Não Informado'
-  ],
-
+  sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
+  
   urgencia: [
-    'Convive com agressor',
-    'Idoso 80+',
-    'Primeira infância',
-    'Risco de morte',
-    'Risco de reincidência',
-    'Sofre ameaça',
-    'Risco de desabrigo',
-    'Criança/Adolescente',
-    'PCD',
-    'Idoso',
-    'Internação',
-    'Acolhimento',
-    'Gestante/Lactante',
-    'Sem risco imediato',
-    'Visita periódica'
+    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
+    'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
+    'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+    'Sem risco imediato', 'Visita periódica'
   ],
 
   violacao: [
-    'Abandono',
-    'Negligência',
-    'Afastamento do convívio familiar',
-    'Cumprimento de medidas socioeducativas',
-    'Descumprimento de condicionalidade do PBF',
-    'Discriminação',
-    'Situação de rua',
-    'Trabalho infantil',
-    'Violência física e/ou psicológica',
-    'Violência sexual',
-    'Outros'
+    'Abandono', 'Negligência', 'Afastamento do convívio familiar',
+    'Cumprimento de medidas socioeducativas', 'Descumprimento de condicionalidade do PBF',
+    'Discriminação', 'Situação de rua', 'Trabalho infantil',
+    'Violência física e/ou psicológica', 'Violência sexual', 'Outros'
   ],
 
   categoria: [
-    'Mulher',
-    'POP RUA',
-    'LGBTQIA+',
-    'Migrante',
-    'Idoso',
-    'Criança/adolescente',
-    'PCD',
-    'Álcool/drogas',
-    'Família em vulnerabilidade'
+    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'
   ],
 
-  // [NOVO] Lista de Origem da Demanda
   origem: [
     { id: 'ESPONTANEA', label: 'Demanda Espontânea (Balcão)' },
     { id: 'DOCUMENTAL', label: 'Demanda Documental (SEI/Ofício)' },
     { id: 'REFERENCIADA', label: 'Encaminhamento de Rede' },
     { id: 'BUSCA_ATIVA', label: 'Busca Ativa' }
+  ],
+
+  transferenciaRenda: [
+    'PROGRAMA BOLSA FAMÍLIA (PBF)', 
+    'PROGRAMA DF SOCIAL', 
+    'PROGRAMA CARTÃO GÁS', 
+    'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
   ]
 }
 
-// Máscaras
 const CPF_MASK = { mask: '000.000.000-00' }
 const PHONE_MASK = { mask: '(00) 00000-0000' }
 const SEI_MASK = { mask: '00000-00000000/0000-00' }
 
 const getLocalDateOnly = (date = new Date()) =>
-  new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    .toISOString()
-    .split("T")[0]
+  new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split("T")[0]
 
-const defaultValues: Partial<CreateCaseFormData> = {
+// [CORREÇÃO] Valores padrão estritos (sem undefined)
+const defaultValues: CreateCaseFormData = {
   nomeCompleto: '',
   cpf: '',
   nascimento: '',
@@ -123,18 +97,20 @@ const defaultValues: Partial<CreateCaseFormData> = {
   linkSei: '',
   observacoes: '',
   numeroSei: '',
-  origem: 'ESPONTANEA', // Default
-  dataEntrada: '', 
+  beneficios: [], 
+  origem: 'ESPONTANEA', 
+  dataEntrada: getLocalDateOnly(), 
 }
 
 interface CaseFormProps {
   onCaseCreated?: () => void
-  initialData?: any // Dados para edição (opcional)
-  caseId?: string   // ID se for edição (opcional)
+  initialData?: any
+  caseId?: string
 }
 
 export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) {
   const queryClient = useQueryClient()
+  // [CORREÇÃO] Adicionada desestruturação de isErrorAgents
   const { data: agents, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgents()
   
   const isEditing = !!caseId
@@ -144,30 +120,29 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     defaultValues: initialData 
       ? { 
           ...initialData, 
-          dataEntrada: initialData.dataEntrada?.split('T')[0],
-          nascimento: initialData.nascimento?.split('T')[0],
+          // Garantias de fallback para evitar null/undefined
+          dataEntrada: initialData.dataEntrada?.split('T')[0] || getLocalDateOnly(),
+          nascimento: initialData.nascimento?.split('T')[0] || '',
           numeroSei: initialData.numeroSei ?? '',
           linkSei: initialData.linkSei ?? '',
           observacoes: initialData.observacoes ?? '',
-          origem: initialData.origem ?? 'ESPONTANEA'
+          origem: initialData.origem ?? 'ESPONTANEA',
+          beneficios: initialData.beneficios ?? []
         } 
-      : { 
-          ...defaultValues, 
-          dataEntrada: getLocalDateOnly(),
-        },
+      : defaultValues,
   })
 
-  // Efeito para atualizar form se dados iniciais mudarem
   useEffect(() => {
     if (initialData) {
       form.reset({ 
         ...initialData, 
-        dataEntrada: initialData.dataEntrada?.split('T')[0],
-        nascimento: initialData.nascimento?.split('T')[0],
+        dataEntrada: initialData.dataEntrada?.split('T')[0] || getLocalDateOnly(),
+        nascimento: initialData.nascimento?.split('T')[0] || '',
         numeroSei: initialData.numeroSei ?? '',
         linkSei: initialData.linkSei ?? '',
         observacoes: initialData.observacoes ?? '',
-        origem: initialData.origem ?? 'ESPONTANEA'
+        origem: initialData.origem ?? 'ESPONTANEA',
+        beneficios: initialData.beneficios ?? []
       })
     }
   }, [initialData, form])
@@ -191,7 +166,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         return await api.post('/cases', payload)
       }
     },
-
     onSuccess: () => {
       toast.success(isEditing ? 'Dados atualizados com sucesso!' : 'Caso cadastrado com sucesso!')
       
@@ -201,15 +175,11 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
       if (isEditing) {
         queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       } else {
-        form.reset({
-          ...defaultValues,
-          dataEntrada: getLocalDateOnly(),
-        })
+        form.reset(defaultValues)
       }
 
       onCaseCreated?.()
     },
-
     onError: (error) => {
       console.error(error)
       toast.error(getErrorMessage(error, isEditing ? 'Falha ao atualizar o caso.' : 'Falha ao cadastrar o caso.'))
@@ -229,8 +199,8 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
 
         {/* 1. IDENTIFICAÇÃO PESSOAL */}
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Identificação Pessoal</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+          <h3 className="text-lg font-semibold text-primary">Identificação Pessoal</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card shadow-sm">
             
             <FormField
               control={form.control}
@@ -333,12 +303,11 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           </div>
         </div>
 
-        {/* 2. DETALHES DA DEMANDA E ORIGEM */}
+        {/* 2. DADOS DA DEMANDA */}
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Dados da Demanda</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+          <h3 className="text-lg font-semibold text-primary">Dados da Demanda</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card shadow-sm">
             
-            {/* [NOVO] Campo Origem */}
             <FormField
               control={form.control}
               name="origem"
@@ -439,10 +408,59 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           </div>
         </div>
 
-        {/* 3. ATRIBUIÇÃO E PROTOCOLO */}
+        {/* 3. TRANSFERÊNCIA DE RENDA */}
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold">Atribuição e Protocolo</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-primary">Transferência de Renda</h3>
+          </div>
+          
+          <div className="p-4 border rounded-lg bg-card shadow-sm">
+            <FormField
+              control={form.control}
+              name="beneficios"
+              render={({ field }) => (
+                <FormItem>
+                  <FormDescription className="mb-4">
+                    Selecione os programas de transferência de renda que a família <strong>já possui</strong> ou foi inserida.
+                    <br/>
+                    <em>Nota: Para conceder Benefícios Eventuais (Cesta, Natalidade, etc.), utilize a aba "Entregas" após salvar o caso.</em>
+                  </FormDescription>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {LISTS.transferenciaRenda.map(item => (
+                      <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value?.includes(item)}
+                            onCheckedChange={(checked) => {
+                              // [CORREÇÃO] Tipagem explícita no callback do Checkbox
+                              const currentValues = (field.value as string[]) || [];
+                              
+                              if (checked) {
+                                field.onChange([...currentValues, item])
+                              } else {
+                                field.onChange(currentValues.filter((value: string) => value !== item))
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <FormLabel className="font-normal cursor-pointer leading-tight">
+                          {item}
+                        </FormLabel>
+                      </FormItem>
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+
+        {/* 4. ATRIBUIÇÃO E PROTOCOLO */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold text-primary">Atribuição e Protocolo</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-card shadow-sm">
             
             <FormField
               control={form.control}
@@ -515,6 +533,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
                     </FormControl>
 
                     <SelectContent>
+                      {/* Tratamento para erro ou lista vazia */}
                       {isErrorAgents && (
                         <div className="p-2 text-destructive text-sm flex justify-center gap-2">
                           <AlertCircle className="w-4 h-4" /> Falha ao carregar agentes
@@ -541,7 +560,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
           </div>
         </div>
 
-        {/* 4. OBSERVAÇÕES */}
+        {/* 5. OBSERVAÇÕES */}
         <FormField
           control={form.control}
           name="observacoes"
@@ -549,7 +568,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
             <FormItem>
               <FormLabel>Observações Gerais (Opcional)</FormLabel>
               <FormControl>
-                <Textarea {...field} value={field.value ?? ''} className="min-h-[100px]" placeholder="Informações adicionais..." />
+                <Textarea {...field} value={field.value ?? ''} className="min-h-[100px]" placeholder="Informações adicionais relevantes para a triagem..." />
               </FormControl>
               <FormMessage />
             </FormItem>

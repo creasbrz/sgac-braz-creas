@@ -8,10 +8,7 @@ import { ptBR } from 'date-fns/locale'
 import { CaseStatus, Cargo, LogAction, CaseOrigin } from '@prisma/client'
 import { cache } from '../lib/cache'
 
-// -------------------------------------------------------
-// 🔧 UTILITÁRIOS
-// -------------------------------------------------------
-
+// Utilitários mantidos
 const stripTime = (date: Date | string): Date => {
   const d = new Date(date)
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
@@ -61,37 +58,22 @@ function detectChanges(oldData: any, newData: any) {
 
   for (const key in newData) {
     if (ignoreFields.includes(key)) continue;
-    
-    let val1 = oldData[key]
-    let val2 = newData[key]
-
+    let val1 = oldData[key]; let val2 = newData[key];
     if ((val1 instanceof Date || typeof val1 === 'string') && (val2 instanceof Date || typeof val2 === 'string')) {
-      const d1 = new Date(val1)
-      const d2 = new Date(val2)
+      const d1 = new Date(val1); const d2 = new Date(val2);
       if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
-        const s1 = d1.toISOString().split('T')[0]
-        const s2 = d2.toISOString().split('T')[0]
+        const s1 = d1.toISOString().split('T')[0]; const s2 = d2.toISOString().split('T')[0];
         if (s1 === s2) continue;
       }
     }
-    
-    if (val1 !== val2) {
-      if (!val1 && !val2) continue; 
-      changes[key] = { from: val1, to: val2 }
-    }
+    if (val1 !== val2) { if (!val1 && !val2) continue; changes[key] = { from: val1, to: val2 } }
   }
   return changes
 }
 
 async function createLog(casoId: string, autorId: string, acao: LogAction, descricao: string, valorAnterior?: string | null, valorNovo?: string | null) {
-  await prisma.caseLog.create({
-    data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo },
-  })
+  await prisma.caseLog.create({ data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo } })
 }
-
-// -------------------------------------------------------
-// 🚀 ROTAS
-// -------------------------------------------------------
 
 export async function caseRoutes(app: FastifyInstance) {
 
@@ -99,7 +81,7 @@ export async function caseRoutes(app: FastifyInstance) {
     try { await request.jwtVerify() } catch (err) { await reply.send(err) }
   })
 
-  // 1. Criar Caso (POST) - v4.2.0 com Origem
+  // 1. Criar Caso
   app.post('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       nomeCompleto: z.string(),
@@ -113,10 +95,7 @@ export async function caseRoutes(app: FastifyInstance) {
       violacao: z.string(),
       categoria: z.string(),
       orgaoDemandante: z.string(),
-      
-      // [NOVO] Origem
       origem: z.nativeEnum(CaseOrigin).default(CaseOrigin.ESPONTANEA),
-
       agenteAcolhidaId: z.string().uuid(),
       numeroSei: z.string().nullable().optional(),
       linkSei: z.string().url().nullable().optional().or(z.literal('')),
@@ -138,6 +117,7 @@ export async function caseRoutes(app: FastifyInstance) {
           numeroSei: data.numeroSei ?? null,
           linkSei: data.linkSei || null, 
           observacoes: data.observacoes ?? null,
+          beneficios: [],
         },
       })
 
@@ -146,14 +126,12 @@ export async function caseRoutes(app: FastifyInstance) {
 
       return reply.status(201).send(novoCaso)
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
-      }
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
       return internalError(reply, 'Erro interno ao criar caso.', error)
     }
   })
 
-  // 1.1 Editar Caso (PUT) - v4.2.0 com Origem
+  // 1.1 Editar Caso
   app.put('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
     const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({
@@ -168,10 +146,7 @@ export async function caseRoutes(app: FastifyInstance) {
       violacao: z.string(),
       categoria: z.string(),
       orgaoDemandante: z.string(),
-      
-      // [NOVO] Origem editável
       origem: z.nativeEnum(CaseOrigin).optional(),
-
       agenteAcolhidaId: z.string().uuid(),
       numeroSei: z.string().nullable().optional(),
       linkSei: z.string().url().nullable().optional().or(z.literal('')),
@@ -182,18 +157,9 @@ export async function caseRoutes(app: FastifyInstance) {
       const { id } = paramsSchema.parse(request.params)
       const rawData = bodySchema.parse(request.body)
       const userId = request.user.sub
+      const data = { ...rawData, nascimento: stripTime(rawData.nascimento), dataEntrada: stripTime(rawData.dataEntrada) }
 
-      const data = {
-        ...rawData,
-        nascimento: stripTime(rawData.nascimento),
-        dataEntrada: stripTime(rawData.dataEntrada),
-      }
-
-      const oldCase = await prisma.case.findUnique({ 
-        where: { id },
-        include: { agenteAcolhida: { select: { nome: true } } }
-      })
-      
+      const oldCase = await prisma.case.findUnique({ where: { id }, include: { agenteAcolhida: { select: { nome: true } } } })
       if (!oldCase) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
       const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
@@ -210,24 +176,16 @@ export async function caseRoutes(app: FastifyInstance) {
       })
 
       cache.invalidate('manager_stats')
-
       const changes = detectChanges(oldCase, data)
       const keys = Object.keys(changes)
-      if (keys.length > 0) {
-        await createLog(id, userId, LogAction.OUTRO, `Editou ${keys.length} campos.`, JSON.stringify(changes), null)
-      }
+      if (keys.length > 0) await createLog(id, userId, LogAction.OUTRO, `Editou ${keys.length} campos.`, JSON.stringify(changes), null)
 
       return reply.send(updatedCaso)
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({ message: 'Dados inválidos na edição.', errors: error.flatten().fieldErrors })
-      }
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
       return internalError(reply, 'Erro ao editar caso.', error)
     }
   })
-
-  // ... (As rotas GET /cases, GET /cases/closed, PATCH status/assign/close mantêm-se iguais às da v4.1.0)
-  // Vou reimprimir as principais para garantir a integridade do arquivo.
 
   // 2. Listar Casos Ativos
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
@@ -253,13 +211,7 @@ export async function caseRoutes(app: FastifyInstance) {
         where = buildActiveCaseWhereClause(request.user as any)
       }
 
-      if (search) {
-        where.AND = [
-          ...(where.AND || []),
-          { OR: [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }] },
-        ]
-      }
-
+      if (search) where.AND = [...(where.AND || []), { OR: [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }] }]
       if (status) where.status = status
       if (urgencia && urgencia !== 'all') where.urgencia = urgencia
       if (violacao && violacao !== 'all') where.violacao = { equals: violacao }
@@ -281,12 +233,10 @@ export async function caseRoutes(app: FastifyInstance) {
       ])
 
       return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
-    } catch (error) {
-      return internalError(reply, 'Erro interno ao listar casos.', error)
-    }
+    } catch (error) { return internalError(reply, 'Erro interno ao listar casos.', error) }
   })
 
-  // 3. Listar Casos Fechados
+  // 3. Listar Casos Fechados (Atualizado com destino)
   app.get('/cases/closed', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -297,10 +247,7 @@ export async function caseRoutes(app: FastifyInstance) {
     try {
       const { search, page, pageSize } = schema.parse(request.query)
       const where: any = { status: CaseStatus.DESLIGADO }
-
-      if (search) {
-        where.OR = [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }]
-      }
+      if (search) where.OR = [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }]
 
       const [items, total] = await Promise.all([
         prisma.case.findMany({
@@ -311,7 +258,8 @@ export async function caseRoutes(app: FastifyInstance) {
           select: {
             id: true, nomeCompleto: true, cpf: true, status: true,
             dataDesligamento: true, parecerFinal: true, urgencia: true,
-            motivoDesligamento: true,
+            motivoDesligamento: true, 
+            destinoDesligamento: true, // [NOVO]
             agenteAcolhida: { select: { nome: true } },
             especialistaPAEFI: { select: { nome: true } },
           },
@@ -320,9 +268,7 @@ export async function caseRoutes(app: FastifyInstance) {
       ])
 
       return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
-    } catch (error) {
-      return internalError(reply, 'Erro ao listar casos finalizados.', error)
-    }
+    } catch (error) { return internalError(reply, 'Erro ao listar casos finalizados.', error) }
   })
 
   // 4. Detalhes
@@ -340,12 +286,10 @@ export async function caseRoutes(app: FastifyInstance) {
       })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
       return reply.send(caso)
-    } catch (error) {
-      return internalError(reply, 'Erro ao buscar detalhes.', error)
-    }
+    } catch (error) { return internalError(reply, 'Erro ao buscar detalhes.', error) }
   })
 
-  // 5. Status
+  // 5. Mudar Status
   app.patch('/cases/:id/status', { onRequest: [app.authenticate] }, async (request, reply) => {
     const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({ status: z.nativeEnum(CaseStatus) })
@@ -359,7 +303,7 @@ export async function caseRoutes(app: FastifyInstance) {
 
       let updateData: any = { status }
       if (caso.status === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO) {
-        updateData = { status: CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, dataDesligamento: null, parecerFinal: null }
+        updateData = { status: CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, destinoDesligamento: null, dataDesligamento: null, parecerFinal: null }
       }
 
       const updated = await prisma.case.update({ where: { id }, data: updateData })
@@ -385,31 +329,44 @@ export async function caseRoutes(app: FastifyInstance) {
       const updated = await prisma.case.update({ where: { id }, data: { especialistaPAEFIId: specialistId, status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: new Date() } })
       
       cache.invalidate('manager_stats')
-      
       const oldName = oldCase?.especialistaPAEFI?.nome || 'Nenhum'
       await createLog(id, userId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldName, spec?.nome)
       return reply.send(updated)
     } catch (error) { return internalError(reply, 'Erro ao atribuir.', error) }
   })
 
-  // 7. Desligar
+  // 7. Desligar (Atualizado com Destino)
   app.patch('/cases/:id/close', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
-    const body = z.object({ parecerFinal: z.string().min(10), motivoDesligamento: z.string().min(1) })
+    const body = z.object({ 
+      parecerFinal: z.string().min(10), 
+      motivoDesligamento: z.string().min(1),
+      destinoDesligamento: z.string().optional() // [NOVO]
+    })
     try {
       const { id } = params.parse(request.params)
-      const { parecerFinal, motivoDesligamento } = body.parse(request.body)
+      const { parecerFinal, motivoDesligamento, destinoDesligamento } = body.parse(request.body)
       const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+      
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
       
       const isManager = cargo === Cargo.Gerente
       if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: 'Sem permissão.' })
       
-      const updated = await prisma.case.update({ where: { id }, data: { status: CaseStatus.DESLIGADO, parecerFinal, motivoDesligamento, dataDesligamento: new Date() } })
+      const updated = await prisma.case.update({ 
+        where: { id }, 
+        data: { 
+          status: CaseStatus.DESLIGADO, 
+          parecerFinal, 
+          motivoDesligamento, 
+          destinoDesligamento, // [NOVO]
+          dataDesligamento: new Date() 
+        } 
+      })
       
       cache.invalidate('manager_stats')
-      await createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}`)
+      await createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${motivoDesligamento}. Destino: ${destinoDesligamento || 'Não informado'}`)
       return reply.send(updated)
     } catch (error) { return internalError(reply, 'Erro ao desligar.', error) }
   })
@@ -424,7 +381,14 @@ export async function caseRoutes(app: FastifyInstance) {
       const csv = formatCsv({ headers: true })
       csv.pipe(reply.raw)
       casos.forEach((c) => {
-        csv.write({ ID: c.id, Nome: c.nomeCompleto, CPF: c.cpf, Nascimento: formatDateForCsv(c.nascimento), Sexo: c.sexo, Telefone: c.telefone, Endereco: c.endereco, Entrada: formatDateForCsv(c.dataEntrada), Urgencia: c.urgencia, Violacao: c.violacao, Categoria: c.categoria, Orgao: c.orgaoDemandante, Status: c.status, Agente: c.agenteAcolhida?.nome ?? 'N/A', Especialista: c.especialistaPAEFI?.nome ?? 'N/A', Data_Desligamento: formatDateForCsv(c.dataDesligamento), Parecer_Final: c.parecerFinal ?? 'N/A', Origem: c.origem })
+        csv.write({ 
+          ID: c.id, Nome: c.nomeCompleto, CPF: c.cpf, Nascimento: formatDateForCsv(c.nascimento), Sexo: c.sexo, 
+          Telefone: c.telefone, Endereco: c.endereco, Entrada: formatDateForCsv(c.dataEntrada), Urgencia: c.urgencia, 
+          Violacao: c.violacao, Categoria: c.categoria, Orgao: c.orgaoDemandante, Status: c.status, 
+          Agente: c.agenteAcolhida?.nome ?? 'N/A', Especialista: c.especialistaPAEFI?.nome ?? 'N/A', 
+          Data_Desligamento: formatDateForCsv(c.dataDesligamento), Motivo_Desligamento: c.motivoDesligamento, 
+          Destino_Desligamento: c.destinoDesligamento, Parecer_Final: c.parecerFinal ?? 'N/A', Origem: c.origem 
+        })
       })
       csv.end()
     } catch (error) { return internalError(reply, 'Erro ao exportar.', error) }

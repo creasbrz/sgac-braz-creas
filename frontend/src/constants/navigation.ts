@@ -1,7 +1,7 @@
 // frontend/src/constants/navigation.ts
 import {
   PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
-  UserCog, ShieldCheck, Projector // [NOVO ICONE]
+  UserCog, ShieldCheck, Projector, AlertTriangle // [NOVO ICONE]
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ROUTES } from './routes'
@@ -30,12 +30,18 @@ export const navLinks: NavLink[] = [
     allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
     section: 'Acompanhamento',
   },
-  // [NOVO]
+  {
+    to: ROUTES.WAITING_LIST, // [NOVO]
+    icon: AlertTriangle,
+    label: 'Fila de Espera',
+    allowedRoles: ['Gerente'],
+    section: 'Acompanhamento',
+  },
   {
     to: ROUTES.GROUPS,
     icon: Projector,
     label: 'Grupos e Oficinas',
-    allowedRoles: ['Gerente', 'Especialista'], // Geralmente Agente Social não lidera grupos sozinho
+    allowedRoles: ['Gerente', 'Especialista'],
     section: 'Acompanhamento',
   },
   {

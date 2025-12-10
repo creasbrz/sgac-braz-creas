@@ -1,6 +1,4 @@
 // frontend/src/types/case.ts
-
-// [NOVO] Interface para Benefícios/Entregas
 export interface ServiceDeliverable {
   id: string
   tipo: string
@@ -45,10 +43,7 @@ export interface PafData {
   createdAt: string
   updatedAt?: string
   versaoAtual?: number
-  autor: {
-    id: string
-    nome: string
-  }
+  autor: { id: string; nome: string }
 }
 
 export interface CaseLog {
@@ -58,9 +53,7 @@ export interface CaseLog {
   createdAt: string
   valorAnterior?: string | null
   valorNovo?: string | null
-  autor: {
-    nome: string
-  }
+  autor: { nome: string }
 }
 
 export interface Referral {
@@ -72,9 +65,7 @@ export interface Referral {
   dataEnvio: string
   retorno?: string | null
   createdAt: string
-  autor: {
-    nome: string
-  }
+  autor: { nome: string }
 }
 
 export interface CaseDetailData {
@@ -90,8 +81,6 @@ export interface CaseDetailData {
   violacao: string
   categoria: string
   orgaoDemandante: string
-  
-  // [NOVO v4.2.0]
   origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA'
 
   numeroSei: string | null
@@ -99,26 +88,15 @@ export interface CaseDetailData {
   observacoes: string | null
   status: string
 
-  criadoPor: {
-    nome: string
-  }
+  criadoPor: { nome: string }
+  agenteAcolhida: { id: string, nome: string } | null
+  especialistaPAEFI: { id: string, nome: string } | null
 
-  agenteAcolhida: {
-    id: string
-    nome: string
-  } | null
-
-  especialistaPAEFI: {
-    id: string
-    nome: string
-  } | null
-
-  // benefícios (array de strings) foi removido na prática, mas mantido na interface se necessário para legado
   beneficios: string[] 
-  
   logs: CaseLog[]
 
   motivoDesligamento: string | null
+  destinoDesligamento: string | null // [NOVO]
   parecerFinal: string | null
   dataInicioPAEFI?: string
   dataDesligamento?: string
@@ -129,11 +107,7 @@ export interface Evolution {
   conteudo: string
   sigilo: boolean
   createdAt: string
-  autor: {
-    id: string
-    nome: string
-    cargo?: string
-  }
+  autor: { id: string; nome: string; cargo?: string }
 }
 
 export interface UserOption {
@@ -152,12 +126,8 @@ export interface CaseSummary {
   sexo?: string
   dataDesligamento?: string | null
   motivoDesligamento?: string | null
+  destinoDesligamento?: string | null // [NOVO]
   
-  agenteAcolhida: {
-    nome: string
-  } | null
-
-  especialistaPAEFI: {
-    nome: string
-  } | null
+  agenteAcolhida: { nome: string } | null
+  especialistaPAEFI: { nome: string } | null
 }

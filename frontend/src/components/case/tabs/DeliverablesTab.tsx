@@ -15,11 +15,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import type { ServiceDeliverable } from '@/types/case'
 
-// Lista de benefícios baseada na documentação do CREAS
+// [ATUALIZADO] Lista unificada de Benefícios Eventuais + Documentação
 const TIPOS_ENTREGA = [
-  'Prato Cheio', 'BPC', 'Auxílio Natalidade', 'Auxílio por Morte', 
-  'CNH Social', 'Carteira do Idoso', 'Isenção de RG', 'Cesta de Alimentos',
-  'Declaração de Hipossuficiência', 'Kit Enxoval'
+  // Benefícios Eventuais (Financeiros/Bens)
+  'Auxílio Natalidade',
+  'Auxílio Calamidade',
+  'Auxílio Vulnerabilidade',
+  'Benefício Excepcional',
+  'Prato Cheio',
+  'Cesta de Alimentos',
+  'Kit Enxoval',
+  
+  // Documentação e Isenções
+  'Declaração de Hipossuficiência',
+  'Carteira do Idoso',
+  'Isenção de RG',
+  '2ª Via de Certidão',
+  'Passe Livre (PCD)',
+  
+  // Encaminhamentos que geram "entregas" de documentos
+  'Encaminhamento para BPC',
+  'Encaminhamento para Bolsa Família'
 ]
 
 export function DeliverablesTab({ caseId }: { caseId: string }) {
@@ -39,7 +55,8 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
       setIsAddOpen(false)
       setSelectedType('')
       queryClient.invalidateQueries({ queryKey: ['deliverables', caseId] })
-    }
+    },
+    onError: () => toast.error('Erro ao registrar solicitação.')
   })
 
   const { mutate: updateStatus } = useMutation({
@@ -48,7 +65,8 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
     onSuccess: () => {
       toast.success('Status atualizado.')
       queryClient.invalidateQueries({ queryKey: ['deliverables', caseId] })
-    }
+    },
+    onError: () => toast.error('Erro ao atualizar status.')
   })
 
   const getStatusBadge = (status: string) => {
@@ -68,9 +86,9 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-base font-semibold flex items-center gap-2">
-            <PackageCheck className="h-5 w-5 text-primary" /> Entregas e Benefícios
+            <PackageCheck className="h-5 w-5 text-primary" /> Entregas e Benefícios Eventuais
           </h3>
-          <p className="text-sm text-muted-foreground">Gestão de benefícios eventuais e documentação.</p>
+          <p className="text-sm text-muted-foreground">Gestão de concessões de benefícios e documentação.</p>
         </div>
         <Button size="sm" onClick={() => setIsAddOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Nova Solicitação
@@ -81,25 +99,25 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
         {isLoading && <div className="text-center py-4"><Loader2 className="animate-spin h-6 w-6 mx-auto"/></div>}
         
         {items.map((item) => (
-          <Card key={item.id} className="overflow-hidden">
-            <CardContent className="p-4 flex items-center justify-between">
+          <Card key={item.id} className="overflow-hidden border shadow-sm">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <p className="font-semibold text-foreground">{item.tipo}</p>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                   <span>Solicitado em {format(new Date(item.dataSolicitacao), "dd/MM/yyyy", { locale: ptBR })}</span>
                   <span>•</span>
-                  <span>Por: {item.responsavel.nome}</span>
-                  {item.dataEntrega && <span className="text-emerald-600">• Entregue em {format(new Date(item.dataEntrega), "dd/MM")}</span>}
+                  <span>Resp: {item.responsavel.nome}</span>
+                  {item.dataEntrega && <span className="text-emerald-600 font-medium">• Entregue em {format(new Date(item.dataEntrega), "dd/MM")}</span>}
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
                 {getStatusBadge(item.status)}
                 
-                {item.status !== 'ENTREGUE' && (
+                {item.status !== 'ENTREGUE' && item.status !== 'NEGADO' && (
                   <Select onValueChange={(val) => updateStatus({ id: item.id, status: val })}>
-                    <SelectTrigger className="w-[130px] h-8 text-xs">
-                      <SelectValue placeholder="Alterar..." />
+                    <SelectTrigger className="w-[130px] h-8 text-xs bg-background">
+                      <SelectValue placeholder="Atualizar..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="SOLICITADO">Solicitado</SelectItem>
@@ -114,21 +132,21 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
           </Card>
         ))}
         {!isLoading && items.length === 0 && (
-          <div className="text-center py-10 border-2 border-dashed rounded-lg text-muted-foreground">
-            Nenhuma entrega registrada.
+          <div className="text-center py-10 border-2 border-dashed rounded-lg text-muted-foreground bg-muted/10">
+            Nenhuma entrega ou benefício registrado para este caso.
           </div>
         )}
       </div>
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Nova Solicitação</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Nova Solicitação de Benefício</DialogTitle></DialogHeader>
           <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label>Tipo de Benefício/Documento</Label>
+              <Label>Tipo de Benefício ou Documento</Label>
               <Select value={selectedType} onValueChange={setSelectedType}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[300px]">
                   {TIPOS_ENTREGA.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -137,7 +155,7 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancelar</Button>
             <Button onClick={() => createItem()} disabled={!selectedType || isPending}>
-              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Registrar
+              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Registrar Solicitação
             </Button>
           </DialogFooter>
         </DialogContent>

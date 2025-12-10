@@ -23,7 +23,8 @@ import { TeamOverview } from "./pages/TeamOverview";
 import { GlobalAudit } from "./pages/GlobalAudit";
 import { NotFound } from "./pages/NotFound";
 import { AdvancedAnalytics } from "./pages/AdvancedAnalytics";
-import { GroupManagement } from "./pages/GroupManagement"; // [NOVO]
+import { GroupManagement } from "./pages/GroupManagement";
+import { WaitingList } from "./pages/WaitingList"; // [NOVO]
 
 export function App() {
   return (
@@ -55,7 +56,6 @@ export function App() {
                     <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
                   </Route>
 
-                  {/* [NOVO] Rota de Grupos - Apenas Gerente e Especialista */}
                   <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista"]} />}>
                      <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
                   </Route>
@@ -64,6 +64,7 @@ export function App() {
                     <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
                     <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
                     <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
+                    <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} /> {/* [NOVO] */}
                     <Route path="audit" element={<GlobalAudit />} />
                     <Route path="analytics" element={<AdvancedAnalytics />} />
                   </Route>

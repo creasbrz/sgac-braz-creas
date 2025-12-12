@@ -80,21 +80,48 @@ async function groupRoutes(app) {
       const bodySchema = import_zod.z.object({
         tema: import_zod.z.string().min(3),
         tipo: import_zod.z.nativeEnum(import_client2.GroupType),
-        dataRealizacao: import_zod.z.string(),
+        // Aceita array de strings ou string única (para compatibilidade)
+        datas: import_zod.z.array(import_zod.z.string()).optional(),
+        dataRealizacao: import_zod.z.string().optional(),
         local: import_zod.z.string().optional(),
         descricao: import_zod.z.string().optional(),
         orgaosEnvolvidos: import_zod.z.array(import_zod.z.string()).default([])
       });
       const data = bodySchema.parse(req.body);
       const userId = req.user.sub;
-      const group = await prisma.groupActivity.create({
+      let datesToCreate = [];
+      if (data.datas && data.datas.length > 0) {
+        datesToCreate = data.datas;
+      } else if (data.dataRealizacao) {
+        datesToCreate = [data.dataRealizacao];
+      } else {
+        return reply.status(400).send({ message: "Selecione pelo menos uma data." });
+      }
+      const createdGroups = await Promise.all(
+        datesToCreate.map(async (dateStr) => {
+          return prisma.groupActivity.create({
+            data: {
+              tema: data.tema,
+              tipo: data.tipo,
+              dataRealizacao: new Date(dateStr),
+              local: data.local,
+              descricao: data.descricao,
+              orgaosEnvolvidos: data.orgaosEnvolvidos,
+              facilitadorId: userId
+            }
+          });
+        })
+      );
+      await prisma.caseLog.create({
         data: {
-          ...data,
-          dataRealizacao: new Date(data.dataRealizacao),
-          facilitadorId: userId
+          casoId: "SISTEMA",
+          // Log global ou associado ao usuário
+          autorId: userId,
+          acao: import_client2.LogAction.ATIVIDADE_GRUPO_CRIADA,
+          descricao: `Criou atividade "${data.tema}" para ${datesToCreate.length} data(s).`
         }
       });
-      return reply.status(201).send(group);
+      return reply.status(201).send({ count: createdGroups.length, groups: createdGroups });
     } catch (error) {
       console.error("Erro ao criar grupo:", error);
       return reply.status(500).send({ message: "Erro ao criar atividade." });
@@ -112,19 +139,16 @@ async function groupRoutes(app) {
         const exists = await prisma.groupAttendance.findUnique({
           where: {
             grupoId_casoId: { grupoId: id, casoId: caseId }
-            // [CORRIGIDO: casoId explicito]
           }
         });
         if (!exists) {
           await prisma.groupAttendance.create({
             data: { grupoId: id, casoId: caseId, presente: false }
-            // [CORRIGIDO]
           });
           const dataFormatada = (0, import_date_fns.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale.ptBR });
           await prisma.evolucao.create({
             data: {
               casoId: caseId,
-              // [CORRIGIDO]
               autorId: userId,
               sigilo: false,
               conteudo: `[SISTEMA] Usu\xE1rio vinculado \xE0 atividade "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
@@ -150,7 +174,6 @@ async function groupRoutes(app) {
       const attendance = await prisma.groupAttendance.update({
         where: {
           grupoId_casoId: { grupoId: groupId, casoId: caseId }
-          // [CORRIGIDO]
         },
         data: { presente, observacoes }
       });
@@ -161,7 +184,6 @@ async function groupRoutes(app) {
         await prisma.evolucao.create({
           data: {
             casoId: caseId,
-            // [CORRIGIDO]
             autorId: userId,
             sigilo: false,
             conteudo: `[SISTEMA] Registro de Frequ\xEAncia - ${group.tema} (${dataFormatada}). Status: ${statusTexto}.${obsTexto}`
@@ -171,7 +193,6 @@ async function groupRoutes(app) {
       await prisma.caseLog.create({
         data: {
           casoId: caseId,
-          // [CORRIGIDO]
           autorId: userId,
           acao: import_client2.LogAction.PRESENCA_REGISTRADA,
           descricao: `Presen\xE7a em grupo (${presente ? "Presente" : "Ausente"})`

@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { MoreHorizontal, Clock, AlertCircle } from 'lucide-react'
+import { MoreHorizontal, Clock } from 'lucide-react' // [CORREÇÃO] Removido AlertCircle
 import { clsx } from 'clsx'
 
 import { ROUTES } from '@/constants/routes'
@@ -17,7 +17,6 @@ interface CaseKanbanProps {
   isLoading: boolean
 }
 
-// Colunas atualizadas com a nova regra de negócio (Acolhida Especializada)
 const COLUMNS = [
   { id: 'AGUARDANDO_ACOLHIDA', title: 'Triagem', color: 'border-t-blue-500', bg: 'bg-blue-50/50 dark:bg-blue-900/10' },
   { id: 'EM_ACOLHIDA', title: 'Em Acolhida', color: 'border-t-indigo-500', bg: 'bg-indigo-50/50 dark:bg-indigo-900/10' },

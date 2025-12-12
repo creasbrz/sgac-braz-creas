@@ -1,5 +1,5 @@
 // frontend/src/components/CaseTable.tsx
-import { useState, useEffect } from 'react' // [Adicionado useEffect]
+import { useState } from 'react' // [CORREÇÃO] Removido useEffect
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { MoreHorizontal, Search, Edit, FileDown, Loader2, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -35,7 +35,6 @@ interface ExtendedCaseSummary extends CaseSummary {
 
 interface PaginatedCasesResponse { items: ExtendedCaseSummary[]; total: number; page: number; pageSize: number; totalPages: number }
 
-// [ATUALIZAÇÃO] Adicionada prop defaultView
 interface CaseTableProps { 
   endpoint: '/cases' | '/cases/closed'; 
   title: string; 
@@ -108,7 +107,6 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my' }: 
     })
   }
 
-  // [IMPORTANTE] A query key deve incluir defaultView para recarregar quando mudar
   const { data: result, isLoading } = useQuery<PaginatedCasesResponse>({
     queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting, defaultView],
     queryFn: async () => {
@@ -118,7 +116,7 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my' }: 
         violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined,
         sortBy: sorting?.field,
         sortOrder: sorting?.order,
-        view: defaultView // [NOVO] Passa o view para o backend
+        view: defaultView 
       }
       const response = await api.get(endpoint, { params })
       return response.data

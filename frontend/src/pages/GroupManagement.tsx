@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays, Trash2 } from 'lucide-react'
+import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react' // [CORREÇÃO] Removido Trash2
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,6 @@ export function GroupManagement() {
   
   const [newTheme, setNewTheme] = useState('')
   const [newType, setNewType] = useState('OFICINA')
-  // [ALTERAÇÃO] Mudamos de single date para array de datas
   const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [tempDate, setTempDate] = useState('')
   
@@ -67,7 +66,6 @@ export function GroupManagement() {
       await api.post('/groups', {
         tema: newTheme,
         tipo: newType,
-        // Envia o array de datas
         datas: selectedDates,
         local: newLocal,
         descricao: newDesc,
@@ -78,7 +76,6 @@ export function GroupManagement() {
       toast.success('Atividade(s) criada(s)!')
       setIsCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ['groups'] })
-      // Reset form
       setNewTheme(''); setSelectedDates([]); setTempDate(''); setNewLocal(''); setNewDesc(''); setNewOrgaos([])
     },
     onError: () => toast.error('Erro ao criar grupo.')
@@ -116,7 +113,7 @@ export function GroupManagement() {
 
   const handleAddDate = () => {
     if (tempDate && !selectedDates.includes(tempDate)) {
-      setSelectedDates(prev => [...prev, tempDate].sort()) // Ordena cronologicamente
+      setSelectedDates(prev => [...prev, tempDate].sort()) 
       setTempDate('')
     }
   }
@@ -254,7 +251,7 @@ export function GroupManagement() {
               </div>
             </div>
 
-            {/* [NOVO] SELEÇÃO DE MÚLTIPLAS DATAS */}
+            {/* SELEÇÃO DE MÚLTIPLAS DATAS */}
             <div className="space-y-2 border p-3 rounded-md bg-muted/20">
               <Label className="text-primary">Datas de Realização</Label>
               <div className="flex gap-2">

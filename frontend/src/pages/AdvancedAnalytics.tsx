@@ -15,8 +15,8 @@ import {
   Pie,
   Cell,
   Legend,
-  BarChart, // [CORREÇÃO] Adicionado
-  Bar,      // [CORREÇÃO] Adicionado
+  BarChart,
+  Bar,
 } from "recharts"
 
 import { Loader2, BarChart3, Clock, TrendingUp, Download } from "lucide-react"
@@ -26,10 +26,8 @@ import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 
-// CORES
 const COLORS = ["hsl(var(--primary))", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
 
-// Skeleton simples
 function PremiumSkeleton() {
   return (
     <div className="space-y-6 animate-pulse">
@@ -41,7 +39,6 @@ function PremiumSkeleton() {
   )
 }
 
-// Regressão linear
 function linearRegressionForecast(xs: number[], ys: number[]) {
   if (xs.length < 2) return null
   const n = xs.length
@@ -63,7 +60,6 @@ function linearRegressionForecast(xs: number[], ys: number[]) {
 export function AdvancedAnalytics() {
   const [periodMonths, setPeriodMonths] = useState<number>(12)
   
-  // 1. Dados Principais
   const { data, isLoading, isError } = useQuery({
     queryKey: ["stats", "advanced", periodMonths],
     queryFn: async () => {
@@ -73,7 +69,6 @@ export function AdvancedAnalytics() {
     staleTime: 1000 * 60 * 5,
   })
 
-  // 2. Produtividade
   const { data: productivity } = useQuery({
     queryKey: ["stats", "productivity"],
     queryFn: async () => {
@@ -84,7 +79,6 @@ export function AdvancedAnalytics() {
     }
   })
 
-  // 3. Heatmap
   const { data: heatmap } = useQuery({
     queryKey: ["stats", "heatmap", periodMonths],
     queryFn: async () => {
@@ -95,7 +89,6 @@ export function AdvancedAnalytics() {
     }
   })
 
-  // Exportação PDF
   const exportRef = useRef<HTMLDivElement | null>(null)
   const [isExporting, setIsExporting] = useState(false)
 
@@ -104,16 +97,13 @@ export function AdvancedAnalytics() {
       setIsExporting(true)
       // @ts-ignore
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
-      
       if (!exportRef.current) return
-      
       const canvas = await html2canvas(exportRef.current, { scale: 2, useCORS: true })
       const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('landscape', 'pt', 'a4')
       const pdfWidth = pdf.internal.pageSize.getWidth()
       const pdfHeight = pdf.internal.pageSize.getHeight()
       const ratio = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height)
-      
       pdf.addImage(imgData, 'PNG', 20, 20, canvas.width * ratio - 40, canvas.height * ratio - 40)
       pdf.save(`analytics_sgac_${new Date().toISOString().slice(0,10)}.pdf`)
     } catch (e) {
@@ -134,19 +124,25 @@ export function AdvancedAnalytics() {
   trendData.forEach((d: any, i: number) => { xs.push(i); ys.push(d.novos) })
   const forecast = linearRegressionForecast(xs, ys)
 
+  // ESTILO DO TOOLTIP DARK MODE
+  const tooltipStyle = {
+    backgroundColor: 'hsl(var(--popover))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: '8px',
+    color: 'hsl(var(--popover-foreground))',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-700" ref={exportRef}>
 
-      {/* Controles */}
       <div className="flex flex-col gap-4">
-        {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-           <DashboardStatCard title="Tempo Médio" value={data.avgHandlingTime} description="Dias" icon={Clock} colorClass="text-blue-500" />
-           <DashboardStatCard title="Total Ativos" value={data.totalActive} description="Casos hoje" icon={BarChart3} colorClass="text-purple-500" />
-           <DashboardStatCard title="Novos (Mês)" value={trendData[trendData.length-1]?.novos ?? 0} description="Entradas" icon={TrendingUp} colorClass="text-emerald-500" />
+           <DashboardStatCard index={0} title="Tempo Médio" value={data.avgHandlingTime} description="Dias" icon={Clock} colorClass="text-blue-500" />
+           <DashboardStatCard index={1} title="Total Ativos" value={data.totalActive} description="Casos hoje" icon={BarChart3} colorClass="text-purple-500" />
+           <DashboardStatCard index={2} title="Novos (Mês)" value={trendData[trendData.length-1]?.novos ?? 0} description="Entradas" icon={TrendingUp} colorClass="text-emerald-500" />
         </div>
 
-        {/* Filtros */}
         <div className="flex gap-2 items-center justify-end">
           <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
             <SelectTrigger className="w-[140px] bg-background"><SelectValue /></SelectTrigger>
@@ -162,7 +158,6 @@ export function AdvancedAnalytics() {
         </div>
       </div>
 
-      {/* Linha + Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -172,14 +167,14 @@ export function AdvancedAnalytics() {
           <CardContent>
             <div style={{ width: '99%', height: 320, minHeight: 320 }}>
               <ResponsiveContainer width="100%" height="100%" debounce={200}>
-                <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
+                 <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
                   <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
                   <YAxis fontSize={10} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))' }} />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Legend verticalAlign="top" height={36} />
-                  <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} />
-                  <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} />
+                  <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                  <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -194,10 +189,7 @@ export function AdvancedAnalytics() {
         </div>
       </div>
 
-      {/* Produtividade e Heatmap e Pizza */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Gráfico de Violações (Pizza) */}
         <Card>
           <CardHeader><CardTitle>Violações (Top 5)</CardTitle></CardHeader>
           <CardContent>
@@ -213,12 +205,14 @@ export function AdvancedAnalytics() {
                         outerRadius={70} 
                         paddingAngle={5} 
                         dataKey="value"
+                        stroke="hsl(var(--background))" // Borda do gráfico adapta ao tema
+                        strokeWidth={2}
                       >
                         {pieData.map((_: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={{ borderRadius: '8px', backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
+                      <Tooltip contentStyle={tooltipStyle} />
                       <Legend 
                         layout="horizontal" 
                         verticalAlign="bottom" 
@@ -233,7 +227,6 @@ export function AdvancedAnalytics() {
           </CardContent>
         </Card>
 
-        {/* Produtividade por Técnico */}
         <Card>
           <CardHeader><CardTitle>Produtividade Atual</CardTitle></CardHeader>
           <CardContent>
@@ -243,29 +236,35 @@ export function AdvancedAnalytics() {
                     <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" width={70} tickLine={false} axisLine={false} fontSize={11}/>
-                      <Tooltip cursor={{fill: 'transparent'}} />
+                      <Tooltip cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} contentStyle={tooltipStyle} />
                       <Bar dataKey="value" fill={COLORS[4]} radius={[0,4,4,0]} barSize={20} />
-                    </BarChart>
+                  </BarChart>
                   </ResponsiveContainer>
                 ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados.</div>}
              </div>
           </CardContent>
         </Card>
 
-        {/* Heatmap */}
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle>Intensidade de Atividades</CardTitle></CardHeader>
           <CardContent>
-             <div className="h-[150px] overflow-y-auto">
+             <div className="h-[150px] overflow-y-auto pr-2">
                 {heatmap && heatmap.length > 0 ? (
                    <div className="grid grid-cols-7 sm:grid-cols-12 md:grid-cols-[repeat(auto-fill,minmax(30px,1fr))] gap-1">
                       {heatmap.slice(0, 90).map((h: any) => { 
                          const intensity = Math.min(4, Math.ceil(h.count / 2));
-                         const colors = ['bg-muted/20', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-400', 'bg-emerald-600'];
+                         // Cores adaptadas para Dark Mode (Emerald)
+                         const colors = [
+                           'bg-muted/30 dark:bg-muted/10', 
+                           'bg-emerald-200 dark:bg-emerald-900/40', 
+                           'bg-emerald-300 dark:bg-emerald-800/60', 
+                           'bg-emerald-400 dark:bg-emerald-600/80', 
+                           'bg-emerald-600 dark:bg-emerald-500'
+                         ];
                          return (
-                            <div key={h.date} title={`${h.date}: ${h.count} logs`} className={`aspect-square rounded-sm ${colors[intensity]} text-[10px] flex items-center justify-center text-transparent hover:text-black transition-all cursor-default`}>
+                           <div key={h.date} title={`${h.date}: ${h.count} logs`} className={`aspect-square rounded-sm ${colors[intensity]} text-[10px] flex items-center justify-center text-transparent hover:text-foreground transition-all cursor-default`}>
                                {h.count}
-                            </div>
+                           </div>
                          )
                       })}
                    </div>

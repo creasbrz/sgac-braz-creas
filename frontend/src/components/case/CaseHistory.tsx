@@ -1,3 +1,4 @@
+// frontend/src/components/case/CaseHistory.tsx
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { 
@@ -28,15 +29,16 @@ export function CaseHistory({ logs: initialLogs, caseId }: CaseHistoryProps) {
 
   const logs = initialLogs || fetchedData || []
 
+  // [CORREÇÃO] Cores adaptativas (Opacity-based)
   const getLogConfig = (acao: string) => {
     switch (acao) {
-      case 'CRIACAO': return { icon: PlusCircle, color: 'text-blue-600', bg: 'bg-blue-50' }
-      case 'MUDANCA_STATUS': return { icon: RefreshCw, color: 'text-amber-600', bg: 'bg-amber-50' }
-      case 'ATRIBUICAO': return { icon: UserPlus, color: 'text-purple-600', bg: 'bg-purple-50' }
-      case 'DESLIGAMENTO': return { icon: Power, color: 'text-red-600', bg: 'bg-red-50' }
-      case 'OUTRO': return { icon: FileEdit, color: 'text-slate-600', bg: 'bg-slate-50' }
-      case 'EVOLUCAO_CRIADA': return { icon: FileEdit, color: 'text-emerald-600', bg: 'bg-emerald-50' }
-      default: return { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-100' }
+      case 'CRIACAO': return { icon: PlusCircle, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10' }
+      case 'MUDANCA_STATUS': return { icon: RefreshCw, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10' }
+      case 'ATRIBUICAO': return { icon: UserPlus, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/10' }
+      case 'DESLIGAMENTO': return { icon: Power, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/10' }
+      case 'OUTRO': return { icon: FileEdit, color: 'text-slate-600 dark:text-slate-400', bg: 'bg-slate-500/10' }
+      case 'EVOLUCAO_CRIADA': return { icon: FileEdit, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10' }
+      default: return { icon: AlertCircle, color: 'text-gray-500 dark:text-gray-400', bg: 'bg-gray-500/10' }
     }
   }
 
@@ -53,7 +55,6 @@ export function CaseHistory({ logs: initialLogs, caseId }: CaseHistoryProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header discreto para explicar o que é esta aba */}
       <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground border border-border/50">
         <ShieldCheck className="h-4 w-4" />
         <span>Este é o registro de auditoria automática do sistema. Para anotações técnicas, use a aba <strong>Evoluções</strong>.</span>
@@ -65,7 +66,6 @@ export function CaseHistory({ logs: initialLogs, caseId }: CaseHistoryProps) {
             <p className="text-sm text-muted-foreground text-center py-8">Nenhum registro de auditoria.</p>
           ) : (
             <div className="relative ml-3 space-y-0">
-              {/* Linha Vertical Contínua */}
               <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border/60 -z-10" />
 
               {logs.map((log: CaseLog) => {
@@ -75,7 +75,6 @@ export function CaseHistory({ logs: initialLogs, caseId }: CaseHistoryProps) {
 
                 return (
                   <div key={log.id} className="relative pl-10 py-3 group hover:bg-muted/30 rounded-md transition-colors -ml-2 pr-2">
-                    {/* Ícone (Dot) */}
                     <span className={`absolute left-0 top-3.5 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-sm z-10`}>
                       <Icon className={`h-3 w-3 ${config.color}`} />
                     </span>
@@ -95,20 +94,19 @@ export function CaseHistory({ logs: initialLogs, caseId }: CaseHistoryProps) {
                         <span>Usuário: <span className="font-medium text-foreground/80">{log.autor?.nome ?? 'Sistema'}</span></span>
                       </div>
 
-                      {/* DIFF VISUAL (Mais compacto para auditoria) */}
                       {changes && (
-                        <div className="mt-2 bg-background border rounded-sm p-2 text-[11px] grid gap-1 shadow-sm">
+                        <div className="mt-2 bg-background/50 border rounded-sm p-2 text-[11px] grid gap-1 shadow-sm">
                           {Object.entries(changes).map(([field, diff]: any) => (
                             <div key={field} className="grid grid-cols-[100px_1fr_10px_1fr] items-center gap-2">
                               <span className="font-semibold text-muted-foreground truncate" title={field}>
                                 {field.replace(/([A-Z])/g, ' $1').trim()}
                               </span>
-                              <span className="text-destructive/80 line-through truncate text-right px-1 bg-red-50 rounded">
-                                {String(diff.from || 'Vazio')}
+                              <span className="text-destructive/80 line-through truncate text-right px-1 bg-red-500/10 rounded">
+                                 {String(diff.from || 'Vazio')}
                               </span>
                               <ArrowRight className="h-3 w-3 text-muted-foreground mx-auto" />
-                              <span className="text-emerald-700 font-medium truncate px-1 bg-emerald-50 rounded">
-                                {String(diff.to || 'Vazio')}
+                              <span className="text-emerald-700 dark:text-emerald-400 font-medium truncate px-1 bg-emerald-500/10 rounded">
+                                 {String(diff.to || 'Vazio')}
                               </span>
                             </div>
                           ))}
@@ -119,7 +117,7 @@ export function CaseHistory({ logs: initialLogs, caseId }: CaseHistoryProps) {
                         <div className="flex items-center gap-2 text-[11px] mt-1">
                            <Badge variant="outline" className="font-normal text-muted-foreground h-5">{log.valorAnterior}</Badge>
                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                           <Badge variant="outline" className="font-medium bg-primary/5 text-primary border-primary/20 h-5">{log.valorNovo}</Badge>
+                           <Badge variant="outline" className="font-medium bg-primary/10 text-primary border-primary/20 h-5">{log.valorNovo}</Badge>
                         </div>
                       )}
                     </div>

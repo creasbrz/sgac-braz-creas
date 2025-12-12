@@ -23,14 +23,12 @@ import {
 } from '@/components/ui/card'
 import { RmaReport } from '@/components/RmaReport'
 
-// Interface flexível para o Recharts
 interface StatData {
   name: string
   value: number
   [key: string]: any
 }
 
-// Interface completa da resposta da API /stats
 interface Stats {
   totalCases: number
   acolhidasCount: number
@@ -43,6 +41,15 @@ interface Stats {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560', '#775DD0']
 
+// [NOVO] Estilo unificado para Tooltips (Dark Mode Friendly)
+const tooltipStyle = {
+  backgroundColor: 'hsl(var(--popover))',
+  border: '1px solid hsl(var(--border))',
+  borderRadius: '8px',
+  color: 'hsl(var(--popover-foreground))',
+  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+}
+
 export function Reports() {
   const { data: stats, isLoading, isError } = useQuery<Stats>({
     queryKey: ['reports-stats'],
@@ -50,7 +57,6 @@ export function Reports() {
       const response = await api.get('/stats')
       return response.data
     },
-    // [CORREÇÃO] Removemos keepPreviousData que não existe na versão nova do React Query
     staleTime: 1000 * 60 * 5, 
   })
 
@@ -82,7 +88,7 @@ export function Reports() {
             <CardDescription>Histórico completo da unidade.</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-blue-600">{stats.totalCases}</p>
+            <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">{stats.totalCases}</p>
           </CardContent>
         </Card>
 
@@ -102,7 +108,7 @@ export function Reports() {
             <CardDescription>Casos em acompanhamento técnico.</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-purple-600">{stats.acompanhamentosCount}</p>
+            <p className="text-4xl font-bold text-purple-600 dark:text-purple-400">{stats.acompanhamentosCount}</p>
           </CardContent>
         </Card>
       </div>
@@ -118,7 +124,7 @@ export function Reports() {
           <CardContent>
             <div style={{ width: '100%', height: 300 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={200}>
-                <BarChart data={stats.casesByUrgency} margin={{ top: 10, right: 10, left: -20, bottom: 30 }}>
+                 <BarChart data={stats.casesByUrgency} margin={{ top: 10, right: 10, left: -20, bottom: 30 }}>
                   <XAxis 
                     dataKey="name" 
                     fontSize={10} 
@@ -129,11 +135,8 @@ export function Reports() {
                     interval={0} 
                   />
                   <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {/* [CORREÇÃO] Adicionado tipagem explícita (_entry: any) */}
                     {stats.casesByUrgency.map((_entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
@@ -153,7 +156,7 @@ export function Reports() {
             <div style={{ width: '100%', height: 300 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={200}>
                 <PieChart>
-                  <Pie
+                 <Pie
                     data={stats.casesByCategory}
                     cx="50%"
                     cy="50%"
@@ -161,17 +164,16 @@ export function Reports() {
                     outerRadius={80}
                     paddingAngle={5}
                     dataKey="value"
+                    stroke="hsl(var(--background))"
+                    strokeWidth={2}
                   >
-                    {/* [CORREÇÃO] Adicionado tipagem explícita (_entry: any) */}
                     {stats.casesByCategory.map((_entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Legend layout="vertical" verticalAlign="middle" align="right" iconType="circle" />
-                </PieChart>
+                 </PieChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
@@ -197,12 +199,8 @@ export function Reports() {
                   axisLine={false} 
                   fontSize={12} 
                 />
-                <Tooltip 
-                  cursor={{fill: 'transparent'}}
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                />
+                <Tooltip contentStyle={tooltipStyle} cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} />
                 <Bar dataKey="value" barSize={20} radius={[0, 4, 4, 0]}>
-                  {/* [CORREÇÃO] Adicionado tipagem explícita (_entry: any) */}
                   {stats.productivity.map((_entry: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
@@ -213,7 +211,6 @@ export function Reports() {
         </CardContent>
       </Card>
 
-      {/* Componente RMA Separado */}
       <RmaReport />
     </div>
   )

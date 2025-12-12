@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, MapPin, Phone, FileText, Clock, AlertTriangle,
   Paperclip, Activity, Edit, CheckCircle2, Circle, ShieldCheck, Network, 
-  Loader2, Users, PackageCheck // [NOVO ICONE]
+  Loader2, Users, PackageCheck, Printer // [IMPORTANTE] Icone Printer adicionado
 } from "lucide-react"
 import { clsx } from "clsx"
 
@@ -28,11 +28,12 @@ import { isValidBrazilianPhone } from "@/utils/phone"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { formatCPF, formatPhone } from '@/utils/formatters'
+import { generateCasePDF } from '@/utils/pdfGenerator' // [IMPORTANTE] Importar gerador
 
 import { OverviewTab } from '@/components/case/tabs/OverviewTab'
 import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
 import { FamilyTab } from '@/components/case/tabs/FamilyTab'
-import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab' // [NOVO]
+import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
 
 const CaseForm = lazy(() => import("@/components/CaseForm").then(module => ({ default: module.CaseForm })))
 const CaseHistory = lazy(() => import("@/components/case/CaseHistory").then(module => ({ default: module.CaseHistory })))
@@ -61,6 +62,7 @@ function CaseWorkflow({ status }: { status: string }) {
     { id: 'AGUARDANDO_ACOLHIDA', label: 'Triagem' },
     { id: 'EM_ACOLHIDA', label: 'Acolhida' },
     { id: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Distribuição' },
+    { id: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Esp.' },
     { id: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Acompanhamento' },
     { id: 'DESLIGADO', label: 'Finalizado' }
   ]
@@ -70,10 +72,10 @@ function CaseWorkflow({ status }: { status: string }) {
 
   return (
     <div className="w-full overflow-x-auto py-4">
-       <div className="min-w-[600px] flex items-center justify-between relative">
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-muted -z-10" />
+       <div className="min-w-[700px] flex items-center justify-between relative px-2">
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-muted -z-10 rounded-full" />
         <div 
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-primary -z-10 transition-all duration-500" 
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-primary -z-10 transition-all duration-500 rounded-full" 
           style={{ width: `${(activeIndex / (steps.length - 1)) * 100}%` }}
         />
 
@@ -82,17 +84,17 @@ function CaseWorkflow({ status }: { status: string }) {
           const isCurrent = index === activeIndex
 
           return (
-            <div key={step.id} className="flex flex-col items-center gap-2 bg-background px-2">
-              <div 
+            <div key={step.id} className="flex flex-col items-center gap-2 bg-background px-2 z-10">
+               <div 
                 className={clsx(
-                  "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors",
-                  isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-muted border-muted-foreground text-muted-foreground",
-                  isCurrent && "ring-4 ring-primary/20"
+                  "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors duration-300",
+                  isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-muted border-muted-foreground/30 text-muted-foreground",
+                  isCurrent && "ring-4 ring-primary/20 scale-110"
                 )}
               >
                 {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
               </div>
-               <span className={clsx("text-xs font-medium", isCompleted ? "text-primary" : "text-muted-foreground")}>
+               <span className={clsx("text-xs font-medium transition-colors", isCurrent ? "text-primary font-bold" : "text-muted-foreground")}>
                 {step.label}
               </span>
             </div>
@@ -137,7 +139,7 @@ function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: ()
                 {caseData.urgencia || "Não classificado"}
               </Badge>
             </div>
-           </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mt-4 pl-1 sm:pl-20">
@@ -168,7 +170,12 @@ function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: ()
         </div>
       </div>
 
-      <div className="flex gap-2 pl-1 sm:pl-0 mt-4 md:mt-0 items-start">
+      <div className="flex flex-wrap gap-2 pl-1 sm:pl-0 mt-4 md:mt-0 items-start justify-end">
+        {/* [NOVO] Botão Imprimir Prontuário */}
+        <Button variant="outline" onClick={() => generateCasePDF(caseData)} className="shadow-sm">
+          <Printer className="mr-2 h-4 w-4" /> Prontuário
+        </Button>
+
         <Dialog>
           <DialogTrigger asChild>
              <Button variant="outline" onClick={onEdit} className="shadow-sm">
@@ -277,7 +284,7 @@ export function CaseDetail() {
   return (
     <div className="container mx-auto max-w-6xl py-6 space-y-8 animate-in fade-in duration-500">
       
-       <CaseHeader caseData={caseData} onEdit={handleOpenEdit} />
+      <CaseHeader caseData={caseData} onEdit={handleOpenEdit} />
 
       <Separator />
 
@@ -293,12 +300,12 @@ export function CaseDetail() {
              <Users className="h-4 w-4" /> Família
           </TabsTrigger>
 
-          {/* [NOVO] Aba de Entregas e Benefícios */}
           <TabsTrigger value="deliverables" className="gap-2 data-[state=active]:bg-background">
             <PackageCheck className="h-4 w-4" /> Benefícios
           </TabsTrigger>
 
-          {(caseData.status === 'EM_ACOMPANHAMENTO_PAEFI' || caseData.status === 'DESLIGADO') && (
+          {/* Mostrar PAF se estiver em acompanhamento, acolhida especializada ou desligado */}
+          {['EM_ACOLHIDA_ESPECIALIZADA', 'EM_ACOMPANHAMENTO_PAEFI', 'DESLIGADO'].includes(caseData.status) && (
             <TabsTrigger value="paf" className="gap-2 data-[state=active]:bg-background">
               <FileText className="h-4 w-4" /> PAF
             </TabsTrigger>
@@ -333,7 +340,6 @@ export function CaseDetail() {
           </Suspense>
         </TabsContent>
 
-        {/* [NOVO] Conteúdo da Aba de Entregas */}
         <TabsContent value="deliverables" className="mt-6">
            <Suspense fallback={<TabSkeleton />}>
               <DeliverablesTab caseId={id!} />
@@ -343,7 +349,7 @@ export function CaseDetail() {
         <TabsContent value="paf" className="mt-6">
           <Suspense fallback={<TabSkeleton />}>
             <PafSection caseData={caseData} />
-           </Suspense>
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="evolutions" className="mt-6">
@@ -388,7 +394,7 @@ export function CaseDetail() {
 
         <TabsContent value="attachments" className="mt-6">
            <Suspense fallback={<TabSkeleton />}>
-            <CaseAttachments caseId={id!} onError={() => toast.error("Erro ao carregar anexos.")} />
+             <CaseAttachments caseId={id!} onError={() => toast.error("Erro ao carregar anexos.")} />
           </Suspense>
         </TabsContent>
 

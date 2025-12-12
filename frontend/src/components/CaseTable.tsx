@@ -1,5 +1,5 @@
 // frontend/src/components/CaseTable.tsx
-import { useState } from 'react'
+import { useState, useEffect } from 'react' // [Adicionado useEffect]
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { MoreHorizontal, Search, Edit, FileDown, Loader2, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -34,7 +34,14 @@ interface ExtendedCaseSummary extends CaseSummary {
 }
 
 interface PaginatedCasesResponse { items: ExtendedCaseSummary[]; total: number; page: number; pageSize: number; totalPages: number }
-interface CaseTableProps { endpoint: '/cases' | '/cases/closed'; title: string; description: string }
+
+// [ATUALIZAÇÃO] Adicionada prop defaultView
+interface CaseTableProps { 
+  endpoint: '/cases' | '/cases/closed'; 
+  title: string; 
+  description: string;
+  defaultView?: 'my' | 'all'; 
+}
 
 type SortDirection = 'asc' | 'desc'
 interface SortingState {
@@ -42,24 +49,23 @@ interface SortingState {
   order: SortDirection
 }
 
-// [NOVO] Skeleton de Linha de Tabela de Alta Fidelidade
 function TableRowSkeleton({ isManager }: { isManager: boolean }) {
   return (
     <TableRow>
-      <TableCell><Skeleton className="h-4 w-32" /></TableCell> {/* Nome */}
-      <TableCell><Skeleton className="h-4 w-16" /></TableCell> {/* Sexo */}
-      <TableCell><Skeleton className="h-4 w-24" /></TableCell> {/* CPF */}
-      {isManager && <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>} {/* Urgência */}
-      {isManager && <TableCell><Skeleton className="h-4 w-24" /></TableCell>} {/* Violação */}
-      <TableCell><Skeleton className="h-4 w-24" /></TableCell> {/* Data */}
-      <TableCell><Skeleton className="h-4 w-20" /></TableCell> {/* Técnico */}
-      <TableCell><Skeleton className="h-5 w-28 rounded-full" /></TableCell> {/* Status */}
-      <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell> {/* Ações */}
+      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+      {isManager && <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>}
+      {isManager && <TableCell><Skeleton className="h-4 w-24" /></TableCell>}
+      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+      <TableCell><Skeleton className="h-5 w-28 rounded-full" /></TableCell>
+      <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
     </TableRow>
   )
 }
 
-export function CaseTable({ endpoint, title, description }: CaseTableProps) {
+export function CaseTable({ endpoint, title, description, defaultView = 'my' }: CaseTableProps) {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') ?? '')
@@ -102,15 +108,17 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
     })
   }
 
+  // [IMPORTANTE] A query key deve incluir defaultView para recarregar quando mudar
   const { data: result, isLoading } = useQuery<PaginatedCasesResponse>({
-    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting],
+    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting, defaultView],
     queryFn: async () => {
       const params = {
         search: debouncedSearchTerm || undefined, page: currentPage, pageSize: 10,
         status: filters.status || undefined, urgencia: filters.urgencia || undefined,
         violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined,
         sortBy: sorting?.field,
-        sortOrder: sorting?.order
+        sortOrder: sorting?.order,
+        view: defaultView // [NOVO] Passa o view para o backend
       }
       const response = await api.get(endpoint, { params })
       return response.data
@@ -201,7 +209,6 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* [CORREÇÃO] Skeleton específico em vez de bloco único */}
               {isLoading && Array.from({ length: 8 }).map((_, i) => (
                 <TableRowSkeleton key={i} isManager={isManagerEndpoint} />
               ))}

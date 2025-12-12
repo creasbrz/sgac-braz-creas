@@ -43,7 +43,8 @@ function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
     case Cargo.Especialista:
       return {
         especialistaPAEFIId: user.sub,
-        status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+        // [ATUALIZAÇÃO v4.5.0] Especialista vê casos em Acolhida Especializada E Acompanhamento
+        status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI] }
       }
     case Cargo.Gerente:
       return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
@@ -187,7 +188,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos Ativos (COM REGRA DE OURO DE ORDENAÇÃO)
+  // 2. Listar Casos Ativos
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -199,7 +200,6 @@ export async function caseRoutes(app: FastifyInstance) {
       categoria: z.string().optional(),
       sexo: z.string().optional(),
       view: z.enum(['my', 'all']).default('my').optional(),
-      // Parâmetros de ordenação do frontend
       sortBy: z.string().optional(),
       sortOrder: z.enum(['asc', 'desc']).optional()
     })
@@ -221,18 +221,10 @@ export async function caseRoutes(app: FastifyInstance) {
       if (categoria && categoria !== 'all') where.categoria = { equals: categoria }
       if (sexo && sexo !== 'all') where.sexo = { equals: sexo }
 
-      // =========================================================
-      // LÓGICA DE ORDENAÇÃO PADRÃO (REGRA DE NEGÓCIO)
-      // 1. Urgência (peso maior primeiro)
-      // 2. Antiguidade (dataEntrada menor/ascendente primeiro)
-      // =========================================================
-      let orderBy: any = [
-        { pesoUrgencia: 'desc' }, 
-        { dataEntrada: 'asc' } // ASC = Mais antigo no topo da fila
-      ]; 
+      // Regra de Ordenação Padrão
+      let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]; 
 
       if (sortBy) {
-        // Se o utilizador clicou na tabela, respeita a escolha dele
         if (sortBy === 'urgencia') {
           orderBy = { pesoUrgencia: sortOrder || 'desc' };
         } else {
@@ -336,7 +328,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao alterar status.', error) }
   })
 
-  // 6. Atribuir
+  // 6. Atribuir (LÓGICA ALTERADA v4.5.0)
   app.patch('/cases/:id/assign', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ specialistId: z.string().uuid() })
@@ -348,22 +340,31 @@ export async function caseRoutes(app: FastifyInstance) {
       
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
       const spec = await prisma.user.findUnique({ where: { id: specialistId } })
-      const updated = await prisma.case.update({ where: { id }, data: { especialistaPAEFIId: specialistId, status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: new Date() } })
+      
+      // [ATUALIZAÇÃO v4.5.0] Vai para ACOLHIDA ESPECIALIZADA, não para ACOMPANHAMENTO direto
+      const updated = await prisma.case.update({ 
+        where: { id }, 
+        data: { 
+          especialistaPAEFIId: specialistId, 
+          status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, // Status Novo
+          dataInicioPAEFI: new Date() 
+        } 
+      })
       
       cache.invalidate('manager_stats')
       const oldName = oldCase?.especialistaPAEFI?.nome || 'Nenhum'
-      await createLog(id, userId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldName, spec?.nome)
+      await createLog(id, userId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'} (Acolhida Esp.)`, oldName, spec?.nome)
       return reply.send(updated)
     } catch (error) { return internalError(reply, 'Erro ao atribuir.', error) }
   })
 
-  // 7. Desligar (Atualizado com Destino)
+  // 7. Desligar
   app.patch('/cases/:id/close', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ 
       parecerFinal: z.string().min(10), 
       motivoDesligamento: z.string().min(1),
-      destinoDesligamento: z.string().optional() // [NOVO]
+      destinoDesligamento: z.string().optional() 
     })
     try {
       const { id } = params.parse(request.params)
@@ -382,7 +383,7 @@ export async function caseRoutes(app: FastifyInstance) {
           status: CaseStatus.DESLIGADO, 
           parecerFinal, 
           motivoDesligamento, 
-          destinoDesligamento, 
+          destinoDesligamento,
           dataDesligamento: new Date() 
         } 
       })

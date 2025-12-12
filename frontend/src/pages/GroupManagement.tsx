@@ -2,15 +2,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { format, isFuture, isToday } from 'date-fns'
+import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-// [CORREÇÃO] Removido 'Circle' e 'AlertCircle' (não estava sendo usado na lógica abaixo, só na importação)
-import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react'
+import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-// [CORREÇÃO] Removido 'CardDescription' da importação
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
@@ -33,7 +31,10 @@ export function GroupManagement() {
   
   const [newTheme, setNewTheme] = useState('')
   const [newType, setNewType] = useState('OFICINA')
-  const [newDate, setNewDate] = useState('')
+  // [ALTERAÇÃO] Mudamos de single date para array de datas
+  const [selectedDates, setSelectedDates] = useState<string[]>([])
+  const [tempDate, setTempDate] = useState('')
+  
   const [newLocal, setNewLocal] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newOrgaos, setNewOrgaos] = useState<string[]>([])
@@ -66,17 +67,19 @@ export function GroupManagement() {
       await api.post('/groups', {
         tema: newTheme,
         tipo: newType,
-        dataRealizacao: new Date(newDate).toISOString(),
+        // Envia o array de datas
+        datas: selectedDates,
         local: newLocal,
         descricao: newDesc,
         orgaosEnvolvidos: newOrgaos
       })
     },
     onSuccess: () => {
-      toast.success('Atividade criada!')
+      toast.success('Atividade(s) criada(s)!')
       setIsCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ['groups'] })
-      setNewTheme(''); setNewDate(''); setNewLocal(''); setNewDesc(''); setNewOrgaos([])
+      // Reset form
+      setNewTheme(''); setSelectedDates([]); setTempDate(''); setNewLocal(''); setNewDesc(''); setNewOrgaos([])
     },
     onError: () => toast.error('Erro ao criar grupo.')
   })
@@ -109,6 +112,17 @@ export function GroupManagement() {
 
   const toggleOrgao = (orgao: string) => {
     setNewOrgaos(prev => prev.includes(orgao) ? prev.filter(o => o !== orgao) : [...prev, orgao])
+  }
+
+  const handleAddDate = () => {
+    if (tempDate && !selectedDates.includes(tempDate)) {
+      setSelectedDates(prev => [...prev, tempDate].sort()) // Ordena cronologicamente
+      setTempDate('')
+    }
+  }
+
+  const handleRemoveDate = (dateToRemove: string) => {
+    setSelectedDates(prev => prev.filter(d => d !== dateToRemove))
   }
 
   const handlePrint = (type: 'blank' | 'filled') => {
@@ -182,7 +196,7 @@ export function GroupManagement() {
                 </div>
                 
                 <CardTitle className="text-lg leading-tight line-clamp-2 min-h-[3rem] text-foreground/90">
-                  {group.tema}
+                 {group.tema}
                 </CardTitle>
                 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -220,6 +234,7 @@ export function GroupManagement() {
               <Label>Tema / Nome da Atividade</Label>
               <Input value={newTheme} onChange={e => setNewTheme(e.target.value)} placeholder="Ex: Oficina de Artes e Vínculos" />
             </div>
+            
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Tipo</Label>
@@ -234,14 +249,42 @@ export function GroupManagement() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Data de Realização</Label>
-                <Input type="datetime-local" value={newDate} onChange={e => setNewDate(e.target.value)} />
+                <Label>Local</Label>
+                <Input value={newLocal} onChange={e => setNewLocal(e.target.value)} placeholder="Ex: Sala 02" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Local</Label>
-              <Input value={newLocal} onChange={e => setNewLocal(e.target.value)} placeholder="Ex: Sala de Reuniões CREAS" />
+
+            {/* [NOVO] SELEÇÃO DE MÚLTIPLAS DATAS */}
+            <div className="space-y-2 border p-3 rounded-md bg-muted/20">
+              <Label className="text-primary">Datas de Realização</Label>
+              <div className="flex gap-2">
+                <Input 
+                  type="datetime-local" 
+                  value={tempDate} 
+                  onChange={e => setTempDate(e.target.value)} 
+                  className="flex-1"
+                />
+                <Button variant="secondary" onClick={handleAddDate} disabled={!tempDate}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              {selectedDates.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedDates.map((date) => (
+                    <Badge key={date} variant="outline" className="pl-2 pr-1 py-1 gap-1 bg-background">
+                      {format(parseISO(date), "dd/MM HH:mm")}
+                      <button onClick={() => handleRemoveDate(date)} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">Nenhuma data selecionada.</p>
+              )}
             </div>
+
             <div className="space-y-2">
               <Label>Descrição / Metodologia</Label>
               <Textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Objetivos e metodologia..." className="h-20"/>
@@ -262,8 +305,9 @@ export function GroupManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createGroup()} disabled={isCreating || !newTheme || !newDate}>
-              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Criar Agendamento
+            <Button onClick={() => createGroup()} disabled={isCreating || !newTheme || selectedDates.length === 0}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} 
+              Criar {selectedDates.length > 1 ? `(${selectedDates.length} Sessões)` : 'Agendamento'}
             </Button>
           </DialogFooter>
         </DialogContent>

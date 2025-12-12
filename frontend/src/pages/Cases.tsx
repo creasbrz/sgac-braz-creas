@@ -1,31 +1,43 @@
 // frontend/src/pages/Cases.tsx
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { Loader2, LayoutList, Kanban as KanbanIcon } from 'lucide-react'
+import { Loader2, LayoutList, Kanban as KanbanIcon, Users, User } from 'lucide-react'
 import { CaseTable } from '@/components/CaseTable'
 import { CaseKanban } from '@/components/CaseKanban'
 import { Button } from '@/components/ui/button'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-// Define o tipo de visualização
 type ViewMode = 'table' | 'kanban'
+type FilterView = 'my' | 'all'
 
 export function Cases() {
   const { user, isSessionLoading } = useAuth()
+  
   const [viewMode, setViewMode] = useState<ViewMode>('table')
+  const [filterView, setFilterView] = useState<FilterView>('my')
 
-  // Buscamos os dados aqui apenas para o Kanban (a Tabela faz sua própria busca paginada)
-  const { data: allCases, isLoading: isLoadingKanban } = useQuery({
-    queryKey: ['cases', 'kanban-all'],
+  // [NOVO] Efeito para alternar o filtro padrão baseado no modo de visualização
+  useEffect(() => {
+    if (viewMode === 'kanban') {
+      setFilterView('all')
+    } else {
+      setFilterView('my')
+    }
+  }, [viewMode])
+
+  // Query para o Kanban
+  const { data: kanbanCases, isLoading: isLoadingKanban } = useQuery({
+    queryKey: ['cases', 'kanban', filterView],
     queryFn: async () => {
-      // [CORREÇÃO]: Adicionado view: 'all' para trazer TODOS os casos ativos
-      // pageSize: 100 limita para não travar o navegador, mas traz um panorama amplo
-      const res = await api.get('/cases', { params: { pageSize: 100, view: 'all' } })
+      const res = await api.get('/cases', { 
+        params: { pageSize: 100, view: filterView } 
+      })
       return res.data.items
     },
-    enabled: viewMode === 'kanban', // Só busca se estiver no modo Kanban
-    staleTime: 1000 * 60 // Cache de 1 minuto
+    enabled: viewMode === 'kanban', 
+    staleTime: 1000 * 60
   })
 
   if (isSessionLoading) {
@@ -46,55 +58,76 @@ export function Cases() {
     )
   }
 
-  const titlesByRole: Record<string, string> = {
-    Gerente: 'Gestão de Casos',
-    'Agente_Social': 'Acolhida e Triagem',
-    Especialista: 'Meus Acompanhamentos',
+  const getTitle = () => {
+    if (filterView === 'all') return 'Todos os Casos Ativos'
+    
+    const roleTitles: Record<string, string> = {
+      Gerente: 'Meus Casos (Gerência)',
+      'Agente_Social': 'Minhas Acolhidas',
+      Especialista: 'Meus Acompanhamentos',
+    }
+    return roleTitles[user.cargo] ?? 'Meus Casos'
   }
-
-  const title = titlesByRole[user.cargo] ?? 'Casos Ativos'
-  const description = 'Visualize e gerencie o fluxo de atendimentos.'
 
   return (
     <div className="space-y-4 h-full flex flex-col">
-      {/* Header com Alternador de Visualização */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
-          <p className="text-muted-foreground">{description}</p>
+          <h2 className="text-2xl font-bold tracking-tight">{getTitle()}</h2>
+          <p className="text-muted-foreground">
+            {filterView === 'all' 
+              ? 'Visualizando fluxo completo da unidade.' 
+              : 'Visualizando apenas casos sob sua responsabilidade.'}
+          </p>
         </div>
         
-        <div className="flex items-center bg-muted p-1 rounded-lg">
-          <Button 
-            variant={viewMode === 'table' ? 'default' : 'ghost'} 
-            size="sm" 
-            className="h-8"
-            onClick={() => setViewMode('table')}
-          >
-            <LayoutList className="h-4 w-4 mr-2" /> Lista
-          </Button>
-          <Button 
-            variant={viewMode === 'kanban' ? 'default' : 'ghost'} 
-            size="sm" 
-            className="h-8"
-            onClick={() => setViewMode('kanban')}
-          >
-            <KanbanIcon className="h-4 w-4 mr-2" /> Quadro
-          </Button>
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          {/* Seletor de Escopo */}
+          <Tabs value={filterView} onValueChange={(v) => setFilterView(v as FilterView)} className="w-full sm:w-[240px]">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="my" className="gap-2">
+                <User className="h-3.5 w-3.5" /> Meus
+              </TabsTrigger>
+              <TabsTrigger value="all" className="gap-2">
+                <Users className="h-3.5 w-3.5" /> Todos
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="flex items-center bg-muted p-1 rounded-lg">
+            <Button 
+              variant={viewMode === 'table' ? 'default' : 'ghost'} 
+              size="sm" 
+              className="h-8"
+              onClick={() => setViewMode('table')}
+            >
+              <LayoutList className="h-4 w-4 mr-2" /> Lista
+            </Button>
+            <Button 
+              variant={viewMode === 'kanban' ? 'default' : 'ghost'} 
+              size="sm" 
+              className="h-8"
+              onClick={() => setViewMode('kanban')}
+            >
+              <KanbanIcon className="h-4 w-4 mr-2" /> Quadro
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Conteúdo Condicional */}
+      {/* Conteúdo */}
       <div className="flex-1 overflow-hidden">
         {viewMode === 'table' ? (
           <CaseTable
-            title="" // Título já exibido acima
+            title="" 
             description=""
             endpoint="/cases"
+            defaultView={filterView}
           />
         ) : (
           <CaseKanban 
-            cases={allCases || []} 
+            cases={kanbanCases || []} 
             isLoading={isLoadingKanban} 
           />
         )}

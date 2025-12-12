@@ -8,6 +8,7 @@ const buttonStyles = {
   neutral: 'bg-muted text-muted-foreground hover:bg-muted/90',
   accent: 'bg-purple-600 hover:bg-purple-700 text-white',
   primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
+  info: 'bg-blue-600 hover:bg-blue-700 text-white',
 }
 
 export type ActionType = 'status' | 'assign' | 'close'
@@ -28,13 +29,13 @@ export const caseTransitions: Partial<
       label: 'Iniciar Acolhida',
       type: 'status',
       nextStatus: 'EM_ACOLHIDA',
-      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
+      allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.success,
     },
     {
       label: 'Desligamento Simplificado',
       type: 'close',
-      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
+      allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.neutral,
     },
   ],
@@ -42,14 +43,14 @@ export const caseTransitions: Partial<
     {
       label: 'Desligamento Simplificado',
       type: 'close',
-      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
+      allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.neutral,
     },
     {
       label: 'Encaminhar para PAEFI',
       type: 'status',
       nextStatus: 'AGUARDANDO_DISTRIBUICAO_PAEFI',
-      allowedRoles: ['Gerente', 'Agente_Social'], // [CORREÇÃO]
+      allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.accent,
     },
   ],
@@ -59,6 +60,22 @@ export const caseTransitions: Partial<
       type: 'assign',
       allowedRoles: ['Gerente'],
       style: buttonStyles.primary,
+    },
+  ],
+  // [NOVO]
+  EM_ACOLHIDA_ESPECIALIZADA: [
+    {
+      label: 'Iniciar Acompanhamento (PAEFI)',
+      type: 'status',
+      nextStatus: 'EM_ACOMPANHAMENTO_PAEFI',
+      allowedRoles: ['Gerente', 'Especialista'],
+      style: buttonStyles.success,
+    },
+    {
+      label: 'Encerrar após Acolhida',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Especialista'],
+      style: buttonStyles.danger,
     },
   ],
   EM_ACOMPANHAMENTO_PAEFI: [

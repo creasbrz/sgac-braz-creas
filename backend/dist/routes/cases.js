@@ -116,7 +116,8 @@ function buildActiveCaseWhereClause(user) {
     case import_client2.Cargo.Especialista:
       return {
         especialistaPAEFIId: user.sub,
-        status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+        // [ATUALIZAÇÃO v4.5.0] Especialista vê casos em Acolhida Especializada E Acompanhamento
+        status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI] }
       };
     case import_client2.Cargo.Gerente:
       return { status: import_client2.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI };
@@ -261,7 +262,6 @@ async function caseRoutes(app) {
       categoria: import_zod.z.string().optional(),
       sexo: import_zod.z.string().optional(),
       view: import_zod.z.enum(["my", "all"]).default("my").optional(),
-      // Parâmetros de ordenação do frontend
       sortBy: import_zod.z.string().optional(),
       sortOrder: import_zod.z.enum(["asc", "desc"]).optional()
     });
@@ -279,11 +279,7 @@ async function caseRoutes(app) {
       if (violacao && violacao !== "all") where.violacao = { equals: violacao };
       if (categoria && categoria !== "all") where.categoria = { equals: categoria };
       if (sexo && sexo !== "all") where.sexo = { equals: sexo };
-      let orderBy = [
-        { pesoUrgencia: "desc" },
-        { dataEntrada: "asc" }
-        // ASC = Mais antigo no topo da fila
-      ];
+      let orderBy = [{ pesoUrgencia: "desc" }, { dataEntrada: "asc" }];
       if (sortBy) {
         if (sortBy === "urgencia") {
           orderBy = { pesoUrgencia: sortOrder || "desc" };
@@ -396,10 +392,18 @@ async function caseRoutes(app) {
       if (cargo !== import_client2.Cargo.Gerente) return reply.status(403).send({ message: "Acesso negado." });
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } });
       const spec = await prisma.user.findUnique({ where: { id: specialistId } });
-      const updated = await prisma.case.update({ where: { id }, data: { especialistaPAEFIId: specialistId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, dataInicioPAEFI: /* @__PURE__ */ new Date() } });
+      const updated = await prisma.case.update({
+        where: { id },
+        data: {
+          especialistaPAEFIId: specialistId,
+          status: import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
+          // Status Novo
+          dataInicioPAEFI: /* @__PURE__ */ new Date()
+        }
+      });
       cache.invalidate("manager_stats");
       const oldName = ((_a = oldCase == null ? void 0 : oldCase.especialistaPAEFI) == null ? void 0 : _a.nome) || "Nenhum";
-      await createLog(id, userId, import_client2.LogAction.ATRIBUICAO, `Atribuiu a ${(spec == null ? void 0 : spec.nome) || "Desconhecido"}`, oldName, spec == null ? void 0 : spec.nome);
+      await createLog(id, userId, import_client2.LogAction.ATRIBUICAO, `Atribuiu a ${(spec == null ? void 0 : spec.nome) || "Desconhecido"} (Acolhida Esp.)`, oldName, spec == null ? void 0 : spec.nome);
       return reply.send(updated);
     } catch (error) {
       return internalError(reply, "Erro ao atribuir.", error);
@@ -411,7 +415,6 @@ async function caseRoutes(app) {
       parecerFinal: import_zod.z.string().min(10),
       motivoDesligamento: import_zod.z.string().min(1),
       destinoDesligamento: import_zod.z.string().optional()
-      // [NOVO]
     });
     try {
       const { id } = params.parse(request.params);

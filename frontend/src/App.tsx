@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 import { queryClient } from "./lib/react-query";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
-import { SidebarProvider } from "./contexts/SidebarContext"; // [NOVO] Importação
+import { SidebarProvider } from "./contexts/SidebarContext";
 import { ThemeProvider } from "./components/theme-provider";
 
 import { ROUTE_PATHS } from "./constants/routes";
@@ -34,7 +34,6 @@ export function App() {
         <BrowserRouter>
           <AuthProvider>
             <ModalProvider>
-              {/* [CORREÇÃO] Adicionado SidebarProvider aqui */}
               <SidebarProvider>
                 <Routes>
                   <Route path={ROUTE_PATHS.LOGIN} element={<Login />} />
@@ -53,14 +52,12 @@ export function App() {
                       <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
                       <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
                       <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
+                      {/* [NOVO] Grupos liberados para todos */}
+                      <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
                     </Route>
 
                     <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
                       <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
-                    </Route>
-
-                    <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista"]} />}>
-                       <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
                     </Route>
 
                     <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
@@ -77,7 +74,6 @@ export function App() {
                   <Route path="*" element={<Navigate to={ROUTE_PATHS.DASHBOARD} replace />} />
                 </Routes>
               </SidebarProvider>
-              {/* [FIM DA CORREÇÃO] */}
 
               <Toaster richColors />
               <ReactQueryDevtools initialIsOpen={false} />

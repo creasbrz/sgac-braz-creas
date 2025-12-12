@@ -56,6 +56,8 @@ export const OPTIONS = {
     { value: 'AGUARDANDO_ACOLHIDA', label: 'Aguardando Acolhida' },
     { value: 'EM_ACOLHIDA', label: 'Em Acolhida' },
     { value: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Aguardando Distribuição' },
+    // [NOVO]
+    { value: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Especializada' },
     { value: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Em Acompanhamento' },
     { value: 'DESLIGADO', label: 'Desligado' },
   ]

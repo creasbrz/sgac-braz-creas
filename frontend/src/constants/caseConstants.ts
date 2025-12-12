@@ -7,19 +7,24 @@ export const CASE_STATUS_MAP = {
   },
   EM_ACOLHIDA: {
     text: 'Em Acolhida',
-    style: 'bg-blue-100 text-blue-700 border-blue-200',
+    style: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
   },
   AGUARDANDO_DISTRIBUICAO_PAEFI: {
     text: 'Aguardando Distribuição',
-    style: 'bg-amber-100 text-amber-700 border-amber-200',
+    style: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
+  },
+  // [NOVO STATUS ADICIONADO AQUI]
+  EM_ACOLHIDA_ESPECIALIZADA: {
+    text: 'Acolhida Especializada',
+    style: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
   },
   EM_ACOMPANHAMENTO_PAEFI: {
     text: 'Acompanhamento PAEFI',
-    style: 'bg-purple-100 text-purple-700 border-purple-200',
+    style: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800',
   },
   DESLIGADO: {
     text: 'Desligado',
-    style: 'bg-slate-100 text-slate-600 border-slate-200',
+    style: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
   },
 } as const
 
@@ -47,7 +52,7 @@ export const MOTIVOS_DESLIGAMENTO = [
   'Situação identificada como não pertencente à demanda do CREAS'
 ]
 
-// [NOVO] Destinos
+// Destinos
 export const DESTINOS_DESLIGAMENTO = [
   'Referenciado ao CRAS (PAIF)',
   'Serviço de Saúde (CAPS/UBS)',
@@ -85,10 +90,17 @@ const URGENCIA_GRAVE = [
 ]
 
 export function getUrgencyColor(urgencia: string | null | undefined): string {
-  if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200'
+  if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300'
   const term = urgencia.trim()
-  if (URGENCIA_GRAVISSIMA.includes(term)) return 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200'
-  if (URGENCIA_MUITO_GRAVE.includes(term)) return 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200'
-  if (URGENCIA_GRAVE.includes(term)) return 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200'
-  return 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200'
+  
+  if (URGENCIA_GRAVISSIMA.includes(term)) 
+    return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+  
+  if (URGENCIA_MUITO_GRAVE.includes(term)) 
+    return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
+  
+  if (URGENCIA_GRAVE.includes(term)) 
+    return 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800'
+  
+  return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
 }

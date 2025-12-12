@@ -187,7 +187,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos Ativos
+  // 2. Listar Casos Ativos (COM REGRA DE OURO DE ORDENAÇÃO)
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -199,10 +199,13 @@ export async function caseRoutes(app: FastifyInstance) {
       categoria: z.string().optional(),
       sexo: z.string().optional(),
       view: z.enum(['my', 'all']).default('my').optional(),
+      // Parâmetros de ordenação do frontend
+      sortBy: z.string().optional(),
+      sortOrder: z.enum(['asc', 'desc']).optional()
     })
 
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view } = schema.parse(request.query)
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder } = schema.parse(request.query)
       let where: any = {}
 
       if (view === 'all') {
@@ -218,10 +221,29 @@ export async function caseRoutes(app: FastifyInstance) {
       if (categoria && categoria !== 'all') where.categoria = { equals: categoria }
       if (sexo && sexo !== 'all') where.sexo = { equals: sexo }
 
+      // =========================================================
+      // LÓGICA DE ORDENAÇÃO PADRÃO (REGRA DE NEGÓCIO)
+      // 1. Urgência (peso maior primeiro)
+      // 2. Antiguidade (dataEntrada menor/ascendente primeiro)
+      // =========================================================
+      let orderBy: any = [
+        { pesoUrgencia: 'desc' }, 
+        { dataEntrada: 'asc' } // ASC = Mais antigo no topo da fila
+      ]; 
+
+      if (sortBy) {
+        // Se o utilizador clicou na tabela, respeita a escolha dele
+        if (sortBy === 'urgencia') {
+          orderBy = { pesoUrgencia: sortOrder || 'desc' };
+        } else {
+          orderBy = { [sortBy]: sortOrder || 'asc' };
+        }
+      }
+
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where,
-          orderBy: [{ pesoUrgencia: 'desc' }, { dataEntrada: 'desc' }],
+          orderBy, 
           take: pageSize,
           skip: (page - 1) * pageSize,
           include: {
@@ -236,7 +258,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro interno ao listar casos.', error) }
   })
 
-  // 3. Listar Casos Fechados (Atualizado com destino)
+  // 3. Listar Casos Fechados
   app.get('/cases/closed', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -259,7 +281,7 @@ export async function caseRoutes(app: FastifyInstance) {
             id: true, nomeCompleto: true, cpf: true, status: true,
             dataDesligamento: true, parecerFinal: true, urgencia: true,
             motivoDesligamento: true, 
-            destinoDesligamento: true, // [NOVO]
+            destinoDesligamento: true,
             agenteAcolhida: { select: { nome: true } },
             especialistaPAEFI: { select: { nome: true } },
           },
@@ -360,7 +382,7 @@ export async function caseRoutes(app: FastifyInstance) {
           status: CaseStatus.DESLIGADO, 
           parecerFinal, 
           motivoDesligamento, 
-          destinoDesligamento, // [NOVO]
+          destinoDesligamento, 
           dataDesligamento: new Date() 
         } 
       })

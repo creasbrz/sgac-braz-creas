@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { MoreHorizontal, Search, Edit, FileDown, Loader2, FileSpreadsheet } from 'lucide-react'
+import { MoreHorizontal, Search, Edit, FileDown, Loader2, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
@@ -36,6 +36,12 @@ interface ExtendedCaseSummary extends CaseSummary {
 interface PaginatedCasesResponse { items: ExtendedCaseSummary[]; total: number; page: number; pageSize: number; totalPages: number }
 interface CaseTableProps { endpoint: '/cases' | '/cases/closed'; title: string; description: string }
 
+type SortDirection = 'asc' | 'desc'
+interface SortingState {
+  field: string
+  order: SortDirection
+}
+
 export function CaseTable({ endpoint, title, description }: CaseTableProps) {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -45,6 +51,9 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
 
+  // Estado de Ordenação (null = usar padrão do backend)
+  const [sorting, setSorting] = useState<SortingState | null>(null)
+
   const [filters, setFilters] = useState({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
 
   const handleFilterChange = (key: string, value: string) => {
@@ -52,7 +61,11 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
     setSearchParams(prev => { prev.set('page', '1'); return prev })
   }
 
-  const clearFilters = () => setFilters({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
+  // Limpa tudo e restaura a ordenação padrão (Urgência Desc + Data Asc)
+  const clearFilters = () => {
+    setFilters({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
+    setSorting(null) // Ao limpar, voltamos para o padrão "Regra de Ouro" do backend
+  }
 
   const applySavedFilter = (newFilters: any) => {
     setFilters({
@@ -65,13 +78,27 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
     setSearchParams(prev => { prev.set('page', '1'); return prev })
   }
 
+  // Alterna ordenação: Asc -> Desc -> Padrão
+  const toggleSort = (field: string) => {
+    setSorting(current => {
+      if (current?.field === field) {
+        if (current.order === 'asc') return { field, order: 'desc' }
+        return null // Volta ao padrão
+      }
+      return { field, order: 'asc' }
+    })
+  }
+
   const { data: result, isLoading } = useQuery<PaginatedCasesResponse>({
-    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters],
+    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting],
     queryFn: async () => {
       const params = {
         search: debouncedSearchTerm || undefined, page: currentPage, pageSize: 10,
         status: filters.status || undefined, urgencia: filters.urgencia || undefined,
-        violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined
+        violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined,
+        // Envia ordenação APENAS se o usuário selecionou algo
+        sortBy: sorting?.field,
+        sortOrder: sorting?.order
       }
       const response = await api.get(endpoint, { params })
       return response.data
@@ -93,6 +120,22 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
       },
       error: 'Erro ao exportar.', finally: () => setIsExporting(false)
     })
+  }
+
+  const SortableHeader = ({ label, field, className }: { label: string, field: string, className?: string }) => {
+    const isActive = sorting?.field === field
+    return (
+      <TableHead className={`cursor-pointer hover:bg-muted/50 transition-colors select-none ${className}`} onClick={() => toggleSort(field)}>
+        <div className="flex items-center gap-1">
+          {label}
+          {isActive ? (
+            sorting.order === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+          ) : (
+            <ArrowUpDown className="h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+          )}
+        </div>
+      </TableHead>
+    )
   }
 
   return (
@@ -119,23 +162,27 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
       </div>
 
       <div className="flex-1 overflow-hidden rounded-md border bg-card">
-        {/* [CORREÇÃO] Adicionado overflow-auto para permitir scroll horizontal se a tabela expandir muito */}
         <div className="overflow-auto h-full">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="whitespace-nowrap">Nome</TableHead>
-                <TableHead className="whitespace-nowrap">Sexo</TableHead>
+              <TableRow className="group">
+                <SortableHeader label="Nome" field="nomeCompleto" className="whitespace-nowrap" />
+                <SortableHeader label="Sexo" field="sexo" className="whitespace-nowrap" />
                 <TableHead className="whitespace-nowrap">CPF</TableHead>
                 
-                {endpoint === '/cases' && <TableHead className="whitespace-nowrap">Urgência</TableHead>}
+                {endpoint === '/cases' && <SortableHeader label="Urgência" field="urgencia" className="whitespace-nowrap" />}
                 {endpoint === '/cases' && <TableHead className="whitespace-nowrap">Violação</TableHead>}
 
-                <TableHead className="whitespace-nowrap">{endpoint === '/cases/closed' ? 'Desligamento' : 'Entrada'}</TableHead>
+                <SortableHeader 
+                  label={endpoint === '/cases/closed' ? 'Desligamento' : 'Entrada'} 
+                  field={endpoint === '/cases/closed' ? 'dataDesligamento' : 'dataEntrada'} 
+                  className="whitespace-nowrap" 
+                />
+                
                 {endpoint === '/cases/closed' && <TableHead className="whitespace-nowrap">Motivo</TableHead>}
                 
                 <TableHead className="whitespace-nowrap">Responsável</TableHead>
-                <TableHead className="whitespace-nowrap">Status</TableHead>
+                <SortableHeader label="Status" field="status" className="whitespace-nowrap" />
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -145,7 +192,6 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
               
               {result?.items.map((item) => (
                 <TableRow key={item.id}>
-                  {/* [CORREÇÃO] Removido truncate/max-w, adicionado whitespace-nowrap para exibir nome completo */}
                   <TableCell className="font-medium whitespace-nowrap">
                     <Link to={ROUTES.CASE_DETAIL(item.id)} className="hover:underline hover:text-primary transition-colors block" title={item.nomeCompleto}>
                       {item.nomeCompleto}
@@ -164,7 +210,6 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
                   )}
 
                   {endpoint === '/cases' && (
-                    /* [CORREÇÃO] Removido truncate para exibir violação completa */
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                       {item.violacao || '-'}
                     </TableCell>
@@ -183,7 +228,6 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
                     </TableCell>
                   )}
 
-                  {/* [CORREÇÃO] Removido truncate do responsável */}
                   <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                     {item.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && item.especialistaPAEFI) 
                       ? item.especialistaPAEFI?.nome ?? 'N/A' 

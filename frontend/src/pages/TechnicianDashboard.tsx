@@ -1,5 +1,4 @@
-// frontend/src/pages/TechnicianDashboard.tsx — Página do painel do Especialista (PAEFI), modernizada e otimizada.
-
+// frontend/src/pages/TechnicianDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Activity, CheckCircle, Clock } from 'lucide-react'
@@ -17,39 +16,18 @@ interface SpecialistStats {
 }
 
 export function TechnicianDashboard() {
-  const {
-    data: stats,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery<SpecialistStats>({
+  const { data: stats, isLoading, isError, refetch } = useQuery<SpecialistStats>({
     queryKey: ['stats', 'specialist'],
-    queryFn: async () => {
-      const res = await api.get('/stats')
-      return res.data
-    },
-    staleTime: 1000 * 60 * 5, // cache suave de 5 min
-    retry: 1, // evita loops de erro
+    queryFn: async () => (await api.get('/stats')).data,
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
   })
 
-  /** Skeleton padronizado */
-  const renderSkeletons = () => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {[1, 2, 3].map((i) => (
-        <Skeleton key={i} className="h-28 w-full rounded-2xl" />
-      ))}
-    </div>
-  )
-
-  /** Estado de erro elegante */
   if (isError) {
     return (
-      <div className="p-4 rounded-xl border bg-destructive/10 text-destructive">
+      <div className="p-6 rounded-xl border bg-destructive/10 text-destructive text-center">
         <p className="font-medium">❌ Erro ao carregar os dados.</p>
-        <button
-          onClick={() => refetch()}
-          className="mt-2 text-sm underline hover:text-destructive/70"
-        >
+        <button onClick={() => refetch()} className="mt-2 text-sm underline hover:text-destructive/70">
           Tentar novamente
         </button>
       </div>
@@ -57,48 +35,51 @@ export function TechnicianDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* 1 — Cards de estatística */}
       {isLoading ? (
-        renderSkeletons()
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-pulse">
+          {[1, 2, 3].map((i) => (<Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />))}
+        </div>
       ) : (
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-3 gap-4"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25 }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <DashboardStatCard
+            index={0}
             title="Meus Casos PAEFI"
             value={stats?.myActiveCases}
             icon={Activity}
             colorClass="text-blue-500"
             description="Em acompanhamento ativo"
           />
-
           <DashboardStatCard
+            index={1}
             title="Novos (Mês)"
             value={stats?.myNewCasesMonth}
             icon={Clock}
             colorClass="text-amber-500"
             description="Atribuídos este mês"
           />
-
           <DashboardStatCard
+            index={2}
             title="Finalizados (Mês)"
             value={stats?.myClosedMonth}
             icon={CheckCircle}
             colorClass="text-emerald-500"
             description="Desligamentos realizados"
           />
-        </motion.div>
+        </div>
       )}
 
       {/* 2 — Área de trabalho */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <motion.div 
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.5 }}
+      >
         <UpcomingAppointments />
         <UpcomingPafDeadlines />
-      </div>
+      </motion.div>
     </div>
   )
 }

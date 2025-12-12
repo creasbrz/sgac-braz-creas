@@ -1,6 +1,6 @@
+// frontend/src/pages/ManagerDashboard.tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -30,7 +30,7 @@ interface ManagerStats {
   acompanhamentosCount: number
   workloadByAgent: StatData[]
   workloadBySpecialist: StatData[]
-  lastUpdated?: string // Campo vindo do backend para indicar a idade do cache
+  lastUpdated?: string
 }
 
 export function ManagerDashboard() {
@@ -48,13 +48,10 @@ export function ManagerDashboard() {
       const res = await api.get('/stats')
       return res.data
     },
-    // Frontend confia no cache do backend (10 min), não faz polling agressivo
     staleTime: 1000 * 60 * 2, 
   })
 
-  // Função para forçar atualização visual
   const handleForceRefresh = () => {
-    // Invalida para garantir que a próxima busca tente ir ao servidor
     queryClient.invalidateQueries({ queryKey: ['stats', 'manager'] })
     refetch()
   }
@@ -104,17 +101,36 @@ export function ManagerDashboard() {
         </div>
 
         {/* CARDS DE RESUMO */}
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25 }}
-        >
-          <DashboardStatCard title="Novos Casos (Mês)" value={stats.newCasesThisMonth} icon={UserPlus} colorClass="text-blue-500" />
-          <DashboardStatCard title="Acolhidas Ativas" value={stats.acolhidasCount} icon={Users} colorClass="text-amber-500" />
-          <DashboardStatCard title="Acompanhamentos PAEFI" value={stats.acompanhamentosCount} icon={FolderOpen} colorClass="text-purple-500" />
-          <DashboardStatCard title="Desligados (Mês)" value={stats.closedCasesThisMonth} icon={FolderCheck} colorClass="text-emerald-500" />
-        </motion.div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <DashboardStatCard 
+            index={0}
+            title="Novos Casos (Mês)" 
+            value={stats.newCasesThisMonth} 
+            icon={UserPlus} 
+            colorClass="text-blue-500" 
+          />
+          <DashboardStatCard 
+            index={1}
+            title="Acolhidas Ativas" 
+            value={stats.acolhidasCount} 
+            icon={Users} 
+            colorClass="text-amber-500" 
+          />
+          <DashboardStatCard 
+            index={2}
+            title="Acompanhamentos PAEFI" 
+            value={stats.acompanhamentosCount} 
+            icon={FolderOpen} 
+            colorClass="text-purple-500" 
+          />
+          <DashboardStatCard 
+            index={3}
+            title="Desligados (Mês)" 
+            value={stats.closedCasesThisMonth} 
+            icon={FolderCheck} 
+            colorClass="text-emerald-500" 
+          />
+        </div>
 
         {/* GRÁFICOS OPERACIONAIS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

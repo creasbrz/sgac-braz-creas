@@ -1,6 +1,6 @@
 {
   "name": "sgac-braz-root",
-  "version": "4.4.1",
+  "version": "4.4.3",
   "private": true,
   "scripts": {
     "install-all": "npm install --prefix frontend --include=dev && npm install --prefix backend --include=dev",

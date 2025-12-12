@@ -260,10 +260,13 @@ async function caseRoutes(app) {
       violacao: import_zod.z.string().optional(),
       categoria: import_zod.z.string().optional(),
       sexo: import_zod.z.string().optional(),
-      view: import_zod.z.enum(["my", "all"]).default("my").optional()
+      view: import_zod.z.enum(["my", "all"]).default("my").optional(),
+      // Parâmetros de ordenação do frontend
+      sortBy: import_zod.z.string().optional(),
+      sortOrder: import_zod.z.enum(["asc", "desc"]).optional()
     });
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view } = schema.parse(request.query);
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder } = schema.parse(request.query);
       let where = {};
       if (view === "all") {
         where = { status: { not: import_client2.CaseStatus.DESLIGADO } };
@@ -276,10 +279,22 @@ async function caseRoutes(app) {
       if (violacao && violacao !== "all") where.violacao = { equals: violacao };
       if (categoria && categoria !== "all") where.categoria = { equals: categoria };
       if (sexo && sexo !== "all") where.sexo = { equals: sexo };
+      let orderBy = [
+        { pesoUrgencia: "desc" },
+        { dataEntrada: "asc" }
+        // ASC = Mais antigo no topo da fila
+      ];
+      if (sortBy) {
+        if (sortBy === "urgencia") {
+          orderBy = { pesoUrgencia: sortOrder || "desc" };
+        } else {
+          orderBy = { [sortBy]: sortOrder || "asc" };
+        }
+      }
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where,
-          orderBy: [{ pesoUrgencia: "desc" }, { dataEntrada: "desc" }],
+          orderBy,
           take: pageSize,
           skip: (page - 1) * pageSize,
           include: {
@@ -320,7 +335,6 @@ async function caseRoutes(app) {
             urgencia: true,
             motivoDesligamento: true,
             destinoDesligamento: true,
-            // [NOVO]
             agenteAcolhida: { select: { nome: true } },
             especialistaPAEFI: { select: { nome: true } }
           }
@@ -414,7 +428,6 @@ async function caseRoutes(app) {
           parecerFinal,
           motivoDesligamento,
           destinoDesligamento,
-          // [NOVO]
           dataDesligamento: /* @__PURE__ */ new Date()
         }
       });

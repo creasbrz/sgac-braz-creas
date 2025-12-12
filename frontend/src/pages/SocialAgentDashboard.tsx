@@ -2,8 +2,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Users, UserCheck, FolderInput, ArrowRight } from 'lucide-react'
-import { Button } from '@/components/ui/button' // [CORRIGIDO]: Apenas Button aqui
-import { Card as UICard } from '@/components/ui/card' // [CORRIGIDO]: Import correto do Card
+import { Button } from '@/components/ui/button'
+import { Card as UICard } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UpcomingAppointments } from '@/components/UpcomingAppointments'
 import { Link } from 'react-router-dom'
@@ -18,6 +18,23 @@ interface AgentStats {
   myNewCasesMonth: number
 }
 
+// [NOVO] Skeleton de Agente
+function AgentSkeleton() {
+  return (
+    <div className="space-y-8 animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Skeleton className="h-64 rounded-xl bg-muted/10" />
+        <Skeleton className="h-64 rounded-xl bg-muted/10" />
+      </div>
+    </div>
+  )
+}
+
 export function SocialAgentDashboard() {
   const { data: stats, isLoading, isError } = useQuery<AgentStats>({
     queryKey: ['stats', 'agent'],
@@ -28,16 +45,7 @@ export function SocialAgentDashboard() {
     retry: 1,
   })
 
-  // Skeleton animado
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-pulse">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />
-        ))}
-      </div>
-    )
-  }
+  if (isLoading) return <AgentSkeleton />
 
   if (isError || !stats) {
     return (
@@ -49,7 +57,7 @@ export function SocialAgentDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* 1. Cartões de Estatísticas com Animação */}
+      {/* 1. Cartões de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <DashboardStatCard
           index={0}
@@ -77,7 +85,7 @@ export function SocialAgentDashboard() {
         />
       </div>
 
-      {/* 2. Área de Ação Rápida com Animação de Entrada */}
+      {/* 2. Área de Ação Rápida */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

@@ -33,6 +33,29 @@ interface ManagerStats {
   lastUpdated?: string
 }
 
+// [NOVO] Skeleton de Alta Fidelidade para o Dashboard
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Cards Skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />
+        ))}
+      </div>
+      {/* Charts Skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {[...Array(2)].map((_, i) => (
+          <div key={i} className="rounded-xl border bg-card p-6 space-y-4">
+            <Skeleton className="h-6 w-40 mb-4" />
+            <Skeleton className="h-64 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function ManagerDashboard() {
   const queryClient = useQueryClient()
 
@@ -57,11 +80,7 @@ export function ManagerDashboard() {
   }
 
   const renderOverview = () => {
-    if (isLoading) return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28 w-full rounded-2xl" />)}
-      </div>
-    )
+    if (isLoading) return <DashboardSkeleton />
 
     if (isError) return (
       <Card className="border-destructive/40 bg-destructive/10 text-destructive">

@@ -42,6 +42,23 @@ interface SortingState {
   order: SortDirection
 }
 
+// [NOVO] Skeleton de Linha de Tabela de Alta Fidelidade
+function TableRowSkeleton({ isManager }: { isManager: boolean }) {
+  return (
+    <TableRow>
+      <TableCell><Skeleton className="h-4 w-32" /></TableCell> {/* Nome */}
+      <TableCell><Skeleton className="h-4 w-16" /></TableCell> {/* Sexo */}
+      <TableCell><Skeleton className="h-4 w-24" /></TableCell> {/* CPF */}
+      {isManager && <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>} {/* Urgência */}
+      {isManager && <TableCell><Skeleton className="h-4 w-24" /></TableCell>} {/* Violação */}
+      <TableCell><Skeleton className="h-4 w-24" /></TableCell> {/* Data */}
+      <TableCell><Skeleton className="h-4 w-20" /></TableCell> {/* Técnico */}
+      <TableCell><Skeleton className="h-5 w-28 rounded-full" /></TableCell> {/* Status */}
+      <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell> {/* Ações */}
+    </TableRow>
+  )
+}
+
 export function CaseTable({ endpoint, title, description }: CaseTableProps) {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -51,9 +68,7 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
 
-  // Estado de Ordenação (null = usar padrão do backend)
   const [sorting, setSorting] = useState<SortingState | null>(null)
-
   const [filters, setFilters] = useState({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
 
   const handleFilterChange = (key: string, value: string) => {
@@ -61,10 +76,9 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
     setSearchParams(prev => { prev.set('page', '1'); return prev })
   }
 
-  // Limpa tudo e restaura a ordenação padrão (Urgência Desc + Data Asc)
   const clearFilters = () => {
     setFilters({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
-    setSorting(null) // Ao limpar, voltamos para o padrão "Regra de Ouro" do backend
+    setSorting(null)
   }
 
   const applySavedFilter = (newFilters: any) => {
@@ -78,12 +92,11 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
     setSearchParams(prev => { prev.set('page', '1'); return prev })
   }
 
-  // Alterna ordenação: Asc -> Desc -> Padrão
   const toggleSort = (field: string) => {
     setSorting(current => {
       if (current?.field === field) {
         if (current.order === 'asc') return { field, order: 'desc' }
-        return null // Volta ao padrão
+        return null 
       }
       return { field, order: 'asc' }
     })
@@ -96,7 +109,6 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
         search: debouncedSearchTerm || undefined, page: currentPage, pageSize: 10,
         status: filters.status || undefined, urgencia: filters.urgencia || undefined,
         violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined,
-        // Envia ordenação APENAS se o usuário selecionou algo
         sortBy: sorting?.field,
         sortOrder: sorting?.order
       }
@@ -138,11 +150,13 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
     )
   }
 
+  const isManagerEndpoint = endpoint === '/cases'
+
   return (
     <div className="space-y-4 h-full flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h2 className="text-2xl font-bold tracking-tight">{title}</h2><p className="text-muted-foreground">{description}</p></div>
-        {endpoint === '/cases' && user?.cargo === 'Gerente' && (
+        {isManagerEndpoint && user?.cargo === 'Gerente' && (
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Importar CSV</Button>
             <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting}>{isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />} Exportar CSV</Button>
@@ -156,9 +170,9 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input className="pl-9 h-9 w-full bg-background" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-          {endpoint === '/cases' && <SavedFilters currentFilters={filters} onApply={applySavedFilter} />}
+          {isManagerEndpoint && <SavedFilters currentFilters={filters} onApply={applySavedFilter} />}
         </div>
-        {endpoint === '/cases' && <DataTableFilters filters={filters} setFilters={handleFilterChange} onClear={clearFilters} />}
+        {isManagerEndpoint && <DataTableFilters filters={filters} setFilters={handleFilterChange} onClear={clearFilters} />}
       </div>
 
       <div className="flex-1 overflow-hidden rounded-md border bg-card">
@@ -170,8 +184,8 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
                 <SortableHeader label="Sexo" field="sexo" className="whitespace-nowrap" />
                 <TableHead className="whitespace-nowrap">CPF</TableHead>
                 
-                {endpoint === '/cases' && <SortableHeader label="Urgência" field="urgencia" className="whitespace-nowrap" />}
-                {endpoint === '/cases' && <TableHead className="whitespace-nowrap">Violação</TableHead>}
+                {isManagerEndpoint && <SortableHeader label="Urgência" field="urgencia" className="whitespace-nowrap" />}
+                {isManagerEndpoint && <TableHead className="whitespace-nowrap">Violação</TableHead>}
 
                 <SortableHeader 
                   label={endpoint === '/cases/closed' ? 'Desligamento' : 'Entrada'} 
@@ -187,7 +201,11 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading && Array.from({ length: 5 }).map((_, i) => <TableRow key={i}><TableCell colSpan={10}><Skeleton className="h-12 w-full" /></TableCell></TableRow>)}
+              {/* [CORREÇÃO] Skeleton específico em vez de bloco único */}
+              {isLoading && Array.from({ length: 8 }).map((_, i) => (
+                <TableRowSkeleton key={i} isManager={isManagerEndpoint} />
+              ))}
+              
               {!isLoading && result?.items.length === 0 && <TableRow><TableCell colSpan={10} className="h-32 text-center">Nenhum caso encontrado.</TableCell></TableRow>}
               
               {result?.items.map((item) => (
@@ -201,7 +219,7 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
                   <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{item.sexo || '-'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatCPF(item.cpf)}</TableCell>
                   
-                  {endpoint === '/cases' && (
+                  {isManagerEndpoint && (
                     <TableCell className="whitespace-nowrap">
                       <Badge variant="outline" className={`${getUrgencyColor(item.urgencia)} border px-2 py-0.5 text-[10px] uppercase block text-center w-fit`} title={item.urgencia}>
                         {item.urgencia}
@@ -209,7 +227,7 @@ export function CaseTable({ endpoint, title, description }: CaseTableProps) {
                     </TableCell>
                   )}
 
-                  {endpoint === '/cases' && (
+                  {isManagerEndpoint && (
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                       {item.violacao || '-'}
                     </TableCell>

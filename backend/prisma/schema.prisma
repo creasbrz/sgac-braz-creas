@@ -20,8 +20,9 @@ enum CaseStatus {
   AGUARDANDO_ACOLHIDA
   EM_ACOLHIDA
   AGUARDANDO_DISTRIBUICAO_PAEFI
-  EM_ACOLHIDA_ESPECIALIZADA // [NOVO STATUS]
+  EM_ACOLHIDA_ESPECIALIZADA
   EM_ACOMPANHAMENTO_PAEFI
+  EM_MONITORAMENTO
   DESLIGADO
 }
 
@@ -69,7 +70,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relacionamentos
   casosCriados        Case[]               @relation("Criador")
   casosAcolhida       Case[]               @relation("AgenteAcolhida")
   casosPAEFI          Case[]               @relation("EspecialistaPAEFI")
@@ -107,7 +107,6 @@ model Case {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  // Responsáveis
   criadoPorId         String
   criadoPor           User   @relation("Criador", fields: [criadoPorId], references: [id])
   agenteAcolhidaId    String?
@@ -115,7 +114,6 @@ model Case {
   especialistaPAEFIId String?
   especialistaPAEFI   User?  @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
 
-  // Dados Técnicos
   beneficios          String[] @default([])
   dataInicioPAEFI     DateTime?
   dataDesligamento    DateTime?
@@ -125,7 +123,6 @@ model Case {
   deletado            Boolean  @default(false)
   dataDeletado        DateTime?
 
-  // Relacionamentos
   evolucoes       Evolucao[]
   paf             Paf?
   agendamentos    Agendamento[]

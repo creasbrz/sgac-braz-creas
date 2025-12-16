@@ -8,7 +8,7 @@ import { ptBR } from 'date-fns/locale'
 import { CaseStatus, Cargo, LogAction, CaseOrigin } from '@prisma/client'
 import { cache } from '../lib/cache'
 
-// Utilitários mantidos
+// ... (Funções auxiliares stripTime, calculateUrgencyWeight, formatDateForCsv, internalError mantêm-se iguais)
 const stripTime = (date: Date | string): Date => {
   const d = new Date(date)
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
@@ -33,26 +33,7 @@ function internalError(reply: FastifyReply, message: string, error: unknown) {
   return reply.status(500).send({ message })
 }
 
-function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
-  switch (user.cargo) {
-    case Cargo.Agente_Social:
-      return {
-        agenteAcolhidaId: user.sub,
-        status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
-      }
-    case Cargo.Especialista:
-      return {
-        especialistaPAEFIId: user.sub,
-        // [ATUALIZAÇÃO v4.5.0] Especialista vê casos em Acolhida Especializada E Acompanhamento
-        status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI] }
-      }
-    case Cargo.Gerente:
-      return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
-    default:
-      return { id: '-1' }
-  }
-}
-
+// ... (detect Changes e createLog mantêm-se iguais)
 function detectChanges(oldData: any, newData: any) {
   const changes: Record<string, { from: any, to: any }> = {}
   const ignoreFields = ['updatedAt', 'createdAt', 'pesoUrgencia', 'numeroSei', 'linkSei', 'observacoes', 'beneficios', 'criadoPorId', 'id'] 
@@ -76,12 +57,42 @@ async function createLog(casoId: string, autorId: string, acao: LogAction, descr
   await prisma.caseLog.create({ data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo } })
 }
 
+// [CORREÇÃO 1] Define o que cada cargo vê na aba "Meus Casos" (Para o próprio usuário logado)
+function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
+  switch (user.cargo) {
+    case Cargo.Agente_Social:
+      return {
+        agenteAcolhidaId: user.sub,
+        // AGENTE SÓ VÊ O QUE ESTÁ NA TRIAGEM
+        status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
+      }
+    case Cargo.Especialista:
+      return {
+        especialistaPAEFIId: user.sub,
+        // ESPECIALISTA VÊ ACOLHIDA ESP., PAEFI E MONITORAMENTO
+        status: { 
+          in: [
+            CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
+            CaseStatus.EM_ACOMPANHAMENTO_PAEFI, 
+            CaseStatus.EM_MONITORAMENTO
+          ] 
+        }
+      }
+    case Cargo.Gerente:
+      // Gerente vê a fila de distribuição
+      return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
+    default:
+      return { id: '-1' }
+  }
+}
+
 export async function caseRoutes(app: FastifyInstance) {
 
   app.decorate('authenticate', async (request: any, reply: any) => {
     try { await request.jwtVerify() } catch (err) { await reply.send(err) }
   })
 
+  // ... (Rotas POST /cases e PUT /cases/:id mantêm-se iguais, vou omitir para brevidade, mantenha o código existente)
   // 1. Criar Caso
   app.post('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
@@ -188,7 +199,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos Ativos
+  // 2. Listar Casos (Com correção de filtros por servidor)
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -201,27 +212,44 @@ export async function caseRoutes(app: FastifyInstance) {
       sexo: z.string().optional(),
       view: z.enum(['my', 'all']).default('my').optional(),
       sortBy: z.string().optional(),
-      sortOrder: z.enum(['asc', 'desc']).optional()
+      sortOrder: z.enum(['asc', 'desc']).optional(),
+      // Filtros para "Casos por Servidor"
+      agenteId: z.string().uuid().optional(),
+      specialistId: z.string().uuid().optional(),
     })
 
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder } = schema.parse(request.query)
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(request.query)
       let where: any = {}
 
-      if (view === 'all') {
+      // Lógica Base
+      if (agenteId) {
+        // [CORREÇÃO 2] Se filtrou por Agente, traz SÓ a demanda ativa dele (Triagem)
+        // Ignora casos que ele fez a triagem mas já estão com PAEFI
+        where = {
+          agenteAcolhidaId: agenteId,
+          status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
+        }
+      } else if (specialistId) {
+        // [CORREÇÃO 3] Se filtrou por Especialista, traz toda a demanda dele (Acolhida Esp + PAEFI + Monitoramento)
+        where = {
+          especialistaPAEFIId: specialistId,
+          status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO] }
+        }
+      } else if (view === 'all') {
         where = { status: { not: CaseStatus.DESLIGADO } }
       } else {
         where = buildActiveCaseWhereClause(request.user as any)
       }
 
+      // Filtros Adicionais (Combinam com o filtro base)
       if (search) where.AND = [...(where.AND || []), { OR: [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }] }]
-      if (status) where.status = status
+      if (status) where.status = status // Se passar status explícito, ele sobrescreve ou refina
       if (urgencia && urgencia !== 'all') where.urgencia = urgencia
       if (violacao && violacao !== 'all') where.violacao = { equals: violacao }
       if (categoria && categoria !== 'all') where.categoria = { equals: categoria }
       if (sexo && sexo !== 'all') where.sexo = { equals: sexo }
-
-      // Regra de Ordenação Padrão
+      
       let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]; 
 
       if (sortBy) {
@@ -250,6 +278,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro interno ao listar casos.', error) }
   })
 
+  // ... (Restante das rotas: closed, details, status, assign, close, export mantêm-se iguais)
   // 3. Listar Casos Fechados
   app.get('/cases/closed', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
@@ -328,7 +357,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao alterar status.', error) }
   })
 
-  // 6. Atribuir (LÓGICA ALTERADA v4.5.0)
+  // 6. Atribuir
   app.patch('/cases/:id/assign', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ specialistId: z.string().uuid() })
@@ -341,12 +370,11 @@ export async function caseRoutes(app: FastifyInstance) {
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
       const spec = await prisma.user.findUnique({ where: { id: specialistId } })
       
-      // [ATUALIZAÇÃO v4.5.0] Vai para ACOLHIDA ESPECIALIZADA, não para ACOMPANHAMENTO direto
       const updated = await prisma.case.update({ 
         where: { id }, 
         data: { 
           especialistaPAEFIId: specialistId, 
-          status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, // Status Novo
+          status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
           dataInicioPAEFI: new Date() 
         } 
       })

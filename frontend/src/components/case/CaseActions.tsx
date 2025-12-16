@@ -1,205 +1,219 @@
 // frontend/src/components/case/CaseActions.tsx
-import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { format } from "date-fns" // [CORREÇÃO] Importação restaurada
-import { MoreVertical, UserPlus, Power, CheckCircle, ArrowRightCircle, Loader2, Users } from "lucide-react"
-import { toast } from "sonner"
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { MoreVertical, UserPlus, ArrowRightLeft, Power, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useAuth } from "@/hooks/useAuth"
-import { MOTIVOS_DESLIGAMENTO } from "@/constants/caseConstants"
+import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+import { getAvailableActions, type StatusAction } from '@/constants/caseTransitions'
+import { AssignSpecialistModal } from '@/components/modals/AssignSpecialistModal'
+import { MOTIVOS_DESLIGAMENTO, DESTINOS_DESLIGAMENTO } from '@/constants/caseConstants'
 
 interface CaseActionsProps {
   caseId: string
   status: string
-  currentSpecialistId?: string | null
+  currentSpecialistId?: string
 }
 
-export function CaseActions({ caseId, status, currentSpecialistId }: CaseActionsProps) {
+export function CaseActions({ caseId, status }: CaseActionsProps) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  
+
+  // Modais
   const [isAssignOpen, setIsAssignOpen] = useState(false)
   const [isCloseOpen, setIsCloseOpen] = useState(false)
-  const [isGroupLinkOpen, setIsGroupLinkOpen] = useState(false)
   
-  const [selectedSpecialist, setSelectedSpecialist] = useState("")
-  const [selectedGroup, setSelectedGroup] = useState("")
-  const [closeReason, setCloseReason] = useState("")
-  const [closeParecer, setCloseParecer] = useState("")
+  // Confirmação de Mudança de Status Simples
+  const [pendingStatusAction, setPendingStatusAction] = useState<StatusAction | null>(null)
 
-  const { data: specialists = [] } = useQuery({
-    queryKey: ['users', 'specialists'],
-    queryFn: async () => {
-      const res = await api.get('/users')
-      return res.data.filter((u: any) => u.cargo === 'Especialista')
+  // Dados do formulário de desligamento
+  const [closeReason, setCloseReason] = useState('')
+  const [closeDestination, setCloseDestination] = useState('')
+  const [closeParecer, setCloseParecer] = useState('')
+
+  // 1. Mutação para Mudar Status (Simples)
+  const { mutate: changeStatus, isPending: isChanging } = useMutation({
+    mutationFn: async (newStatus: string) => {
+      await api.patch(`/cases/${caseId}/status`, { status: newStatus })
     },
-    enabled: isAssignOpen
-  })
-
-  const { data: availableGroups = [] } = useQuery({
-    queryKey: ['groups', 'future'],
-    queryFn: async () => {
-      const res = await api.get('/groups')
-      return res.data.filter((g: any) => new Date(g.dataRealizacao) >= new Date())
-    },
-    enabled: isGroupLinkOpen
-  })
-
-  const { mutate: changeStatus } = useMutation({
-    mutationFn: async (newStatus: string) => api.patch(`/cases/${caseId}/status`, { status: newStatus }),
-    onSuccess: () => { toast.success("Status atualizado."); queryClient.invalidateQueries({ queryKey: ["case", caseId] }) }
-  })
-
-  const { mutate: assignSpecialist, isPending: isAssigning } = useMutation({
-    mutationFn: async () => api.patch(`/cases/${caseId}/assign`, { specialistId: selectedSpecialist }),
-    onSuccess: () => { toast.success("Técnico atribuído."); setIsAssignOpen(false); queryClient.invalidateQueries({ queryKey: ["case", caseId] }) }
-  })
-
-  const { mutate: closeCase, isPending: isClosing } = useMutation({
-    mutationFn: async () => api.patch(`/cases/${caseId}/close`, { motivoDesligamento: closeReason, parecerFinal: closeParecer }),
-    onSuccess: () => { toast.success("Caso desligado."); setIsCloseOpen(false); queryClient.invalidateQueries({ queryKey: ["case", caseId] }) }
-  })
-
-  const { mutate: linkToGroup, isPending: isLinking } = useMutation({
-    mutationFn: async () => api.post(`/groups/${selectedGroup}/participants`, { caseIds: [caseId] }),
     onSuccess: () => {
-      toast.success("Usuário vinculado ao grupo!");
-      setIsGroupLinkOpen(false);
-      setSelectedGroup("");
+      toast.success('Status atualizado com sucesso!')
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      setPendingStatusAction(null)
     },
-    onError: () => toast.error("Erro ao vincular.")
+    onError: () => toast.error('Erro ao atualizar status.')
   })
 
-  const isManager = user?.cargo === 'Gerente'
-  const isClosed = status === 'DESLIGADO'
+  // 2. Mutação para Desligar
+  const { mutate: closeCase, isPending: isClosing } = useMutation({
+    mutationFn: async () => {
+      await api.patch(`/cases/${caseId}/close`, {
+        motivoDesligamento: closeReason,
+        destinoDesligamento: closeDestination,
+        parecerFinal: closeParecer
+      })
+    },
+    onSuccess: () => {
+      toast.success('Caso desligado com sucesso.')
+      setIsCloseOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      navigate('/cases')
+    },
+    onError: () => toast.error('Erro ao desligar caso.')
+  })
+
+  // Ações disponíveis baseadas no cargo e status
+  const actions = user ? getAvailableActions(status, user.cargo) : []
+
+  const handleActionClick = (action: StatusAction) => {
+    if (action.type === 'assign') {
+      setIsAssignOpen(true)
+    } else if (action.type === 'close') {
+      setIsCloseOpen(true)
+    } else if (action.type === 'status' && action.nextStatus) {
+      setPendingStatusAction(action)
+    }
+  }
+
+  if (!actions.length) return null
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="default" className="gap-2">Gerenciar <MoreVertical className="h-4 w-4" /></Button>
+          <Button variant="default" className="gap-2 shadow-sm">
+            Gerenciar <MoreVertical className="h-4 w-4" />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>Ações do Caso</DropdownMenuLabel>
+          <DropdownMenuLabel>Ações Disponíveis</DropdownMenuLabel>
           <DropdownMenuSeparator />
-
-          {status === 'AGUARDANDO_ACOLHIDA' && (
-            <DropdownMenuItem onClick={() => changeStatus('EM_ACOLHIDA')}>
-               <ArrowRightCircle className="mr-2 h-4 w-4 text-blue-500" /> Iniciar Acolhida
+          {actions.map((action, idx) => (
+            <DropdownMenuItem 
+              key={idx} 
+              onClick={() => handleActionClick(action)}
+              className="cursor-pointer gap-2 py-2"
+            >
+              {action.type === 'assign' && <UserPlus className="h-4 w-4 text-blue-500" />}
+              {action.type === 'status' && <ArrowRightLeft className="h-4 w-4 text-emerald-500" />}
+              {action.type === 'close' && <Power className="h-4 w-4 text-red-500" />}
+              {action.label}
             </DropdownMenuItem>
-          )}
-          
-          {status === 'EM_ACOLHIDA' && (
-            <DropdownMenuItem onClick={() => changeStatus('AGUARDANDO_DISTRIBUICAO_PAEFI')}>
-              <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Finalizar Acolhida
-            </DropdownMenuItem>
-          )}
-
-          {(isManager || status === 'AGUARDANDO_DISTRIBUICAO_PAEFI') && !isClosed && (
-            <DropdownMenuItem onClick={() => setIsAssignOpen(true)}>
-              <UserPlus className="mr-2 h-4 w-4 text-purple-500" /> 
-              {currentSpecialistId ? "Trocar Técnico" : "Atribuir Técnico"}
-            </DropdownMenuItem>
-          )}
-
-          {!isClosed && (
-            <DropdownMenuItem onClick={() => setIsGroupLinkOpen(true)}>
-              <Users className="mr-2 h-4 w-4 text-indigo-500" /> Vincular a Grupo
-            </DropdownMenuItem>
-          )}
-
-          <DropdownMenuSeparator />
-
-          {!isClosed ? (
-            <DropdownMenuItem onClick={() => setIsCloseOpen(true)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-              <Power className="mr-2 h-4 w-4" /> Desligar Caso
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem onClick={() => changeStatus('AGUARDANDO_ACOLHIDA')}>
-              <ArrowRightCircle className="mr-2 h-4 w-4" /> Reabrir Caso
-            </DropdownMenuItem>
-          )}
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Atribuição de Técnico PAEFI</DialogTitle></DialogHeader>
-          <div className="py-4">
-            <Label>Especialista</Label>
-            <Select value={selectedSpecialist} onValueChange={setSelectedSpecialist}>
-              <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-              <SelectContent>
-                {specialists.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => assignSpecialist()} disabled={!selectedSpecialist || isAssigning}>Confirmar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Modal de Atribuição */}
+      <AssignSpecialistModal 
+        isOpen={isAssignOpen} 
+        onOpenChange={setIsAssignOpen} 
+        caseId={caseId} 
+      />
 
-      <Dialog open={isGroupLinkOpen} onOpenChange={setIsGroupLinkOpen}>
+      {/* Modal de Confirmação de Mudança de Status */}
+      <Dialog open={!!pendingStatusAction} onOpenChange={(open) => !open && setPendingStatusAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Vincular a Atividade Coletiva</DialogTitle>
+            <DialogTitle>Confirmar Transição</DialogTitle>
+            <DialogDescription>
+              Deseja alterar o status para <strong>{pendingStatusAction?.label}</strong>?
+            </DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Atividade Disponível</Label>
-              <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                <SelectTrigger><SelectValue placeholder="Selecione uma atividade..." /></SelectTrigger>
-                <SelectContent>
-                  {availableGroups.length === 0 ? (
-                    <div className="p-2 text-xs text-muted-foreground">Nenhuma atividade futura encontrada.</div>
-                  ) : (
-                    availableGroups.map((g: any) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.tema} ({format(new Date(g.dataRealizacao), 'dd/MM')})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsGroupLinkOpen(false)}>Cancelar</Button>
-            <Button onClick={() => linkToGroup()} disabled={!selectedGroup || isLinking}>
-              {isLinking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Vincular
+            <Button variant="outline" onClick={() => setPendingStatusAction(null)}>Cancelar</Button>
+            <Button 
+              onClick={() => pendingStatusAction?.nextStatus && changeStatus(pendingStatusAction.nextStatus)}
+              disabled={isChanging}
+            >
+              {isChanging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Modal de Desligamento */}
       <Dialog open={isCloseOpen} onOpenChange={setIsCloseOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Desligamento de Caso</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Desligamento do Caso</DialogTitle>
+            <DialogDescription>
+              Preencha os dados finais para encerrar o acompanhamento.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label>Motivo</Label>
-              <Select value={closeReason} onValueChange={setCloseReason}>
+              <Label>Motivo do Desligamento</Label>
+              <Select onValueChange={setCloseReason}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
-                  {MOTIVOS_DESLIGAMENTO.map((m) => <SelectItem key={m} value={m}>{m.length > 50 ? m.substring(0, 50) + '...' : m}</SelectItem>)}
+                  {MOTIVOS_DESLIGAMENTO.map(m => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-2">
-              <Label>Parecer Final</Label>
-              <Textarea value={closeParecer} onChange={(e) => setCloseParecer(e.target.value)} className="h-24"/>
+              <Label>Destino / Encaminhamento Final</Label>
+              <Select onValueChange={setCloseDestination}>
+                <SelectTrigger><SelectValue placeholder="Para onde foi encaminhado?" /></SelectTrigger>
+                <SelectContent>
+                  {DESTINOS_DESLIGAMENTO.map(d => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Parecer Técnico Final</Label>
+              <Textarea 
+                value={closeParecer} 
+                onChange={e => setCloseParecer(e.target.value)} 
+                placeholder="Resumo final do caso..." 
+                className="h-24"
+              />
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="destructive" onClick={() => closeCase()} disabled={!closeReason || isClosing}>Encerrar Caso</Button>
+            <Button variant="outline" onClick={() => setIsCloseOpen(false)}>Cancelar</Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => closeCase()} 
+              disabled={!closeReason || !closeParecer || isClosing}
+            >
+              {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar Desligamento
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

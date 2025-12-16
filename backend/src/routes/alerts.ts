@@ -36,23 +36,20 @@ export async function alertRoutes(app: FastifyInstance) {
         id: `agenda-${ag.id}`,
         title: 'Compromisso Próximo',
         description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: `/dashboard/cases/${ag.casoId}`, // Link direto para o caso
+        link: `/dashboard/cases/${ag.casoId}`,
         type: 'info'
       })
     }
 
     // 2. REGRAS GERAIS
     
-    // [NOVO] Alerta de Inatividade (Casos "Esquecidos")
-    // Busca casos do usuário que não têm evolução nos últimos 30 dias
+    // Alerta de Inatividade (Casos "Esquecidos")
     const dataLimiteInatividade = subDays(new Date(), 30)
     
     const casosInativos = await prisma.case.findMany({
       where: {
         status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-        // Se for Especialista, filtra pelos dele. Se Gerente, vê todos.
         especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
-        // Lógica: Nenhuma evolução criada DEPOIS da data limite
         evolucoes: {
           none: {
             createdAt: { gte: dataLimiteInatividade }
@@ -68,7 +65,33 @@ export async function alertRoutes(app: FastifyInstance) {
         title: 'Caso sem Movimentação',
         description: `${caso.nomeCompleto} não tem evolução há +30 dias.`,
         link: `/dashboard/cases/${caso.id}`,
-        type: 'critical' // Alerta vermelho
+        type: 'critical'
+      })
+    }
+
+    // [NOVO] Alerta de Monitoramento (Busca Ativa)
+    // Regra: Casos em monitoramento devem ter alguma anotação a cada 60 dias (prazo mais longo)
+    const dataLimiteMonitoramento = subDays(new Date(), 60)
+    const casosMonitoramentoEsquecidos = await prisma.case.findMany({
+      where: {
+        status: CaseStatus.EM_MONITORAMENTO,
+        especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
+        evolucoes: {
+          none: {
+            createdAt: { gte: dataLimiteMonitoramento }
+          }
+        }
+      },
+      select: { id: true, nomeCompleto: true }
+    })
+
+    for (const caso of casosMonitoramentoEsquecidos) {
+      notifications.push({
+        id: `monit-inativo-${caso.id}`,
+        title: 'Revisão de Monitoramento',
+        description: `Verificar situação de ${caso.nomeCompleto} (sem contato há 60 dias).`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: 'info' // Amarelo/Info pois é menos crítico que PAEFI
       })
     }
 
@@ -113,7 +136,6 @@ export async function alertRoutes(app: FastifyInstance) {
 
     // --- ESPECIALISTA ---
     if (cargo === Cargo.Especialista) {
-      // Casos sem PAF
       const casesWithoutPaf = await prisma.case.count({
         where: {
           especialistaPAEFIId: userId,
@@ -127,16 +149,14 @@ export async function alertRoutes(app: FastifyInstance) {
           id: 'missing-paf',
           title: 'Casos sem PAF',
           description: `${casesWithoutPaf} casos precisam do plano inicial.`,
-          link: '/dashboard/cases', // Idealmente filtrar na lista
+          link: '/dashboard/cases',
           type: 'critical'
         })
       }
 
-      // PAFs Vencendo
       const pafDeadline = addDays(new Date(), 15)
       const pafsExpiring = await prisma.paf.findMany({
         where: {
-          // O PAF pode ter sido criado por outro, mas o alerta vai para o responsável atual do caso
           caso: {
             especialistaPAEFIId: userId,
             status: { not: CaseStatus.DESLIGADO }

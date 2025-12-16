@@ -1,5 +1,5 @@
 // frontend/src/components/CaseTable.tsx
-import { useState } from 'react' // [CORREÇÃO] Removido useEffect
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { MoreHorizontal, Search, Edit, FileDown, Loader2, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -39,7 +39,9 @@ interface CaseTableProps {
   endpoint: '/cases' | '/cases/closed'; 
   title: string; 
   description: string;
-  defaultView?: 'my' | 'all'; 
+  defaultView?: 'my' | 'all';
+  // [NOVO] Permite passar filtros extras (ex: specialistId)
+  extraParams?: Record<string, string | undefined>;
 }
 
 type SortDirection = 'asc' | 'desc'
@@ -64,7 +66,7 @@ function TableRowSkeleton({ isManager }: { isManager: boolean }) {
   )
 }
 
-export function CaseTable({ endpoint, title, description, defaultView = 'my' }: CaseTableProps) {
+export function CaseTable({ endpoint, title, description, defaultView = 'my', extraParams = {} }: CaseTableProps) {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') ?? '')
@@ -107,8 +109,9 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my' }: 
     })
   }
 
+  // Adicionamos extraParams à queryKey para recarregar quando mudar
   const { data: result, isLoading } = useQuery<PaginatedCasesResponse>({
-    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting, defaultView],
+    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting, defaultView, extraParams],
     queryFn: async () => {
       const params = {
         search: debouncedSearchTerm || undefined, page: currentPage, pageSize: 10,
@@ -116,7 +119,8 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my' }: 
         violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined,
         sortBy: sorting?.field,
         sortOrder: sorting?.order,
-        view: defaultView 
+        view: defaultView,
+        ...extraParams // [NOVO] Espalha os filtros extras na requisição
       }
       const response = await api.get(endpoint, { params })
       return response.data

@@ -13,7 +13,6 @@ export const CASE_STATUS_MAP = {
     text: 'Aguardando Distribuição',
     style: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
   },
-  // [NOVO STATUS ADICIONADO AQUI]
   EM_ACOLHIDA_ESPECIALIZADA: {
     text: 'Acolhida Especializada',
     style: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
@@ -21,6 +20,10 @@ export const CASE_STATUS_MAP = {
   EM_ACOMPANHAMENTO_PAEFI: {
     text: 'Acompanhamento PAEFI',
     style: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800',
+  },
+  EM_MONITORAMENTO: {
+    text: 'Em Monitoramento',
+    style: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-800',
   },
   DESLIGADO: {
     text: 'Desligado',
@@ -37,10 +40,6 @@ export function getCaseStatusInfo(status: string | null | undefined) {
   return { text: 'Desconhecido', style: 'bg-muted text-muted-foreground' }
 }
 
-// ----------------------------------------------------------------------
-// MOTIVOS DE DESLIGAMENTO
-// ----------------------------------------------------------------------
-
 export const MOTIVOS_DESLIGAMENTO = [
   'Transferência de território',
   'Falecimento do(a) usuário(a)',
@@ -52,7 +51,6 @@ export const MOTIVOS_DESLIGAMENTO = [
   'Situação identificada como não pertencente à demanda do CREAS'
 ]
 
-// Destinos
 export const DESTINOS_DESLIGAMENTO = [
   'Referenciado ao CRAS (PAIF)',
   'Serviço de Saúde (CAPS/UBS)',
@@ -63,44 +61,15 @@ export const DESTINOS_DESLIGAMENTO = [
   'Outro'
 ]
 
-// ----------------------------------------------------------------------
-// CLASSIFICAÇÃO DE URGÊNCIA (Semáforo de Cores)
-// ----------------------------------------------------------------------
-
-const URGENCIA_GRAVISSIMA = [
-  'Convive com agressor',
-  'Idoso 80+',
-  'Primeira infância',
-  'Risco de morte'
-]
-
-const URGENCIA_MUITO_GRAVE = [
-  'Risco de reincidência',
-  'Sofre ameaça',
-  'Risco de desabrigo',
-  'Criança/Adolescente'
-]
-
-const URGENCIA_GRAVE = [
-  'PCD',
-  'Idoso',
-  'Internação',
-  'Acolhimento',
-  'Gestante/Lactante'
-]
+const URGENCIA_GRAVISSIMA = ['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte']
+const URGENCIA_MUITO_GRAVE = ['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente']
+const URGENCIA_GRAVE = ['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante']
 
 export function getUrgencyColor(urgencia: string | null | undefined): string {
   if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300'
   const term = urgencia.trim()
-  
-  if (URGENCIA_GRAVISSIMA.includes(term)) 
-    return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
-  
-  if (URGENCIA_MUITO_GRAVE.includes(term)) 
-    return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
-  
-  if (URGENCIA_GRAVE.includes(term)) 
-    return 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800'
-  
+  if (URGENCIA_GRAVISSIMA.includes(term)) return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+  if (URGENCIA_MUITO_GRAVE.includes(term)) return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
+  if (URGENCIA_GRAVE.includes(term)) return 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800'
   return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
 }

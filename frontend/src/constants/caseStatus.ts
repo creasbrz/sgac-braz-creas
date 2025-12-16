@@ -4,8 +4,9 @@ export const CASE_STATUSES = [
   'AGUARDANDO_ACOLHIDA',
   'EM_ACOLHIDA',
   'AGUARDANDO_DISTRIBUICAO_PAEFI',
-  'EM_ACOLHIDA_ESPECIALIZADA', // [NOVO]
+  'EM_ACOLHIDA_ESPECIALIZADA',
   'EM_ACOMPANHAMENTO_PAEFI',
+  'EM_MONITORAMENTO',
   'DESLIGADO',
 ] as const
 
@@ -13,7 +14,7 @@ export type CaseStatus = (typeof CASE_STATUSES)[number]
 
 type StatusDisplayConfig = {
   label: string
-  color: 'blue' | 'yellow' | 'green' | 'red' | 'gray' | 'purple' // [Adicionado purple]
+  color: 'blue' | 'yellow' | 'green' | 'red' | 'gray' | 'purple'
 }
 
 export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayConfig> = {
@@ -29,7 +30,6 @@ export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayC
     label: 'Aguardando Distribuição',
     color: 'yellow',
   },
-  // [NOVO]
   EM_ACOLHIDA_ESPECIALIZADA: {
     label: 'Acolhida Especializada',
     color: 'purple',
@@ -37,6 +37,10 @@ export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayC
   EM_ACOMPANHAMENTO_PAEFI: {
     label: 'Acompanhamento PAEFI',
     color: 'green',
+  },
+  EM_MONITORAMENTO: {
+    label: 'Em Monitoramento',
+    color: 'gray',
   },
   DESLIGADO: {
     label: 'Desligado',

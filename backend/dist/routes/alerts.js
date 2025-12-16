@@ -56,7 +56,6 @@ async function alertRoutes(app) {
         title: "Compromisso Pr\xF3ximo",
         description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
         link: `/dashboard/cases/${ag.casoId}`,
-        // Link direto para o caso
         type: "info"
       });
     }
@@ -64,9 +63,7 @@ async function alertRoutes(app) {
     const casosInativos = await prisma.case.findMany({
       where: {
         status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-        // Se for Especialista, filtra pelos dele. Se Gerente, vê todos.
         especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
-        // Lógica: Nenhuma evolução criada DEPOIS da data limite
         evolucoes: {
           none: {
             createdAt: { gte: dataLimiteInatividade }
@@ -82,7 +79,29 @@ async function alertRoutes(app) {
         description: `${caso.nomeCompleto} n\xE3o tem evolu\xE7\xE3o h\xE1 +30 dias.`,
         link: `/dashboard/cases/${caso.id}`,
         type: "critical"
-        // Alerta vermelho
+      });
+    }
+    const dataLimiteMonitoramento = (0, import_date_fns.subDays)(/* @__PURE__ */ new Date(), 60);
+    const casosMonitoramentoEsquecidos = await prisma.case.findMany({
+      where: {
+        status: import_client2.CaseStatus.EM_MONITORAMENTO,
+        especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
+        evolucoes: {
+          none: {
+            createdAt: { gte: dataLimiteMonitoramento }
+          }
+        }
+      },
+      select: { id: true, nomeCompleto: true }
+    });
+    for (const caso of casosMonitoramentoEsquecidos) {
+      notifications.push({
+        id: `monit-inativo-${caso.id}`,
+        title: "Revis\xE3o de Monitoramento",
+        description: `Verificar situa\xE7\xE3o de ${caso.nomeCompleto} (sem contato h\xE1 60 dias).`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: "info"
+        // Amarelo/Info pois é menos crítico que PAEFI
       });
     }
     if (cargo === import_client2.Cargo.Gerente) {
@@ -130,14 +149,12 @@ async function alertRoutes(app) {
           title: "Casos sem PAF",
           description: `${casesWithoutPaf} casos precisam do plano inicial.`,
           link: "/dashboard/cases",
-          // Idealmente filtrar na lista
           type: "critical"
         });
       }
       const pafDeadline = (0, import_date_fns.addDays)(/* @__PURE__ */ new Date(), 15);
       const pafsExpiring = await prisma.paf.findMany({
         where: {
-          // O PAF pode ter sido criado por outro, mas o alerta vai para o responsável atual do caso
           caso: {
             especialistaPAEFIId: userId,
             status: { not: import_client2.CaseStatus.DESLIGADO }

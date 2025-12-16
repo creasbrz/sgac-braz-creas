@@ -64,6 +64,7 @@ function CaseWorkflow({ status }: { status: string }) {
     { id: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Distribuição' },
     { id: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Esp.' },
     { id: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Acompanhamento' },
+    { id: 'EM_MONITORAMENTO', label: 'Monitoramento' }, // [NOVO]
     { id: 'DESLIGADO', label: 'Finalizado' }
   ]
 
@@ -72,7 +73,7 @@ function CaseWorkflow({ status }: { status: string }) {
 
   return (
     <div className="w-full overflow-x-auto py-4">
-       <div className="min-w-[700px] flex items-center justify-between relative px-2">
+       <div className="min-w-[800px] flex items-center justify-between relative px-2">
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-muted -z-10 rounded-full" />
         <div 
           className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-primary -z-10 transition-all duration-500 rounded-full" 

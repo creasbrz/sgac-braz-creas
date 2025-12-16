@@ -106,25 +106,6 @@ function internalError(reply, message, error) {
   console.error(message, error);
   return reply.status(500).send({ message });
 }
-function buildActiveCaseWhereClause(user) {
-  switch (user.cargo) {
-    case import_client2.Cargo.Agente_Social:
-      return {
-        agenteAcolhidaId: user.sub,
-        status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }
-      };
-    case import_client2.Cargo.Especialista:
-      return {
-        especialistaPAEFIId: user.sub,
-        // [ATUALIZAÇÃO v4.5.0] Especialista vê casos em Acolhida Especializada E Acompanhamento
-        status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI] }
-      };
-    case import_client2.Cargo.Gerente:
-      return { status: import_client2.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI };
-    default:
-      return { id: "-1" };
-  }
-}
 function detectChanges(oldData, newData) {
   const changes = {};
   const ignoreFields = ["updatedAt", "createdAt", "pesoUrgencia", "numeroSei", "linkSei", "observacoes", "beneficios", "criadoPorId", "id"];
@@ -150,6 +131,32 @@ function detectChanges(oldData, newData) {
 }
 async function createLog(casoId, autorId, acao, descricao, valorAnterior, valorNovo) {
   await prisma.caseLog.create({ data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo } });
+}
+function buildActiveCaseWhereClause(user) {
+  switch (user.cargo) {
+    case import_client2.Cargo.Agente_Social:
+      return {
+        agenteAcolhidaId: user.sub,
+        // AGENTE SÓ VÊ O QUE ESTÁ NA TRIAGEM
+        status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }
+      };
+    case import_client2.Cargo.Especialista:
+      return {
+        especialistaPAEFIId: user.sub,
+        // ESPECIALISTA VÊ ACOLHIDA ESP., PAEFI E MONITORAMENTO
+        status: {
+          in: [
+            import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
+            import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+            import_client2.CaseStatus.EM_MONITORAMENTO
+          ]
+        }
+      };
+    case import_client2.Cargo.Gerente:
+      return { status: import_client2.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI };
+    default:
+      return { id: "-1" };
+  }
 }
 async function caseRoutes(app) {
   app.decorate("authenticate", async (request, reply) => {
@@ -263,12 +270,25 @@ async function caseRoutes(app) {
       sexo: import_zod.z.string().optional(),
       view: import_zod.z.enum(["my", "all"]).default("my").optional(),
       sortBy: import_zod.z.string().optional(),
-      sortOrder: import_zod.z.enum(["asc", "desc"]).optional()
+      sortOrder: import_zod.z.enum(["asc", "desc"]).optional(),
+      // Filtros para "Casos por Servidor"
+      agenteId: import_zod.z.string().uuid().optional(),
+      specialistId: import_zod.z.string().uuid().optional()
     });
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder } = schema.parse(request.query);
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(request.query);
       let where = {};
-      if (view === "all") {
+      if (agenteId) {
+        where = {
+          agenteAcolhidaId: agenteId,
+          status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }
+        };
+      } else if (specialistId) {
+        where = {
+          especialistaPAEFIId: specialistId,
+          status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, import_client2.CaseStatus.EM_MONITORAMENTO] }
+        };
+      } else if (view === "all") {
         where = { status: { not: import_client2.CaseStatus.DESLIGADO } };
       } else {
         where = buildActiveCaseWhereClause(request.user);
@@ -397,7 +417,6 @@ async function caseRoutes(app) {
         data: {
           especialistaPAEFIId: specialistId,
           status: import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
-          // Status Novo
           dataInicioPAEFI: /* @__PURE__ */ new Date()
         }
       });

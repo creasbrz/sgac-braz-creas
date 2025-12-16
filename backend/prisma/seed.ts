@@ -21,70 +21,39 @@ const TEAM_DATA = [
 // --- LISTAS DE NEGÓCIO PADRONIZADAS ---
 
 const LISTA_URGENCIAS = [
-  'Convive com agressor',
-  'Idoso 80+',
-  'Primeira infância',
-  'Risco de morte',
-  'Risco de reincidência',
-  'Sofre ameaça',
-  'Risco de desabrigo',
-  'Criança/Adolescente',
-  'PCD',
-  'Idoso',
-  'Internação',
-  'Acolhimento',
-  'Gestante/Lactante',
-  'Sem risco imediato',
-  'Visita periódica'
+  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
+  'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
+  'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+  'Sem risco imediato', 'Visita periódica'
 ]
 
 const LISTA_VIOLACOES = [
-  'Abandono',
-  'Negligência',
-  'Afastamento do convívio familiar',
-  'Cumprimento de medidas socioeducativas',
-  'Descumprimento de condicionalidade do PBF',
-  'Discriminação',
-  'Situação de rua',
-  'Trabalho infantil',
-  'Violência física e/ou psicológica',
-  'Violência sexual',
-  'Outros'
+  'Abandono', 'Negligência', 'Afastamento do convívio familiar',
+  'Cumprimento de medidas socioeducativas', 'Descumprimento de condicionalidade do PBF',
+  'Discriminação', 'Situação de rua', 'Trabalho infantil',
+  'Violência física e/ou psicológica', 'Violência sexual', 'Outros'
 ]
 
 const LISTA_DESTINOS = [
-  'Referenciado ao CRAS (PAIF)',
-  'Serviço de Saúde (CAPS/UBS)',
-  'Sistema de Justiça',
-  'Acolhimento Institucional',
-  'Superação da Vulnerabilidade (Autonomia)',
-  'Mudança de Município/Estado',
-  'Outro'
+  'Referenciado ao CRAS (PAIF)', 'Serviço de Saúde (CAPS/UBS)', 'Sistema de Justiça',
+  'Acolhimento Institucional', 'Superação da Vulnerabilidade (Autonomia)',
+  'Mudança de Município/Estado', 'Outro'
 ]
 
 const BENEFICIOS_EVENTUAIS = [
-  'Auxilio Natalidade', 
-  'Auxilio Calamidade', 
-  'Benefício Excepcional', 
-  'Prato Cheio', 
-  'Auxilio Vulnerabilidade'
+  'Auxilio Natalidade', 'Auxilio Calamidade', 'Benefício Excepcional', 
+  'Prato Cheio', 'Auxilio Vulnerabilidade'
 ]
 
 const TRANSFERENCIA_RENDA = [
-  'PROGRAMA BOLSA FAMÍLIA (PBF)', 
-  'PROGRAMA DF SOCIAL', 
-  'PROGRAMA CARTÃO GÁS', 
-  'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
+  'PROGRAMA BOLSA FAMÍLIA (PBF)', 'PROGRAMA DF SOCIAL', 
+  'PROGRAMA CARTÃO GÁS', 'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
 ]
 
 const MOTIVOS_DESLIGAMENTO = [
-  'Transferência de território',
-  'Falecimento do(a) usuário(a)',
-  'Recusa do atendimento por parte do(a) usuário(a)',
-  'Usuário(a) não localizado(a)',
-  'Usuário(a) acolhido(a)',
-  'Minimização dos riscos',
-  'Não pertencente à demanda do CREAS'
+  'Transferência de território', 'Falecimento do(a) usuário(a)',
+  'Recusa do atendimento por parte do(a) usuário(a)', 'Usuário(a) não localizado(a)',
+  'Usuário(a) acolhido(a)', 'Minimização dos riscos', 'Não pertencente à demanda do CREAS'
 ]
 
 // Textos Técnicos para Evolução
@@ -92,10 +61,10 @@ const EVOLUCOES_TECNICAS = [
   "Realizada visita domiciliar. Observa-se precariedade habitacional e saneamento básico insuficiente.",
   "Atendimento psicossocial realizado na unidade. Usuária relata episódios recorrentes de violência.",
   "Articulação com a rede de saúde (CAPS AD) para verificar a adesão do adolescente ao tratamento.",
-  "Realizada escuta qualificada. Identificada demanda de segurança alimentar.",
+  "Realizada escuta qualificada na Acolhida Especializada. Identificada demanda de segurança alimentar.",
   "Reunião de estudo de caso com o Conselho Tutelar. Definido plano conjunto.",
   "Usuário compareceu para atendimento espontâneo solicitando segunda via de documentação civil.",
-  "Tentativa de contato telefônico sem êxito. Enviada mensagem via WhatsApp.",
+  "Tentativa de contato telefônico sem êxito (Busca Ativa de Monitoramento). Enviada mensagem via WhatsApp.",
   "Acompanhamento da medida socioeducativa. O adolescente demonstra reflexão sobre o ato infracional."
 ]
 
@@ -134,7 +103,7 @@ const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3}
 // --- EXECUÇÃO ---
 
 async function main() {
-  console.log('🌱 [SEED v4.4.1] Iniciando povoamento COMPLETO (120 Casos + Fila + Grupos)...')
+  console.log('🌱 [SEED v4.5.2] Iniciando povoamento COMPLETO (120 Casos + Monitoramento + Grupos)...')
 
   // 1. Limpeza Total
   console.log('🧹 Limpando base de dados antiga...')
@@ -186,19 +155,29 @@ async function main() {
     const dataEntrada = faker.date.past({ years: 1 })
     const origem = faker.helpers.arrayElement(Object.values(CaseOrigin))
     
-    // Lógica de Status (Com Fila de Espera)
+    // --- Lógica de Distribuição de Status (Atualizada v4.5.2) ---
     const statusRoll = Math.random()
     let status = CaseStatus.AGUARDANDO_ACOLHIDA
     
-    if (statusRoll > 0.1) status = CaseStatus.EM_ACOLHIDA
-    // Aumentando fila de espera propositalmente para teste
-    if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI 
-    if (statusRoll > 0.5) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI
-    if (statusRoll > 0.85) status = CaseStatus.DESLIGADO
+    if (statusRoll > 0.10) status = CaseStatus.EM_ACOLHIDA // 15%
+    if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI // 10%
+    if (statusRoll > 0.35) status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA // [v4.5.0] 10%
+    if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI // 30%
+    if (statusRoll > 0.75) status = CaseStatus.EM_MONITORAMENTO // [v4.5.2] 15%
+    if (statusRoll > 0.90) status = CaseStatus.DESLIGADO // 10%
 
     const criador = rand(gerentes) || rand(agentes)
-    const agenteResp = rand(agentes)
-    const especialistaResp = status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI ? rand(especialistas) : null
+    const agenteResp = rand(agentes) // Quase todos passam por acolhida
+    
+    // Especialista é obrigatório para Acolhida Especializada, PAEFI e Monitoramento
+    const needsSpecialist = [
+      CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
+      CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+      CaseStatus.EM_MONITORAMENTO,
+      CaseStatus.DESLIGADO
+    ].includes(status)
+
+    const especialistaResp = needsSpecialist ? rand(especialistas) : null
 
     // Dados de Desligamento
     let motivoDesligamento = null
@@ -222,7 +201,7 @@ async function main() {
         return 1;
     }
 
-    // Transferência de Renda (Campo Array no Case)
+    // Transferência de Renda
     const rendaBeneficios = faker.helpers.arrayElements(TRANSFERENCIA_RENDA, randInt(0, 2))
 
     const newCase = await prisma.case.create({
@@ -246,14 +225,16 @@ async function main() {
         linkSei: 'https://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar',
         observacoes: "Família reside em área de vulnerabilidade social.",
         
-        // Benefícios de Transferência de Renda
         beneficios: rendaBeneficios, 
         
         status,
         criadoPorId: criador.id,
         agenteAcolhidaId: agenteResp.id,
         especialistaPAEFIId: especialistaResp?.id,
+        
+        // Data de inicio PAEFI coerente
         dataInicioPAEFI: especialistaResp ? addDays(dataEntrada, randInt(10, 30)) : null,
+        
         dataDesligamento,
         motivoDesligamento,
         destinoDesligamento,
@@ -274,7 +255,32 @@ async function main() {
         }
     })
 
-    // [NOVO] Benefícios Eventuais (Entregas do CREAS)
+    // Log de Atribuição para Monitoramento ou Especializada
+    if (status === CaseStatus.EM_MONITORAMENTO && especialistaResp) {
+       await prisma.caseLog.create({
+         data: {
+           casoId: newCase.id,
+           autorId: especialistaResp.id,
+           acao: LogAction.MUDANCA_STATUS,
+           descricao: 'Alterado para Monitoramento após período de acompanhamento.',
+           createdAt: subDays(new Date(), randInt(2, 60))
+         }
+       })
+    }
+
+    if (status === CaseStatus.EM_ACOLHIDA_ESPECIALIZADA && especialistaResp) {
+      await prisma.caseLog.create({
+        data: {
+          casoId: newCase.id,
+          autorId: gerentes[0].id,
+          acao: LogAction.ATRIBUICAO,
+          descricao: `Distribuído para Acolhida Especializada com ${especialistaResp.nome}.`,
+          createdAt: subDays(new Date(), randInt(1, 5))
+        }
+      })
+   }
+
+    // Benefícios Eventuais
     if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
       const numEventuais = randInt(0, 2)
       for (let j = 0; j < numEventuais; j++) {
@@ -282,7 +288,7 @@ async function main() {
           data: {
             casoId: newCase.id,
             responsavelId: agenteResp?.id || criador.id,
-            tipo: rand(BENEFICIOS_EVENTUAIS), // Apenas eventuais na tabela de entregas
+            tipo: rand(BENEFICIOS_EVENTUAIS),
             status: rand(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE']),
             dataSolicitacao: subDays(new Date(), randInt(1, 30)),
             observacoes: 'Concessão eventual conforme demanda.'
@@ -330,10 +336,10 @@ async function main() {
       }
     }
 
-    // PAF
-    if (especialistaResp) {
+    // PAF (Para Acompanhamento e Monitoramento)
+    if (especialistaResp && (status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || status === CaseStatus.EM_MONITORAMENTO)) {
       const pafDate = addDays(dataEntrada, 45)
-      const paf = await prisma.paf.create({
+      await prisma.paf.create({
         data: {
           casoId: newCase.id,
           autorId: especialistaResp.id,
@@ -374,7 +380,7 @@ async function main() {
       }
     }
 
-    // Agendamentos Individuais (Futuros e Passados)
+    // Agendamentos
     if (status !== CaseStatus.DESLIGADO) {
       const respAgend = especialistaResp || agenteResp
       if (respAgend) {
@@ -401,7 +407,6 @@ async function main() {
   for (let i = 0; i < NUM_GROUPS; i++) {
     const facilitator = faker.helpers.arrayElement(especialistas)
     
-    // Mistura datas passadas e futuras
     const isFuture = Math.random() > 0.5
     const groupDate = isFuture ? faker.date.soon({ days: 60 }) : faker.date.recent({ days: 60 })
     const tema = faker.helpers.arrayElement(TEMAS_GRUPO)
@@ -448,7 +453,7 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Seed v4.4.1 COMPLETO concluído com sucesso!')
+  console.log('\n✅ Seed v4.5.2 COMPLETO concluído com sucesso!')
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect())

@@ -8,7 +8,7 @@ const buttonStyles = {
   neutral: 'bg-muted text-muted-foreground hover:bg-muted/90',
   accent: 'bg-purple-600 hover:bg-purple-700 text-white',
   primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
-  info: 'bg-blue-600 hover:bg-blue-700 text-white',
+  info: 'bg-cyan-600 hover:bg-cyan-700 text-white',
 }
 
 export type ActionType = 'status' | 'assign' | 'close'
@@ -41,28 +41,27 @@ export const caseTransitions: Partial<
   ],
   EM_ACOLHIDA: [
     {
-      label: 'Desligamento Simplificado',
-      type: 'close',
-      allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.neutral,
-    },
-    {
-      label: 'Encaminhar para PAEFI',
+      label: 'Encaminhar para PAEFI (Triagem)',
       type: 'status',
       nextStatus: 'AGUARDANDO_DISTRIBUICAO_PAEFI',
       allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.accent,
     },
+    {
+      label: 'Desligamento Simplificado',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Agente_Social'],
+      style: buttonStyles.neutral,
+    },
   ],
   AGUARDANDO_DISTRIBUICAO_PAEFI: [
     {
       label: 'Atribuir Especialista',
-      type: 'assign',
+      type: 'assign', // Abre modal de seleção
       allowedRoles: ['Gerente'],
       style: buttonStyles.primary,
     },
   ],
-  // [NOVO]
   EM_ACOLHIDA_ESPECIALIZADA: [
     {
       label: 'Iniciar Acompanhamento (PAEFI)',
@@ -71,8 +70,16 @@ export const caseTransitions: Partial<
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.success,
     },
+    // [NOVO] Permite pular direto para monitoramento se for caso leve
     {
-      label: 'Encerrar após Acolhida',
+      label: 'Inserir em Monitoramento',
+      type: 'status',
+      nextStatus: 'EM_MONITORAMENTO',
+      allowedRoles: ['Gerente', 'Especialista'],
+      style: buttonStyles.info,
+    },
+    {
+      label: 'Encerrar após Escuta',
       type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.danger,
@@ -80,7 +87,29 @@ export const caseTransitions: Partial<
   ],
   EM_ACOMPANHAMENTO_PAEFI: [
     {
+      label: 'Mover para Monitoramento',
+      type: 'status',
+      nextStatus: 'EM_MONITORAMENTO',
+      allowedRoles: ['Gerente', 'Especialista'],
+      style: buttonStyles.info,
+    },
+    {
       label: 'Desligar Acompanhamento',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Especialista'],
+      style: buttonStyles.danger,
+    },
+  ],
+  EM_MONITORAMENTO: [
+    {
+      label: 'Retomar PAEFI Ativo',
+      type: 'status',
+      nextStatus: 'EM_ACOMPANHAMENTO_PAEFI',
+      allowedRoles: ['Gerente', 'Especialista'],
+      style: buttonStyles.success,
+    },
+    {
+      label: 'Desligar (Fim Monitoramento)',
       type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.danger,
@@ -88,7 +117,7 @@ export const caseTransitions: Partial<
   ],
   DESLIGADO: [
     {
-      label: 'Reabrir Caso',
+      label: 'Reabrir Caso (Reiniciar)',
       type: 'status',
       nextStatus: 'AGUARDANDO_ACOLHIDA',
       allowedRoles: ['Gerente'],
@@ -98,10 +127,12 @@ export const caseTransitions: Partial<
 }
 
 export function getAvailableActions(
-  status: CaseStatusIdentifier,
+  status: string | null | undefined, // [CORREÇÃO] Tipagem mais flexível para evitar erros
   cargo: UserRole,
 ): StatusAction[] {
-  const possibleActions = caseTransitions[status] || []
+  if (!status) return []
+  const safeStatus = status as CaseStatusIdentifier
+  const possibleActions = caseTransitions[safeStatus] || []
   
   return possibleActions.filter(action => 
     action.allowedRoles.includes(cargo)

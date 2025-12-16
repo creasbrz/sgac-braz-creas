@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { MoreHorizontal, Clock } from 'lucide-react' // [CORREÇÃO] Removido AlertCircle
+import { MoreHorizontal, Clock } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { ROUTES } from '@/constants/routes'
@@ -23,6 +23,7 @@ const COLUMNS = [
   { id: 'AGUARDANDO_DISTRIBUICAO_PAEFI', title: 'Aguardando Dist.', color: 'border-t-amber-500', bg: 'bg-amber-50/50 dark:bg-amber-900/10' },
   { id: 'EM_ACOLHIDA_ESPECIALIZADA', title: 'Acolhida Esp.', color: 'border-t-purple-500', bg: 'bg-purple-50/50 dark:bg-purple-900/10' },
   { id: 'EM_ACOMPANHAMENTO_PAEFI', title: 'Acompanhamento', color: 'border-t-emerald-500', bg: 'bg-emerald-50/50 dark:bg-emerald-900/10' },
+  { id: 'EM_MONITORAMENTO', title: 'Monitoramento', color: 'border-t-cyan-500', bg: 'bg-cyan-50/50 dark:bg-cyan-900/10' },
 ]
 
 export function CaseKanban({ cases, isLoading }: CaseKanbanProps) {
@@ -97,7 +98,7 @@ export function CaseKanban({ cases, isLoading }: CaseKanbanProps) {
                       </p>
                       
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground border-t pt-2 border-border/50">
-                        <span className="flex items-center gap-1" title={`Entrada: ${new Date(item.dataEntrada).toLocaleDateString()}`}>
+                        <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: false })}
                         </span>

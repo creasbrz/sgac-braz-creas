@@ -29,6 +29,7 @@ var prisma = new import_client.PrismaClient();
 
 // src/routes/stats.ts
 var import_date_fns = require("date-fns");
+var import_locale = require("date-fns/locale");
 var import_client2 = require("@prisma/client");
 var import_zod = require("zod");
 
@@ -86,6 +87,13 @@ var CacheService = class _CacheService {
 var cache = CacheService.getInstance();
 
 // src/routes/stats.ts
+var calculateUrgencyWeight = (urgencia) => {
+  const term = urgencia ? urgencia.trim() : "";
+  if (["Convive com agressor", "Idoso 80+", "Primeira inf\xE2ncia", "Risco de morte"].includes(term)) return 4;
+  if (["Risco de reincid\xEAncia", "Sofre amea\xE7a", "Risco de desabrigo", "Crian\xE7a/Adolescente"].includes(term)) return 3;
+  if (["PCD", "Idoso", "Interna\xE7\xE3o", "Acolhimento", "Gestante/Lactante"].includes(term)) return 2;
+  return 1;
+};
 async function statsRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
@@ -119,31 +127,22 @@ async function statsRoutes(app) {
           urgencyGroups,
           categoryGroups
         ] = await Promise.all([
-          // Total Geral
           prisma.case.count(),
-          // Total em Acolhida/Triagem
           prisma.case.count({ where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } } }),
-          // Total em Acompanhamento Ativo (PAEFI + Acolhida Especializada)
           prisma.case.count({ where: { status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI] } } }),
-          // Total em Monitoramento
           prisma.case.count({ where: { status: import_client2.CaseStatus.EM_MONITORAMENTO } }),
-          // Novos este mês
           prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth2, lte: lastDayOfMonth2 } } }),
-          // Fechados este mês
           prisma.case.count({ where: { status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth2, lte: lastDayOfMonth2 } } }),
-          // Carga por Agente (Apenas casos de acolhida)
           prisma.case.groupBy({
             by: ["agenteAcolhidaId"],
             where: { status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } },
             _count: { _all: true }
           }),
-          // Carga por Especialista (Apenas casos ativos de PAEFI/Esp)
           prisma.case.groupBy({
             by: ["especialistaPAEFIId"],
             where: { status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI] }, especialistaPAEFIId: { not: null } },
             _count: { _all: true }
           }),
-          // Agrupamentos Demográficos
           prisma.case.groupBy({ by: ["urgencia"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } }),
           prisma.case.groupBy({ by: ["categoria"], _count: { _all: true }, where: { status: { not: import_client2.CaseStatus.DESLIGADO } } })
         ]);
@@ -174,8 +173,8 @@ async function statsRoutes(app) {
         reply.header("X-Cache", "MISS");
         return reply.send(result);
       } catch (error) {
-        console.error("Erro ao gerar estat\xEDsticas gerenciais:", error);
-        return reply.status(500).send({ message: "Erro ao processar dados anal\xEDticos." });
+        console.error("Erro stats:", error);
+        return reply.status(500).send({ message: "Erro ao processar dados." });
       }
     }
     const today = /* @__PURE__ */ new Date();
@@ -192,29 +191,57 @@ async function statsRoutes(app) {
       }
       if (cargo === import_client2.Cargo.Especialista) {
         const [myActive, myClosed, myNew] = await Promise.all([
-          prisma.case.count({
-            where: {
-              especialistaPAEFIId: userId,
-              status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, import_client2.CaseStatus.EM_MONITORAMENTO] }
-            }
-          }),
+          prisma.case.count({ where: { especialistaPAEFIId: userId, status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, import_client2.CaseStatus.EM_MONITORAMENTO] } } }),
           prisma.case.count({ where: { especialistaPAEFIId: userId, status: import_client2.CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           prisma.case.count({ where: { especialistaPAEFIId: userId, dataInicioPAEFI: { gte: firstDayOfMonth, lte: lastDayOfMonth } } })
         ]);
         return reply.send({ role: "Especialista", myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
       }
-      return reply.status(200).send({ message: "Sem dados dispon\xEDveis para este perfil." });
+      return reply.status(200).send({ message: "Sem dados." });
     } catch (error) {
-      console.error("Erro ao buscar estat\xEDsticas pessoais:", error);
-      return reply.status(500).send({ message: "Erro interno no servidor." });
+      return reply.status(500).send({ message: "Erro interno." });
     }
   });
   app.get("/stats/productivity", async (request, reply) => {
+    const querySchema = import_zod.z.object({
+      mode: import_zod.z.enum(["workload", "performance"]).default("workload"),
+      months: import_zod.z.coerce.number().default(1)
+    });
+    const { mode, months } = querySchema.parse(request.query);
     try {
       const users = await prisma.user.findMany({
         where: { ativo: true, cargo: { not: import_client2.Cargo.Gerente } },
         select: { id: true, nome: true, cargo: true }
       });
+      if (mode === "performance") {
+        const startDate = (0, import_date_fns.subMonths)(/* @__PURE__ */ new Date(), months);
+        const safeActions = [
+          import_client2.LogAction.CRIACAO,
+          import_client2.LogAction.MUDANCA_STATUS,
+          import_client2.LogAction.DESLIGAMENTO,
+          import_client2.LogAction.EVOLUCAO,
+          import_client2.LogAction.OUTRO,
+          // @ts-ignore - Ignora erro de TS se ATRIBUICAO não existir no types ainda
+          import_client2.LogAction.ATRIBUICAO
+        ].filter(Boolean);
+        const activityCounts = await prisma.caseLog.groupBy({
+          by: ["autorId"],
+          where: {
+            createdAt: { gte: startDate },
+            acao: { in: safeActions }
+          },
+          _count: { _all: true }
+        });
+        const data2 = users.map((u) => {
+          const stats = activityCounts.find((a) => a.autorId === u.id);
+          return {
+            name: u.nome.split(" ")[0],
+            value: stats ? stats._count._all : 0,
+            role: u.cargo
+          };
+        }).sort((a, b) => b.value - a.value);
+        return reply.send(data2);
+      }
       const specialistStats = await prisma.case.groupBy({
         by: ["especialistaPAEFIId", "status"],
         where: {
@@ -236,7 +263,7 @@ async function statsRoutes(app) {
         let monitoring = 0;
         if (u.cargo === import_client2.Cargo.Especialista) {
           const stats = specialistStats.filter((s) => s.especialistaPAEFIId === u.id);
-          active = stats.filter((s) => s.status === import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA || s.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI).reduce((acc, curr) => acc + curr._count._all, 0);
+          active = stats.filter((s) => s.status !== import_client2.CaseStatus.EM_MONITORAMENTO).reduce((acc, curr) => acc + curr._count._all, 0);
           monitoring = stats.filter((s) => s.status === import_client2.CaseStatus.EM_MONITORAMENTO).reduce((acc, curr) => acc + curr._count._all, 0);
         } else if (u.cargo === import_client2.Cargo.Agente_Social) {
           const stats = agentStats.filter((s) => s.agenteAcolhidaId === u.id);
@@ -248,7 +275,6 @@ async function statsRoutes(app) {
           role: u.cargo,
           active,
           monitoring,
-          // Peso para ordenação: Monitoramento pesa apenas 20% de um caso ativo
           totalLoad: active + monitoring * 0.2
         };
       }).sort((a, b) => b.totalLoad - a.totalLoad);
@@ -256,6 +282,128 @@ async function statsRoutes(app) {
     } catch (error) {
       console.error("Erro em /stats/productivity:", error);
       return reply.status(500).send([]);
+    }
+  });
+  app.get("/stats/vigilancia", async (request, reply) => {
+    const { cargo } = request.user;
+    if (!["Gerente", "Especialista"].includes(cargo)) return reply.status(403).send({ message: "Acesso restrito." });
+    try {
+      const today = /* @__PURE__ */ new Date();
+      const sixMonthsAgo = (0, import_date_fns.subMonths)(today, 6);
+      const allCases = await prisma.case.findMany({
+        where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
+        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
+      });
+      const monthsMap = /* @__PURE__ */ new Map();
+      for (let i = 5; i >= 0; i--) {
+        const d = (0, import_date_fns.subMonths)(today, i);
+        const key = (0, import_date_fns.format)(d, "yyyy-MM");
+        const label = (0, import_date_fns.format)(d, "MMM/yy", { locale: import_locale.ptBR });
+        monthsMap.set(key, { name: label.charAt(0).toUpperCase() + label.slice(1), novos: 0, desligados: 0 });
+      }
+      allCases.forEach((c) => {
+        const entryKey = (0, import_date_fns.format)(c.dataEntrada, "yyyy-MM");
+        const exitKey = c.dataDesligamento ? (0, import_date_fns.format)(c.dataDesligamento, "yyyy-MM") : null;
+        if (monthsMap.has(entryKey)) monthsMap.get(entryKey).novos++;
+        if (exitKey && monthsMap.has(exitKey)) monthsMap.get(exitKey).desligados++;
+      });
+      const evolutionData = Array.from(monthsMap.values());
+      const violations = await prisma.case.groupBy({
+        by: ["violacao"],
+        _count: { _all: true },
+        where: { status: { not: import_client2.CaseStatus.DESLIGADO } }
+      });
+      const violationData = violations.map((v) => ({ name: v.violacao, value: v._count._all })).sort((a, b) => b.value - a.value);
+      const urgencies = await prisma.case.groupBy({
+        by: ["urgencia"],
+        _count: { _all: true },
+        where: { status: { not: import_client2.CaseStatus.DESLIGADO } }
+      });
+      const urgencyData = urgencies.map((u) => ({
+        name: u.urgencia,
+        value: u._count._all,
+        weight: calculateUrgencyWeight(u.urgencia)
+      })).sort((a, b) => b.weight - a.weight);
+      const origins = await prisma.case.groupBy({
+        by: ["orgaoDemandante"],
+        _count: { _all: true },
+        where: { status: { not: import_client2.CaseStatus.DESLIGADO } },
+        orderBy: { _count: { orgaoDemandante: "desc" } },
+        take: 10
+      });
+      const originData = origins.map((o) => ({ name: o.orgaoDemandante, value: o._count._all }));
+      const referrals = await prisma.encaminhamento.groupBy({
+        by: ["instituicao"],
+        _count: { _all: true },
+        orderBy: { _count: { instituicao: "desc" } },
+        take: 10
+      });
+      const networkData = referrals.map((r) => ({ name: r.instituicao, value: r._count._all }));
+      const benefits = await prisma.serviceDeliverable.groupBy({
+        by: ["tipo"],
+        _count: { _all: true },
+        orderBy: { _count: { tipo: "desc" } }
+      });
+      const benefitsData = benefits.map((b) => ({ name: b.tipo, value: b._count._all }));
+      const groupCount = await prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } });
+      const participantsCount = await prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } });
+      const collectiveData = { totalGroups: groupCount, totalParticipants: participantsCount, avgAttendance: groupCount > 0 ? Math.round(participantsCount / groupCount) : 0 };
+      const closedCases = allCases.filter((c) => c.dataDesligamento && c.dataEntrada);
+      const totalDaysOpen = closedCases.reduce((acc, c) => {
+        const diff = Math.abs(c.dataDesligamento.getTime() - c.dataEntrada.getTime());
+        return acc + Math.ceil(diff / (1e3 * 60 * 60 * 24));
+      }, 0);
+      const avgPermanence = closedCases.length ? Math.round(totalDaysOpen / closedCases.length) : 0;
+      const paefiCases = allCases.filter((c) => c.dataInicioPAEFI && c.dataEntrada);
+      const totalWaitDays = paefiCases.reduce((acc, c) => {
+        const diff = Math.abs(c.dataInicioPAEFI.getTime() - c.dataEntrada.getTime());
+        return acc + Math.ceil(diff / (1e3 * 60 * 60 * 24));
+      }, 0);
+      const avgWaitTime = paefiCases.length ? Math.round(totalWaitDays / paefiCases.length) : 0;
+      const efficiencyData = {
+        avgPermanence,
+        avgWaitTime,
+        totalClosed: closedCases.length,
+        retentionRate: Math.round((1 - closedCases.length / (allCases.length || 1)) * 100)
+      };
+      const demographicsRaw = await prisma.case.findMany({
+        where: { status: { not: import_client2.CaseStatus.DESLIGADO } },
+        select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
+      });
+      const demographics = {
+        sexo: { Masculino: 0, Feminino: 0, Outro: 0 },
+        etaria: { "0-11 (Crian\xE7a)": 0, "12-17 (Adolescente)": 0, "18-59 (Adulto)": 0, "60+ (Idoso)": 0 }
+      };
+      demographicsRaw.forEach((c) => {
+        if (c.sexo === "Masculino") demographics.sexo.Masculino++;
+        else if (c.sexo === "Feminino") demographics.sexo.Feminino++;
+        else demographics.sexo.Outro++;
+        const age = (/* @__PURE__ */ new Date()).getFullYear() - c.nascimento.getFullYear();
+        if (age < 12) demographics.etaria["0-11 (Crian\xE7a)"]++;
+        else if (age < 18) demographics.etaria["12-17 (Adolescente)"]++;
+        else if (age < 60) demographics.etaria["18-59 (Adulto)"]++;
+        else demographics.etaria["60+ (Idoso)"]++;
+      });
+      const ageData = Object.entries(demographics.etaria).map(([name, value]) => ({ name, value }));
+      const sexData = Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }));
+      const mapData = demographicsRaw.map((c) => {
+        const pseudoRandom = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
+        const latOffset = (pseudoRandom % 100 - 50) / 4e3;
+        const lngOffset = (pseudoRandom % 100 - 50) / 4e3;
+        return {
+          id: c.id,
+          lat: -15.668 + latOffset,
+          lng: -48.201 + lngOffset,
+          intensity: calculateUrgencyWeight(c.urgencia),
+          label: c.urgencia,
+          violacao: c.violacao || "N\xE3o Informado",
+          categoria: c.categoria || "N\xE3o Informado"
+        };
+      });
+      return reply.send({ evolutionData, violationData, urgencyData, originData, collectiveData, ageData, sexData, mapData, networkData, benefitsData, efficiencyData });
+    } catch (error) {
+      console.error("Erro vigil\xE2ncia:", error);
+      return reply.status(500).send({ message: "Erro de vigil\xE2ncia." });
     }
   });
   app.get("/stats/advanced", async (request, reply) => {
@@ -319,10 +467,7 @@ async function statsRoutes(app) {
     const { months } = querySchema.parse(request.query);
     try {
       const startDate = (0, import_date_fns.subMonths)(/* @__PURE__ */ new Date(), months);
-      const logs = await prisma.caseLog.findMany({
-        where: { createdAt: { gte: startDate } },
-        select: { createdAt: true }
-      });
+      const logs = await prisma.caseLog.findMany({ where: { createdAt: { gte: startDate } }, select: { createdAt: true } });
       const map = /* @__PURE__ */ new Map();
       logs.forEach((l) => {
         const day = (0, import_date_fns.format)(l.createdAt, "yyyy-MM-dd");
@@ -330,7 +475,7 @@ async function statsRoutes(app) {
       });
       const result = Array.from(map.entries()).map(([date, count]) => ({ date, count }));
       return reply.send(result);
-    } catch (error) {
+    } catch {
       return reply.status(500).send([]);
     }
   });
@@ -346,7 +491,7 @@ async function statsRoutes(app) {
       });
       return reply.send(appointments);
     } catch {
-      return reply.status(500).send({ message: "Erro ao buscar agenda." });
+      return reply.status(500).send({ message: "Erro agenda." });
     }
   });
 }

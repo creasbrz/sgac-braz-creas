@@ -1,7 +1,7 @@
 // frontend/src/components/layout/Sidebar.tsx
 import { memo, useMemo, useState } from "react"
 import { NavLink } from "react-router-dom"
-import { Plus, ChevronLeft, ChevronRight, PanelLeft } from "lucide-react"
+import { Plus, ChevronLeft, PanelLeft } from "lucide-react"
 import { clsx } from "clsx"
 
 import { useAuth } from "@/hooks/useAuth"

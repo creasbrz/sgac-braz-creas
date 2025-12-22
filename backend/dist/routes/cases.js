@@ -137,13 +137,11 @@ function buildActiveCaseWhereClause(user) {
     case import_client2.Cargo.Agente_Social:
       return {
         agenteAcolhidaId: user.sub,
-        // AGENTE SÓ VÊ O QUE ESTÁ NA TRIAGEM
         status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }
       };
     case import_client2.Cargo.Especialista:
       return {
         especialistaPAEFIId: user.sub,
-        // ESPECIALISTA VÊ ACOLHIDA ESP., PAEFI E MONITORAMENTO
         status: {
           in: [
             import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
@@ -271,7 +269,6 @@ async function caseRoutes(app) {
       view: import_zod.z.enum(["my", "all"]).default("my").optional(),
       sortBy: import_zod.z.string().optional(),
       sortOrder: import_zod.z.enum(["asc", "desc"]).optional(),
-      // Filtros para "Casos por Servidor"
       agenteId: import_zod.z.string().uuid().optional(),
       specialistId: import_zod.z.string().uuid().optional()
     });
@@ -279,15 +276,9 @@ async function caseRoutes(app) {
       const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(request.query);
       let where = {};
       if (agenteId) {
-        where = {
-          agenteAcolhidaId: agenteId,
-          status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] }
-        };
+        where = { agenteAcolhidaId: agenteId, status: { in: [import_client2.CaseStatus.AGUARDANDO_ACOLHIDA, import_client2.CaseStatus.EM_ACOLHIDA] } };
       } else if (specialistId) {
-        where = {
-          especialistaPAEFIId: specialistId,
-          status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, import_client2.CaseStatus.EM_MONITORAMENTO] }
-        };
+        where = { especialistaPAEFIId: specialistId, status: { in: [import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, import_client2.CaseStatus.EM_MONITORAMENTO] } };
       } else if (view === "all") {
         where = { status: { not: import_client2.CaseStatus.DESLIGADO } };
       } else {
@@ -313,10 +304,7 @@ async function caseRoutes(app) {
           orderBy,
           take: pageSize,
           skip: (page - 1) * pageSize,
-          include: {
-            agenteAcolhida: { select: { nome: true } },
-            especialistaPAEFI: { select: { nome: true } }
-          }
+          include: { agenteAcolhida: { select: { nome: true } }, especialistaPAEFI: { select: { nome: true } } }
         }),
         prisma.case.count({ where })
       ]);
@@ -371,7 +359,25 @@ async function caseRoutes(app) {
           criadoPor: { select: { nome: true } },
           agenteAcolhida: { select: { id: true, nome: true } },
           especialistaPAEFI: { select: { id: true, nome: true } },
-          logs: { orderBy: { createdAt: "desc" }, take: 20, include: { autor: { select: { nome: true } } } }
+          familia: true,
+          // Relação correta: familia
+          encaminhamentos: {
+            include: { autor: { select: { nome: true } } },
+            orderBy: { dataEnvio: "desc" }
+          },
+          entregas: {
+            // Relação correta: entregas
+            orderBy: { dataSolicitacao: "desc" }
+          },
+          evolucoes: {
+            include: { autor: { select: { nome: true } } },
+            orderBy: { createdAt: "desc" }
+          },
+          logs: {
+            orderBy: { createdAt: "desc" },
+            take: 50,
+            include: { autor: { select: { nome: true } } }
+          }
         }
       });
       if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });

@@ -8,4 +8,6 @@ export interface User {
   nome: string
   cargo: UserRole
   email: string
+  matricula?: string | null
+  ativo: boolean
 }

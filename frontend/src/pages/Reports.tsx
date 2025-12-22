@@ -11,7 +11,6 @@ import {
   Share2, Gift, Clock, TrendingUp, AlertTriangle, ArrowRightLeft, UserCircle, Filter
 } from 'lucide-react'
 import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -65,7 +64,6 @@ export function Reports() {
      // ... (Copie o código do PDF da resposta anterior aqui)
      if (!data) return
      const doc = new jsPDF()
-     const today = new Date().toLocaleDateString('pt-BR')
      doc.text('Relatório PDF', 10, 10)
      doc.save('relatorio.pdf')
   }

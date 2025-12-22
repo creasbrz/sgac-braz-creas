@@ -1,7 +1,7 @@
 // frontend/src/components/layout/Header.tsx
 import { useState, useEffect } from "react"
 import { useLocation } from "react-router-dom"
-import { LogOut, Slash, Eye, EyeOff, User, ChevronDown, LockKeyhole } from "lucide-react"
+import { LogOut, Slash, Eye, EyeOff, ChevronDown } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
 import { ThemeToggle } from "@/components/ThemeToggle"

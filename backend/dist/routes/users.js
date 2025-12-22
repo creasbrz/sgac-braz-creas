@@ -1,6 +1,8 @@
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -14,6 +16,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/routes/users.ts
@@ -30,12 +40,72 @@ var prisma = new import_client.PrismaClient();
 
 // src/routes/users.ts
 var import_client2 = require("@prisma/client");
+var import_bcryptjs = __toESM(require("bcryptjs"));
 async function userRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
     } catch (err) {
       await reply.status(401).send({ message: "N\xE3o autorizado." });
+    }
+  });
+  app.post("/users", async (request, reply) => {
+    const { cargo } = request.user;
+    if (cargo !== import_client2.Cargo.Gerente) {
+      return reply.status(403).send({ message: "Apenas gerentes podem cadastrar novos servidores." });
+    }
+    const schema = import_zod.z.object({
+      nome: import_zod.z.string().min(3),
+      email: import_zod.z.string().email(),
+      matricula: import_zod.z.string().optional(),
+      cargo: import_zod.z.nativeEnum(import_client2.Cargo),
+      // 'Gerente', 'Agente_Social', 'Especialista'
+      senhaInicial: import_zod.z.string().min(6).default("123456")
+    });
+    try {
+      const data = schema.parse(request.body);
+      const userExists = await prisma.user.findUnique({ where: { email: data.email } });
+      if (userExists) return reply.status(409).send({ message: "E-mail j\xE1 cadastrado." });
+      const passwordHash = await import_bcryptjs.default.hash(data.senhaInicial, 6);
+      const user = await prisma.user.create({
+        data: {
+          nome: data.nome,
+          email: data.email,
+          matricula: data.matricula,
+          cargo: data.cargo,
+          senha: passwordHash,
+          ativo: true
+        }
+      });
+      const { senha, ...userSafe } = user;
+      return reply.status(201).send(userSafe);
+    } catch (error) {
+      console.error(error);
+      return reply.status(400).send({ message: "Erro ao criar usu\xE1rio.", error });
+    }
+  });
+  app.patch("/users/me/password", async (request, reply) => {
+    const schema = import_zod.z.object({
+      senhaAtual: import_zod.z.string(),
+      novaSenha: import_zod.z.string().min(6)
+    });
+    try {
+      const { senhaAtual, novaSenha } = schema.parse(request.body);
+      const userId = request.user.sub;
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return reply.status(404).send({ message: "Usu\xE1rio n\xE3o encontrado." });
+      const isPasswordValid = await import_bcryptjs.default.compare(senhaAtual, user.senha);
+      if (!isPasswordValid) {
+        return reply.status(400).send({ message: "A senha atual est\xE1 incorreta." });
+      }
+      const newPasswordHash = await import_bcryptjs.default.hash(novaSenha, 6);
+      await prisma.user.update({
+        where: { id: userId },
+        data: { senha: newPasswordHash }
+      });
+      return reply.send({ message: "Senha alterada com sucesso!" });
+    } catch (error) {
+      return reply.status(400).send({ message: "Erro ao alterar senha." });
     }
   });
   app.get("/users", async (request, reply) => {
@@ -47,7 +117,6 @@ async function userRoutes(app) {
       const users = await prisma.user.findMany({
         where: {
           id: { not: userId },
-          // Não inclui o próprio gerente logado
           ativo: true
         },
         orderBy: { nome: "asc" },
@@ -56,6 +125,8 @@ async function userRoutes(app) {
           nome: true,
           email: true,
           cargo: true,
+          matricula: true,
+          // Adicionado matricula
           ativo: true
         }
       });
@@ -70,19 +141,15 @@ async function userRoutes(app) {
       const agents = await prisma.user.findMany({
         where: {
           cargo: import_client2.Cargo.Agente_Social,
-          // [CORREÇÃO] Uso do Enum com underline
           ativo: true
         },
         orderBy: { nome: "asc" },
-        select: {
-          id: true,
-          nome: true
-        }
+        select: { id: true, nome: true }
       });
       return reply.status(200).send(agents);
     } catch (error) {
-      console.error("Erro ao listar Agentes Sociais:", error);
-      return reply.status(500).send({ message: "Erro interno no servidor." });
+      console.error("Erro ao listar Agentes:", error);
+      return reply.status(500).send({ message: "Erro interno." });
     }
   });
   app.get("/users/specialists", async (request, reply) => {
@@ -90,19 +157,15 @@ async function userRoutes(app) {
       const specialists = await prisma.user.findMany({
         where: {
           cargo: import_client2.Cargo.Especialista,
-          // [CORREÇÃO]
           ativo: true
         },
         orderBy: { nome: "asc" },
-        select: {
-          id: true,
-          nome: true
-        }
+        select: { id: true, nome: true }
       });
       return reply.status(200).send(specialists);
     } catch (error) {
       console.error("Erro ao listar Especialistas:", error);
-      return reply.status(500).send({ message: "Erro interno no servidor." });
+      return reply.status(500).send({ message: "Erro interno." });
     }
   });
   app.put("/users/:id", async (request, reply) => {
@@ -114,8 +177,9 @@ async function userRoutes(app) {
     const bodySchema = import_zod.z.object({
       nome: import_zod.z.string().min(3),
       email: import_zod.z.string().email(),
-      cargo: import_zod.z.nativeEnum(import_client2.Cargo)
-      // Valida se é "Gerente", "Agente_Social", etc.
+      cargo: import_zod.z.nativeEnum(import_client2.Cargo),
+      matricula: import_zod.z.string().optional()
+      // Adicionado suporte a matricula
     });
     try {
       const { id } = paramsSchema.parse(request.params);
@@ -130,10 +194,12 @@ async function userRoutes(app) {
         data: {
           nome: data.nome,
           email: data.email,
-          cargo: data.cargo
+          cargo: data.cargo,
+          matricula: data.matricula
         }
       });
-      return reply.status(200).send(updatedUser);
+      const { senha, ...safeUser } = updatedUser;
+      return reply.status(200).send(safeUser);
     } catch (error) {
       console.error("Erro ao atualizar usu\xE1rio:", error);
       return reply.status(500).send({ message: "Erro interno no servidor." });
@@ -149,14 +215,12 @@ async function userRoutes(app) {
       const { id } = paramsSchema.parse(request.params);
       await prisma.user.update({
         where: { id },
-        data: {
-          ativo: false
-        }
+        data: { ativo: false }
       });
       return reply.status(204).send();
     } catch (error) {
       console.error("Erro ao desativar usu\xE1rio:", error);
-      return reply.status(500).send({ message: "Erro interno no servidor." });
+      return reply.status(500).send({ message: "Erro interno." });
     }
   });
 }

@@ -28,6 +28,9 @@ import {
 import { editUserFormSchema } from '@/schemas/userSchemas'
 import type { User } from '@/types/user'
 
+// [NOVO] Importando o componente de criação
+import { NewUserDialog } from '@/components/settings/NewUserDialog'
+
 type EditUserFormData = z.infer<typeof editUserFormSchema>
 
 function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open: boolean) => void }) {
@@ -38,7 +41,7 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
     formState: { errors },
   } = useForm<EditUserFormData>({
     resolver: zodResolver(editUserFormSchema),
-    defaultValues: user, // O TypeScript agora vai aceitar pois o schema bate com o tipo User
+    defaultValues: user,
   })
 
   const { mutate: updateUser, isPending } = useMutation({
@@ -84,7 +87,6 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
               <Select onValueChange={field.onChange} value={field.value}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {/* [CORREÇÃO] Valores atualizados */}
                   <SelectItem value="Agente_Social">Agente Social</SelectItem>
                   <SelectItem value="Especialista">Especialista</SelectItem>
                   <SelectItem value="Gerente">Gerente</SelectItem>
@@ -134,12 +136,17 @@ export function UserManagement() {
   })
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Gestão de Utilizadores</h1>
-        <p className="text-muted-foreground">
-          Edite ou desative os profissionais do sistema.
-        </p>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      
+      {/* [ATUALIZADO] Cabeçalho com Botão de Novo Usuário */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gestão de Equipe</h1>
+          <p className="text-muted-foreground mt-1">
+            Gerencie os acessos e permissões dos profissionais do CREAS.
+          </p>
+        </div>
+        <NewUserDialog />
       </div>
       
       <Card>
@@ -154,46 +161,62 @@ export function UserManagement() {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Matrícula</TableHead>
                   <TableHead>Cargo</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading && ( <TableRow><TableCell colSpan={4} className="h-24 text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" /></TableCell></TableRow> )}
-                {isError && ( <TableRow><TableCell colSpan={4} className="py-10 text-center text-destructive">Falha ao carregar os utilizadores.</TableCell></TableRow> )}
+                {isLoading && ( <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" /></TableCell></TableRow> )}
+                {isError && ( <TableRow><TableCell colSpan={5} className="py-10 text-center text-destructive">Falha ao carregar os utilizadores.</TableCell></TableRow> )}
+                
                 {users?.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.nome}</TableCell>
                     <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.cargo.replace('_', ' ')}</TableCell>
+                    <TableCell>{user.matricula || '-'}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
+                        user.cargo === 'Gerente' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                        user.cargo === 'Especialista' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                        'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        {user.cargo.replace('_', ' ')}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Dialog open={editingUser?.id === user.id} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)}>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => setEditingUser(user)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        {editingUser?.id === user.id && <EditUserModal user={editingUser} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)} />}
-                      </Dialog>
-                      
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Tem a certeza?</AlertDialogTitle>
-                            <AlertDialogDescription>Esta ação irá desativar o utilizador "{user.nome}".
-                            Ele não poderá mais aceder ao sistema. Esta ação não pode ser desfeita facilmente.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteUser(user.id)} disabled={isDeleting}>Confirmar</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <div className="flex justify-end gap-2">
+                        <Dialog open={editingUser?.id === user.id} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)}>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setEditingUser(user)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          {editingUser?.id === user.id && <EditUserModal user={editingUser} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)} />}
+                        </Dialog>
+                        
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Desativar Acesso?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                O servidor <strong>{user.nome}</strong> perderá o acesso ao sistema imediatamente. O histórico de ações será mantido.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteUser(user.id)} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Desativar"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

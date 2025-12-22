@@ -8,7 +8,8 @@ import { ptBR } from 'date-fns/locale'
 import { CaseStatus, Cargo, LogAction, CaseOrigin } from '@prisma/client'
 import { cache } from '../lib/cache'
 
-// ... (Funções auxiliares stripTime, calculateUrgencyWeight, formatDateForCsv, internalError mantêm-se iguais)
+// --- FUNÇÕES AUXILIARES ---
+
 const stripTime = (date: Date | string): Date => {
   const d = new Date(date)
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
@@ -33,7 +34,6 @@ function internalError(reply: FastifyReply, message: string, error: unknown) {
   return reply.status(500).send({ message })
 }
 
-// ... (detect Changes e createLog mantêm-se iguais)
 function detectChanges(oldData: any, newData: any) {
   const changes: Record<string, { from: any, to: any }> = {}
   const ignoreFields = ['updatedAt', 'createdAt', 'pesoUrgencia', 'numeroSei', 'linkSei', 'observacoes', 'beneficios', 'criadoPorId', 'id'] 
@@ -57,19 +57,16 @@ async function createLog(casoId: string, autorId: string, acao: LogAction, descr
   await prisma.caseLog.create({ data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo } })
 }
 
-// [CORREÇÃO 1] Define o que cada cargo vê na aba "Meus Casos" (Para o próprio usuário logado)
 function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
   switch (user.cargo) {
     case Cargo.Agente_Social:
       return {
         agenteAcolhidaId: user.sub,
-        // AGENTE SÓ VÊ O QUE ESTÁ NA TRIAGEM
         status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
       }
     case Cargo.Especialista:
       return {
         especialistaPAEFIId: user.sub,
-        // ESPECIALISTA VÊ ACOLHIDA ESP., PAEFI E MONITORAMENTO
         status: { 
           in: [
             CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
@@ -79,12 +76,13 @@ function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
         }
       }
     case Cargo.Gerente:
-      // Gerente vê a fila de distribuição
       return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
     default:
       return { id: '-1' }
   }
 }
+
+// --- ROTAS ---
 
 export async function caseRoutes(app: FastifyInstance) {
 
@@ -92,7 +90,6 @@ export async function caseRoutes(app: FastifyInstance) {
     try { await request.jwtVerify() } catch (err) { await reply.send(err) }
   })
 
-  // ... (Rotas POST /cases e PUT /cases/:id mantêm-se iguais, vou omitir para brevidade, mantenha o código existente)
   // 1. Criar Caso
   app.post('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
@@ -199,7 +196,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos (Com correção de filtros por servidor)
+  // 2. Listar Casos
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
@@ -213,7 +210,6 @@ export async function caseRoutes(app: FastifyInstance) {
       view: z.enum(['my', 'all']).default('my').optional(),
       sortBy: z.string().optional(),
       sortOrder: z.enum(['asc', 'desc']).optional(),
-      // Filtros para "Casos por Servidor"
       agenteId: z.string().uuid().optional(),
       specialistId: z.string().uuid().optional(),
     })
@@ -222,36 +218,24 @@ export async function caseRoutes(app: FastifyInstance) {
       const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(request.query)
       let where: any = {}
 
-      // Lógica Base
       if (agenteId) {
-        // [CORREÇÃO 2] Se filtrou por Agente, traz SÓ a demanda ativa dele (Triagem)
-        // Ignora casos que ele fez a triagem mas já estão com PAEFI
-        where = {
-          agenteAcolhidaId: agenteId,
-          status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
-        }
+        where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
       } else if (specialistId) {
-        // [CORREÇÃO 3] Se filtrou por Especialista, traz toda a demanda dele (Acolhida Esp + PAEFI + Monitoramento)
-        where = {
-          especialistaPAEFIId: specialistId,
-          status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO] }
-        }
+        where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO] } }
       } else if (view === 'all') {
         where = { status: { not: CaseStatus.DESLIGADO } }
       } else {
         where = buildActiveCaseWhereClause(request.user as any)
       }
 
-      // Filtros Adicionais (Combinam com o filtro base)
       if (search) where.AND = [...(where.AND || []), { OR: [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }] }]
-      if (status) where.status = status // Se passar status explícito, ele sobrescreve ou refina
+      if (status) where.status = status 
       if (urgencia && urgencia !== 'all') where.urgencia = urgencia
       if (violacao && violacao !== 'all') where.violacao = { equals: violacao }
       if (categoria && categoria !== 'all') where.categoria = { equals: categoria }
       if (sexo && sexo !== 'all') where.sexo = { equals: sexo }
       
       let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]; 
-
       if (sortBy) {
         if (sortBy === 'urgencia') {
           orderBy = { pesoUrgencia: sortOrder || 'desc' };
@@ -262,14 +246,8 @@ export async function caseRoutes(app: FastifyInstance) {
 
       const [items, total] = await Promise.all([
         prisma.case.findMany({
-          where,
-          orderBy, 
-          take: pageSize,
-          skip: (page - 1) * pageSize,
-          include: {
-            agenteAcolhida: { select: { nome: true } },
-            especialistaPAEFI: { select: { nome: true } },
-          },
+          where, orderBy, take: pageSize, skip: (page - 1) * pageSize,
+          include: { agenteAcolhida: { select: { nome: true } }, especialistaPAEFI: { select: { nome: true } } },
         }),
         prisma.case.count({ where }),
       ])
@@ -278,7 +256,6 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro interno ao listar casos.', error) }
   })
 
-  // ... (Restante das rotas: closed, details, status, assign, close, export mantêm-se iguais)
   // 3. Listar Casos Fechados
   app.get('/cases/closed', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
@@ -294,15 +271,11 @@ export async function caseRoutes(app: FastifyInstance) {
 
       const [items, total] = await Promise.all([
         prisma.case.findMany({
-          where,
-          orderBy: { dataDesligamento: 'desc' },
-          take: pageSize,
-          skip: (page - 1) * pageSize,
+          where, orderBy: { dataDesligamento: 'desc' }, take: pageSize, skip: (page - 1) * pageSize,
           select: {
             id: true, nomeCompleto: true, cpf: true, status: true,
             dataDesligamento: true, parecerFinal: true, urgencia: true,
-            motivoDesligamento: true, 
-            destinoDesligamento: true,
+            motivoDesligamento: true, destinoDesligamento: true,
             agenteAcolhida: { select: { nome: true } },
             especialistaPAEFI: { select: { nome: true } },
           },
@@ -314,19 +287,42 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao listar casos finalizados.', error) }
   })
 
-  // 4. Detalhes
+  // 4. Detalhes do Caso (CORRIGIDO CONFORME SCHEMA)
   app.get('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
     try {
       const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+      
       const caso = await prisma.case.findUnique({
         where: { id },
         include: {
           criadoPor: { select: { nome: true } },
           agenteAcolhida: { select: { id: true, nome: true } },
           especialistaPAEFI: { select: { id: true, nome: true } },
-          logs: { orderBy: { createdAt: 'desc' }, take: 20, include: { autor: { select: { nome: true } } } },
+          
+          familia: true,           // Relação correta: familia
+          
+          encaminhamentos: {
+            include: { autor: { select: { nome: true } } },
+            orderBy: { dataEnvio: 'desc' }
+          },
+          
+          entregas: {              // Relação correta: entregas
+            orderBy: { dataSolicitacao: 'desc' }
+          },
+          
+          evolucoes: {
+            include: { autor: { select: { nome: true } } },
+            orderBy: { createdAt: 'desc' }
+          },
+          
+          logs: {
+            orderBy: { createdAt: 'desc' }, 
+            take: 50, 
+            include: { autor: { select: { nome: true } } } 
+          },
         },
       })
+      
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
       return reply.send(caso)
     } catch (error) { return internalError(reply, 'Erro ao buscar detalhes.', error) }

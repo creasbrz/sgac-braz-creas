@@ -19,12 +19,13 @@ import {
   Bar,
 } from "recharts"
 
-import { Loader2, BarChart3, Clock, TrendingUp, Download } from "lucide-react"
+import { Loader2, BarChart3, Clock, TrendingUp, Download, AlertTriangle } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
 import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const COLORS = ["hsl(var(--primary))", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
 
@@ -69,11 +70,14 @@ export function AdvancedAnalytics() {
     staleTime: 1000 * 60 * 5,
   })
 
+  // Modo Performance Ativado
   const { data: productivity } = useQuery({
-    queryKey: ["stats", "productivity"],
+    queryKey: ["stats", "productivity", periodMonths],
     queryFn: async () => {
       try {
-        const res = await api.get("/stats/productivity")
+        const res = await api.get("/stats/productivity", { 
+          params: { mode: 'performance', months: periodMonths } 
+        })
         return res.data
       } catch { return [] }
     }
@@ -114,7 +118,16 @@ export function AdvancedAnalytics() {
   }
 
   if (isLoading) return <PremiumSkeleton />
-  if (isError || !data) return <div className="p-8 text-center text-destructive">Erro ao carregar dados.</div>
+  
+  if (isError || !data) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Erro</AlertTitle>
+        <AlertDescription>Não foi possível carregar os dados analíticos.</AlertDescription>
+      </Alert>
+    )
+  }
 
   const trendData = Array.isArray(data.trendData) ? data.trendData : []
   const pieData = Array.isArray(data.pieData) ? data.pieData : []
@@ -124,13 +137,13 @@ export function AdvancedAnalytics() {
   trendData.forEach((d: any, i: number) => { xs.push(i); ys.push(d.novos) })
   const forecast = linearRegressionForecast(xs, ys)
 
-  // ESTILO DO TOOLTIP DARK MODE
   const tooltipStyle = {
     backgroundColor: 'hsl(var(--popover))',
     border: '1px solid hsl(var(--border))',
     borderRadius: '8px',
     color: 'hsl(var(--popover-foreground))',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    fontSize: '12px'
   }
 
   return (
@@ -165,8 +178,8 @@ export function AdvancedAnalytics() {
             <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
           </CardHeader>
           <CardContent>
-            <div style={{ width: '99%', height: 320, minHeight: 320 }}>
-              <ResponsiveContainer width="100%" height="100%" debounce={200}>
+            <div style={{ width: '100%', height: 320 }}>
+              <ResponsiveContainer width="100%" height="100%">
                  <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
                   <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
@@ -193,9 +206,9 @@ export function AdvancedAnalytics() {
         <Card>
           <CardHeader><CardTitle>Violações (Top 5)</CardTitle></CardHeader>
           <CardContent>
-             <div style={{ width: '99%', height: 340, minHeight: 340 }}>
+             <div style={{ width: '100%', height: 340 }}>
                 {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%" debounce={200}>
+                  <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie 
                         data={pieData} 
@@ -205,7 +218,7 @@ export function AdvancedAnalytics() {
                         outerRadius={70} 
                         paddingAngle={5} 
                         dataKey="value"
-                        stroke="hsl(var(--background))" // Borda do gráfico adapta ao tema
+                        stroke="hsl(var(--background))" 
                         strokeWidth={2}
                       >
                         {pieData.map((_: any, index: number) => (
@@ -228,19 +241,26 @@ export function AdvancedAnalytics() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Produtividade Atual</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Desempenho da Equipe</CardTitle>
+            <CardDescription>Intervenções (logs) realizadas.</CardDescription>
+          </CardHeader>
           <CardContent>
-             <div style={{ width: '99%', height: 300, minHeight: 300 }}>
+             <div style={{ width: '100%', height: 300 }}>
                 {productivity && productivity.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%" debounce={200}>
+                  <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" width={70} tickLine={false} axisLine={false} fontSize={11}/>
-                      <Tooltip cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} contentStyle={tooltipStyle} />
-                      <Bar dataKey="value" fill={COLORS[4]} radius={[0,4,4,0]} barSize={20} />
-                  </BarChart>
+                      <Tooltip 
+                        cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
+                        contentStyle={tooltipStyle} 
+                        formatter={(value: any) => [value, 'Intervenções']}
+                      />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={20} />
+                    </BarChart>
                   </ResponsiveContainer>
-                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados.</div>}
+                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de atividade no período.</div>}
              </div>
           </CardContent>
         </Card>
@@ -252,20 +272,19 @@ export function AdvancedAnalytics() {
                 {heatmap && heatmap.length > 0 ? (
                    <div className="grid grid-cols-7 sm:grid-cols-12 md:grid-cols-[repeat(auto-fill,minmax(30px,1fr))] gap-1">
                       {heatmap.slice(0, 90).map((h: any) => { 
-                         const intensity = Math.min(4, Math.ceil(h.count / 2));
-                         // Cores adaptadas para Dark Mode (Emerald)
-                         const colors = [
-                           'bg-muted/30 dark:bg-muted/10', 
-                           'bg-emerald-200 dark:bg-emerald-900/40', 
-                           'bg-emerald-300 dark:bg-emerald-800/60', 
-                           'bg-emerald-400 dark:bg-emerald-600/80', 
-                           'bg-emerald-600 dark:bg-emerald-500'
-                         ];
-                         return (
-                           <div key={h.date} title={`${h.date}: ${h.count} logs`} className={`aspect-square rounded-sm ${colors[intensity]} text-[10px] flex items-center justify-center text-transparent hover:text-foreground transition-all cursor-default`}>
-                               {h.count}
-                           </div>
-                         )
+                          const intensity = Math.min(4, Math.ceil(h.count / 2));
+                          const colors = [
+                            'bg-muted/30 dark:bg-muted/10', 
+                            'bg-emerald-200 dark:bg-emerald-900/40', 
+                            'bg-emerald-300 dark:bg-emerald-800/60', 
+                            'bg-emerald-400 dark:bg-emerald-600/80', 
+                            'bg-emerald-600 dark:bg-emerald-500'
+                          ];
+                          return (
+                            <div key={h.date} title={`${h.date}: ${h.count} logs`} className={`aspect-square rounded-sm ${colors[intensity]} text-[10px] flex items-center justify-center text-transparent hover:text-foreground transition-all cursor-default`}>
+                                {h.count}
+                            </div>
+                          )
                       })}
                    </div>
                 ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem histórico recente.</div>}

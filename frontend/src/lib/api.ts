@@ -1,38 +1,37 @@
-// frontend/src/lib/api.ts
 import axios from 'axios'
-import { STORAGE_KEYS } from '../constants/storage'
 
-// Lógica Inteligente de URL:
-// 1. Se estiver rodando no seu PC (DEV), usa localhost:3333
-// 2. Se estiver no Render (PROD), usa string vazia '' (caminho relativo)
-const API_URL = import.meta.env.DEV 
-  ? 'http://localhost:3333' 
-  : '' 
+// Define a URL base. Em produção, como é o mesmo domínio, pode ser '/'
+// Em dev, usa a variável de ambiente ou localhost
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api'
 
 export const api = axios.create({
-  baseURL: API_URL,
+  baseURL,
 })
 
-// Interceptor para adicionar o token a cada requisição
+// Interceptador de Requisição (Anexa o token)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
+  const token = localStorage.getItem('sgac_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
 
-// Interceptor para tratar erros 401 (Não Autorizado) globalmente
+// Interceptador de Resposta (Trata erros globais)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Se o erro for 401 (Não autorizado / Token expirado)
     if (error.response?.status === 401) {
-      localStorage.removeItem(STORAGE_KEYS.TOKEN)
-      // Redireciona para login se o token expirar
-      if (window.location.pathname !== '/') {
-        window.location.href = '/'
+      // Evita loop infinito se o erro for na própria rota de login
+      if (!window.location.pathname.includes('/login')) {
+        localStorage.removeItem('sgac_token')
+        localStorage.removeItem('sgac_user')
+        
+        // Redireciona para login
+        window.location.href = '/login'
       }
     }
     return Promise.reject(error)
-  },
+  }
 )

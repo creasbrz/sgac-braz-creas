@@ -1,24 +1,28 @@
 # SGAC-BRAZ: Sistema de Gestão de Atendimentos do CREAS Brazlândia
 
+**Versão Atual:** 5.0.0 (Produção)
+
 Bem-vindo ao SGAC-BRAZ. Este documento contém todas as instruções necessárias para configurar, executar e gerir o projeto.
 
 ## 1. Visão Geral do Projeto
 
-O SGAC-BRAZ é um sistema de informação full-stack desenhado para gerir o fluxo completo de atendimentos do CREAS Brazlândia, com uma API robusta em **Node.js/Fastify** e uma interface moderna em **React/Vite**.
+O SGAC-BRAZ é um sistema de informação full-stack desenhado para gerir o fluxo completo de atendimentos do CREAS Brazlândia.
+* **Backend:** Node.js com Fastify e Prisma ORM.
+* **Frontend:** React com Vite, TailwindCSS e Shadcn/UI.
+* **Banco de Dados:** PostgreSQL (Hospedado no **Neon**).
+* **Infraestrutura:** Hospedagem unificada no **Render** (Backend serve o Frontend).
 
 ---
 
 ## 2. Configuração do Ambiente (Primeira Vez)
 
-Siga estes passos para configurar o projeto na sua máquina pela primeira vez.
+Siga estes passos para rodar o projeto localmente.
 
 ### Pré-requisitos
 
 -   **Node.js**: Versão 20 ou superior.
 -   **npm**: Instalado juntamente com o Node.js.
--   **Git**: Para controlo de versão.
--   **Conta no GitHub**: Para hospedar o código.
--   **Conta no Supabase**: Para a base de dados PostgreSQL.
+-   **Conta no Neon**: Para o banco de dados PostgreSQL.
 
 ### Passo 2.1: Configurar o Backend
 

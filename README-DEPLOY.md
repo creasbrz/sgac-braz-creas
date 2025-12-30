@@ -1,64 +1,75 @@
-# Guia de Implantação (Deploy) do SGAC-BRAZ
+#### 📄 `README-DEPLOY.md`
+Reescrito para focar na estratégia "Monólito Modular" no Render (Backend servindo Frontend), que é o método mais econômico e sincronizado para o seu setup atual.
 
-Este documento contém o passo a passo para publicar o backend e o frontend da aplicação, tornando-a acessível online.
+```markdown
+# Guia de Implantação (Deploy) - SGAC-BRAZ v5.0.0
+
+Este guia descreve como publicar o sistema completo (Frontend + Backend) no **Render**, utilizando o **Neon** como banco de dados.
+
+O sistema está configurado para que o Backend (Fastify) sirva os arquivos estáticos do Frontend (React/Vite). Isso significa que precisaremos de apenas **um serviço** no Render.
 
 ## Pré-requisitos
 
--   **Conta no GitHub (ou GitLab/Bitbucket):** Essencial para a integração com os serviços de hospedagem.
--   **Conta na Render:** [render.com](https://render.com/)
--   **Conta na Vercel:** [vercel.com](https://vercel.com/)
+1.  Código fonte no **GitHub**.
+2.  Conta no **Neon** (neon.tech) com um banco de dados criado.
+3.  Conta no **Render** (render.com).
 
 ---
 
-## Parte 1: Deploy do Backend (API na Render)
+## Passo 1: Configurar o Banco de Dados (Neon)
 
-### 1.1. Preparar o Código do Backend
-
-Precisamos de adicionar scripts ao `package.json` para que a Render saiba como "construir" e "iniciar" a nossa aplicação.
-
--   **Atualize o seu `backend/package.json`** para incluir os scripts `build` e `start`.
--   **Verifique o `backend/src/server.ts`** para garantir que ele está a escutar no host `0.0.0.0`, o que é necessário para ambientes de produção.
-
-### 1.2. Configurar o Projeto na Render
-
-1.  Aceda ao seu painel da Render e clique em **"New +"** > **"Web Service"**.
-2.  **Conecte a sua conta do GitHub** e selecione o repositório do seu projeto.
-3.  Preencha as configurações do serviço:
-    -   **Name:** `sgac-braz-backend` (ou o nome que preferir).
-    -   **Root Directory:** `backend` (Isto diz à Render para olhar apenas para a pasta do backend).
-    -   **Runtime:** `Node`.
-    -   **Build Command:** `npm install && npm run build`
-    -   **Start Command:** `node dist/server.js`
-    -   **Plano:** Selecione o plano **Free**.
-
-4.  Clique em **"Advanced Settings"** e adicione as **Environment Variables**:
-    -   **Chave:** `DATABASE_URL`
-        -   **Valor:** Cole aqui a sua **URL de conexão do Supabase** (a mesma que está no seu ficheiro `.env`).
-    -   **Chave:** `JWT_SECRET`
-        -   **Valor:** Cole aqui a sua **chave secreta do JWT** (a mesma que está no seu ficheiro `.env`).
-
-5.  Clique em **"Create Web Service"**. A Render irá começar a construir e a publicar a sua API. Este processo pode levar alguns minutos.
-6.  Após a conclusão, a Render irá fornecer-lhe a **URL pública do seu backend** (algo como `https://sgac-braz-backend.onrender.com`). Copie este endereço.
+1.  Acesse o dashboard do Neon.
+2.  Crie um novo projeto/banco se ainda não tiver.
+3.  Copie a **Connection String** (selecione a opção "Pooled connection" se disponível para melhor performance).
+    * Ex: `postgresql://user:pass@ep-xyz.aws.neon.tech/neondb?sslmode=require`
 
 ---
 
-## Parte 2: Deploy do Frontend (Interface na Vercel)
+## Passo 2: Configurar o Serviço no Render
 
-### 2.1. Configurar o Projeto na Vercel
+1.  No painel do Render, clique em **New +** e selecione **Web Service**.
+2.  Conecte seu repositório do GitHub.
+3.  Preencha as configurações:
 
-1.  Aceda ao seu painel da Vercel e clique em **"Add New..."** > **"Project"**.
-2.  **Conecte a sua conta do GitHub** e selecione o repositório do seu projeto.
-3.  A Vercel irá detetar automaticamente que é um projeto Vite. Expanda a secção **"Build & Output Settings"** e configure:
-    -   **Root Directory:** `frontend` (Isto diz à Vercel para olhar apenas para a pasta do frontend).
+    * **Name:** `sgac-braz-sistema`
+    * **Environment:** `Node`
+    * **Region:** Escolha a mais próxima (ex: Ohio ou Frankfurt).
+    * **Branch:** `main` (ou a branch de produção).
 
-4.  Expanda a secção **"Environment Variables"** e adicione a variável de ambiente:
-    -   **Chave:** `VITE_API_URL`
-    -   **Valor:** Cole aqui a **URL do seu backend que copiou da Render**.
+### 2.1 Configuração de Build e Start (Crucial)
 
-5.  Clique em **"Deploy"**. A Vercel irá construir e publicar a sua interface. Este processo também leva alguns minutos.
+Como temos frontend e backend no mesmo repo, precisamos compilar ambos.
 
-## Conclusão
+* **Root Directory:** Deixe em branco (use a raiz).
+* **Build Command:**
+    Este comando entra na pasta do front, instala e compila. Depois entra no back, instala, gera o cliente prisma e compila.
+    ```bash
+    cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npm run build
+    ```
+* **Start Command:**
+    Inicia o servidor compilado.
+    ```bash
+    cd backend && npm start
+    ```
 
-Após a conclusão, a Vercel irá fornecer-lhe a URL pública da sua aplicação (ex: `https://sgac-braz.vercel.app`). Aceda a este link e o seu sistema estará a funcionar online, pronto para ser utilizado!
+### 2.2 Variáveis de Ambiente (Environment Variables)
 
-> **Nota sobre Planos Gratuitos:** Os serviços gratuitos da Render "dormem" após um período de inatividade. O primeiro acesso após algum tempo pode ser um pouco mais lento enquanto o servidor "acorda".
+Adicione as seguintes chaves:
+
+| Chave | Valor |
+| :--- | :--- |
+| `DATABASE_URL` | Sua string de conexão do **Neon** (Passo 1). |
+| `JWT_SECRET` | Uma senha longa e aleatória para segurança dos tokens. |
+| `NODE_ENV` | `production` |
+| `TZ` | `America/Sao_Paulo` (Para garantir fusos horários corretos). |
+
+---
+
+## Passo 3: Finalizar e Testar
+
+1.  Clique em **Create Web Service**.
+2.  O Render iniciará o processo de build (pode levar alguns minutos na primeira vez pois compilará o React e o Node).
+3.  Acompanhe os logs. Se vir `🚀 Servidor rodando v5.0.0!`, o deploy foi um sucesso.
+4.  Acesse a URL fornecida pelo Render (ex: `https://sgac-braz-sistema.onrender.com`).
+
+**Nota:** Como o backend serve o frontend, você não precisa configurar variáveis como `VITE_API_URL` no frontend, pois as chamadas relativas (`/api/...`) funcionarão automaticamente no mesmo domínio.

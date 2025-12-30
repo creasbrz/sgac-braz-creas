@@ -1,43 +1,60 @@
 const fs = require('fs');
 const path = require('path');
 
-// ================= CONFIGURAÇÃO =================
-const outputFileName = 'projeto_creas_completo.txt';
-
-// Pastas que devem ser IGNORADAS (Adicionei .git e pastas de cache comuns)
+// ================= CONFIGURAÇÃO GERAL =================
 const ignoredFolders = [
   'node_modules', '.git', '.vscode', '.idea', 'dist', 'build', 
   'coverage', 'venv', '__pycache__', 'tmp', 'temp'
 ];
 
-// Arquivos específicos que devem ser IGNORADOS (Para não poluir o txt)
 const ignoredFiles = [
-  'package-lock.json', 'yarn.lock', 'composer.lock', 
-  '.DS_Store', 'thumbs.db', '.env', 'gerar_txt.js', outputFileName
+  'package-lock.json', 'yarn.lock', 'composer.lock', 'pnpm-lock.yaml',
+  '.DS_Store', 'thumbs.db', '.env', 'gerar_txt.js'
 ];
 
-// Extensões de arquivos que você QUER ler
-// Adicionei .md (documentação) e .env.example (configuração segura)
 const allowedExtensions = [
   '.js', '.jsx', '.ts', '.tsx', 
   '.html', '.css', '.scss', 
-  '.json', '.php', '.py', '.java', 
-  '.sql', '.md', '.env.example'
+  '.json', '.sql', '.prisma', // Adicionei .prisma para sua stack
+  '.md', '.env.example'
 ];
-// =================================================
+
+// ================= CONFIGURAÇÃO DE PASTAS =================
+// 🚨 EDITE AQUI SE OS NOMES DAS SUAS PASTAS FOREM DIFERENTES
+const config = {
+  backend: {
+    folderName: 'backend', // Nome da pasta do backend (ex: 'server', 'api')
+    outputFile: 'projeto_creas_backend.txt',
+    title: 'BACKEND - NODE.JS/FASTIFY/PRISMA'
+  },
+  frontend: {
+    folderName: 'frontend', // Nome da pasta do frontend (ex: 'client', 'web')
+    outputFile: 'projeto_creas_frontend.txt',
+    title: 'FRONTEND - REACT/VITE/SHADCN'
+  }
+};
+// ==========================================================
 
 /**
  * Função auxiliar para gerar a árvore de diretórios visualmente
  */
 function generateTree(dirPath, prefix = '') {
   let treeString = '';
+  
+  if (!fs.existsSync(dirPath)) return 'Pasta não encontrada.';
+
   const items = fs.readdirSync(dirPath);
 
-  // Filtra itens ignorados para não aparecerem nem na árvore
   const filteredItems = items.filter(item => {
     const fullPath = path.join(dirPath, item);
-    const isDirectory = fs.statSync(fullPath).isDirectory();
+    let isDirectory = false;
+    try { isDirectory = fs.statSync(fullPath).isDirectory(); } catch(e) { return false; }
+
     if (isDirectory) return !ignoredFolders.includes(item);
+    
+    // Filtra arquivos de saída para não ler o próprio relatório
+    if (item === config.backend.outputFile || item === config.frontend.outputFile) return false;
+    
     return !ignoredFiles.includes(item) && allowedExtensions.includes(path.extname(item));
   });
 
@@ -45,7 +62,9 @@ function generateTree(dirPath, prefix = '') {
     const isLast = index === filteredItems.length - 1;
     const marker = isLast ? '└── ' : '├── ';
     const fullPath = path.join(dirPath, item);
-    const isDirectory = fs.statSync(fullPath).isDirectory();
+    
+    let isDirectory = false;
+    try { isDirectory = fs.statSync(fullPath).isDirectory(); } catch(e) {}
 
     treeString += `${prefix}${marker}${item}\n`;
 
@@ -62,19 +81,24 @@ function generateTree(dirPath, prefix = '') {
  * Função recursiva para pegar todos os caminhos de arquivos
  */
 function getAllFiles(dirPath, arrayOfFiles) {
+  if (!fs.existsSync(dirPath)) return [];
+
   const files = fs.readdirSync(dirPath);
   arrayOfFiles = arrayOfFiles || [];
 
   files.forEach(function(file) {
     const fullPath = path.join(dirPath, file);
-    const stat = fs.statSync(fullPath);
+    let stat;
+    try { stat = fs.statSync(fullPath); } catch (e) { return; }
 
     if (stat.isDirectory()) {
       if (!ignoredFolders.includes(file)) {
         arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
       }
     } else {
-      // Verifica extensão E se o arquivo não está na lista de ignorados
+      // Ignora os arquivos de saída gerados
+      if (file === config.backend.outputFile || file === config.frontend.outputFile) return;
+
       if (allowedExtensions.includes(path.extname(file)) && !ignoredFiles.includes(file)) {
         arrayOfFiles.push(fullPath);
       }
@@ -84,33 +108,46 @@ function getAllFiles(dirPath, arrayOfFiles) {
   return arrayOfFiles;
 }
 
-function mergeFiles() {
-  console.log('Iniciando leitura do projeto CREAS...');
+/**
+ * Processa uma pasta específica e gera um relatório
+ */
+function createReport(targetConfig) {
+  const targetPath = path.join(__dirname, targetConfig.folderName);
   
-  // 1. Gera a árvore visual do projeto
-  const projectTree = generateTree(__dirname);
+  console.log(`\n--- Processando: ${targetConfig.title} ---`);
+  
+  if (!fs.existsSync(targetPath)) {
+    console.error(`❌ ERRO: A pasta '${targetConfig.folderName}' não foi encontrada na raiz.`);
+    console.error(`   Verifique a variável 'config' no início do script.`);
+    return;
+  }
+
+  // 1. Gera a árvore visual
+  const projectTree = generateTree(targetPath);
   
   // 2. Coleta os arquivos
-  const allFiles = getAllFiles(__dirname);
+  const allFiles = getAllFiles(targetPath);
   
   let fullContent = '';
 
-  // Cabeçalho Principal do Documento
-  fullContent += `RELATÓRIO DE CÓDIGO - PROJETO CREAS\n`;
+  // Cabeçalho
+  fullContent += `RELATÓRIO DE CÓDIGO - ${targetConfig.title}\n`;
   fullContent += `Gerado em: ${new Date().toLocaleString()}\n`;
+  fullContent += `Pasta Alvo: /${targetConfig.folderName}\n`;
   fullContent += `Total de arquivos: ${allFiles.length}\n`;
   fullContent += `\nESTRUTURA DE PASTAS:\n`;
-  fullContent += `root\n${projectTree}`;
+  fullContent += `${targetConfig.folderName}\n${projectTree}`;
   fullContent += `\n\n==================================================================\n\n`;
 
-  console.log(`Estrutura mapeada. Encontrados ${allFiles.length} arquivos válidos.`);
+  console.log(`📂 Estrutura mapeada. Encontrados ${allFiles.length} arquivos.`);
 
-  // 3. Lê e concatena o conteúdo
+  // 3. Lê e concatena
   allFiles.forEach(filePath => {
     try {
       const content = fs.readFileSync(filePath, 'utf8');
-      const relativePath = path.relative(__dirname, filePath);
-      const fileSize = fs.statSync(filePath).size; // Tamanho em bytes
+      // Mostra o caminho relativo a partir da pasta alvo (ex: src/index.js) e não do root
+      const relativePath = path.relative(path.join(__dirname, targetConfig.folderName), filePath);
+      const fileSize = fs.statSync(filePath).size;
       
       fullContent += `\n==================================================================\n`;
       fullContent += `FILE: ${relativePath}\n`;
@@ -124,9 +161,20 @@ function mergeFiles() {
     }
   });
 
-  fs.writeFileSync(outputFileName, fullContent);
-  console.log(`\nSucesso! O arquivo '${outputFileName}' foi criado na raiz.`);
-  console.log('Agora você pode enviar este arquivo para análise.');
+  fs.writeFileSync(targetConfig.outputFile, fullContent);
+  console.log(`✅ Sucesso! Arquivo criado: '${targetConfig.outputFile}'`);
 }
 
-mergeFiles();
+function run() {
+  console.log('Iniciando geração de relatórios separados...');
+  
+  // Gera relatório do Backend
+  createReport(config.backend);
+  
+  // Gera relatório do Frontend
+  createReport(config.frontend);
+  
+  console.log('\nProcesso finalizado.');
+}
+
+run();

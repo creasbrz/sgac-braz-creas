@@ -1,31 +1,34 @@
-// frontend/src/pages/NotFound.tsx
-import { Link } from 'react-router-dom'
-import { ROUTES } from '@/constants/routes' //
-import { Button } from '@/components/ui/button' //
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card' //
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, Home } from "lucide-react";
 
 export function NotFound() {
-  return (
-    // CORREÇÃO 1: Usa 'min-h-screen' para centralizar na tela inteira
-    <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
-      <Card className="max-w-md w-full text-center shadow-md"> {/* */}
-        <CardHeader> {/* */}
-          <CardTitle className="text-4xl font-bold text-destructive">404</CardTitle> {/* */}
-        </CardHeader>
-        <CardContent> {/* */}
-          <p className="mt-2 text-lg text-muted-foreground">
-            Página não encontrada.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A página que você procura não existe ou foi movida.
-          </p>
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 text-center">
+      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-orange-100">
+        <AlertTriangle className="h-10 w-10 text-orange-600" />
+      </div>
+      
+      <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
+        404 - Página não encontrada
+      </h1>
+      
+      <p className="mt-4 max-w-lg text-lg text-gray-500">
+        Desculpe, a página que você está procurando não existe ou foi movida.
+      </p>
 
-          {/* CORREÇÃO 2: Usa o padrão 'asChild' do Shadcn/ui */}
-          <Button asChild className="mt-6 w-full">
-            <Link to={ROUTES.DASHBOARD}>Voltar para o Painel</Link> {/* */}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  )
+      <div className="mt-8">
+        {/* CORREÇÃO DO ERRO: 
+           Ao usar 'asChild', o Button deve envolver EXATAMENTE um filho.
+           O Link passa a ser o elemento raiz renderizado.
+        */}
+        <Button asChild className="gap-2">
+          <Link to="/dashboard">
+            <Home className="h-4 w-4" />
+            Voltar ao Dashboard
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
 }

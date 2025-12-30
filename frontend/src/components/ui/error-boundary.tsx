@@ -1,6 +1,7 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+// Removi o "React" do início, mantendo apenas os tipos e classes necessários
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './button'; // Ajuste o caminho se necessário (ex: ./ui/button)
+import { Button } from './button'; 
 import { Card, CardContent, CardHeader, CardTitle } from './card';
 
 interface Props {

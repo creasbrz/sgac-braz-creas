@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/filters.ts
 async function filterRoutes(app) {
@@ -54,29 +59,29 @@ async function filterRoutes(app) {
     const { sub: userId } = request.user;
     const bodySchema = import_zod.z.object({
       nome: import_zod.z.string().min(1, "D\xEA um nome ao filtro"),
-      config: import_zod.z.any()
+      // Melhoria: Aceita qualquer objeto JSON válido, mas força ser um objeto, não string/número solto
+      config: import_zod.z.record(import_zod.z.string(), import_zod.z.any()).default({})
     });
     try {
       const { nome, config } = bodySchema.parse(request.body);
-      const userExists = await prisma.user.findUnique({ where: { id: userId } });
-      if (!userExists) {
-        return reply.status(401).send({ message: "Sess\xE3o inv\xE1lida. Fa\xE7a login novamente." });
-      }
       const count = await prisma.savedFilter.count({ where: { userId } });
       if (count >= 10) {
-        return reply.status(400).send({ message: "Limite de 10 filtros atingido." });
+        return reply.status(400).send({ message: "Voc\xEA atingiu o limite de 10 filtros salvos." });
       }
       const filter = await prisma.savedFilter.create({
         data: {
           nome,
-          config: config ?? {},
-          // Garante que não é null
+          config,
+          // Agora garantido que é um objeto JSON
           userId
         }
       });
       return reply.status(201).send(filter);
     } catch (error) {
       console.error("\u274C ERRO NO POST /filters:", error);
+      if (error instanceof import_zod.z.ZodError) {
+        return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
+      }
       return reply.status(500).send({ message: "Erro ao salvar filtro." });
     }
   });
@@ -86,8 +91,9 @@ async function filterRoutes(app) {
     try {
       const { id } = paramsSchema.parse(request.params);
       const filter = await prisma.savedFilter.findUnique({ where: { id } });
-      if (!filter || filter.userId !== userId) {
-        return reply.status(403).send({ message: "Sem permiss\xE3o." });
+      if (!filter) return reply.status(404).send({ message: "Filtro n\xE3o encontrado." });
+      if (filter.userId !== userId) {
+        return reply.status(403).send({ message: "Voc\xEA n\xE3o tem permiss\xE3o para apagar este filtro." });
       }
       await prisma.savedFilter.delete({ where: { id } });
       return reply.status(204).send();

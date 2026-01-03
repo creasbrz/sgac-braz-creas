@@ -9,7 +9,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// ==========================================
+// ENUMS (Mantidos inalterados)
+// ==========================================
+
 enum Cargo {
   Gerente
   Agente_Social
@@ -58,7 +61,10 @@ enum GroupType {
   REUNIAO_REDE
 }
 
-// Tabelas
+// ==========================================
+// MODELS (Com otimização de performance)
+// ==========================================
+
 model User {
   id        String   @id @default(uuid())
   nome      String
@@ -70,42 +76,45 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  casosCriados        Case[]               @relation("Criador")
-  casosAcolhida       Case[]               @relation("AgenteAcolhida")
-  casosPAEFI          Case[]               @relation("EspecialistaPAEFI")
-  evolucoes           Evolucao[]
-  pafs                Paf[]
-  pafVersions         PafVersion[]
-  agendamentos        Agendamento[]
-  logs                CaseLog[]
-  anexos              Anexo[]
-  filtrosSalvos       SavedFilter[]
-  encaminhamentos     Encaminhamento[]
-  entregas            ServiceDeliverable[]
-  gruposFacilitados   GroupActivity[]
+  casosCriados      Case[]          @relation("Criador")
+  casosAcolhida     Case[]          @relation("AgenteAcolhida")
+  casosPAEFI        Case[]          @relation("EspecialistaPAEFI")
+  evolucoes         Evolucao[]
+  pafs              Paf[]
+  pafVersions       PafVersion[]
+  agendamentos      Agendamento[]
+  logs              CaseLog[]
+  anexos            Anexo[]
+  filtrosSalvos     SavedFilter[]
+  encaminhamentos   Encaminhamento[]
+  entregas          ServiceDeliverable[]
+  gruposFacilitados GroupActivity[]
+
+  // PERFORMANCE: Índice para buscas por nome em listagens de usuários
+  @@index([nome])
 }
 
 model Case {
-  id              String     @id @default(uuid())
+  id              String      @id @default(uuid())
   nomeCompleto    String
-  cpf             String     @unique
+  cpf             String      @unique
   nascimento      DateTime
   sexo            String
   urgencia        String
-  pesoUrgencia    Int        @default(1)
+  pesoUrgencia    Int         @default(1)
   violacao        String
   categoria       String
   telefone        String
   endereco        String
-  dataEntrada     DateTime   @default(now())
+  dataEntrada     DateTime    @default(now())
   orgaoDemandante String
-  origem          CaseOrigin @default(ESPONTANEA)
+  origem          CaseOrigin  @default(ESPONTANEA)
   numeroSei       String?
   linkSei         String?
   observacoes     String?
-  status          CaseStatus @default(AGUARDANDO_ACOLHIDA)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  status          CaseStatus  @default(AGUARDANDO_ACOLHIDA)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   criadoPorId         String
   criadoPor           User   @relation("Criador", fields: [criadoPorId], references: [id])
@@ -133,9 +142,16 @@ model Case {
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
 
+  // PERFORMANCE: Índices essenciais para Dashboard e Filtros
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
+  @@index([nomeCompleto]) // Busca rápida por nome do usuário
+  
+  // PERFORMANCE: Chaves Estrangeiras (Evita Full Table Scan em joins)
+  @@index([criadoPorId])
+  @@index([agenteAcolhidaId])
+  @@index([especialistaPAEFIId])
 }
 
 model Evolucao {
@@ -148,22 +164,30 @@ model Evolucao {
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
+
+  // PERFORMANCE: Crítico para carregar histórico do caso
+  @@index([casoId])
+  @@index([autorId])
+  @@index([createdAt]) // Para ordenação cronológica rápida
 }
 
 model Paf {
-  id          String       @id @default(uuid())
+  id          String   @id @default(uuid())
   diagnostico String
   objetivos   String
   estrategias String
   deadline    DateTime
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  casoId      String       @unique
-  caso        Case         @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  casoId      String   @unique
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId     String
-  autor       User         @relation(fields: [autorId], references: [id])
-  versaoAtual Int          @default(1)
+  autor       User     @relation(fields: [autorId], references: [id])
+  versaoAtual Int      @default(1)
   versoes     PafVersion[]
+
+  // PERFORMANCE
+  @@index([autorId])
 }
 
 model PafVersion {
@@ -178,6 +202,10 @@ model PafVersion {
   autorId      String
   autor        User     @relation(fields: [autorId], references: [id])
   versaoNumero Int      @default(1)
+
+  // PERFORMANCE
+  @@index([pafId])
+  @@index([autorId])
 }
 
 model Agendamento {
@@ -191,6 +219,11 @@ model Agendamento {
   responsavel   User     @relation(fields: [responsavelId], references: [id])
   casoId        String
   caso          Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  // PERFORMANCE: Essencial para o Calendário
+  @@index([data])
+  @@index([responsavelId])
+  @@index([casoId])
 }
 
 model CaseLog {
@@ -204,6 +237,12 @@ model CaseLog {
   caso          Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId       String
   autor         User      @relation(fields: [autorId], references: [id])
+
+  // PERFORMANCE: Auditoria e Histórico
+  @@index([casoId])
+  @@index([autorId])
+  @@index([acao])
+  @@index([createdAt])
 }
 
 model Anexo {
@@ -217,6 +256,9 @@ model Anexo {
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
+
+  // PERFORMANCE
+  @@index([casoId])
 }
 
 model SavedFilter {
@@ -226,6 +268,9 @@ model SavedFilter {
   createdAt DateTime @default(now())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // PERFORMANCE
+  @@index([userId])
 }
 
 model Encaminhamento {
@@ -242,10 +287,14 @@ model Encaminhamento {
   autor       User     @relation(fields: [autorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // PERFORMANCE
+  @@index([casoId])
+  @@index([status])
 }
 
 model MembroFamilia {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   nome        String
   parentesco  String
   idade       Int?
@@ -253,42 +302,54 @@ model MembroFamilia {
   nascimento  DateTime?
   telefone    String?
   ocupacao    String?
-  renda       Decimal?  @db.Decimal(10, 2)
+  renda       Decimal? @db.Decimal(10, 2)
   observacoes String?
   casoId      String
-  caso        Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // PERFORMANCE
+  @@index([casoId])
+  @@index([nome]) // Busca por membros da família
 }
 
 model ServiceDeliverable {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   tipo            String
   status          String
-  dataSolicitacao DateTime  @default(now())
+  dataSolicitacao DateTime @default(now())
   dataEntrega     DateTime?
   observacoes     String?
   casoId          String
-  caso            Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  caso            Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   responsavelId   String
-  responsavel     User      @relation(fields: [responsavelId], references: [id])
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  responsavel     User     @relation(fields: [responsavelId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // PERFORMANCE
+  @@index([casoId])
+  @@index([tipo])
 }
 
 model GroupActivity {
-  id               String            @id @default(uuid())
+  id               String      @id @default(uuid())
   tema             String
   tipo             GroupType
   dataRealizacao   DateTime
   local            String?
   descricao        String?
-  orgaosEnvolvidos String[]          @default([])
+  orgaosEnvolvidos String[]    @default([])
   facilitadorId    String
-  facilitador      User              @relation(fields: [facilitadorId], references: [id])
+  facilitador      User        @relation(fields: [facilitadorId], references: [id])
   participantes    GroupAttendance[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // PERFORMANCE
+  @@index([facilitadorId])
+  @@index([dataRealizacao])
 }
 
 model GroupAttendance {
@@ -302,4 +363,8 @@ model GroupAttendance {
   createdAt   DateTime      @default(now())
 
   @@unique([grupoId, casoId])
+  
+  // PERFORMANCE
+  @@index([grupoId])
+  @@index([casoId])
 }

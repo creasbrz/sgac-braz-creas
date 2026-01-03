@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/groups.ts
 var import_client2 = require("@prisma/client");
@@ -37,7 +42,7 @@ async function groupRoutes(app) {
     try {
       await req.jwtVerify();
     } catch {
-      return reply.status(401).send();
+      return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
   app.get("/groups", async (req, reply) => {
@@ -64,8 +69,10 @@ async function groupRoutes(app) {
           facilitador: { select: { id: true, nome: true } },
           participantes: {
             include: {
-              caso: { select: { id: true, nomeCompleto: true } }
-            }
+              caso: { select: { id: true, nomeCompleto: true, telefone: true } }
+            },
+            orderBy: { caso: { nomeCompleto: "asc" } }
+            // Lista de chamada em ordem alfabética
           }
         }
       });
@@ -78,7 +85,7 @@ async function groupRoutes(app) {
   app.post("/groups", async (req, reply) => {
     try {
       const bodySchema = import_zod.z.object({
-        tema: import_zod.z.string().min(3),
+        tema: import_zod.z.string().min(3, "Tema \xE9 obrigat\xF3rio"),
         tipo: import_zod.z.nativeEnum(import_client2.GroupType),
         // Aceita array de strings ou string única (para compatibilidade)
         datas: import_zod.z.array(import_zod.z.string()).optional(),
@@ -88,7 +95,7 @@ async function groupRoutes(app) {
         orgaosEnvolvidos: import_zod.z.array(import_zod.z.string()).default([])
       });
       const data = bodySchema.parse(req.body);
-      const userId = req.user.sub;
+      const { sub: userId } = req.user;
       let datesToCreate = [];
       if (data.datas && data.datas.length > 0) {
         datesToCreate = data.datas;
@@ -97,8 +104,8 @@ async function groupRoutes(app) {
       } else {
         return reply.status(400).send({ message: "Selecione pelo menos uma data." });
       }
-      const createdGroups = await Promise.all(
-        datesToCreate.map(async (dateStr) => {
+      const createdGroups = await prisma.$transaction(
+        datesToCreate.map((dateStr) => {
           return prisma.groupActivity.create({
             data: {
               tema: data.tema,
@@ -112,15 +119,6 @@ async function groupRoutes(app) {
           });
         })
       );
-      await prisma.caseLog.create({
-        data: {
-          casoId: "SISTEMA",
-          // Log global ou associado ao usuário
-          autorId: userId,
-          acao: import_client2.LogAction.ATIVIDADE_GRUPO_CRIADA,
-          descricao: `Criou atividade "${data.tema}" para ${datesToCreate.length} data(s).`
-        }
-      });
       return reply.status(201).send({ count: createdGroups.length, groups: createdGroups });
     } catch (error) {
       console.error("Erro ao criar grupo:", error);
@@ -131,33 +129,38 @@ async function groupRoutes(app) {
     try {
       const { id } = import_zod.z.object({ id: import_zod.z.string().uuid() }).parse(req.params);
       const { caseIds } = import_zod.z.object({ caseIds: import_zod.z.array(import_zod.z.string().uuid()) }).parse(req.body);
-      const userId = req.user.sub;
+      const { sub: userId } = req.user;
       const group = await prisma.groupActivity.findUnique({ where: { id } });
       if (!group) return reply.status(404).send({ message: "Grupo n\xE3o encontrado." });
-      let count = 0;
-      for (const caseId of caseIds) {
-        const exists = await prisma.groupAttendance.findUnique({
-          where: {
-            grupoId_casoId: { grupoId: id, casoId: caseId }
-          }
-        });
-        if (!exists) {
-          await prisma.groupAttendance.create({
-            data: { grupoId: id, casoId: caseId, presente: false }
+      const existingParticipants = await prisma.groupAttendance.findMany({
+        where: {
+          grupoId: id,
+          casoId: { in: caseIds }
+        },
+        select: { casoId: true }
+      });
+      const existingIds = new Set(existingParticipants.map((p) => p.casoId));
+      const newParticipantsIds = caseIds.filter((cid) => !existingIds.has(cid));
+      if (newParticipantsIds.length === 0) {
+        return reply.send({ message: "Todos os selecionados j\xE1 est\xE3o no grupo." });
+      }
+      const dataFormatada = (0, import_date_fns.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale.ptBR });
+      await prisma.$transaction(async (tx) => {
+        for (const caseId of newParticipantsIds) {
+          await tx.groupAttendance.create({
+            data: { grupoId: id, casoId, presente: false }
           });
-          const dataFormatada = (0, import_date_fns.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale.ptBR });
-          await prisma.evolucao.create({
+          await tx.evolucao.create({
             data: {
-              casoId: caseId,
+              casoId,
               autorId: userId,
               sigilo: false,
-              conteudo: `[SISTEMA] Usu\xE1rio vinculado \xE0 atividade "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
+              conteudo: `[SISTEMA] Usu\xE1rio vinculado \xE0 atividade coletiva "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
             }
           });
-          count++;
         }
-      }
-      return reply.send({ message: `${count} participantes adicionados.` });
+      });
+      return reply.send({ message: `${newParticipantsIds.length} participantes adicionados.` });
     } catch (error) {
       console.error("\u274C Erro ao adicionar participantes:", error);
       return reply.status(500).send({ message: "Erro interno ao adicionar participantes." });
@@ -169,35 +172,36 @@ async function groupRoutes(app) {
       const bodySchema = import_zod.z.object({ presente: import_zod.z.boolean(), observacoes: import_zod.z.string().optional() });
       const { groupId, caseId } = paramsSchema.parse(req.params);
       const { presente, observacoes } = bodySchema.parse(req.body);
-      const userId = req.user.sub;
+      const { sub: userId } = req.user;
       const group = await prisma.groupActivity.findUnique({ where: { id: groupId } });
+      if (!group) return reply.status(404).send({ message: "Grupo n\xE3o encontrado" });
       const attendance = await prisma.groupAttendance.update({
         where: {
           grupoId_casoId: { grupoId: groupId, casoId: caseId }
         },
         data: { presente, observacoes }
       });
-      if (group) {
-        const statusTexto = presente ? "PRESENTE" : "AUSENTE";
-        const obsTexto = observacoes ? ` Observa\xE7\xF5es: ${observacoes}` : "";
-        const dataFormatada = (0, import_date_fns.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale.ptBR });
-        await prisma.evolucao.create({
+      const statusTexto = presente ? "PRESENTE" : "AUSENTE";
+      const obsTexto = observacoes ? ` Observa\xE7\xF5es: ${observacoes}` : "";
+      const dataFormatada = (0, import_date_fns.format)(group.dataRealizacao, "dd/MM/yyyy", { locale: import_locale.ptBR });
+      await Promise.all([
+        prisma.evolucao.create({
           data: {
             casoId: caseId,
             autorId: userId,
             sigilo: false,
             conteudo: `[SISTEMA] Registro de Frequ\xEAncia - ${group.tema} (${dataFormatada}). Status: ${statusTexto}.${obsTexto}`
           }
-        });
-      }
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId,
-          autorId: userId,
-          acao: import_client2.LogAction.PRESENCA_REGISTRADA,
-          descricao: `Presen\xE7a em grupo (${presente ? "Presente" : "Ausente"})`
-        }
-      });
+        }),
+        prisma.caseLog.create({
+          data: {
+            casoId: caseId,
+            autorId: userId,
+            acao: import_client2.LogAction.PRESENCA_REGISTRADA,
+            descricao: `Presen\xE7a em grupo: ${statusTexto} (${group.tema})`
+          }
+        })
+      ]);
       return reply.send(attendance);
     } catch (error) {
       console.error("\u274C Erro ao atualizar presen\xE7a:", error);

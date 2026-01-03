@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import { Loader2 } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { closeCaseFormSchema } from '@/schemas/caseSchemas'
 import { MOTIVOS_DESLIGAMENTO, DESTINOS_DESLIGAMENTO } from '@/constants/caseConstants' // [ATUALIZADO]

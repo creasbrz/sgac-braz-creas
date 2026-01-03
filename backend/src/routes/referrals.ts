@@ -2,128 +2,154 @@
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction } from '@prisma/client'
+import { LogAction, Cargo } from '@prisma/client'
 
-/**
- * Rotas para gestão de Encaminhamentos (Rede de Proteção).
- */
+interface UserPayload {
+  sub: string
+  nome: string
+  cargo: Cargo
+}
+
 export async function referralRoutes(app: FastifyInstance) {
   
-  app.addHook('onRequest', async (req, reply) => {
+  app.addHook('onRequest', async (request, reply) => {
+    try { await request.jwtVerify() } 
+    catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // 1. LISTAR ENCAMINHAMENTOS
+  app.get('/cases/:caseId/referrals', async (request, reply) => {
+    const params = z.object({ caseId: z.string().uuid() })
+    
     try {
-      await req.jwtVerify()
-    } catch {
-      return reply.status(401).send({ message: 'Não autorizado.' })
+      const { caseId } = params.parse(request.params)
+
+      const referrals = await prisma.encaminhamento.findMany({
+        where: { casoId: caseId }, // Correção: Mapeamento explícito
+        orderBy: { dataEnvio: 'desc' },
+        include: {
+          autor: { select: { nome: true } }
+        }
+      })
+      return reply.send(referrals)
+    } catch (error) {
+      console.error("Erro GET Referrals:", error)
+      return reply.status(500).send({ message: 'Erro ao listar encaminhamentos.' })
     }
   })
 
-  // [POST] Criar novo encaminhamento
-  app.post('/cases/:caseId/referrals', async (req, reply) => {
-    const paramsSchema = z.object({ 
-      caseId: z.string().uuid() 
-    })
-    
-    const bodySchema = z.object({
-      tipo: z.string().min(3, "O tipo é obrigatório (ex: Saúde, Educação)"),
+  // 2. CRIAR NOVO ENCAMINHAMENTO
+  app.post('/cases/:caseId/referrals', async (request, reply) => {
+    const params = z.object({ caseId: z.string().uuid() })
+    const body = z.object({
+      tipo: z.string().min(1, "Selecione o tipo"), 
       instituicao: z.string().min(3, "Informe o nome da instituição"),
-      motivo: z.string().min(5, "Descreva o motivo do encaminhamento")
+      motivo: z.string().min(3, "Descreva o motivo"),
     })
 
     try {
-      // A variável extraída chama-se 'caseId' (da URL)
-      const { caseId } = paramsSchema.parse(req.params)
-      const { tipo, instituicao, motivo } = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { caseId } = params.parse(request.params)
+      const { tipo, instituicao, motivo } = body.parse(request.body)
+      const { sub: userId } = request.user as UserPayload
+
+      const caso = await prisma.case.findUnique({ where: { id: caseId } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
       const referral = await prisma.encaminhamento.create({
         data: {
+          casoId: caseId, // Correção: Mapeamento explícito
+          autorId: userId,
           tipo,
           instituicao,
           motivo,
-          // [CORREÇÃO]: Mapeamento explícito. O campo do banco é 'casoId', a variável é 'caseId'
-          casoId: caseId, 
-          autorId: userId,
-          status: "PENDENTE"
+          status: 'PENDENTE',
+          dataEnvio: new Date()
         }
       })
 
       await prisma.caseLog.create({
         data: {
-          // [CORREÇÃO]: Mapeamento explícito também no log
-          casoId: caseId,
+          casoId: caseId, // Correção aqui também
           autorId: userId,
           acao: LogAction.OUTRO,
-          descricao: `Realizou encaminhamento para ${tipo} - ${instituicao}`
+          descricao: `Encaminhou para ${instituicao} (${tipo})`
         }
       })
 
       return reply.status(201).send(referral)
-
     } catch (error) {
-      console.error("Erro ao criar encaminhamento:", error)
-      return reply.status(500).send({ message: "Erro ao criar encaminhamento." })
+      console.error("Erro POST Referral:", error)
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
+      return reply.status(500).send({ message: 'Erro ao criar encaminhamento.' })
     }
   })
 
-  // [GET] Listar encaminhamentos de um caso
-  app.get('/cases/:caseId/referrals', async (req, reply) => {
-    const paramsSchema = z.object({ caseId: z.string().uuid() })
-
-    try {
-      const { caseId } = paramsSchema.parse(req.params)
-
-      const referrals = await prisma.encaminhamento.findMany({
-        // [CORREÇÃO]: Mapeamento explícito aqui também
-        where: { casoId: caseId },
-        orderBy: { createdAt: 'desc' },
-        include: { 
-          autor: { select: { nome: true } }
-        }
-      })
-
-      return reply.send(referrals)
-    } catch (error) {
-      return reply.status(500).send({ message: "Erro ao buscar encaminhamentos." })
-    }
-  })
-
-  // [PATCH] Atualizar encaminhamento (Dar baixa / Contra-referência)
-  app.patch('/referrals/:id', async (req, reply) => {
-    const paramsSchema = z.object({ id: z.string().uuid() })
-    const bodySchema = z.object({
-      status: z.enum(['PENDENTE', 'CONCLUIDO', 'NEGADO']),
-      retorno: z.string().optional()
+  // 3. ATUALIZAR
+  app.patch('/referrals/:id', async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() })
+    const body = z.object({
+      status: z.enum(['PENDENTE', 'CONCLUIDO', 'CANCELADO']),
+      retorno: z.string().optional() 
     })
 
     try {
-      const { id } = paramsSchema.parse(req.params)
-      const { status, retorno } = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { id } = params.parse(request.params)
+      const { status, retorno } = body.parse(request.body)
+      const { sub: userId } = request.user as UserPayload
 
-      const oldRef = await prisma.encaminhamento.findUnique({ where: { id } })
-      if (!oldRef) return reply.status(404).send({ message: "Encaminhamento não encontrado." })
+      const existing = await prisma.encaminhamento.findUnique({ where: { id } })
+      if (!existing) return reply.status(404).send({ message: 'Encaminhamento não encontrado.' })
 
       const updated = await prisma.encaminhamento.update({
         where: { id },
-        data: {
-          status,
-          retorno,
-          updatedAt: new Date()
-        }
+        data: { status, retorno, updatedAt: new Date() }
       })
 
-      await prisma.caseLog.create({
-        data: {
-          casoId: oldRef.casoId, // Aqui usamos o valor que já veio do banco, então está correto
-          autorId: userId,
-          acao: LogAction.OUTRO,
-          descricao: `Atualizou encaminhamento (${oldRef.instituicao}) para: ${status}`
-        }
-      })
+      if (retorno && retorno !== existing.retorno) {
+        await prisma.caseLog.create({
+          data: {
+            casoId: existing.casoId,
+            autorId: userId,
+            acao: LogAction.OUTRO,
+            descricao: `Registrou contrarreferência de ${existing.instituicao}`
+          }
+        })
+      }
 
       return reply.send(updated)
     } catch (error) {
-      return reply.status(500).send({ message: "Erro ao atualizar encaminhamento." })
+      return reply.status(500).send({ message: 'Erro ao atualizar encaminhamento.' })
+    }
+  })
+
+  // 4. EXCLUIR
+  app.delete('/referrals/:id', async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() })
+    try {
+      const { id } = params.parse(request.params)
+      const { sub: userId, cargo } = request.user as UserPayload
+
+      const ref = await prisma.encaminhamento.findUnique({ where: { id } })
+      if (!ref) return reply.status(404).send({ message: 'Registro não encontrado.' })
+
+      if (cargo !== Cargo.Gerente && ref.autorId !== userId) {
+        return reply.status(403).send({ message: 'Sem permissão para excluir.' })
+      }
+
+      await prisma.encaminhamento.delete({ where: { id } })
+      
+      await prisma.caseLog.create({
+        data: {
+            casoId: ref.casoId,
+            autorId: userId,
+            acao: LogAction.OUTRO,
+            descricao: `Removeu encaminhamento para ${ref.instituicao}`
+        }
+      })
+
+      return reply.status(204).send()
+    } catch (error) {
+      return reply.status(500).send({ message: 'Erro ao excluir.' })
     }
   })
 }

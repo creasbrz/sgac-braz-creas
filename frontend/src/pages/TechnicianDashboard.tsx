@@ -1,6 +1,6 @@
 // frontend/src/pages/TechnicianDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Activity, CheckCircle, Clock } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UpcomingAppointments } from '@/components/UpcomingAppointments'

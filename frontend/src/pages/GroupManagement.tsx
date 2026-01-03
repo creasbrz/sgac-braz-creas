@@ -1,10 +1,10 @@
 // frontend/src/pages/GroupManagement.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react' // [CORREÇÃO] Removido Trash2
+import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -188,7 +188,7 @@ export function GroupManagement() {
                   </Badge>
                   
                   <Badge variant="outline" className={`text-[10px] font-medium border ${statusStyle.badge}`}>
-                     {statusStyle.label}
+                      {statusStyle.label}
                   </Badge>
                 </div>
                 
@@ -210,7 +210,8 @@ export function GroupManagement() {
 
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t">
                   <span className="truncate max-w-[140px] font-medium text-foreground/80">
-                    Facilitador: {group.facilitador.nome.split(' ')[0]}
+                    {/* [CORREÇÃO] Safe Navigation para evitar crash se facilitador for null */}
+                    Facilitador: {group.facilitador?.nome.split(' ')[0] || 'N/A'}
                   </span>
                   <div className="flex items-center gap-1.5 bg-primary/5 px-2 py-0.5 rounded-full text-primary font-medium">
                     <Users className="h-3.5 w-3.5"/> 

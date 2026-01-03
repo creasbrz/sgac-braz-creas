@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { Button } from '@/components/ui/button'
 import {

@@ -25,7 +25,12 @@ module.exports = __toCommonJS(alerts_exports);
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/alerts.ts
 var import_client2 = require("@prisma/client");
@@ -43,117 +48,57 @@ async function alertRoutes(app) {
     const notifications = [];
     const today = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
     const tomorrowEnd = (0, import_date_fns.addDays)(today, 2);
-    const agenda = await prisma.agendamento.findMany({
-      where: {
-        responsavelId: userId,
-        data: { gte: today, lt: tomorrowEnd }
-      },
-      include: { caso: { select: { nomeCompleto: true } } }
-    });
-    for (const ag of agenda) {
-      notifications.push({
-        id: `agenda-${ag.id}`,
-        title: "Compromisso Pr\xF3ximo",
-        description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: `/dashboard/cases/${ag.casoId}`,
-        type: "info"
-      });
-    }
     const dataLimiteInatividade = (0, import_date_fns.subDays)(/* @__PURE__ */ new Date(), 30);
-    const casosInativos = await prisma.case.findMany({
-      where: {
-        status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-        especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
-        evolucoes: {
-          none: {
-            createdAt: { gte: dataLimiteInatividade }
-          }
-        }
-      },
-      select: { id: true, nomeCompleto: true }
-    });
-    for (const caso of casosInativos) {
-      notifications.push({
-        id: `inativo-${caso.id}`,
-        title: "Caso sem Movimenta\xE7\xE3o",
-        description: `${caso.nomeCompleto} n\xE3o tem evolu\xE7\xE3o h\xE1 +30 dias.`,
-        link: `/dashboard/cases/${caso.id}`,
-        type: "critical"
-      });
-    }
     const dataLimiteMonitoramento = (0, import_date_fns.subDays)(/* @__PURE__ */ new Date(), 60);
-    const casosMonitoramentoEsquecidos = await prisma.case.findMany({
-      where: {
-        status: import_client2.CaseStatus.EM_MONITORAMENTO,
-        especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
-        evolucoes: {
-          none: {
-            createdAt: { gte: dataLimiteMonitoramento }
-          }
-        }
-      },
-      select: { id: true, nomeCompleto: true }
-    });
-    for (const caso of casosMonitoramentoEsquecidos) {
-      notifications.push({
-        id: `monit-inativo-${caso.id}`,
-        title: "Revis\xE3o de Monitoramento",
-        description: `Verificar situa\xE7\xE3o de ${caso.nomeCompleto} (sem contato h\xE1 60 dias).`,
-        link: `/dashboard/cases/${caso.id}`,
-        type: "info"
-        // Amarelo/Info pois é menos crítico que PAEFI
-      });
-    }
-    if (cargo === import_client2.Cargo.Gerente) {
-      const distCount = await prisma.case.count({
-        where: { status: import_client2.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
-      });
-      if (distCount > 0) {
-        notifications.push({
-          id: "dist-queue",
-          title: "Distribui\xE7\xE3o Pendente",
-          description: `${distCount} casos aguardam atribui\xE7\xE3o.`,
-          link: "/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI",
-          type: "critical"
-        });
-      }
-    }
-    if (cargo === import_client2.Cargo.Agente_Social) {
-      const acolhidaCount = await prisma.case.count({
+    const pafDeadline = (0, import_date_fns.addDays)(/* @__PURE__ */ new Date(), 15);
+    const [
+      agenda,
+      casosInativos,
+      casosMonitoramento,
+      distCount,
+      acolhidaCount,
+      casesWithoutPaf,
+      pafsExpiring
+    ] = await Promise.all([
+      // 1. AGENDAMENTOS (Agenda Pessoal - Próximos 2 dias)
+      prisma.agendamento.findMany({
         where: {
-          agenteAcolhidaId: userId,
-          status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA
-        }
-      });
-      if (acolhidaCount > 0) {
-        notifications.push({
-          id: "acolhida-queue",
-          title: "Novos na Acolhida",
-          description: `Voc\xEA tem ${acolhidaCount} casos para triagem inicial.`,
-          link: "/dashboard/cases?status=AGUARDANDO_ACOLHIDA",
-          type: "critical"
-        });
-      }
-    }
-    if (cargo === import_client2.Cargo.Especialista) {
-      const casesWithoutPaf = await prisma.case.count({
+          responsavelId: userId,
+          data: { gte: today, lt: tomorrowEnd }
+        },
+        include: { caso: { select: { nomeCompleto: true } } }
+      }),
+      // 2. CASOS PAEFI INATIVOS (+30 dias sem evolução)
+      prisma.case.findMany({
         where: {
-          especialistaPAEFIId: userId,
           status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-          paf: { is: null }
-        }
-      });
-      if (casesWithoutPaf > 0) {
-        notifications.push({
-          id: "missing-paf",
-          title: "Casos sem PAF",
-          description: `${casesWithoutPaf} casos precisam do plano inicial.`,
-          link: "/dashboard/cases",
-          type: "critical"
-        });
-      }
-      const pafDeadline = (0, import_date_fns.addDays)(/* @__PURE__ */ new Date(), 15);
-      const pafsExpiring = await prisma.paf.findMany({
+          // Se for Especialista, filtra os dele. Se for Gerente, vê de todos.
+          especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
+          evolucoes: {
+            none: { createdAt: { gte: dataLimiteInatividade } }
+          }
+        },
+        select: { id: true, nomeCompleto: true }
+      }),
+      // 3. MONITORAMENTO ESQUECIDO (+60 dias sem evolução)
+      prisma.case.findMany({
+        where: {
+          status: import_client2.CaseStatus.EM_MONITORAMENTO,
+          especialistaPAEFIId: cargo === import_client2.Cargo.Especialista ? userId : void 0,
+          evolucoes: {
+            none: { createdAt: { gte: dataLimiteMonitoramento } }
+          }
+        },
+        select: { id: true, nomeCompleto: true }
+      }),
+      // 4. [GERENTE] Fila de Distribuição
+      cargo === import_client2.Cargo.Gerente ? prisma.case.count({ where: { status: import_client2.CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI } }) : Promise.resolve(0),
+      // 5. [AGENTE] Fila de Acolhida
+      cargo === import_client2.Cargo.Agente_Social ? prisma.case.count({ where: { agenteAcolhidaId: userId, status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA } }) : Promise.resolve(0),
+      // 6. [ESPECIALISTA] Casos sem PAF
+      cargo === import_client2.Cargo.Especialista ? prisma.case.count({ where: { especialistaPAEFIId: userId, status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, paf: { is: null } } }) : Promise.resolve(0),
+      // 7. [ESPECIALISTA] PAFs Vencendo
+      cargo === import_client2.Cargo.Especialista ? prisma.paf.findMany({
         where: {
           caso: {
             especialistaPAEFIId: userId,
@@ -162,17 +107,73 @@ async function alertRoutes(app) {
           deadline: { gte: today, lte: pafDeadline }
         },
         include: { caso: { select: { nomeCompleto: true, id: true } } }
+      }) : Promise.resolve([])
+    ]);
+    agenda.forEach((ag) => {
+      var _a;
+      notifications.push({
+        id: `agenda-${ag.id}`,
+        title: "Compromisso Pr\xF3ximo",
+        description: `${ag.titulo} - ${((_a = ag.caso) == null ? void 0 : _a.nomeCompleto) || "Sem caso vinculado"}`,
+        link: ag.casoId ? `/dashboard/cases/${ag.casoId}` : "/dashboard/agenda",
+        type: "info"
       });
-      for (const p of pafsExpiring) {
-        notifications.push({
-          id: `paf-exp-${p.id}`,
-          title: "Reavalia\xE7\xE3o de PAF",
-          description: `Prazo pr\xF3ximo: ${p.caso.nomeCompleto}`,
-          link: `/dashboard/cases/${p.caso.id}`,
-          type: "critical"
-        });
-      }
+    });
+    casosInativos.forEach((caso) => {
+      notifications.push({
+        id: `inativo-${caso.id}`,
+        title: "Caso sem Movimenta\xE7\xE3o",
+        description: `${caso.nomeCompleto} n\xE3o tem evolu\xE7\xE3o h\xE1 +30 dias.`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: "critical"
+      });
+    });
+    casosMonitoramento.forEach((caso) => {
+      notifications.push({
+        id: `monit-inativo-${caso.id}`,
+        title: "Revis\xE3o de Monitoramento",
+        description: `Verificar situa\xE7\xE3o de ${caso.nomeCompleto} (sem contato h\xE1 60 dias).`,
+        link: `/dashboard/cases/${caso.id}`,
+        type: "warning"
+      });
+    });
+    if (distCount > 0) {
+      notifications.push({
+        id: "dist-queue",
+        title: "Distribui\xE7\xE3o Pendente",
+        description: `${distCount} casos aguardam atribui\xE7\xE3o.`,
+        link: "/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI",
+        type: "critical"
+      });
     }
+    if (acolhidaCount > 0) {
+      notifications.push({
+        id: "acolhida-queue",
+        title: "Novos na Acolhida",
+        description: `Voc\xEA tem ${acolhidaCount} casos para triagem inicial.`,
+        link: "/dashboard/cases?status=AGUARDANDO_ACOLHIDA",
+        type: "warning"
+      });
+    }
+    if (casesWithoutPaf > 0) {
+      notifications.push({
+        id: "missing-paf",
+        title: "Casos sem PAF",
+        description: `${casesWithoutPaf} casos precisam do plano inicial.`,
+        link: "/dashboard/cases",
+        // Idealmente filtrar por "Sem PAF" no front
+        type: "critical"
+      });
+    }
+    pafsExpiring.forEach((p) => {
+      notifications.push({
+        id: `paf-exp-${p.id}`,
+        title: "Reavalia\xE7\xE3o de PAF",
+        description: `Prazo pr\xF3ximo: ${p.caso.nomeCompleto}`,
+        link: `/dashboard/cases/${p.caso.id}`,
+        type: "warning"
+      });
+    });
     return reply.send(notifications);
   });
 }

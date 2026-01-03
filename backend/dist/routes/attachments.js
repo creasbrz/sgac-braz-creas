@@ -35,7 +35,12 @@ module.exports = __toCommonJS(attachments_exports);
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/attachments.ts
 var import_zod = require("zod");
@@ -50,11 +55,8 @@ async function validateFileSignature(buffer) {
     "FFD8FFE0": ["image"],
     // JPEG
     "FFD8FFE1": ["image"],
-    // JPEG
     "FFD8FFEE": ["image"],
-    // JPEG
     "FFD8FFDB": ["image"],
-    // JPEG
     "89504E47": ["image"]
     // PNG
   };
@@ -76,6 +78,12 @@ async function attachmentRoutes(app) {
     try {
       const { caseId } = paramsSchema.parse(request.params);
       const { sub: userId } = request.user;
+      const caso = await prisma.case.findUnique({ where: { id: caseId } });
+      if (!caso) {
+        const part = await request.file();
+        if (part) await part.toBuffer();
+        return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
+      }
       const data = await request.file();
       if (!data) {
         return reply.status(400).send({ message: "Nenhum arquivo enviado." });
@@ -84,7 +92,7 @@ async function attachmentRoutes(app) {
       const fileType = await validateFileSignature(buffer);
       if (!fileType) {
         return reply.status(400).send({
-          message: "Arquivo inv\xE1lido ou corrompido. Apenas PDF, JPG e PNG reais s\xE3o permitidos."
+          message: "Arquivo inv\xE1lido. O sistema aceita apenas PDF, JPG e PNG leg\xEDtimos."
         });
       }
       const safeFilename = data.filename.replace(/[^a-zA-Z0-9.]/g, "_");
@@ -95,27 +103,33 @@ async function attachmentRoutes(app) {
       }
       const uploadPath = import_path.default.join(uploadDir, fileName);
       import_fs.default.writeFileSync(uploadPath, buffer);
-      const anexo = await prisma.anexo.create({
-        data: {
-          nome: data.filename,
-          // Mantém nome original para exibição
-          tipo: data.mimetype,
-          url: `/uploads/${fileName}`,
-          casoId: caseId,
-          autorId: userId,
-          tamanho: buffer.length
-          // Salva o tamanho em bytes
+      try {
+        const anexo = await prisma.anexo.create({
+          data: {
+            nome: data.filename,
+            tipo: data.mimetype,
+            url: `/uploads/${fileName}`,
+            casoId: caseId,
+            autorId: userId,
+            tamanho: buffer.length
+          }
+        });
+        await prisma.caseLog.create({
+          data: {
+            casoId: caseId,
+            autorId: userId,
+            acao: import_client2.LogAction.ANEXO_ADICIONADO,
+            descricao: `Anexou documento: ${data.filename}`
+          }
+        });
+        return reply.status(201).send(anexo);
+      } catch (dbError) {
+        if (import_fs.default.existsSync(uploadPath)) {
+          import_fs.default.unlinkSync(uploadPath);
+          console.log(`[Rollback] Arquivo \xF3rf\xE3o removido: ${fileName}`);
         }
-      });
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId,
-          autorId: userId,
-          acao: import_client2.LogAction.ANEXO_ADICIONADO,
-          descricao: `Anexou documento: ${data.filename}`
-        }
-      });
-      return reply.status(201).send(anexo);
+        throw dbError;
+      }
     } catch (error) {
       console.error("\u274C Erro no Upload:", error);
       return reply.status(500).send({ message: "Erro interno ao salvar arquivo." });
@@ -150,7 +164,7 @@ async function attachmentRoutes(app) {
         const filePath = import_path.default.resolve(process.cwd(), "uploads", import_path.default.basename(anexo.url));
         if (import_fs.default.existsSync(filePath)) import_fs.default.unlinkSync(filePath);
       } catch (e) {
-        console.error("Erro ao apagar arquivo f\xEDsico:", e);
+        console.error("Aviso: Falha ao apagar arquivo f\xEDsico (pode j\xE1 ter sido removido):", e);
       }
       await prisma.caseLog.create({
         data: {

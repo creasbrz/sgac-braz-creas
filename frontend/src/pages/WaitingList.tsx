@@ -1,7 +1,7 @@
 // frontend/src/pages/WaitingList.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { differenceInDays } from 'date-fns'
 import { Loader2, AlertTriangle, UserPlus } from 'lucide-react'
 import { Link } from 'react-router-dom'

@@ -1,3 +1,4 @@
+// backend/src/routes/stats.ts
 import { type FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, subMonths, format } from "date-fns";
@@ -6,9 +7,10 @@ import { Cargo, CaseStatus, LogAction } from "@prisma/client";
 import { z } from "zod";
 import { cache } from "../lib/cache";
 
-// Função auxiliar de peso para urgência (Usada no Mapa de Calor)
-const calculateUrgencyWeight = (urgencia: string): number => {
-  const term = urgencia ? urgencia.trim() : '';
+// Função auxiliar de peso para urgência (Mapa de Calor)
+const calculateUrgencyWeight = (urgencia: string | null): number => {
+  if (!urgencia) return 1;
+  const term = urgencia.trim();
   if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
   if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
   if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
@@ -17,7 +19,7 @@ const calculateUrgencyWeight = (urgencia: string): number => {
 
 export async function statsRoutes(app: FastifyInstance) {
   
-  // Middleware de Autenticação Global para estas rotas
+  // Middleware de Autenticação Global
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
@@ -27,14 +29,14 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // 1. DASHBOARD GERAL (/stats)
-  // Retorna números rápidos para os Cards do topo do Dashboard
   app.get("/stats", async (request, reply) => {
     const { cargo, sub: userId } = request.user as { cargo: string; sub: string };
     
-    // --- LÓGICA DO GERENTE ---
+    // --- LÓGICA DO GERENTE (COM CACHE) ---
     if (cargo === Cargo.Gerente) {
       const cacheKey = "manager_stats_main";
       const cachedData = cache.get(cacheKey);
+      
       if (cachedData) {
         reply.header('X-Cache', 'HIT');
         return reply.send(cachedData);
@@ -57,13 +59,14 @@ export async function statsRoutes(app: FastifyInstance) {
           urgencyGroups, 
           categoryGroups
         ] = await Promise.all([
-          prisma.case.count(),
+          prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } }), // Total Ativos
           prisma.case.count({ where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } } }),
           prisma.case.count({ where: { status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI] } } }),
           prisma.case.count({ where: { status: CaseStatus.EM_MONITORAMENTO } }),
           prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           prisma.case.count({ where: { status: CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           
+          // Agrupamentos
           prisma.case.groupBy({
             by: ['agenteAcolhidaId'],
             where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } },
@@ -80,14 +83,13 @@ export async function statsRoutes(app: FastifyInstance) {
           prisma.case.groupBy({ by: ['categoria'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
         ]);
 
-        const userIds = [
-            ...new Set([
-                ...workloadAgent.map(w => w.agenteAcolhidaId), 
-                ...workloadSpec.map(w => w.especialistaPAEFIId)
-            ])
-        ].filter(id => id !== null) as string[];
+        // Mapear IDs para Nomes
+        const userIds = new Set([
+          ...workloadAgent.map(w => w.agenteAcolhidaId), 
+          ...workloadSpec.map(w => w.especialistaPAEFIId)
+        ].filter(Boolean) as string[]);
         
-        const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } });
+        const users = await prisma.user.findMany({ where: { id: { in: Array.from(userIds) } }, select: { id: true, nome: true } });
         const userMap = new Map(users.map(u => [u.id, u.nome]));
 
         const result = {
@@ -100,12 +102,12 @@ export async function statsRoutes(app: FastifyInstance) {
           closedCasesThisMonth: closedCases,
           workloadByAgent: workloadAgent.map(w => ({ name: userMap.get(w.agenteAcolhidaId!) || 'Desc.', value: w._count._all })),
           workloadBySpecialist: workloadSpec.map(w => ({ name: userMap.get(w.especialistaPAEFIId!) || 'Desc.', value: w._count._all })),
-          casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia, value: g._count._all })),
-          casesByCategory: categoryGroups.map(g => ({ name: g.categoria, value: g._count._all })),
-          productivity: [],
+          casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia || 'Não classificado', value: g._count._all })),
+          casesByCategory: categoryGroups.map(g => ({ name: g.categoria || 'Não classificado', value: g._count._all })),
           lastUpdated: new Date().toISOString()
         };
 
+        // Salva no cache por 5 minutos (configurado no cache.ts)
         cache.set(cacheKey, result);
         reply.header('X-Cache', 'MISS');
         return reply.send(result);
@@ -116,7 +118,7 @@ export async function statsRoutes(app: FastifyInstance) {
       }
     }
 
-    // --- LÓGICA DO TÉCNICO (Individual) ---
+    // --- LÓGICA DO TÉCNICO (Individual - Sem Cache pesado) ---
     const today = new Date();
     const firstDayOfMonth = startOfMonth(today);
     const lastDayOfMonth = endOfMonth(today);
@@ -139,12 +141,11 @@ export async function statsRoutes(app: FastifyInstance) {
         ]);
         return reply.send({ role: 'Especialista', myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
       }
-      return reply.status(200).send({ message: "Sem dados." });
+      return reply.status(200).send({ message: "Sem dados específicos." });
     } catch (error) { return reply.status(500).send({ message: "Erro interno." }); }
   });
 
   // 2. PRODUTIVIDADE E PERFORMANCE (/stats/productivity)
-  // Aceita ?mode=performance (conta logs/ações) ou ?mode=workload (conta casos ativos)
   app.get("/stats/productivity", async (request, reply) => {
     const querySchema = z.object({
       mode: z.enum(['workload', 'performance']).default('workload'),
@@ -159,26 +160,18 @@ export async function statsRoutes(app: FastifyInstance) {
         select: { id: true, nome: true, cargo: true }
       });
 
-      // --- MODO PERFORMANCE (Gráfico do Dashboard) ---
+      // --- MODO PERFORMANCE (Gráfico de Barras) ---
       if (mode === 'performance') {
         const startDate = subMonths(new Date(), months);
 
-        // Lista de ações segura (Filtra para evitar erro se o Enum estiver desatualizado)
-        const safeActions = [
-          LogAction.CRIACAO,
-          LogAction.MUDANCA_STATUS,
-          LogAction.DESLIGAMENTO,
-          LogAction.EVOLUCAO,
-          LogAction.OUTRO,
-          // @ts-ignore - Ignora erro de TS se ATRIBUICAO não existir no types ainda
-          LogAction.ATRIBUICAO 
-        ].filter(Boolean); 
+        // Lista dinâmica de ações do Enum
+        const safeActions = Object.values(LogAction);
 
         const activityCounts = await prisma.caseLog.groupBy({
           by: ['autorId'],
           where: {
             createdAt: { gte: startDate },
-            acao: { in: safeActions as LogAction[] }
+            acao: { in: safeActions }
           },
           _count: { _all: true }
         });
@@ -196,6 +189,7 @@ export async function statsRoutes(app: FastifyInstance) {
       }
 
       // --- MODO WORKLOAD (Tabela da Equipe) ---
+      // Realizamos duas queries agrupadas para não sobrecarregar
       const specialistStats = await prisma.case.groupBy({
         by: ['especialistaPAEFIId', 'status'],
         where: {
@@ -238,7 +232,7 @@ export async function statsRoutes(app: FastifyInstance) {
           role: u.cargo,
           active,
           monitoring,
-          totalLoad: active + (monitoring * 0.2) 
+          totalLoad: active + (monitoring * 0.2) // Peso menor para monitoramento
         };
       }).sort((a,b) => b.totalLoad - a.totalLoad);
 
@@ -251,6 +245,7 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // 3. RELATÓRIO VIGILÂNCIA COMPLETO (/stats/vigilancia)
+  // Rota pesada otimizada com Promise.all
   app.get("/stats/vigilancia", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
     if (!['Gerente', 'Especialista'].includes(cargo)) return reply.status(403).send({ message: "Acesso restrito." });
@@ -259,14 +254,47 @@ export async function statsRoutes(app: FastifyInstance) {
       const today = new Date();
       const sixMonthsAgo = subMonths(today, 6);
 
-      // --- 3.1 Busca Dados Brutos ---
-      // Selecionamos campos extras (violacao, categoria) para o filtro do mapa
-      const allCases = await prisma.case.findMany({
-        where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
-        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
-      });
+      // PARALELISMO: Dispara todas as queries pesadas simultaneamente
+      const [
+        allCases,
+        violations,
+        urgencies,
+        origins,
+        referrals,
+        benefits,
+        groupCount,
+        participantsCount,
+        demographicsRaw
+      ] = await Promise.all([
+        // 1. Dados Brutos para Cálculos de Tempo
+        prisma.case.findMany({
+          where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
+          select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
+        }),
+        // 2. Violações
+        prisma.case.groupBy({ by: ['violacao'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
+        // 3. Urgências
+        prisma.case.groupBy({ by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
+        // 4. Origens
+        prisma.case.groupBy({ by: ['orgaoDemandante'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } }, orderBy: { _count: { orgaoDemandante: 'desc' } }, take: 10 }),
+        // 5. Encaminhamentos
+        prisma.encaminhamento.groupBy({ by: ['instituicao'], _count: { _all: true }, orderBy: { _count: { instituicao: 'desc' } }, take: 10 }),
+        // 6. Benefícios
+        prisma.serviceDeliverable.groupBy({ by: ['tipo'], _count: { _all: true }, orderBy: { _count: { tipo: 'desc' } } }),
+        // 7. Grupos
+        prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } }),
+        // 8. Participantes
+        prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } }),
+        // 9. Dados para o Mapa e Demografia
+        prisma.case.findMany({
+          where: { status: { not: CaseStatus.DESLIGADO } },
+          select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
+        })
+      ]);
 
-      // --- 3.2 Evolução Mensal ---
+      // --- PROCESSAMENTO (CPU-Bound, mas rápido em memória) ---
+
+      // Evolução Mensal
       const monthsMap = new Map<string, { name: string, novos: number, desligados: number }>();
       for (let i = 5; i >= 0; i--) {
         const d = subMonths(today, i);
@@ -282,42 +310,22 @@ export async function statsRoutes(app: FastifyInstance) {
       });
       const evolutionData = Array.from(monthsMap.values());
 
-      // --- 3.3 Tipificações e Risco ---
-      const violations = await prisma.case.groupBy({
-        by: ['violacao'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } }
-      });
-      const violationData = violations.map(v => ({ name: v.violacao, value: v._count._all })).sort((a,b) => b.value - a.value);
-
-      const urgencies = await prisma.case.groupBy({
-        by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } }
-      });
+      // Formatação para Gráficos
+      const violationData = violations.map(v => ({ name: v.violacao || 'N/A', value: v._count._all })).sort((a,b) => b.value - a.value);
       const urgencyData = urgencies.map(u => ({ 
-        name: u.urgencia, value: u._count._all, weight: calculateUrgencyWeight(u.urgencia) 
+        name: u.urgencia || 'N/A', value: u._count._all, weight: calculateUrgencyWeight(u.urgencia) 
       })).sort((a,b) => b.weight - a.weight);
-
-      // --- 3.4 Rede e Origem ---
-      const origins = await prisma.case.groupBy({
-        by: ['orgaoDemandante'], _count: { _all: true },
-        where: { status: { not: CaseStatus.DESLIGADO } }, orderBy: { _count: { orgaoDemandante: 'desc' } }, take: 10
-      });
-      const originData = origins.map(o => ({ name: o.orgaoDemandante, value: o._count._all }));
-
-      const referrals = await prisma.encaminhamento.groupBy({
-        by: ['instituicao'], _count: { _all: true }, orderBy: { _count: { instituicao: 'desc' } }, take: 10
-      });
+      const originData = origins.map(o => ({ name: o.orgaoDemandante || 'N/A', value: o._count._all }));
       const networkData = referrals.map(r => ({ name: r.instituicao, value: r._count._all }));
-
-      // --- 3.5 Benefícios e Grupos ---
-      const benefits = await prisma.serviceDeliverable.groupBy({
-        by: ['tipo'], _count: { _all: true }, orderBy: { _count: { tipo: 'desc' } }
-      });
       const benefitsData = benefits.map(b => ({ name: b.tipo, value: b._count._all }));
 
-      const groupCount = await prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } });
-      const participantsCount = await prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } });
-      const collectiveData = { totalGroups: groupCount, totalParticipants: participantsCount, avgAttendance: groupCount > 0 ? Math.round(participantsCount / groupCount) : 0 };
+      const collectiveData = { 
+        totalGroups: groupCount, 
+        totalParticipants: participantsCount, 
+        avgAttendance: groupCount > 0 ? Math.round(participantsCount / groupCount) : 0 
+      };
 
-      // --- 3.6 Eficiência ---
+      // Eficiência (Tempos médios)
       const closedCases = allCases.filter(c => c.dataDesligamento && c.dataEntrada);
       const totalDaysOpen = closedCases.reduce((acc, c) => {
         const diff = Math.abs(c.dataDesligamento!.getTime() - c.dataEntrada.getTime());
@@ -337,13 +345,7 @@ export async function statsRoutes(app: FastifyInstance) {
         retentionRate: Math.round((1 - (closedCases.length / (allCases.length || 1))) * 100) 
       };
 
-      // --- 3.7 Demografia e Mapa (Com Filtros) ---
-      // AQUI ADICIONAMOS VIOLACAO E CATEGORIA NO SELECT PARA O MAPA
-      const demographicsRaw = await prisma.case.findMany({
-        where: { status: { not: CaseStatus.DESLIGADO } },
-        select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
-      });
-
+      // Demografia
       const demographics = {
         sexo: { Masculino: 0, Feminino: 0, Outro: 0 },
         etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 }
@@ -351,20 +353,27 @@ export async function statsRoutes(app: FastifyInstance) {
 
       demographicsRaw.forEach(c => {
         if (c.sexo === 'Masculino') demographics.sexo.Masculino++; else if (c.sexo === 'Feminino') demographics.sexo.Feminino++; else demographics.sexo.Outro++;
-        const age = new Date().getFullYear() - c.nascimento.getFullYear();
-        if (age < 12) demographics.etaria['0-11 (Criança)']++; else if (age < 18) demographics.etaria['12-17 (Adolescente)']++; else if (age < 60) demographics.etaria['18-59 (Adulto)']++; else demographics.etaria['60+ (Idoso)']++;
+        
+        if (c.nascimento) {
+            const age = new Date().getFullYear() - c.nascimento.getFullYear();
+            if (age < 12) demographics.etaria['0-11 (Criança)']++; 
+            else if (age < 18) demographics.etaria['12-17 (Adolescente)']++; 
+            else if (age < 60) demographics.etaria['18-59 (Adulto)']++; 
+            else demographics.etaria['60+ (Idoso)']++;
+        }
       });
 
       const ageData = Object.entries(demographics.etaria).map(([name, value]) => ({ name, value }));
       const sexData = Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }));
 
-      // Dados para o Mapa com campos de filtro
+      // Mapa (Pseudo-geocodificação)
       const mapData = demographicsRaw.map(c => {
         const pseudoRandom = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
-        const latOffset = (pseudoRandom % 100 - 50) / 4000; const lngOffset = (pseudoRandom % 100 - 50) / 4000;
+        const latOffset = (pseudoRandom % 100 - 50) / 4000; 
+        const lngOffset = (pseudoRandom % 100 - 50) / 4000;
         return { 
           id: c.id, 
-          lat: -15.668 + latOffset, 
+          lat: -15.668 + latOffset, // Coordenada base (ex: Brasília) - ideal ser configurável
           lng: -48.201 + lngOffset, 
           intensity: calculateUrgencyWeight(c.urgencia), 
           label: c.urgencia,
@@ -375,10 +384,13 @@ export async function statsRoutes(app: FastifyInstance) {
 
       return reply.send({ evolutionData, violationData, urgencyData, originData, collectiveData, ageData, sexData, mapData, networkData, benefitsData, efficiencyData });
 
-    } catch (error) { console.error("Erro vigilância:", error); return reply.status(500).send({ message: "Erro de vigilância." }); }
+    } catch (error) { 
+        console.error("Erro vigilância:", error); 
+        return reply.status(500).send({ message: "Erro de vigilância." }); 
+    }
   });
 
-  // 4. INDICADORES E IA (/stats/advanced)
+  // 4. INDICADORES AVANÇADOS (/stats/advanced)
   app.get("/stats/advanced", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
     const querySchema = z.object({ months: z.coerce.number().default(12), violacao: z.string().optional() });
@@ -433,6 +445,7 @@ export async function statsRoutes(app: FastifyInstance) {
       
       const activeTotal = await prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } });
       
+      // Insights (Heurísticas simples)
       const insights: string[] = [];
       const trendData = Array.from(monthlyStats.values());
       const last = trendData[trendData.length - 1];
@@ -452,7 +465,7 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
-  // 5. HELPERS
+  // 5. HELPER: MAPA DE CALOR DE ATIVIDADE
   app.get("/stats/heatmap", async (request, reply) => {
     const querySchema = z.object({ months: z.coerce.number().default(12) });
     const { months } = querySchema.parse(request.query);
@@ -466,6 +479,7 @@ export async function statsRoutes(app: FastifyInstance) {
     } catch { return reply.status(500).send([]); }
   });
 
+  // 6. HELPER: AGENDA RÁPIDA
   app.get("/stats/my-agenda", async (request, reply) => {
     const { sub: userId } = request.user as { sub: string };
     try {

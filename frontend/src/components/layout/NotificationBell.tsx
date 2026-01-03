@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Info, AlertTriangle, CheckCircle2, Check } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {

@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/evolutions.ts
 var import_client2 = require("@prisma/client");
@@ -35,91 +40,141 @@ async function evolutionRoutes(app) {
     try {
       await request.jwtVerify();
     } catch (err) {
-      return reply.status(401).send({ message: "N\xE3o autorizado." });
+      await reply.status(401).send(err);
+    }
+  });
+  app.post("/cases/:caseId/evolutions", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
+    const bodySchema = import_zod.z.object({
+      conteudo: import_zod.z.string().min(3, "Escreva algo relevante."),
+      sigilo: import_zod.z.boolean().default(false)
+    });
+    try {
+      const { caseId } = paramsSchema.parse(request.params);
+      const { conteudo, sigilo } = bodySchema.parse(request.body);
+      const user = request.user;
+      const caso = await prisma.case.findUnique({ where: { id: caseId } });
+      if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
+      const evolucao = await prisma.evolucao.create({
+        data: {
+          conteudo,
+          sigilo,
+          casoId: caseId,
+          // Vínculo garantido
+          autorId: user.sub
+        },
+        include: {
+          autor: { select: { id: true, nome: true, cargo: true } }
+        }
+      });
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: user.sub,
+          acao: import_client2.LogAction.EVOLUCAO_CRIADA,
+          descricao: sigilo ? "Evolu\xE7\xE3o Sigilosa." : "Evolu\xE7\xE3o T\xE9cnica."
+        }
+      });
+      await prisma.case.update({
+        where: { id: caseId },
+        data: { updatedAt: /* @__PURE__ */ new Date() }
+      });
+      return reply.status(201).send(evolucao);
+    } catch (error) {
+      console.error("Erro POST Evolu\xE7\xE3o:", error);
+      return reply.status(500).send({ message: "Erro ao criar evolu\xE7\xE3o." });
     }
   });
   app.get("/cases/:caseId/evolutions", async (request, reply) => {
-    const paramsSchema = import_zod.z.object({
-      caseId: import_zod.z.string().uuid()
-    });
+    const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
     const querySchema = import_zod.z.object({
       page: import_zod.z.coerce.number().min(1).default(1),
-      pageSize: import_zod.z.coerce.number().min(1).max(50).default(10)
+      pageSize: import_zod.z.coerce.number().default(10)
     });
-    const { caseId } = paramsSchema.parse(request.params);
-    const { page, pageSize } = querySchema.parse(request.query);
-    const { sub: userId, cargo } = request.user;
-    const caso = await prisma.case.findUnique({
-      where: { id: caseId },
-      select: {
-        agenteAcolhidaId: true,
-        especialistaPAEFIId: true,
-        status: true
+    try {
+      const { caseId } = paramsSchema.parse(request.params);
+      const { page, pageSize } = querySchema.parse(request.query);
+      const user = request.user;
+      const whereCondition = {
+        casoId: caseId
+        // Garante que só busca desse caso
+      };
+      if (user.cargo !== import_client2.Cargo.Gerente) {
+        whereCondition.OR = [
+          { sigilo: false },
+          // Vejo todas as públicas
+          { autorId: user.sub }
+          // Vejo as minhas (mesmo sigilosas)
+        ];
       }
-    });
-    if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
-    const isGerente = cargo === import_client2.Cargo.Gerente;
-    const isResponsavelAtual = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId;
-    const canViewSigilo = isGerente || isResponsavelAtual;
-    const whereCondition = {
-      casoId: caseId
-    };
-    if (!canViewSigilo) {
-      whereCondition.OR = [
-        { sigilo: false },
-        // Pode ver qualquer pública
-        { autorId: userId }
-        // Pode ver as suas próprias (mesmo sigilosas)
-      ];
-    }
-    const [evolucoes, total] = await Promise.all([
-      prisma.evolucao.findMany({
-        where: whereCondition,
-        orderBy: { createdAt: "desc" },
-        take: pageSize,
-        skip: (page - 1) * pageSize,
-        include: {
-          autor: {
-            select: { id: true, nome: true, cargo: true }
+      const [evolucoes, total] = await Promise.all([
+        prisma.evolucao.findMany({
+          where: whereCondition,
+          orderBy: { createdAt: "desc" },
+          // Mais recentes primeiro
+          take: pageSize,
+          skip: (page - 1) * pageSize,
+          include: {
+            autor: {
+              select: { id: true, nome: true, cargo: true }
+            }
           }
-        }
-      }),
-      prisma.evolucao.count({ where: whereCondition })
-    ]);
-    return reply.send({
-      items: evolucoes,
-      total,
-      page,
-      totalPages: Math.ceil(total / pageSize)
-    });
+        }),
+        prisma.evolucao.count({ where: whereCondition })
+      ]);
+      return reply.send({
+        items: evolucoes,
+        total,
+        page,
+        totalPages: Math.ceil(total / pageSize)
+      });
+    } catch (error) {
+      console.error("Erro GET Evolu\xE7\xF5es:", error);
+      return reply.status(500).send({ message: "Erro ao listar evolu\xE7\xF5es." });
+    }
   });
-  app.post("/cases/:caseId/evolutions", async (request, reply) => {
-    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(request.params);
-    const bodySchema = import_zod.z.object({
-      conteudo: import_zod.z.string().min(5, "A evolu\xE7\xE3o deve ter conte\xFAdo relevante."),
-      sigilo: import_zod.z.boolean().optional().default(false)
-    });
-    const { conteudo, sigilo } = bodySchema.parse(request.body);
-    const { sub: userId } = request.user;
-    const evolucao = await prisma.evolucao.create({
-      data: {
-        conteudo,
-        sigilo,
-        casoId: caseId,
-        autorId: userId
-      },
-      include: { autor: { select: { id: true, nome: true, cargo: true } } }
-      // Retorno otimizado
-    });
-    await prisma.caseLog.create({
-      data: {
-        casoId: caseId,
-        autorId: userId,
-        acao: import_client2.LogAction.EVOLUCAO_CRIADA,
-        descricao: sigilo ? "Registrou uma evolu\xE7\xE3o t\xE9cnica (SIGILOSA)." : "Registrou uma evolu\xE7\xE3o t\xE9cnica p\xFAblica."
+  app.put("/evolutions/:id", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+    const bodySchema = import_zod.z.object({ conteudo: import_zod.z.string().min(3), sigilo: import_zod.z.boolean() });
+    try {
+      const { id } = paramsSchema.parse(request.params);
+      const { conteudo, sigilo } = bodySchema.parse(request.body);
+      const user = request.user;
+      const evolucao = await prisma.evolucao.findUnique({ where: { id } });
+      if (!evolucao) return reply.status(404).send({ message: "N\xE3o encontrado." });
+      if (evolucao.autorId !== user.sub) return reply.status(403).send({ message: "Sem permiss\xE3o." });
+      const updated = await prisma.evolucao.update({
+        where: { id },
+        data: { conteudo, sigilo }
+      });
+      return reply.send(updated);
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao editar." });
+    }
+  });
+  app.delete("/evolutions/:id", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+    try {
+      const { id } = paramsSchema.parse(request.params);
+      const user = request.user;
+      const evolucao = await prisma.evolucao.findUnique({ where: { id } });
+      if (!evolucao) return reply.status(404).send({ message: "N\xE3o encontrado." });
+      if (evolucao.autorId !== user.sub && user.cargo !== import_client2.Cargo.Gerente) {
+        return reply.status(403).send({ message: "Sem permiss\xE3o." });
       }
-    });
-    return reply.status(201).send(evolucao);
+      await prisma.evolucao.delete({ where: { id } });
+      await prisma.caseLog.create({
+        data: {
+          casoId: evolucao.casoId,
+          autorId: user.sub,
+          acao: import_client2.LogAction.OUTRO,
+          descricao: "Excluiu uma evolu\xE7\xE3o."
+        }
+      });
+      return reply.status(204).send();
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao excluir." });
+    }
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

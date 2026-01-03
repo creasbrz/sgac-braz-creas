@@ -1,48 +1,43 @@
-// frontend/src/utils/formatters.ts
-import { format } from 'date-fns'
+// src/utils/formatters.ts
+import { format, parseISO, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 /**
- * Formata uma string de CPF para o formato 000.000.000-00.
+ * Formata data ISO para DD/MM/AAAA de forma segura.
+ * Retorna '-' se a data for inválida ou nula.
  */
+export const formatDateSafe = (dateString?: string | Date | null, pattern = 'dd/MM/yyyy') => {
+  if (!dateString) return '-'
+  
+  const date = typeof dateString === 'string' ? parseISO(dateString) : dateString
+  
+  if (!isValid(date)) return '-'
+  
+  return format(date, pattern, { locale: ptBR })
+}
+
 export const formatCPF = (cpf?: string | null) => {
   if (!cpf) return ''
-
   const cleaned = cpf.replace(/\D/g, '')
-
-  if (cleaned.length !== 11) return cpf // devolve como veio se inválido
-
+  if (cleaned.length !== 11) return cpf 
   return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 }
 
-/**
- * Formata uma string de telefone para (00) 00000-0000 ou (00) 0000-0000.
- */
 export const formatPhone = (phone?: string | null) => {
   if (!phone) return ''
-
   const cleaned = phone.replace(/\D/g, '')
-
-  if (cleaned.length < 10) return phone // telefone muito curto -> devolve original
-
-  if (cleaned.length === 11) {
-    // Celular
+  if (cleaned.length < 10) return phone
+  if (cleaned.length === 11) { // Celular
     return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
   }
-
-  // Telefone fixo
+  // Fixo
   return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
 }
 
-/**
- * Formata uma data no formato dd/MM/yyyy de forma segura.
- */
-export const formatDateSafe = (dateInput?: string | null | Date) => {
-  if (!dateInput) return 'N/A'
-
-  const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
-
-  if (isNaN(date.getTime())) return 'Data inválida'
-
-  return format(date, 'dd/MM/yyyy', { locale: ptBR })
+export const formatCurrency = (value?: number | null) => {
+  if (value === undefined || value === null) return 'R$ 0,00'
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(value)
 }

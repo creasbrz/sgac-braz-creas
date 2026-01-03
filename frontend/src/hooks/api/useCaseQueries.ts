@@ -1,6 +1,6 @@
 // frontend/src/hooks/api/useCaseQueries.ts
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import type { CaseDetailData, Evolution, PafData, UserOption } from '@/types/case'
 
 export function useCaseDetail(caseId?: string) {

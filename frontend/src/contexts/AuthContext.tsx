@@ -1,23 +1,13 @@
 // frontend/src/contexts/AuthContext.tsx
 import { createContext, useState, useEffect, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { jwtDecode } from 'jwt-decode' //
+import { jwtDecode } from 'jwt-decode'
 import { Loader2 } from 'lucide-react'
-import { getErrorMessage } from '@/utils/error'
-import { api } from '@/lib/api' //
-import { ROUTES } from '@/constants/routes' //
-import { STORAGE_KEYS } from '@/constants/storage' //
-import type { User, UserRole } from '@/types/user' //
 
-// Define o que o token JWT contém
-interface DecodedToken {
-  exp: number
-  iat: number
-  sub: string // O ID do usuário
-  nome: string
-  cargo: UserRole
-}
+import { api } from '@/lib/axios' // Importe do arquivo que criamos acima
+import { STORAGE_KEYS } from '@/constants/storage'
+import type { User, DecodedToken } from '@/types/user'
 
 interface LoginData {
   email: string
@@ -29,8 +19,8 @@ interface AuthContextType {
   user: User | null
   login: (data: LoginData) => Promise<boolean>
   logout: () => void
-  isSessionLoading: boolean // Para saber se a sessão inicial está carregando
-  isLoginLoading: boolean // Para o botão de login
+  isSessionLoading: boolean
+  isLoginLoading: boolean
 }
 
 export const AuthContext = createContext({} as AuthContextType)
@@ -39,87 +29,109 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isSessionLoading, setIsSessionLoading] = useState(true)
   const [isLoginLoading, setIsLoginLoading] = useState(false)
+  
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // Função de Logout
+  // Função Auxiliar de Logout
   const logout = () => {
     setUser(null)
-    localStorage.removeItem(STORAGE_KEYS.TOKEN) //
-    delete api.defaults.headers.common.Authorization //
-    
-    // Navega para o login. O <Navigate> no App.tsx cuidará do resto.
-    navigate(ROUTES.LOGIN) //
+    localStorage.removeItem(STORAGE_KEYS.TOKEN)
+    // Remove cabeçalho padrão
+    delete api.defaults.headers.common.Authorization
+    navigate('/login')
   }
 
-  // Efeito para carregar o usuário do localStorage na inicialização
+  // Efeito: Carregar sessão ao iniciar (F5)
   useEffect(() => {
     async function loadUserFromStorage() {
-      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN) //
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN)
       
       if (storedToken) {
         try {
-          const decodedToken = jwtDecode<DecodedToken>(storedToken)
-          // Verifica se o token não está expirado
-          if (decodedToken.exp * 1000 > Date.now()) {
-            // Define o token no axios ANTES de fazer a chamada /me
-            api.defaults.headers.common.Authorization = `Bearer ${storedToken}` //
-            
-            // Busca os dados mais recentes do usuário
-            const response = await api.get('/me') //
-            setUser(response.data)
-          } else {
-            // Token expirado
-            logout()
+          // 1. Decodifica para ver validade
+          const decoded = jwtDecode<DecodedToken>(storedToken)
+          const currentTime = Date.now() / 1000
+
+          if (decoded.exp < currentTime) {
+            throw new Error('Token expirado')
           }
+
+          // 2. Define header padrão
+          api.defaults.headers.common.Authorization = `Bearer ${storedToken}`
+
+          // 3. Tenta buscar dados atualizados do usuário (/me)
+          // Se essa rota falhar (ex: usuário deletado), cai no catch e faz logout
+          try {
+             const response = await api.get('/me')
+             setUser(response.data)
+          } catch (err) {
+             // Fallback: Se /me falhar, mas token for válido, usa dados do token temporariamente
+             // Isso evita logout se a API tiver um soluço momentâneo, mas o ideal é o /me
+             console.warn("Não foi possível buscar detalhes completos do usuário (/me).")
+             setUser({
+               id: decoded.sub,
+               nome: decoded.nome,
+               email: '', // Token não tem email
+               cargo: decoded.cargo,
+               ativo: true
+             })
+          }
+
         } catch (error) {
-          // Token inválido ou erro na API
-          console.error("Falha ao carregar sessão:", error)
+          // Token inválido ou expirado
           logout()
         }
       }
       setIsSessionLoading(false)
     }
+
     loadUserFromStorage()
-    // O 'navigate' não é uma dependência estável, então o desabilitamos
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Função de Login
   const login = async ({ email, senha }: LoginData): Promise<boolean> => {
     setIsLoginLoading(true)
     try {
-      const response = await api.post('/login', { email, senha }) //
-      const { token: newToken } = response.data
+      // 1. Request POST /login
+      const response = await api.post('/login', { email, senha })
+      const { token } = response.data
 
-      // 1. Salva o token
-      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken) //
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}` //
+      // 2. Salva Token
+      localStorage.setItem(STORAGE_KEYS.TOKEN, token)
+      api.defaults.headers.common.Authorization = `Bearer ${token}`
 
-      // 2. Busca os dados do usuário com o novo token
-      const userResponse = await api.get('/me') //
-      const loggedUser: User = userResponse.data
-      setUser(loggedUser) //
+      // 3. Decodifica ou busca /me para ter o objeto User
+      // Vamos buscar /me para ter certeza que temos todos os dados
+      const userResponse = await api.get('/me')
+      const loggedUser = userResponse.data
+      
+      setUser(loggedUser)
+      toast.success(`Bem-vindo(a), ${loggedUser.nome.split(' ')[0]}!`)
 
-      toast.success('Login bem-sucedido!')
+      // 4. Redirecionamento Inteligente
+      // Se ele estava tentando acessar uma rota protegida, manda de volta pra lá
+      // Caso contrário, manda pro Dashboard ou Cases
+      const origin = location.state?.from?.pathname || (loggedUser.cargo === 'Gerente' ? '/dashboard' : '/cases')
+      navigate(origin)
 
-      // 3. Redireciona com base no cargo
-      // Gerente vai para o Dashboard, outros para a lista de casos
-      navigate(loggedUser.cargo === 'Gerente' ? ROUTES.DASHBOARD : ROUTES.CASES) //
       return true
-    } catch (error) {
-      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.') //
-      toast.error(errMsg)
+
+    } catch (error: any) {
+      console.error(error)
+      const msg = error.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
+      toast.error(msg)
       return false
     } finally {
       setIsLoginLoading(false)
     }
   }
 
-  // Mostra um loader em tela cheia enquanto a sessão (do localStorage) está sendo validada
+  // Loader de Sessão (Tela Branca evita piscada)
   if (isSessionLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex h-screen w-full items-center justify-center bg-gray-50">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
       </div>
     )
   }
@@ -127,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: !!user, // Verdadeiro se 'user' não for nulo
+        isAuthenticated: !!user,
         user,
         login,
         logout,

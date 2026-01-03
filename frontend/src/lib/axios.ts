@@ -1,34 +1,36 @@
 import axios from 'axios'
 
-// Define a URL base. Em produção, como é o mesmo domínio, pode ser '/'
-// Em dev, usa a variável de ambiente ou localhost
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api'
+// Tenta pegar do .env, se não tiver, usa o localhost do backend novo
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3333'
 
 export const api = axios.create({
   baseURL,
 })
 
-// Interceptador de Requisição (Anexa o token)
+// Interceptador de Requisição: Anexa o Token
 api.interceptors.request.use((config) => {
+  // Mantive sua chave original 'sgac_token' para não quebrar logins existentes
   const token = localStorage.getItem('sgac_token')
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  
   return config
 })
 
-// Interceptador de Resposta (Trata erros globais)
+// Interceptador de Resposta: Trata Queda de Sessão
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Se o erro for 401 (Não autorizado / Token expirado)
+    // Se o backend devolver 401 (Não autorizado)
     if (error.response?.status === 401) {
-      // Evita loop infinito se o erro for na própria rota de login
+      // Ignora se for erro na própria tela de login (pra não dar loop)
       if (!window.location.pathname.includes('/login')) {
         localStorage.removeItem('sgac_token')
         localStorage.removeItem('sgac_user')
         
-        // Redireciona para login
+        // Redireciona forçado para login
         window.location.href = '/login'
       }
     }

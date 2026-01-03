@@ -1,22 +1,25 @@
 // backend/src/routes/audit.ts
-// 🔧 Este arquivo define todas as rotas de auditoria com filtros avançados,
-// paginação robusta e segurança reforçada. Código revisado e modernizado.
-
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { startOfDay, endOfDay, subDays } from 'date-fns'
+import { startOfDay, endOfDay, subDays, format as formatDate } from 'date-fns'
+import { Cargo, LogAction } from '@prisma/client'
+import { format as formatCsv } from 'fast-csv'
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function auditRoutes(app: FastifyInstance) {
-  /**
-   * 🔐 Middleware global — Apenas Gerentes têm permissão
-   */
+  
+  // 🔐 Middleware: Apenas Gerentes acessam a Auditoria
   app.addHook('onRequest', async (request, reply) => {
     try {
       await request.jwtVerify()
-      const { cargo } = request.user as { cargo: string }
+      const { cargo } = request.user as UserPayload
 
-      if (cargo !== 'Gerente') {
+      if (cargo !== Cargo.Gerente) {
         return reply.status(403).send({ message: 'Acesso restrito à gestão.' })
       }
     } catch {
@@ -24,21 +27,16 @@ export async function auditRoutes(app: FastifyInstance) {
     }
   })
 
-  /**
-   * ============================================================
-   *  [GET] /audit — Audit Log Global com filtros inteligentes
-   * ============================================================
-   */
+  // 1. [GET] /audit — Visualização em Tela (Paginada)
   app.get('/audit', async (request, reply) => {
-    // Validação + Tipagem de Query Params
     const querySchema = z.object({
       page: z.coerce.number().int().positive().default(1),
       pageSize: z.coerce.number().int().positive().max(100).default(20),
       autorId: z.string().uuid().optional(),
-      acao: z.string().optional(), // Ex: CRIACAO, DESLIGAMENTO, ATRIBUICAO
+      acao: z.nativeEnum(LogAction).optional().or(z.literal('all')), // Aceita Enum ou 'all'
       periodo: z.enum(['hoje', '7dias', '30dias', 'tudo']).default('7dias'),
-      caseId: z.string().uuid().optional(), // 🔥 NOVO FILTRO
-      search: z.string().min(2).optional(), // 🔍 NOVO: Busca textual inteligente
+      caseId: z.string().uuid().optional(),
+      search: z.string().min(1).optional(),
     })
 
     try {
@@ -47,25 +45,21 @@ export async function auditRoutes(app: FastifyInstance) {
 
       const where: any = {}
 
-      // 🔍 Filtro textual (Pesquisa inteligente)
+      // 🔍 Busca Textual Inteligente
       if (search) {
         where.OR = [
           { descricao: { contains: search, mode: 'insensitive' } },
           { autor: { nome: { contains: search, mode: 'insensitive' } } },
+          // Busca no nome do caso apenas se o log tiver um caso vinculado
           { caso: { nomeCompleto: { contains: search, mode: 'insensitive' } } },
         ]
       }
 
-      // 👤 Filtro por autor
+      // Filtros
       if (autorId && autorId !== 'all') where.autorId = autorId
-
-      // ⚡ Filtro por ação específica
       if (acao && acao !== 'all') where.acao = acao
-
-      // 📌 Filtro por caso específico
       if (caseId) where.casoId = caseId
 
-      // 🗓️ Filtro por período
       const hoje = new Date()
       switch (periodo) {
         case 'hoje':
@@ -102,7 +96,52 @@ export async function auditRoutes(app: FastifyInstance) {
       })
     } catch (error) {
       console.error("Erro /audit:", error)
-      return reply.status(500).send({ message: 'Erro ao buscar logs de auditoria.' })
+      return reply.status(500).send({ message: 'Erro ao buscar logs.' })
+    }
+  })
+
+  // 2. [GET] /audit/export — Exportar CSV (Para Excel)
+  // Rota vital para prestação de contas
+  app.get('/audit/export', async (request, reply) => {
+    try {
+      // Busca os últimos 1000 logs (limite de segurança)
+      const logs = await prisma.caseLog.findMany({
+        take: 1000,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          autor: { select: { nome: true, cargo: true } },
+          caso: { select: { nomeCompleto: true } },
+        }
+      })
+
+      const fileName = `auditoria_sgac_${formatDate(new Date(), 'yyyy-MM-dd')}.csv`
+      
+      reply.header('Content-Type', 'text/csv; charset=utf-8')
+      reply.header('Content-Disposition', `attachment; filename="${fileName}"`)
+
+      const csvStream = formatCsv({ headers: true })
+      
+      // Pipe direto para a resposta (Stream)
+      csvStream.pipe(reply.raw)
+
+      logs.forEach(log => {
+        csvStream.write({
+          Data: formatDate(log.createdAt, 'dd/MM/yyyy HH:mm'),
+          Acao: log.acao,
+          Autor: log.autor?.nome || 'Sistema',
+          Cargo: log.autor?.cargo || 'N/A',
+          Caso: log.caso?.nomeCompleto || 'Geral/Sistema',
+          Descricao: log.descricao,
+          Valor_Anterior: log.valorAnterior || '-',
+          Valor_Novo: log.valorNovo || '-'
+        })
+      })
+
+      csvStream.end()
+
+    } catch (error) {
+      console.error("Erro export audit:", error)
+      return reply.status(500).send({ message: "Erro ao gerar exportação." })
     }
   })
 }

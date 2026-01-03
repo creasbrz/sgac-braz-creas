@@ -7,7 +7,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { type CaseSummary } from '@/types/case'
 import { useDebounce } from '@/hooks/useDebounce'
 import { ROUTES } from '@/constants/routes'

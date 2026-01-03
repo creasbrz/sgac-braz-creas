@@ -1,6 +1,6 @@
 // frontend/src/pages/ManagerDashboard.tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 

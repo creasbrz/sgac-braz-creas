@@ -3,6 +3,10 @@ import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 
+interface UserPayload {
+  sub: string
+}
+
 export async function filterRoutes(app: FastifyInstance) {
   
   app.addHook('onRequest', async (request, reply) => {
@@ -13,9 +17,9 @@ export async function filterRoutes(app: FastifyInstance) {
     }
   })
 
-  // [GET] Listar
+  // [GET] Listar Filtros Salvos
   app.get('/filters', async (request, reply) => {
-    const { sub: userId } = request.user as { sub: string }
+    const { sub: userId } = request.user as UserPayload
     
     try {
       const filters = await prisma.savedFilter.findMany({
@@ -29,35 +33,29 @@ export async function filterRoutes(app: FastifyInstance) {
     }
   })
 
-  // [POST] Salvar
+  // [POST] Salvar Novo Filtro
   app.post('/filters', async (request, reply) => {
-    const { sub: userId } = request.user as { sub: string }
+    const { sub: userId } = request.user as UserPayload
     
-    // CORREÇÃO AQUI: Usamos z.any() para o config para evitar o erro interno do Zod
     const bodySchema = z.object({
       nome: z.string().min(1, "Dê um nome ao filtro"),
-      config: z.any() 
+      // Melhoria: Aceita qualquer objeto JSON válido, mas força ser um objeto, não string/número solto
+      config: z.record(z.string(), z.any()).default({}) 
     })
 
     try {
       const { nome, config } = bodySchema.parse(request.body)
 
-      // Verifica usuário (debug)
-      const userExists = await prisma.user.findUnique({ where: { id: userId } })
-      if (!userExists) {
-        return reply.status(401).send({ message: 'Sessão inválida. Faça login novamente.' })
-      }
-
-      // Limite
+      // Regra de Negócio: Limite de 10 filtros por usuário
       const count = await prisma.savedFilter.count({ where: { userId } })
       if (count >= 10) {
-        return reply.status(400).send({ message: 'Limite de 10 filtros atingido.' })
+        return reply.status(400).send({ message: 'Você atingiu o limite de 10 filtros salvos.' })
       }
 
       const filter = await prisma.savedFilter.create({
         data: {
           nome,
-          config: config ?? {}, // Garante que não é null
+          config, // Agora garantido que é um objeto JSON
           userId
         }
       })
@@ -66,21 +64,28 @@ export async function filterRoutes(app: FastifyInstance) {
 
     } catch (error) {
       console.error("❌ ERRO NO POST /filters:", error)
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
+      }
       return reply.status(500).send({ message: 'Erro ao salvar filtro.' })
     }
   })
 
-  // [DELETE] Apagar
+  // [DELETE] Apagar Filtro
   app.delete('/filters/:id', async (request, reply) => {
     const paramsSchema = z.object({ id: z.string().uuid() })
-    const { sub: userId } = request.user as { sub: string }
+    const { sub: userId } = request.user as UserPayload
 
     try {
       const { id } = paramsSchema.parse(request.params)
 
       const filter = await prisma.savedFilter.findUnique({ where: { id } })
-      if (!filter || filter.userId !== userId) {
-        return reply.status(403).send({ message: 'Sem permissão.' })
+      
+      if (!filter) return reply.status(404).send({ message: 'Filtro não encontrado.' })
+      
+      // Segurança: Só o dono apaga
+      if (filter.userId !== userId) {
+        return reply.status(403).send({ message: 'Você não tem permissão para apagar este filtro.' })
       }
 
       await prisma.savedFilter.delete({ where: { id } })

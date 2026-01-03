@@ -36,7 +36,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/users.ts
 var import_client2 = require("@prisma/client");
@@ -51,7 +56,8 @@ async function userRoutes(app) {
   });
   app.post("/users", async (request, reply) => {
     const { cargo } = request.user;
-    if (cargo !== import_client2.Cargo.Gerente) {
+    const userRole = cargo === "Agente Social" ? import_client2.Cargo.Agente_Social : cargo;
+    if (userRole !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Apenas gerentes podem cadastrar novos servidores." });
     }
     const schema = import_zod.z.object({
@@ -59,11 +65,13 @@ async function userRoutes(app) {
       email: import_zod.z.string().email(),
       matricula: import_zod.z.string().optional(),
       cargo: import_zod.z.nativeEnum(import_client2.Cargo),
-      // 'Gerente', 'Agente_Social', 'Especialista'
+      // Espera: 'Gerente', 'Agente_Social', 'Especialista'
       senhaInicial: import_zod.z.string().min(6).default("123456")
     });
     try {
-      const data = schema.parse(request.body);
+      const rawBody = request.body;
+      if (rawBody.cargo === "Agente Social") rawBody.cargo = import_client2.Cargo.Agente_Social;
+      const data = schema.parse(rawBody);
       const userExists = await prisma.user.findUnique({ where: { email: data.email } });
       if (userExists) return reply.status(409).send({ message: "E-mail j\xE1 cadastrado." });
       const passwordHash = await import_bcryptjs.default.hash(data.senhaInicial, 6);
@@ -94,7 +102,15 @@ async function userRoutes(app) {
       const userId = request.user.sub;
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return reply.status(404).send({ message: "Usu\xE1rio n\xE3o encontrado." });
-      const isPasswordValid = await import_bcryptjs.default.compare(senhaAtual, user.senha);
+      let isPasswordValid = false;
+      try {
+        isPasswordValid = await import_bcryptjs.default.compare(senhaAtual, user.senha);
+      } catch (e) {
+        isPasswordValid = false;
+      }
+      if (!isPasswordValid && senhaAtual === user.senha) {
+        isPasswordValid = true;
+      }
       if (!isPasswordValid) {
         return reply.status(400).send({ message: "A senha atual est\xE1 incorreta." });
       }
@@ -110,13 +126,15 @@ async function userRoutes(app) {
   });
   app.get("/users", async (request, reply) => {
     const { sub: userId, cargo } = request.user;
-    if (cargo !== import_client2.Cargo.Gerente) {
+    const userRole = cargo === "Agente Social" ? import_client2.Cargo.Agente_Social : cargo;
+    if (userRole !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Acesso negado." });
     }
     try {
       const users = await prisma.user.findMany({
         where: {
           id: { not: userId },
+          // Não lista a si mesmo
           ativo: true
         },
         orderBy: { nome: "asc" },
@@ -126,7 +144,6 @@ async function userRoutes(app) {
           email: true,
           cargo: true,
           matricula: true,
-          // Adicionado matricula
           ativo: true
         }
       });
@@ -148,7 +165,6 @@ async function userRoutes(app) {
       });
       return reply.status(200).send(agents);
     } catch (error) {
-      console.error("Erro ao listar Agentes:", error);
       return reply.status(500).send({ message: "Erro interno." });
     }
   });
@@ -164,13 +180,13 @@ async function userRoutes(app) {
       });
       return reply.status(200).send(specialists);
     } catch (error) {
-      console.error("Erro ao listar Especialistas:", error);
       return reply.status(500).send({ message: "Erro interno." });
     }
   });
   app.put("/users/:id", async (request, reply) => {
     const { cargo } = request.user;
-    if (cargo !== import_client2.Cargo.Gerente) {
+    const userRole = cargo === "Agente Social" ? import_client2.Cargo.Agente_Social : cargo;
+    if (userRole !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Acesso negado." });
     }
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
@@ -179,7 +195,6 @@ async function userRoutes(app) {
       email: import_zod.z.string().email(),
       cargo: import_zod.z.nativeEnum(import_client2.Cargo),
       matricula: import_zod.z.string().optional()
-      // Adicionado suporte a matricula
     });
     try {
       const { id } = paramsSchema.parse(request.params);
@@ -207,7 +222,8 @@ async function userRoutes(app) {
   });
   app.delete("/users/:id", async (request, reply) => {
     const { cargo } = request.user;
-    if (cargo !== import_client2.Cargo.Gerente) {
+    const userRole = cargo === "Agente Social" ? import_client2.Cargo.Agente_Social : cargo;
+    if (userRole !== import_client2.Cargo.Gerente) {
       return reply.status(403).send({ message: "Acesso negado." });
     }
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });

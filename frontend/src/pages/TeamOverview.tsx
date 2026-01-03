@@ -1,7 +1,7 @@
 // frontend/src/pages/TeamOverview.tsx
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { 
   Eye, BarChart3, ArrowLeft, Briefcase, User 
 } from 'lucide-react'

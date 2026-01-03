@@ -1,6 +1,6 @@
 // frontend/src/pages/SocialAgentDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Users, UserCheck, FolderInput, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card as UICard } from '@/components/ui/card'

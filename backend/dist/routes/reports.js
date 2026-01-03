@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/reports.ts
 var import_date_fns = require("date-fns");
@@ -67,9 +72,8 @@ async function reportRoutes(app) {
           dataEntrada: true,
           status: true,
           agenteAcolhidaId: true,
-          especialistaPAEFIId: true,
-          agenteAcolhida: { select: { nome: true } },
-          especialistaPAEFI: { select: { nome: true } }
+          especialistaPAEFIId: true
+          // Não precisamos dos includes complexos aqui, só os IDs bastam para filtrar
         },
         orderBy: { pesoUrgencia: "desc" }
       });
@@ -79,14 +83,16 @@ async function reportRoutes(app) {
             return c.agenteAcolhidaId === tech.id && (c.status === import_client2.CaseStatus.AGUARDANDO_ACOLHIDA || c.status === import_client2.CaseStatus.EM_ACOLHIDA);
           }
           if (tech.cargo === import_client2.Cargo.Especialista) {
-            return c.especialistaPAEFIId === tech.id && c.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI;
+            return c.especialistaPAEFIId === tech.id && (c.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI || c.status === import_client2.CaseStatus.EM_MONITORAMENTO);
           }
           return false;
         });
         return {
+          id: tech.id,
           nome: tech.nome,
           cargo: tech.cargo === import_client2.Cargo.Agente_Social ? "Agente Social" : "Especialista",
-          cases: techCases
+          cases: techCases,
+          caseCount: techCases.length
         };
       });
       return reply.status(200).send(overview);
@@ -96,34 +102,36 @@ async function reportRoutes(app) {
     }
   });
   app.get("/reports/rma", async (request, reply) => {
-    var _a, _b, _c;
     const querySchema = import_zod.z.object({
       month: import_zod.z.string().regex(/^\d{4}-\d{2}$/, "Formato inv\xE1lido (YYYY-MM).")
     });
     try {
       const { month } = querySchema.parse(request.query);
-      const targetDate = /* @__PURE__ */ new Date(month + "-01T00:00:00");
-      const firstDay = (0, import_date_fns.startOfMonth)(targetDate);
-      const lastDay = (0, import_date_fns.endOfMonth)(targetDate);
+      const [year, m] = month.split("-").map(Number);
+      const firstDay = new Date(Date.UTC(year, m - 1, 1));
+      const lastDay = new Date(Date.UTC(year, m, 0, 23, 59, 59));
       const [initialCount, newEntriesCount, closedCasesCount] = await Promise.all([
-        // B1: Saldo anterior
+        // Volume Inicial (Casos ativos vindos do mês anterior)
         prisma.case.count({
           where: {
-            status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+            status: { in: [import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI, import_client2.CaseStatus.EM_MONITORAMENTO] },
             dataInicioPAEFI: { lt: firstDay },
+            // Começaram antes deste mês
             OR: [
               { dataDesligamento: null },
+              // E não acabaram
               { dataDesligamento: { gte: firstDay } }
+              // Ou acabaram, mas só dentro deste mês (então contam no saldo inicial)
             ]
           }
         }),
-        // B2: Novos entrados no mês
+        // Novos Casos (Entraram no PAEFI neste mês)
         prisma.case.count({
           where: {
             dataInicioPAEFI: { gte: firstDay, lte: lastDay }
           }
         }),
-        // B3: Desligados no mês
+        // Desligados (Saíram do PAEFI neste mês)
         prisma.case.count({
           where: {
             status: import_client2.CaseStatus.DESLIGADO,
@@ -139,10 +147,17 @@ async function reportRoutes(app) {
         _count: { sexo: true }
       });
       const profileBySex = {
-        masculino: ((_a = sexGroups.find((g) => g.sexo === "Masculino")) == null ? void 0 : _a._count.sexo) || 0,
-        feminino: ((_b = sexGroups.find((g) => g.sexo === "Feminino")) == null ? void 0 : _b._count.sexo) || 0,
-        outro: ((_c = sexGroups.find((g) => !["Masculino", "Feminino"].includes(g.sexo))) == null ? void 0 : _c._count.sexo) || 0
+        masculino: 0,
+        feminino: 0,
+        outro: 0
       };
+      sexGroups.forEach((g) => {
+        if (!g.sexo) return;
+        const s = g.sexo.toLowerCase();
+        if (s === "masculino") profileBySex.masculino += g._count.sexo;
+        else if (s === "feminino") profileBySex.feminino += g._count.sexo;
+        else profileBySex.outro += g._count.sexo;
+      });
       const newEntriesAges = await prisma.case.findMany({
         where: { dataInicioPAEFI: { gte: firstDay, lte: lastDay } },
         select: { nascimento: true }
@@ -157,6 +172,7 @@ async function reportRoutes(app) {
       };
       const now = /* @__PURE__ */ new Date();
       for (const c of newEntriesAges) {
+        if (!c.nascimento) continue;
         const age = (0, import_date_fns.differenceInYears)(now, c.nascimento);
         if (age <= 6) profileByAgeGroup["0-6"]++;
         else if (age <= 12) profileByAgeGroup["7-12"]++;

@@ -1,7 +1,7 @@
 // frontend/src/pages/Reports.tsx
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell

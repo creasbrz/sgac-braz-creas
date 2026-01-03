@@ -6,7 +6,7 @@ import { CaseTable } from '@/components/CaseTable'
 import { CaseKanban } from '@/components/CaseKanban'
 import { Button } from '@/components/ui/button'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type ViewMode = 'table' | 'kanban'

@@ -1,5 +1,5 @@
 RELATÓRIO DE CÓDIGO - FRONTEND - REACT/VITE/SHADCN
-Gerado em: 29/12/2025, 18:52:56
+Gerado em: 03/01/2026, 14:58:31
 Pasta Alvo: /frontend
 Total de arquivos: 135
 
@@ -118,7 +118,7 @@ frontend
 │   │   ├── useDebounce.ts
 │   │   └── useModal.ts
 │   ├── lib
-│   │   ├── api.ts
+│   │   ├── axios.ts
 │   │   ├── react-query.ts
 │   │   └── utils.ts
 │   ├── main.tsx
@@ -320,7 +320,7 @@ SIZE: 2631 bytes
 ==================================================================
 {
   "name": "frontend",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -932,7 +932,7 @@ export function TerritoryMap({ data }: TerritoryMapProps) {
 
 ==================================================================
 FILE: src\components\case\CaseActions.tsx
-SIZE: 8343 bytes
+SIZE: 8345 bytes
 ==================================================================
 // frontend/src/components/case/CaseActions.tsx
 import { useState } from 'react'
@@ -941,7 +941,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { MoreVertical, UserPlus, ArrowRightLeft, Power, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import {
@@ -1161,12 +1161,12 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
 
 ==================================================================
 FILE: src\components\case\CaseAttachments.tsx
-SIZE: 6033 bytes
+SIZE: 6035 bytes
 ==================================================================
 // frontend/src/components/case/CaseAttachments.tsx
 import { useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { FileText, Download, Trash2, Upload, Loader2, Paperclip, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -1308,12 +1308,12 @@ export function CaseAttachments({ caseId, onError }: CaseAttachmentsProps) {
 
 ==================================================================
 FILE: src\components\case\CaseEvolutions.tsx
-SIZE: 9028 bytes
+SIZE: 9030 bytes
 ==================================================================
 // frontend/src/components/case/CaseEvolutions.tsx
 import { useState } from "react"
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Send, FileText, Loader2, PlusCircle, Lock, EyeOff, ChevronDown } from "lucide-react"
@@ -1532,11 +1532,11 @@ export function CaseEvolutions({ caseId }: CaseEvolutionsProps) {
 
 ==================================================================
 FILE: src\components\case\CaseHistory.tsx
-SIZE: 6821 bytes
+SIZE: 6823 bytes
 ==================================================================
 // frontend/src/components/case/CaseHistory.tsx
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { 
   PlusCircle, RefreshCw, UserPlus, Power, AlertCircle, FileEdit, ArrowRight, Loader2, ShieldCheck 
 } from 'lucide-react'
@@ -1760,7 +1760,7 @@ export function DetailSkeleton() {
 
 ==================================================================
 FILE: src\components\case\EvolutionsSection.tsx
-SIZE: 4848 bytes
+SIZE: 4850 bytes
 ==================================================================
 // frontend/src/components/case/EvolutionsSection.tsx
 import { useForm, type SubmitHandler } from 'react-hook-form' //
@@ -1770,7 +1770,7 @@ import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react' //
 import { z } from 'zod' //
 
-import { api } from '@/lib/api' //
+import { api } from '@/lib/axios' //
 import { getErrorMessage } from '@/utils/error' //
 import { evolutionFormSchema } from '@/schemas/caseSchemas' //
 import { formatDateSafe } from '@/utils/formatters' //
@@ -1898,10 +1898,10 @@ export function EvolutionsSection({ caseId }: { caseId: string }) { //
 
 ==================================================================
 FILE: src\components\case\PafHistoryModal.tsx
-SIZE: 5204 bytes
+SIZE: 5206 bytes
 ==================================================================
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Loader2, History } from 'lucide-react'
@@ -2039,7 +2039,7 @@ export function PafHistoryModal({ caseId, isOpen, onOpenChange }: PafHistoryModa
 
 ==================================================================
 FILE: src\components\case\PafSection.tsx
-SIZE: 10883 bytes
+SIZE: 10885 bytes
 ==================================================================
 // frontend/src/components/case/PafSection.tsx
 import { useState } from 'react'
@@ -2051,7 +2051,7 @@ import { z } from 'zod'
 import { Loader2, Edit, History, PlusCircle } from 'lucide-react'
 
 import { useAuth } from '@/hooks/useAuth'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { pafFormSchema } from '@/schemas/caseSchemas'
 import { formatDateSafe } from '@/utils/formatters'
@@ -2369,12 +2369,12 @@ export function PafSection({ caseData }: { caseData: CaseDetailData }) {
 
 ==================================================================
 FILE: src\components\case\tabs\DeliverablesTab.tsx
-SIZE: 7575 bytes
+SIZE: 7577 bytes
 ==================================================================
 // frontend/src/components/case/tabs/DeliverablesTab.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { toast } from 'sonner'
 import { PackageCheck, Plus, Loader2, Clock, CheckCircle2, XCircle, Truck } from 'lucide-react'
 import { format } from 'date-fns'
@@ -2541,12 +2541,12 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
 
 ==================================================================
 FILE: src\components\case\tabs\FamilyTab.tsx
-SIZE: 13819 bytes
+SIZE: 13821 bytes
 ==================================================================
 // frontend/src/components/case/tabs/FamilyTab.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { toast } from 'sonner'
 import { 
   Users, PlusCircle, Trash2, Wallet, Briefcase, User, Phone, FileText
@@ -3019,12 +3019,12 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
 
 ==================================================================
 FILE: src\components\case\tabs\ReferralsTab.tsx
-SIZE: 11915 bytes
+SIZE: 11917 bytes
 ==================================================================
 // frontend/src/components/case/tabs/ReferralsTab.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -3302,7 +3302,7 @@ export function ReferralsTab({ caseId }: ReferralsTabProps) {
 
 ==================================================================
 FILE: src\components\CaseForm.tsx
-SIZE: 23192 bytes
+SIZE: 23194 bytes
 ==================================================================
 // frontend/src/components/CaseForm.tsx
 import { useEffect } from 'react'
@@ -3314,7 +3314,7 @@ import { IMaskInput } from 'react-imask'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -4068,7 +4068,7 @@ export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
 
 ==================================================================
 FILE: src\components\CaseTable.tsx
-SIZE: 14277 bytes
+SIZE: 14279 bytes
 ==================================================================
 // frontend/src/components/CaseTable.tsx
 import { useState } from 'react'
@@ -4079,7 +4079,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { type CaseSummary } from '@/types/case'
 import { useDebounce } from '@/hooks/useDebounce'
 import { ROUTES } from '@/constants/routes'
@@ -4603,11 +4603,11 @@ export function SmartInsightsCard({ insights }: SmartInsightsCardProps) {
 
 ==================================================================
 FILE: src\components\dashboard\UpcomingPafDeadlines.tsx
-SIZE: 4848 bytes
+SIZE: 4850 bytes
 ==================================================================
 // frontend/src/components/dashboard/UpcomingPafDeadlines.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { AlertTriangle, Calendar, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -5207,14 +5207,14 @@ export function MobileSidebar() {
 
 ==================================================================
 FILE: src\components\layout\NotificationBell.tsx
-SIZE: 6626 bytes
+SIZE: 6628 bytes
 ==================================================================
 // frontend/src/components/layout/NotificationBell.tsx
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Info, AlertTriangle, CheckCircle2, Check } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -5571,7 +5571,7 @@ export const Sidebar = memo(function Sidebar() {
 
 ==================================================================
 FILE: src\components\modals\AssignSpecialistModal.tsx
-SIZE: 4812 bytes
+SIZE: 4814 bytes
 ==================================================================
 // frontend/src/components/modals/AssignSpecialistModal.tsx
 import { useState } from 'react'
@@ -5579,7 +5579,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -5716,7 +5716,7 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
 
 ==================================================================
 FILE: src\components\modals\CloseCaseModal.tsx
-SIZE: 5526 bytes
+SIZE: 5528 bytes
 ==================================================================
 // frontend/src/components/modals/CloseCaseModal.tsx
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
@@ -5726,7 +5726,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import { Loader2 } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { closeCaseFormSchema } from '@/schemas/caseSchemas'
 import { MOTIVOS_DESLIGAMENTO, DESTINOS_DESLIGAMENTO } from '@/constants/caseConstants' // [ATUALIZADO]
@@ -5862,12 +5862,12 @@ export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalP
 
 ==================================================================
 FILE: src\components\modals\ImportCasesModal.tsx
-SIZE: 7087 bytes
+SIZE: 7089 bytes
 ==================================================================
 // frontend/src/components/modals/ImportCasesModal.tsx
 import { useState, useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { toast } from "sonner"
 import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, X, Loader2, Download } from "lucide-react"
 import {
@@ -6039,7 +6039,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
 
 ==================================================================
 FILE: src\components\NewAppointmentModal.tsx
-SIZE: 7518 bytes
+SIZE: 7520 bytes
 ==================================================================
 // frontend/src/components/NewAppointmentModal.tsx
 import { useEffect } from 'react'
@@ -6050,7 +6050,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { Button } from '@/components/ui/button'
 import {
@@ -6448,7 +6448,7 @@ export function Pagination({
 
 ==================================================================
 FILE: src\components\RmaReport.tsx
-SIZE: 8908 bytes
+SIZE: 8910 bytes
 ==================================================================
 // frontend/src/components/RmaReport.tsx
 import { useState } from 'react'
@@ -6458,7 +6458,7 @@ import { ptBR } from 'date-fns/locale'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import {
   Card,
   CardContent,
@@ -6719,12 +6719,12 @@ export function RmaReport() {
 
 ==================================================================
 FILE: src\components\SavedFilters.tsx
-SIZE: 4144 bytes
+SIZE: 4146 bytes
 ==================================================================
 // frontend/src/components/SavedFilters.tsx
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { Bookmark, Trash2, Save, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -6814,12 +6814,12 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
 
 ==================================================================
 FILE: src\components\settings\ChangePasswordDialog.tsx
-SIZE: 2446 bytes
+SIZE: 2448 bytes
 ==================================================================
 // frontend/src/components/settings/ChangePasswordDialog.tsx
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -6883,12 +6883,12 @@ export function ChangePasswordDialog() {
 
 ==================================================================
 FILE: src\components\settings\NewUserDialog.tsx
-SIZE: 4106 bytes
+SIZE: 4108 bytes
 ==================================================================
 // frontend/src/components/settings/NewUserDialog.tsx
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -8217,11 +8217,12 @@ export {
 
 ==================================================================
 FILE: src\components\ui\error-boundary.tsx
-SIZE: 2481 bytes
+SIZE: 2503 bytes
 ==================================================================
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+// Removi o "React" do início, mantendo apenas os tipos e classes necessários
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './button'; // Ajuste o caminho se necessário (ex: ./ui/button)
+import { Button } from './button'; 
 import { Card, CardContent, CardHeader, CardTitle } from './card';
 
 interface Props {
@@ -9037,9 +9038,8 @@ export {
 
 ==================================================================
 FILE: src\components\ui\skeleton.tsx
-SIZE: 320 bytes
+SIZE: 277 bytes
 ==================================================================
-// frontend/src/components/ui/skeleton.tsx
 import { cn } from "@/lib/utils"
 
 function Skeleton({
@@ -9048,14 +9048,13 @@ function Skeleton({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-muted", className)}
+      className={cn("animate-pulse rounded-md bg-muted/50", className)}
       {...props}
     />
   )
 }
 
 export { Skeleton }
-
 
 === END OF FILE: src\components\ui\skeleton.tsx ===
 
@@ -9383,11 +9382,11 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 
 ==================================================================
 FILE: src\components\UpcomingAppointments.tsx
-SIZE: 3828 bytes
+SIZE: 3830 bytes
 ==================================================================
 // frontend/src/components/UpcomingAppointments.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api' //
+import { api } from '@/lib/axios' //
 import {
   Card,
   CardContent,
@@ -9997,40 +9996,30 @@ export const ROUTES = {
 
 ==================================================================
 FILE: src\constants\storage.ts
-SIZE: 114 bytes
+SIZE: 169 bytes
 ==================================================================
 // frontend/src/constants/storage.ts
-
 export const STORAGE_KEYS = {
-  TOKEN: '@sgac-braz:token', //
-} as const
+  TOKEN: 'sgac_token',
+  USER: 'sgac_user_data' // Opcional, se quisermos cachear dados básicos
+}
 
 === END OF FILE: src\constants\storage.ts ===
 
 ==================================================================
 FILE: src\contexts\AuthContext.tsx
-SIZE: 4626 bytes
+SIZE: 4922 bytes
 ==================================================================
 // frontend/src/contexts/AuthContext.tsx
 import { createContext, useState, useEffect, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { jwtDecode } from 'jwt-decode' //
+import { jwtDecode } from 'jwt-decode'
 import { Loader2 } from 'lucide-react'
-import { getErrorMessage } from '@/utils/error'
-import { api } from '@/lib/api' //
-import { ROUTES } from '@/constants/routes' //
-import { STORAGE_KEYS } from '@/constants/storage' //
-import type { User, UserRole } from '@/types/user' //
 
-// Define o que o token JWT contém
-interface DecodedToken {
-  exp: number
-  iat: number
-  sub: string // O ID do usuário
-  nome: string
-  cargo: UserRole
-}
+import { api } from '@/lib/axios' // Importe do arquivo que criamos acima
+import { STORAGE_KEYS } from '@/constants/storage'
+import type { User, DecodedToken } from '@/types/user'
 
 interface LoginData {
   email: string
@@ -10042,8 +10031,8 @@ interface AuthContextType {
   user: User | null
   login: (data: LoginData) => Promise<boolean>
   logout: () => void
-  isSessionLoading: boolean // Para saber se a sessão inicial está carregando
-  isLoginLoading: boolean // Para o botão de login
+  isSessionLoading: boolean
+  isLoginLoading: boolean
 }
 
 export const AuthContext = createContext({} as AuthContextType)
@@ -10052,87 +10041,109 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isSessionLoading, setIsSessionLoading] = useState(true)
   const [isLoginLoading, setIsLoginLoading] = useState(false)
+  
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // Função de Logout
+  // Função Auxiliar de Logout
   const logout = () => {
     setUser(null)
-    localStorage.removeItem(STORAGE_KEYS.TOKEN) //
-    delete api.defaults.headers.common.Authorization //
-    
-    // Navega para o login. O <Navigate> no App.tsx cuidará do resto.
-    navigate(ROUTES.LOGIN) //
+    localStorage.removeItem(STORAGE_KEYS.TOKEN)
+    // Remove cabeçalho padrão
+    delete api.defaults.headers.common.Authorization
+    navigate('/login')
   }
 
-  // Efeito para carregar o usuário do localStorage na inicialização
+  // Efeito: Carregar sessão ao iniciar (F5)
   useEffect(() => {
     async function loadUserFromStorage() {
-      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN) //
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN)
       
       if (storedToken) {
         try {
-          const decodedToken = jwtDecode<DecodedToken>(storedToken)
-          // Verifica se o token não está expirado
-          if (decodedToken.exp * 1000 > Date.now()) {
-            // Define o token no axios ANTES de fazer a chamada /me
-            api.defaults.headers.common.Authorization = `Bearer ${storedToken}` //
-            
-            // Busca os dados mais recentes do usuário
-            const response = await api.get('/me') //
-            setUser(response.data)
-          } else {
-            // Token expirado
-            logout()
+          // 1. Decodifica para ver validade
+          const decoded = jwtDecode<DecodedToken>(storedToken)
+          const currentTime = Date.now() / 1000
+
+          if (decoded.exp < currentTime) {
+            throw new Error('Token expirado')
           }
+
+          // 2. Define header padrão
+          api.defaults.headers.common.Authorization = `Bearer ${storedToken}`
+
+          // 3. Tenta buscar dados atualizados do usuário (/me)
+          // Se essa rota falhar (ex: usuário deletado), cai no catch e faz logout
+          try {
+             const response = await api.get('/me')
+             setUser(response.data)
+          } catch (err) {
+             // Fallback: Se /me falhar, mas token for válido, usa dados do token temporariamente
+             // Isso evita logout se a API tiver um soluço momentâneo, mas o ideal é o /me
+             console.warn("Não foi possível buscar detalhes completos do usuário (/me).")
+             setUser({
+               id: decoded.sub,
+               nome: decoded.nome,
+               email: '', // Token não tem email
+               cargo: decoded.cargo,
+               ativo: true
+             })
+          }
+
         } catch (error) {
-          // Token inválido ou erro na API
-          console.error("Falha ao carregar sessão:", error)
+          // Token inválido ou expirado
           logout()
         }
       }
       setIsSessionLoading(false)
     }
+
     loadUserFromStorage()
-    // O 'navigate' não é uma dependência estável, então o desabilitamos
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Função de Login
   const login = async ({ email, senha }: LoginData): Promise<boolean> => {
     setIsLoginLoading(true)
     try {
-      const response = await api.post('/login', { email, senha }) //
-      const { token: newToken } = response.data
+      // 1. Request POST /login
+      const response = await api.post('/login', { email, senha })
+      const { token } = response.data
 
-      // 1. Salva o token
-      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken) //
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}` //
+      // 2. Salva Token
+      localStorage.setItem(STORAGE_KEYS.TOKEN, token)
+      api.defaults.headers.common.Authorization = `Bearer ${token}`
 
-      // 2. Busca os dados do usuário com o novo token
-      const userResponse = await api.get('/me') //
-      const loggedUser: User = userResponse.data
-      setUser(loggedUser) //
+      // 3. Decodifica ou busca /me para ter o objeto User
+      // Vamos buscar /me para ter certeza que temos todos os dados
+      const userResponse = await api.get('/me')
+      const loggedUser = userResponse.data
+      
+      setUser(loggedUser)
+      toast.success(`Bem-vindo(a), ${loggedUser.nome.split(' ')[0]}!`)
 
-      toast.success('Login bem-sucedido!')
+      // 4. Redirecionamento Inteligente
+      // Se ele estava tentando acessar uma rota protegida, manda de volta pra lá
+      // Caso contrário, manda pro Dashboard ou Cases
+      const origin = location.state?.from?.pathname || (loggedUser.cargo === 'Gerente' ? '/dashboard' : '/cases')
+      navigate(origin)
 
-      // 3. Redireciona com base no cargo
-      // Gerente vai para o Dashboard, outros para a lista de casos
-      navigate(loggedUser.cargo === 'Gerente' ? ROUTES.DASHBOARD : ROUTES.CASES) //
       return true
-    } catch (error) {
-      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.') //
-      toast.error(errMsg)
+
+    } catch (error: any) {
+      console.error(error)
+      const msg = error.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
+      toast.error(msg)
       return false
     } finally {
       setIsLoginLoading(false)
     }
   }
 
-  // Mostra um loader em tela cheia enquanto a sessão (do localStorage) está sendo validada
+  // Loader de Sessão (Tela Branca evita piscada)
   if (isSessionLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex h-screen w-full items-center justify-center bg-gray-50">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
       </div>
     )
   }
@@ -10140,7 +10151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: !!user, // Verdadeiro se 'user' não for nulo
+        isAuthenticated: !!user,
         user,
         login,
         logout,
@@ -10241,11 +10252,11 @@ export function useSidebar() {
 
 ==================================================================
 FILE: src\hooks\api\useCaseQueries.ts
-SIZE: 1512 bytes
+SIZE: 1514 bytes
 ==================================================================
 // frontend/src/hooks/api/useCaseQueries.ts
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import type { CaseDetailData, Evolution, PafData, UserOption } from '@/types/case'
 
 export function useCaseDetail(caseId?: string) {
@@ -10305,11 +10316,11 @@ export function useSpecialists() {
 
 ==================================================================
 FILE: src\hooks\useAppointments.ts
-SIZE: 696 bytes
+SIZE: 698 bytes
 ==================================================================
 // frontend/src/hooks/useAppointments.ts
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 
 export interface Appointment {
   id: string
@@ -10415,48 +10426,55 @@ export function useModal() {
 === END OF FILE: src\hooks\useModal.ts ===
 
 ==================================================================
-FILE: src\lib\api.ts
-SIZE: 1130 bytes
+FILE: src\lib\axios.ts
+SIZE: 1302 bytes
 ==================================================================
+// frontend/src/lib/axios.ts
 import axios from 'axios'
+import { STORAGE_KEYS } from '@/constants/storage'
 
-// Define a URL base. Em produção, como é o mesmo domínio, pode ser '/'
-// Em dev, usa a variável de ambiente ou localhost
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api'
+// Em Vite, usamos import.meta.env
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3333'
 
 export const api = axios.create({
   baseURL,
 })
 
-// Interceptador de Requisição (Anexa o token)
+// 1. Interceptador de Requisição: Injeta o Token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('sgac_token')
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  
   return config
 })
 
-// Interceptador de Resposta (Trata erros globais)
+// 2. Interceptador de Resposta: Trata Queda de Sessão (401)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Se o erro for 401 (Não autorizado / Token expirado)
+    // Se receber 401 (Não Autorizado) vindo da API
     if (error.response?.status === 401) {
-      // Evita loop infinito se o erro for na própria rota de login
-      if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('sgac_token')
-        localStorage.removeItem('sgac_user')
+      const originalRequest = error.config
+
+      // Evita loop se o erro for na própria tentativa de login ou rota publica
+      if (!originalRequest.url.includes('/login')) {
+        // Limpa dados locais
+        localStorage.removeItem(STORAGE_KEYS.TOKEN)
         
-        // Redireciona para login
-        window.location.href = '/login'
+        // Força redirecionamento via window para garantir limpeza de estado do React
+        if (window.location.pathname !== '/login') {
+             window.location.href = '/login'
+        }
       }
     }
     return Promise.reject(error)
   }
 )
 
-=== END OF FILE: src\lib\api.ts ===
+=== END OF FILE: src\lib\axios.ts ===
 
 ==================================================================
 FILE: src\lib\react-query.ts
@@ -10525,12 +10543,12 @@ root.render(
 
 ==================================================================
 FILE: src\pages\AdvancedAnalytics.tsx
-SIZE: 12810 bytes
+SIZE: 12812 bytes
 ==================================================================
 // frontend/src/pages/AdvancedAnalytics.tsx
 import { useState, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 
 import {
   LineChart,
@@ -10829,7 +10847,7 @@ export function AdvancedAnalytics() {
 
 ==================================================================
 FILE: src\pages\Agenda.tsx
-SIZE: 15893 bytes
+SIZE: 15895 bytes
 ==================================================================
 // frontend/src/pages/Agenda.tsx
 import { useState, useEffect, useMemo } from 'react'
@@ -10846,7 +10864,7 @@ import {
   ChevronRight, Tag, Users
 } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { combineDateAndTime } from '@/utils/date'
 import { FullCalendarWidget } from '@/components/agenda/FullCalendarWidget'
@@ -11264,7 +11282,7 @@ export function Agenda() {
 
 ==================================================================
 FILE: src\pages\CaseDetail.tsx
-SIZE: 24961 bytes
+SIZE: 24963 bytes
 ==================================================================
 // frontend/src/pages/CaseDetail.tsx
 import { useState, Suspense, lazy } from "react"
@@ -11277,7 +11295,7 @@ import {
 } from "lucide-react"
 import { clsx } from "clsx"
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11868,7 +11886,7 @@ export function CaseDetail() {
 
 ==================================================================
 FILE: src\pages\Cases.tsx
-SIZE: 4534 bytes
+SIZE: 4536 bytes
 ==================================================================
 // frontend/src/pages/Cases.tsx
 import { useState, useEffect } from 'react'
@@ -11878,7 +11896,7 @@ import { CaseTable } from '@/components/CaseTable'
 import { CaseKanban } from '@/components/CaseKanban'
 import { Button } from '@/components/ui/button'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type ViewMode = 'table' | 'kanban'
@@ -12136,12 +12154,12 @@ export function Dashboard() {
 
 ==================================================================
 FILE: src\pages\GlobalAudit.tsx
-SIZE: 7642 bytes
+SIZE: 7644 bytes
 ==================================================================
 // frontend/src/pages/GlobalAudit.tsx
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ShieldCheck, Filter, Search } from "lucide-react"
@@ -12326,12 +12344,12 @@ export function GlobalAudit() {
 
 ==================================================================
 FILE: src\pages\GroupManagement.tsx
-SIZE: 20418 bytes
+SIZE: 20420 bytes
 ==================================================================
 // frontend/src/pages/GroupManagement.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react' // [CORREÇÃO] Removido Trash2
@@ -12905,11 +12923,11 @@ export function Login() {
 
 ==================================================================
 FILE: src\pages\ManagerDashboard.tsx
-SIZE: 7960 bytes
+SIZE: 7962 bytes
 ==================================================================
 // frontend/src/pages/ManagerDashboard.tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -13130,50 +13148,53 @@ export function ManagerDashboard() {
 
 ==================================================================
 FILE: src\pages\NotFound.tsx
-SIZE: 1345 bytes
+SIZE: 1218 bytes
 ==================================================================
-// frontend/src/pages/NotFound.tsx
-import { Link } from 'react-router-dom'
-import { ROUTES } from '@/constants/routes' //
-import { Button } from '@/components/ui/button' //
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card' //
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, Home } from "lucide-react";
 
 export function NotFound() {
-  return (
-    // CORREÇÃO 1: Usa 'min-h-screen' para centralizar na tela inteira
-    <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
-      <Card className="max-w-md w-full text-center shadow-md"> {/* */}
-        <CardHeader> {/* */}
-          <CardTitle className="text-4xl font-bold text-destructive">404</CardTitle> {/* */}
-        </CardHeader>
-        <CardContent> {/* */}
-          <p className="mt-2 text-lg text-muted-foreground">
-            Página não encontrada.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A página que você procura não existe ou foi movida.
-          </p>
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 text-center">
+      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-orange-100">
+        <AlertTriangle className="h-10 w-10 text-orange-600" />
+      </div>
+      
+      <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
+        404 - Página não encontrada
+      </h1>
+      
+      <p className="mt-4 max-w-lg text-lg text-gray-500">
+        Desculpe, a página que você está procurando não existe ou foi movida.
+      </p>
 
-          {/* CORREÇÃO 2: Usa o padrão 'asChild' do Shadcn/ui */}
-          <Button asChild className="mt-6 w-full">
-            <Link to={ROUTES.DASHBOARD}>Voltar para o Painel</Link> {/* */}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  )
+      <div className="mt-8">
+        {/* CORREÇÃO DO ERRO: 
+           Ao usar 'asChild', o Button deve envolver EXATAMENTE um filho.
+           O Link passa a ser o elemento raiz renderizado.
+        */}
+        <Button asChild className="gap-2">
+          <Link to="/dashboard">
+            <Home className="h-4 w-4" />
+            Voltar ao Dashboard
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 === END OF FILE: src\pages\NotFound.tsx ===
 
 ==================================================================
 FILE: src\pages\Reports.tsx
-SIZE: 20447 bytes
+SIZE: 20449 bytes
 ==================================================================
 // frontend/src/pages/Reports.tsx
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell
@@ -13561,11 +13582,11 @@ export function Reports() {
 
 ==================================================================
 FILE: src\pages\SocialAgentDashboard.tsx
-SIZE: 4060 bytes
+SIZE: 4062 bytes
 ==================================================================
 // frontend/src/pages/SocialAgentDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Users, UserCheck, FolderInput, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card as UICard } from '@/components/ui/card'
@@ -13683,12 +13704,12 @@ export function SocialAgentDashboard() {
 
 ==================================================================
 FILE: src\pages\TeamOverview.tsx
-SIZE: 11014 bytes
+SIZE: 11016 bytes
 ==================================================================
 // frontend/src/pages/TeamOverview.tsx
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { 
   Eye, BarChart3, ArrowLeft, Briefcase, User 
 } from 'lucide-react'
@@ -13947,11 +13968,11 @@ export function TeamOverview() {
 
 ==================================================================
 FILE: src\pages\TechnicianDashboard.tsx
-SIZE: 3320 bytes
+SIZE: 3322 bytes
 ==================================================================
 // frontend/src/pages/TechnicianDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Activity, CheckCircle, Clock } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { UpcomingAppointments } from '@/components/UpcomingAppointments'
@@ -14063,7 +14084,7 @@ export function TechnicianDashboard() {
 
 ==================================================================
 FILE: src\pages\UserManagement.tsx
-SIZE: 10249 bytes
+SIZE: 10251 bytes
 ==================================================================
 // frontend/src/pages/UserManagement.tsx
 import { useState } from 'react'
@@ -14071,7 +14092,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Loader2, Trash2, Edit } from 'lucide-react'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -14300,12 +14321,12 @@ export function UserManagement() {
 
 ==================================================================
 FILE: src\pages\WaitingList.tsx
-SIZE: 7796 bytes
+SIZE: 7798 bytes
 ==================================================================
 // frontend/src/pages/WaitingList.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { differenceInDays } from 'date-fns'
 import { Loader2, AlertTriangle, UserPlus } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -14923,20 +14944,29 @@ declare module 'pdfmake/build/vfs_fonts' {
 
 ==================================================================
 FILE: src\types\user.ts
-SIZE: 281 bytes
+SIZE: 449 bytes
 ==================================================================
 // frontend/src/types/user.ts
 
-// [CORREÇÃO] Adicione o underline
-export type UserRole = 'Gerente' | 'Agente_Social' | 'Especialista'
+// Espelha o Enum do Prisma/Backend
+export type UserRole = 'Gerente' | 'Especialista' | 'Agente_Social' | 'Tecnico_Admin'
 
 export interface User {
   id: string
   nome: string
-  cargo: UserRole
   email: string
-  matricula?: string | null
+  cargo: UserRole
   ativo: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface DecodedToken {
+  sub: string // ID do usuário
+  cargo: UserRole
+  nome: string
+  exp: number
+  iat: number
 }
 
 === END OF FILE: src\types\user.ts ===
@@ -15593,36 +15623,43 @@ SIZE: 277 bytes
 
 ==================================================================
 FILE: vite.config.ts
-SIZE: 946 bytes
+SIZE: 1154 bytes
 ==================================================================
-// frontend/vite.config.ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-// [NOVO] Importa o package.json para ler a versão
-import packageJson from './package.json'
+import packageJson from './package.json' // <--- Importante: Pega a versão do arquivo
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
-  // [NOVO] Define a variável global
+  // 1. Definição de Variáveis Globais
   define: {
     '__APP_VERSION__': JSON.stringify(packageJson.version),
   },
   build: {
-    chunkSizeWarningLimit: 1600,
+    chunkSizeWarningLimit: 2000, 
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('pdfmake')) return 'pdfmake';
-            if (id.includes('recharts')) return 'recharts';
-            if (id.includes('framer-motion') || id.includes('lucide-react')) return 'ui-libs';
-            return 'vendor';
+          if (id.includes('pdfmake')) {
+            return 'pdfmake';
+          }
+          if (id.includes('recharts')) {
+            return 'recharts';
+          }
+          if (id.includes('node_modules/react') || 
+              id.includes('node_modules/react-dom') || 
+              id.includes('node_modules/react-router-dom')) {
+            return 'react-vendor';
+          }
+          if (id.includes('@radix-ui') || id.includes('lucide-react')) {
+            return 'ui-libs';
           }
         },
       },

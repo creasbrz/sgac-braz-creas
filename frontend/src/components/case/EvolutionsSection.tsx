@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react' //
 import { z } from 'zod' //
 
-import { api } from '@/lib/api' //
+import { api } from '@/lib/axios' //
 import { getErrorMessage } from '@/utils/error' //
 import { evolutionFormSchema } from '@/schemas/caseSchemas' //
 import { formatDateSafe } from '@/utils/formatters' //

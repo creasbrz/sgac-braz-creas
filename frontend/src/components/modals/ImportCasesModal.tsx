@@ -1,7 +1,7 @@
 // frontend/src/components/modals/ImportCasesModal.tsx
 import { useState, useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { toast } from "sonner"
 import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, X, Loader2, Download } from "lucide-react"
 import {

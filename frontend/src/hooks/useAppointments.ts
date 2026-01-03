@@ -1,6 +1,6 @@
 // frontend/src/hooks/useAppointments.ts
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 
 export interface Appointment {
   id: string

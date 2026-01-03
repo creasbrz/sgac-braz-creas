@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { Loader2, Edit, History, PlusCircle } from 'lucide-react'
 
 import { useAuth } from '@/hooks/useAuth'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { pafFormSchema } from '@/schemas/caseSchemas'
 import { formatDateSafe } from '@/utils/formatters'

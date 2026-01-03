@@ -302,7 +302,7 @@ export const generateGroupAttendancePDF = (
             [{ text: 'Tipo:', bold: true }, group.tipo.replace('_', ' ')],
             [{ text: 'Data:', bold: true }, format(new Date(group.dataRealizacao), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })],
             [{ text: 'Local:', bold: true }, group.local || 'Não definido'],
-            [{ text: 'Facilitador:', bold: true }, group.facilitador.nome],
+            [{ text: 'Facilitador:', bold: true }, group.facilitador?.nome || 'Não informado'],
           ]
         },
         layout: 'noBorders'

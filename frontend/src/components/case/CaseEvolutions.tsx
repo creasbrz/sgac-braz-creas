@@ -1,7 +1,7 @@
 // frontend/src/components/case/CaseEvolutions.tsx
 import { useState } from "react"
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Send, FileText, Loader2, PlusCircle, Lock, EyeOff, ChevronDown } from "lucide-react"

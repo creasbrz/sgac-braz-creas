@@ -1,6 +1,6 @@
 // frontend/src/components/case/CaseHistory.tsx
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { 
   PlusCircle, RefreshCw, UserPlus, Power, AlertCircle, FileEdit, ArrowRight, Loader2, ShieldCheck 
 } from 'lucide-react'

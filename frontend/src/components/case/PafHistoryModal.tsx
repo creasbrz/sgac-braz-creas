@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Loader2, History } from 'lucide-react'

@@ -1,7 +1,7 @@
 // frontend/src/components/case/tabs/DeliverablesTab.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { toast } from 'sonner'
 import { PackageCheck, Plus, Loader2, Clock, CheckCircle2, XCircle, Truck } from 'lucide-react'
 import { format } from 'date-fns'

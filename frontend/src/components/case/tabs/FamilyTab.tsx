@@ -1,7 +1,7 @@
 // frontend/src/components/case/tabs/FamilyTab.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { toast } from 'sonner'
 import { 
   Users, PlusCircle, Trash2, Wallet, Briefcase, User, Phone, FileText

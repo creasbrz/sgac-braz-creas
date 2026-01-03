@@ -13,7 +13,7 @@ import {
   ChevronRight, Tag, Users
 } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { getErrorMessage } from '@/utils/error'
 import { combineDateAndTime } from '@/utils/date'
 import { FullCalendarWidget } from '@/components/agenda/FullCalendarWidget'

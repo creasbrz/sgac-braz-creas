@@ -6,7 +6,7 @@ import { ptBR } from 'date-fns/locale'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import {
   Card,
   CardContent,

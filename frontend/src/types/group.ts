@@ -1,19 +1,30 @@
-// frontend/src/types/group.ts
+// src/types/group.ts
+
+export type GroupType = 
+  | 'OFICINA_REFLEXIVA'
+  | 'RODA_CONVERSA'
+  | 'ATIVIDADE_LUDICA'
+  | 'PALESTRA'
+  | 'EVENTO_COMUNITARIO'
+  | 'REUNIAO_REDE'
+  | 'OUTRO'
+
 export interface GroupActivity {
   id: string
   tema: string
-  tipo: 'ACOLHIDA_COLETIVA' | 'OFICINA' | 'GRUPO_PAEFI' | 'REUNIAO_REDE'
+  tipo: GroupType
   dataRealizacao: string
   local?: string
   descricao?: string
   orgaosEnvolvidos: string[]
-  facilitador: { nome: string }
-  _count?: { participantes: number }
   
-  // [NOVO] Flag calculada no backend
-  attendanceConfirmed?: boolean
+  facilitador?: { id: string; nome: string }
+  _count?: { participantes: number }
 
   participantes?: GroupAttendance[]
+  
+  // [CORREÇÃO] Adicionada para compatibilidade
+  attendanceConfirmed?: boolean
 }
 
 export interface GroupAttendance {
@@ -26,4 +37,13 @@ export interface GroupAttendance {
     id: string
     nomeCompleto: string
   }
+}
+
+export interface CreateGroupDTO {
+  tema: string
+  tipo: GroupType
+  datas: Date[]
+  local?: string
+  descricao?: string
+  orgaosEnvolvidos?: string[]
 }

@@ -1,6 +1,6 @@
 // frontend/src/components/UpcomingAppointments.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api' //
+import { api } from '@/lib/axios' //
 import {
   Card,
   CardContent,
@@ -84,13 +84,16 @@ export function UpcomingAppointments() {
                   <p className="text-sm text-muted-foreground">
                     {/* --- CORREÇÃO AQUI --- */}
                     {/* Agora chamamos a função ROUTES.CASE_DETAIL(id) */}
-                    <Link
-                      to={ROUTES.CASE_DETAIL(app.caso.id)} //
-                      className="hover:underline hover:text-primary transition-colors"
-                    >
-                      Caso: {app.caso.nomeCompleto}
-                    </Link>
-                    {/* --- FIM DA CORREÇÃO --- */}
+                    {app.caso ? (
+  <Link 
+    to={ROUTES.CASE_DETAIL(app.caso.id)} 
+    className="hover:underline text-primary"
+  >
+    Caso: {app.caso.nomeCompleto}
+  </Link>
+) : (
+  <span className="text-muted-foreground">Atendimento Geral</span>
+)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {formatDateSafe(app.data)} às {format(new Date(app.data), 'HH:mm')}

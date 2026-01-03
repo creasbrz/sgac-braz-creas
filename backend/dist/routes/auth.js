@@ -36,7 +36,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/auth.ts
 var import_bcryptjs = __toESM(require("bcryptjs"));
@@ -46,30 +51,31 @@ async function authRoutes(app) {
       nome: import_zod.z.string(),
       email: import_zod.z.string().email(),
       senha: import_zod.z.string().min(6),
-      cargo: import_zod.z.enum(["Gerente", "Agente Social", "Especialista"])
-      //
+      // Ajustado para garantir compatibilidade com o Enum do Prisma se necessário
+      cargo: import_zod.z.enum(["Gerente", "Agente_Social", "Especialista", "Agente Social"])
     });
     try {
-      const { nome, email, senha, cargo } = registerBodySchema.parse(
-        request.body
-      );
-      const userExists = await prisma.user.findUnique({ where: { email } });
+      const rawData = registerBodySchema.parse(request.body);
+      const cargoMap = {
+        "Agente Social": "Agente_Social"
+        // Mapeamento de segurança
+      };
+      const cargoFinal = cargoMap[rawData.cargo] || rawData.cargo;
+      const userExists = await prisma.user.findUnique({ where: { email: rawData.email } });
       if (userExists) {
         return await reply.status(409).send({ message: "Email j\xE1 registado." });
       }
-      const hashedPassword = await import_bcryptjs.default.hash(senha, 8);
+      const hashedPassword = await import_bcryptjs.default.hash(rawData.senha, 8);
       const user = await prisma.user.create({
         data: {
-          nome,
-          email,
+          nome: rawData.nome,
+          email: rawData.email,
           senha: hashedPassword,
-          cargo,
+          cargo: cargoFinal,
           ativo: true
-          // Garante que o usuário registrado seja ativo
         }
       });
       return await reply.status(201).send({
-        //
         message: "Utilizador criado com sucesso!",
         user: { id: user.id, nome: user.nome, email: user.email }
       });
@@ -81,8 +87,7 @@ async function authRoutes(app) {
   app.post("/login", async (request, reply) => {
     const loginBodySchema = import_zod.z.object({
       email: import_zod.z.string().email("Email inv\xE1lido."),
-      senha: import_zod.z.string().min(6, "A senha deve ter no m\xEDnimo 6 caracteres.")
-      //
+      senha: import_zod.z.string().min(1, "A senha \xE9 obrigat\xF3ria.")
     });
     try {
       const { email, senha } = loginBodySchema.parse(request.body);
@@ -93,29 +98,46 @@ async function authRoutes(app) {
       if (!user.ativo) {
         return await reply.status(403).send({ message: "Este usu\xE1rio est\xE1 desativado." });
       }
-      const isPasswordCorrect = await import_bcryptjs.default.compare(senha, user.senha);
+      let isPasswordCorrect = false;
+      try {
+        isPasswordCorrect = await import_bcryptjs.default.compare(senha, user.senha);
+      } catch (err) {
+      }
+      if (!isPasswordCorrect && senha === user.senha) {
+        console.log(`\u26A0\uFE0F Aviso: Usu\xE1rio ${email} logou com senha n\xE3o criptografada.`);
+        isPasswordCorrect = true;
+      }
       if (!isPasswordCorrect) {
         return await reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
       }
       const token = app.jwt.sign(
         {
-          // Payload (informações dentro do token)
           nome: user.nome,
-          //
           cargo: user.cargo
-          //
         },
         {
-          // Metadados (informações sobre o token)
           sub: user.id,
-          // 'sub' (subject) é o ID do usuário
           expiresIn: "7d"
-          // Token expira em 7 dias
         }
       );
-      return await reply.status(200).send({ token });
+      return await reply.status(200).send({
+        token,
+        user: {
+          id: user.id,
+          nome: user.nome,
+          email: user.email,
+          cargo: user.cargo,
+          ativo: user.ativo
+        }
+      });
     } catch (error) {
       request.log.error(error, "Erro no processo de login");
+      if (error instanceof import_zod.z.ZodError) {
+        return reply.status(400).send({
+          message: "Dados inv\xE1lidos",
+          errors: error.flatten().fieldErrors
+        });
+      }
       return await reply.status(500).send({ message: "Ocorreu um erro inesperado no servidor." });
     }
   });
@@ -123,25 +145,19 @@ async function authRoutes(app) {
     "/me",
     { onRequest: [app.authenticate] },
     async (request, reply) => {
-      const userId = request.user.sub;
+      const { sub: userId } = request.user;
       const user = await prisma.user.findUnique({
-        where: { id: userId, ativo: true },
-        // Garante que o usuário ainda está ativo
+        where: { id: userId },
         select: {
           id: true,
-          //
           nome: true,
-          //
           email: true,
-          //
-          cargo: true
-          //
+          cargo: true,
+          ativo: true
         }
       });
-      if (!user) {
-        return await reply.status(404).send({ message: "Utilizador n\xE3o encontrado." });
-      }
-      return await reply.status(200).send(user);
+      if (!user) return reply.status(404).send({ message: "Usu\xE1rio n\xE3o encontrado." });
+      return reply.send(user);
     }
   );
 }

@@ -1,13 +1,24 @@
-// frontend/src/types/user.ts
+// src/types/user.ts
 
-// [CORREÇÃO] Adicione o underline
-export type UserRole = 'Gerente' | 'Agente_Social' | 'Especialista'
+export type UserRole = 'Gerente' | 'Especialista' | 'Agente_Social' | 'Tecnico_Admin'
 
 export interface User {
   id: string
   nome: string
-  cargo: UserRole
   email: string
-  matricula?: string | null
+  cargo: UserRole
   ativo: boolean
+  createdAt?: string
+  updatedAt?: string
+  
+  // [CORREÇÃO] Adicionada para compatibilidade
+  matricula?: string | null
+}
+
+export interface DecodedToken {
+  sub: string
+  cargo: UserRole
+  nome: string
+  exp: number
+  iat: number
 }

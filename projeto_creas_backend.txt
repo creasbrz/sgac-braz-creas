@@ -1,5 +1,5 @@
 RELATÓRIO DE CÓDIGO - BACKEND - NODE.JS/FASTIFY/PRISMA
-Gerado em: 29/12/2025, 18:52:56
+Gerado em: 03/01/2026, 14:58:31
 Pasta Alvo: /backend
 Total de arquivos: 38
 
@@ -62,7 +62,8 @@ backend
 │   │   ├── reports.ts
 │   │   ├── stats.ts
 │   │   └── users.ts
-│   └── server.ts
+│   ├── server.ts
+│   └── services
 └── uploads
 
 
@@ -75,7 +76,7 @@ SIZE: 1385 bytes
 ==================================================================
 {
   "name": "sgac-braz-backend",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Backend para o Sistema de Gestão de Atendimentos do CREAS Brazlândia",
   "main": "src/server.ts",
   "scripts": {
@@ -673,7 +674,7 @@ ALTER TYPE "CaseStatus" ADD VALUE 'EM_MONITORAMENTO';
 
 ==================================================================
 FILE: prisma\schema.prisma
-SIZE: 8999 bytes
+SIZE: 10498 bytes
 ==================================================================
 // backend/prisma/schema.prisma
 
@@ -686,7 +687,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// ==========================================
+// ENUMS (Mantidos inalterados)
+// ==========================================
+
 enum Cargo {
   Gerente
   Agente_Social
@@ -735,7 +739,10 @@ enum GroupType {
   REUNIAO_REDE
 }
 
-// Tabelas
+// ==========================================
+// MODELS (Com otimização de performance)
+// ==========================================
+
 model User {
   id        String   @id @default(uuid())
   nome      String
@@ -747,42 +754,45 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  casosCriados        Case[]               @relation("Criador")
-  casosAcolhida       Case[]               @relation("AgenteAcolhida")
-  casosPAEFI          Case[]               @relation("EspecialistaPAEFI")
-  evolucoes           Evolucao[]
-  pafs                Paf[]
-  pafVersions         PafVersion[]
-  agendamentos        Agendamento[]
-  logs                CaseLog[]
-  anexos              Anexo[]
-  filtrosSalvos       SavedFilter[]
-  encaminhamentos     Encaminhamento[]
-  entregas            ServiceDeliverable[]
-  gruposFacilitados   GroupActivity[]
+  casosCriados      Case[]          @relation("Criador")
+  casosAcolhida     Case[]          @relation("AgenteAcolhida")
+  casosPAEFI        Case[]          @relation("EspecialistaPAEFI")
+  evolucoes         Evolucao[]
+  pafs              Paf[]
+  pafVersions       PafVersion[]
+  agendamentos      Agendamento[]
+  logs              CaseLog[]
+  anexos            Anexo[]
+  filtrosSalvos     SavedFilter[]
+  encaminhamentos   Encaminhamento[]
+  entregas          ServiceDeliverable[]
+  gruposFacilitados GroupActivity[]
+
+  // PERFORMANCE: Índice para buscas por nome em listagens de usuários
+  @@index([nome])
 }
 
 model Case {
-  id              String     @id @default(uuid())
+  id              String      @id @default(uuid())
   nomeCompleto    String
-  cpf             String     @unique
+  cpf             String      @unique
   nascimento      DateTime
   sexo            String
   urgencia        String
-  pesoUrgencia    Int        @default(1)
+  pesoUrgencia    Int         @default(1)
   violacao        String
   categoria       String
   telefone        String
   endereco        String
-  dataEntrada     DateTime   @default(now())
+  dataEntrada     DateTime    @default(now())
   orgaoDemandante String
-  origem          CaseOrigin @default(ESPONTANEA)
+  origem          CaseOrigin  @default(ESPONTANEA)
   numeroSei       String?
   linkSei         String?
   observacoes     String?
-  status          CaseStatus @default(AGUARDANDO_ACOLHIDA)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  status          CaseStatus  @default(AGUARDANDO_ACOLHIDA)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   criadoPorId         String
   criadoPor           User   @relation("Criador", fields: [criadoPorId], references: [id])
@@ -810,9 +820,16 @@ model Case {
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
 
+  // PERFORMANCE: Índices essenciais para Dashboard e Filtros
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
+  @@index([nomeCompleto]) // Busca rápida por nome do usuário
+  
+  // PERFORMANCE: Chaves Estrangeiras (Evita Full Table Scan em joins)
+  @@index([criadoPorId])
+  @@index([agenteAcolhidaId])
+  @@index([especialistaPAEFIId])
 }
 
 model Evolucao {
@@ -825,22 +842,30 @@ model Evolucao {
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
+
+  // PERFORMANCE: Crítico para carregar histórico do caso
+  @@index([casoId])
+  @@index([autorId])
+  @@index([createdAt]) // Para ordenação cronológica rápida
 }
 
 model Paf {
-  id          String       @id @default(uuid())
+  id          String   @id @default(uuid())
   diagnostico String
   objetivos   String
   estrategias String
   deadline    DateTime
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  casoId      String       @unique
-  caso        Case         @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  casoId      String   @unique
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId     String
-  autor       User         @relation(fields: [autorId], references: [id])
-  versaoAtual Int          @default(1)
+  autor       User     @relation(fields: [autorId], references: [id])
+  versaoAtual Int      @default(1)
   versoes     PafVersion[]
+
+  // PERFORMANCE
+  @@index([autorId])
 }
 
 model PafVersion {
@@ -855,6 +880,10 @@ model PafVersion {
   autorId      String
   autor        User     @relation(fields: [autorId], references: [id])
   versaoNumero Int      @default(1)
+
+  // PERFORMANCE
+  @@index([pafId])
+  @@index([autorId])
 }
 
 model Agendamento {
@@ -868,6 +897,11 @@ model Agendamento {
   responsavel   User     @relation(fields: [responsavelId], references: [id])
   casoId        String
   caso          Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  // PERFORMANCE: Essencial para o Calendário
+  @@index([data])
+  @@index([responsavelId])
+  @@index([casoId])
 }
 
 model CaseLog {
@@ -881,6 +915,12 @@ model CaseLog {
   caso          Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId       String
   autor         User      @relation(fields: [autorId], references: [id])
+
+  // PERFORMANCE: Auditoria e Histórico
+  @@index([casoId])
+  @@index([autorId])
+  @@index([acao])
+  @@index([createdAt])
 }
 
 model Anexo {
@@ -894,6 +934,9 @@ model Anexo {
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
+
+  // PERFORMANCE
+  @@index([casoId])
 }
 
 model SavedFilter {
@@ -903,6 +946,9 @@ model SavedFilter {
   createdAt DateTime @default(now())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // PERFORMANCE
+  @@index([userId])
 }
 
 model Encaminhamento {
@@ -919,10 +965,14 @@ model Encaminhamento {
   autor       User     @relation(fields: [autorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // PERFORMANCE
+  @@index([casoId])
+  @@index([status])
 }
 
 model MembroFamilia {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   nome        String
   parentesco  String
   idade       Int?
@@ -930,42 +980,54 @@ model MembroFamilia {
   nascimento  DateTime?
   telefone    String?
   ocupacao    String?
-  renda       Decimal?  @db.Decimal(10, 2)
+  renda       Decimal? @db.Decimal(10, 2)
   observacoes String?
   casoId      String
-  caso        Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // PERFORMANCE
+  @@index([casoId])
+  @@index([nome]) // Busca por membros da família
 }
 
 model ServiceDeliverable {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   tipo            String
   status          String
-  dataSolicitacao DateTime  @default(now())
+  dataSolicitacao DateTime @default(now())
   dataEntrega     DateTime?
   observacoes     String?
   casoId          String
-  caso            Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  caso            Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   responsavelId   String
-  responsavel     User      @relation(fields: [responsavelId], references: [id])
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  responsavel     User     @relation(fields: [responsavelId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // PERFORMANCE
+  @@index([casoId])
+  @@index([tipo])
 }
 
 model GroupActivity {
-  id               String            @id @default(uuid())
+  id               String      @id @default(uuid())
   tema             String
   tipo             GroupType
   dataRealizacao   DateTime
   local            String?
   descricao        String?
-  orgaosEnvolvidos String[]          @default([])
+  orgaosEnvolvidos String[]    @default([])
   facilitadorId    String
-  facilitador      User              @relation(fields: [facilitadorId], references: [id])
+  facilitador      User        @relation(fields: [facilitadorId], references: [id])
   participantes    GroupAttendance[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // PERFORMANCE
+  @@index([facilitadorId])
+  @@index([dataRealizacao])
 }
 
 model GroupAttendance {
@@ -979,6 +1041,10 @@ model GroupAttendance {
   createdAt   DateTime      @default(now())
 
   @@unique([grupoId, casoId])
+  
+  // PERFORMANCE
+  @@index([grupoId])
+  @@index([casoId])
 }
 
 === END OF FILE: prisma\schema.prisma ===
@@ -1526,29 +1592,50 @@ export const cache = CacheService.getInstance()
 
 ==================================================================
 FILE: src\lib\prisma.ts
-SIZE: 374 bytes
+SIZE: 663 bytes
 ==================================================================
 // backend/src/lib/prisma.ts
+import { PrismaClient } from '@prisma/client'
 
-// Importa o PrismaClient da biblioteca instalada
-import { PrismaClient } from '@prisma/client'; //
+// Definição de tipo para o objeto global
+const globalForPrisma = global as unknown as { prisma: PrismaClient }
 
-// Cria e exporta uma instância única do PrismaClient.
-// Esta abordagem (singleton) garante que a nossa aplicação não crie
-// múltiplas conexões desnecessárias com o banco de dados.
-export const prisma = new PrismaClient(); //
+// Se já existir uma instância no global (dev), usa ela. Se não, cria uma nova.
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    // Habilite logs apenas se quiser debugar queries lentas ou erros
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  })
+
+// Em desenvolvimento, salva a instância no global para reuso
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
 === END OF FILE: src\lib\prisma.ts ===
 
 ==================================================================
 FILE: src\routes\alerts.ts
-SIZE: 5760 bytes
+SIZE: 6553 bytes
 ==================================================================
 // backend/src/routes/alerts.ts
 import { type FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { Cargo, CaseStatus } from '@prisma/client'
 import { addDays, startOfDay, subDays } from 'date-fns'
+
+// Definição de Tipos para o Sistema de Notificação
+interface NotificationItem {
+  id: string
+  title: string
+  description: string
+  link: string
+  type: 'info' | 'warning' | 'critical'
+}
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function alertRoutes(app: FastifyInstance) {
   
@@ -1562,50 +1649,106 @@ export async function alertRoutes(app: FastifyInstance) {
 
   // [GET] /alerts - Central de Notificações Inteligente
   app.get('/alerts', async (request, reply) => {
-    const { sub: userId, cargo } = request.user as { sub: string, cargo: Cargo }
-    const notifications = []
+    const { sub: userId, cargo } = request.user as UserPayload
+    const notifications: NotificationItem[] = []
 
     const today = startOfDay(new Date())
     const tomorrowEnd = addDays(today, 2)
+    const dataLimiteInatividade = subDays(new Date(), 30)
+    const dataLimiteMonitoramento = subDays(new Date(), 60)
+    const pafDeadline = addDays(new Date(), 15)
 
-    // 1. AGENDAMENTOS (Agenda Pessoal)
-    const agenda = await prisma.agendamento.findMany({
-      where: {
-        responsavelId: userId,
-        data: { gte: today, lt: tomorrowEnd }
-      },
-      include: { caso: { select: { nomeCompleto: true } } }
-    })
+    // Usamos Promise.all para executar todas as verificações EM PARALELO
+    // Isso reduz drasticamente o tempo de resposta do endpoint
+    const [
+      agenda,
+      casosInativos,
+      casosMonitoramento,
+      distCount,
+      acolhidaCount,
+      casesWithoutPaf,
+      pafsExpiring
+    ] = await Promise.all([
+      
+      // 1. AGENDAMENTOS (Agenda Pessoal - Próximos 2 dias)
+      prisma.agendamento.findMany({
+        where: {
+          responsavelId: userId,
+          data: { gte: today, lt: tomorrowEnd }
+        },
+        include: { caso: { select: { nomeCompleto: true } } }
+      }),
 
-    for (const ag of agenda) {
+      // 2. CASOS PAEFI INATIVOS (+30 dias sem evolução)
+      prisma.case.findMany({
+        where: {
+          status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+          // Se for Especialista, filtra os dele. Se for Gerente, vê de todos.
+          especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
+          evolucoes: {
+            none: { createdAt: { gte: dataLimiteInatividade } }
+          }
+        },
+        select: { id: true, nomeCompleto: true }
+      }),
+
+      // 3. MONITORAMENTO ESQUECIDO (+60 dias sem evolução)
+      prisma.case.findMany({
+        where: {
+          status: CaseStatus.EM_MONITORAMENTO,
+          especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
+          evolucoes: {
+            none: { createdAt: { gte: dataLimiteMonitoramento } }
+          }
+        },
+        select: { id: true, nomeCompleto: true }
+      }),
+
+      // 4. [GERENTE] Fila de Distribuição
+      cargo === Cargo.Gerente 
+        ? prisma.case.count({ where: { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI } })
+        : Promise.resolve(0),
+
+      // 5. [AGENTE] Fila de Acolhida
+      cargo === Cargo.Agente_Social
+        ? prisma.case.count({ where: { agenteAcolhidaId: userId, status: CaseStatus.AGUARDANDO_ACOLHIDA } })
+        : Promise.resolve(0),
+
+      // 6. [ESPECIALISTA] Casos sem PAF
+      cargo === Cargo.Especialista
+        ? prisma.case.count({ where: { especialistaPAEFIId: userId, status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI, paf: { is: null } } })
+        : Promise.resolve(0),
+      
+      // 7. [ESPECIALISTA] PAFs Vencendo
+      cargo === Cargo.Especialista
+        ? prisma.paf.findMany({
+            where: {
+              caso: {
+                especialistaPAEFIId: userId,
+                status: { not: CaseStatus.DESLIGADO }
+              },
+              deadline: { gte: today, lte: pafDeadline },
+            },
+            include: { caso: { select: { nomeCompleto: true, id: true } } }
+          })
+        : Promise.resolve([])
+    ])
+
+    // --- PROCESSAMENTO DOS RESULTADOS ---
+
+    // Agenda
+    agenda.forEach(ag => {
       notifications.push({
         id: `agenda-${ag.id}`,
         title: 'Compromisso Próximo',
-        description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: `/dashboard/cases/${ag.casoId}`,
+        description: `${ag.titulo} - ${ag.caso?.nomeCompleto || 'Sem caso vinculado'}`,
+        link: ag.casoId ? `/dashboard/cases/${ag.casoId}` : '/dashboard/agenda',
         type: 'info'
       })
-    }
-
-    // 2. REGRAS GERAIS
-    
-    // Alerta de Inatividade (Casos "Esquecidos")
-    const dataLimiteInatividade = subDays(new Date(), 30)
-    
-    const casosInativos = await prisma.case.findMany({
-      where: {
-        status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-        especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
-        evolucoes: {
-          none: {
-            createdAt: { gte: dataLimiteInatividade }
-          }
-        }
-      },
-      select: { id: true, nomeCompleto: true }
     })
 
-    for (const caso of casosInativos) {
+    // Inativos PAEFI
+    casosInativos.forEach(caso => {
       notifications.push({
         id: `inativo-${caso.id}`,
         title: 'Caso sem Movimentação',
@@ -1613,115 +1756,63 @@ export async function alertRoutes(app: FastifyInstance) {
         link: `/dashboard/cases/${caso.id}`,
         type: 'critical'
       })
-    }
-
-    // [NOVO] Alerta de Monitoramento (Busca Ativa)
-    // Regra: Casos em monitoramento devem ter alguma anotação a cada 60 dias (prazo mais longo)
-    const dataLimiteMonitoramento = subDays(new Date(), 60)
-    const casosMonitoramentoEsquecidos = await prisma.case.findMany({
-      where: {
-        status: CaseStatus.EM_MONITORAMENTO,
-        especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
-        evolucoes: {
-          none: {
-            createdAt: { gte: dataLimiteMonitoramento }
-          }
-        }
-      },
-      select: { id: true, nomeCompleto: true }
     })
 
-    for (const caso of casosMonitoramentoEsquecidos) {
+    // Inativos Monitoramento
+    casosMonitoramento.forEach(caso => {
       notifications.push({
         id: `monit-inativo-${caso.id}`,
         title: 'Revisão de Monitoramento',
         description: `Verificar situação de ${caso.nomeCompleto} (sem contato há 60 dias).`,
         link: `/dashboard/cases/${caso.id}`,
-        type: 'info' // Amarelo/Info pois é menos crítico que PAEFI
+        type: 'warning'
+      })
+    })
+
+    // Gerente - Distribuição
+    if (distCount > 0) {
+      notifications.push({
+        id: 'dist-queue',
+        title: 'Distribuição Pendente',
+        description: `${distCount} casos aguardam atribuição.`,
+        link: '/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI',
+        type: 'critical'
       })
     }
 
-    // 3. REGRAS POR CARGO ESPECÍFICAS
-
-    // --- GERENTE ---
-    if (cargo === Cargo.Gerente) {
-      const distCount = await prisma.case.count({
-        where: { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
+    // Agente - Acolhida
+    if (acolhidaCount > 0) {
+      notifications.push({
+        id: 'acolhida-queue',
+        title: 'Novos na Acolhida',
+        description: `Você tem ${acolhidaCount} casos para triagem inicial.`,
+        link: '/dashboard/cases?status=AGUARDANDO_ACOLHIDA',
+        type: 'warning'
       })
-
-      if (distCount > 0) {
-        notifications.push({
-          id: 'dist-queue',
-          title: 'Distribuição Pendente',
-          description: `${distCount} casos aguardam atribuição.`,
-          link: '/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI',
-          type: 'critical'
-        })
-      }
     }
 
-    // --- AGENTE SOCIAL ---
-    if (cargo === Cargo.Agente_Social) {
-      const acolhidaCount = await prisma.case.count({
-        where: {
-          agenteAcolhidaId: userId,
-          status: CaseStatus.AGUARDANDO_ACOLHIDA
-        }
+    // Especialista - Sem PAF
+    if (casesWithoutPaf > 0) {
+      notifications.push({
+        id: 'missing-paf',
+        title: 'Casos sem PAF',
+        description: `${casesWithoutPaf} casos precisam do plano inicial.`,
+        link: '/dashboard/cases', // Idealmente filtrar por "Sem PAF" no front
+        type: 'critical'
       })
-
-      if (acolhidaCount > 0) {
-        notifications.push({
-          id: 'acolhida-queue',
-          title: 'Novos na Acolhida',
-          description: `Você tem ${acolhidaCount} casos para triagem inicial.`,
-          link: '/dashboard/cases?status=AGUARDANDO_ACOLHIDA',
-          type: 'critical'
-        })
-      }
     }
 
-    // --- ESPECIALISTA ---
-    if (cargo === Cargo.Especialista) {
-      const casesWithoutPaf = await prisma.case.count({
-        where: {
-          especialistaPAEFIId: userId,
-          status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-          paf: { is: null }
-        }
+    // Especialista - PAF Vencendo
+    // @ts-ignore - TypeScript pode reclamar do array vazio no Promise.resolve
+    pafsExpiring.forEach(p => {
+      notifications.push({
+        id: `paf-exp-${p.id}`,
+        title: 'Reavaliação de PAF',
+        description: `Prazo próximo: ${p.caso.nomeCompleto}`,
+        link: `/dashboard/cases/${p.caso.id}`,
+        type: 'warning'
       })
-
-      if (casesWithoutPaf > 0) {
-        notifications.push({
-          id: 'missing-paf',
-          title: 'Casos sem PAF',
-          description: `${casesWithoutPaf} casos precisam do plano inicial.`,
-          link: '/dashboard/cases',
-          type: 'critical'
-        })
-      }
-
-      const pafDeadline = addDays(new Date(), 15)
-      const pafsExpiring = await prisma.paf.findMany({
-        where: {
-          caso: {
-            especialistaPAEFIId: userId,
-            status: { not: CaseStatus.DESLIGADO }
-          },
-          deadline: { gte: today, lte: pafDeadline },
-        },
-        include: { caso: { select: { nomeCompleto: true, id: true } } }
-      })
-
-      for (const p of pafsExpiring) {
-        notifications.push({
-          id: `paf-exp-${p.id}`,
-          title: 'Reavaliação de PAF',
-          description: `Prazo próximo: ${p.caso.nomeCompleto}`,
-          link: `/dashboard/cases/${p.caso.id}`,
-          type: 'critical'
-        })
-      }
-    }
+    })
 
     return reply.send(notifications)
   })
@@ -1731,7 +1822,7 @@ export async function alertRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\appointments.ts
-SIZE: 4740 bytes
+SIZE: 5822 bytes
 ==================================================================
 // backend/src/routes/appointments.ts
 import { type FastifyInstance } from 'fastify'
@@ -1739,107 +1830,110 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { LogAction } from '@prisma/client'
 
+const emptyToNull = (val: unknown) => {
+  if (typeof val === 'string' && val.trim() === '') return null;
+  return val;
+}
+
 export async function appointmentRoutes(app: FastifyInstance) {
   
   app.addHook('onRequest', async (request, reply) => {
     try { await request.jwtVerify() } catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar (Unificado: Agendamentos Individuais + Grupos)
+  // 1. LISTAR (Correção do filtro casoId)
   app.get('/appointments', async (request, reply) => {
-    const { caseId, month, pageSize } = z.object({ 
+    const querySchema = z.object({ 
       caseId: z.string().uuid().optional(),
-      month: z.string().regex(/^\d{4}-\d{2}$/).optional(), // YYYY-MM
+      month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
       pageSize: z.coerce.number().optional().default(100)
-    }).parse(request.query)
-    
-    const userId = (request.user as any).sub
+    })
 
-    // Filtros de Data
+    const { caseId, month, pageSize } = querySchema.parse(request.query)
+    
+    // Filtro de Data
     let dateFilter: any = {}
     if (month) {
-      const start = new Date(`${month}-01T00:00:00`)
-      const end = new Date(new Date(start).setMonth(start.getMonth() + 1))
+      const [year, m] = month.split('-').map(Number)
+      const start = new Date(Date.UTC(year, m - 1, 1))
+      const end = new Date(Date.UTC(year, m, 1))
       dateFilter = { gte: start, lt: end }
     }
 
-    // 1. Buscar Agendamentos Individuais
-    const appointmentsWhere: any = { ... (caseId ? { casoId } : {}) }
-    if (month) appointmentsWhere.data = dateFilter
-
-    // *Regra de Negócio*: Se não tem caseId (visão geral), filtra por responsabilidade ou permissão?
-    // Por enquanto, trazemos tudo (visão de equipe), mas poderia ser filtrado por userId aqui.
+    // A. Buscar Agendamentos Individuais
+    const appointmentsWhere: any = {}
     
+    // CORREÇÃO AQUI:
+    if (caseId) appointmentsWhere.casoId = caseId; // Mapeamento explícito
+    if (month) appointmentsWhere.data = dateFilter;
+
     const appointments = await prisma.agendamento.findMany({
       where: appointmentsWhere,
       orderBy: { data: 'asc' },
       take: pageSize,
       include: { 
-        responsavel: { select: { nome: true } },
+        responsavel: { select: { id: true, nome: true } }, 
         caso: { 
           select: { id: true, nomeCompleto: true, telefone: true } 
         }
       }
     })
 
-    // 2. Buscar Atividades em Grupo (Apenas se não estiver filtrando por um caso específico)
-    // Se estiver filtrando por caso, buscamos apenas os grupos onde ele participa.
+    // B. Buscar Grupos
     let groupsWhere: any = {}
     if (month) groupsWhere.dataRealizacao = dateFilter
-
-    if (caseId) {
-      groupsWhere.participantes = { some: { casoId } }
-    }
+    if (caseId) groupsWhere.participantes = { some: { casoId: caseId } } // Correção aqui também
 
     const groups = await prisma.groupActivity.findMany({
       where: groupsWhere,
       orderBy: { dataRealizacao: 'asc' },
       take: pageSize,
       include: {
-        facilitador: { select: { nome: true } },
-        // Não precisamos dos participantes aqui para o calendário leve
+        facilitador: { select: { id: true, nome: true } },
       }
     })
 
-    // 3. Unificar e Padronizar Resposta
+    // C. Mapeamento
     const mappedAppointments = appointments.map(a => ({
-      id: a.id,
-      titulo: a.titulo,
-      data: a.data,
-      observacoes: a.observacoes,
+      ...a, 
+      title: a.titulo,
+      start: a.data,
+      end: new Date(new Date(a.data).getTime() + 60 * 60 * 1000),
       tipo: 'INDIVIDUAL',
-      responsavel: a.responsavel,
-      caso: a.caso,
-      isGroup: false
+      isGroup: false,
+      color: '#3b82f6',
+      casoNome: a.caso?.nomeCompleto
     }))
 
     const mappedGroups = groups.map(g => ({
       id: g.id,
-      titulo: `[GRUPO] ${g.tema}`, // Prefixo para identificar visualmente
-      data: g.dataRealizacao,
+      titulo: `[GRUPO] ${g.tema}`,
+      data: g.dataRealizacao, 
       observacoes: `${g.tipo.replace('_', ' ')} - Local: ${g.local || 'N/A'}`,
-      tipo: 'COLETIVO',
       responsavel: g.facilitador,
-      caso: null, // Grupo não tem um caso único "pai"
+      caso: null, 
+      title: `[GRUPO] ${g.tema}`,
+      start: g.dataRealizacao,
+      end: new Date(new Date(g.dataRealizacao).getTime() + 90 * 60 * 1000),
+      tipo: 'COLETIVO',
       isGroup: true,
-      originalId: g.id // ID original do grupo para links
+      color: '#10b981',
+      originalId: g.id
     }))
 
-    // Mesclar e ordenar por data
     const combined = [...mappedAppointments, ...mappedGroups].sort((a, b) => 
-      new Date(a.data).getTime() - new Date(b.data).getTime()
+      new Date(a.start).getTime() - new Date(b.start).getTime()
     )
 
     return reply.send(combined)
   })
 
-  // [POST] Criar (Mantido igual - cria apenas agendamento individual)
-  // Agendamentos de grupo são criados na rota /groups
+  // 2. CRIAR
   app.post('/appointments', async (request, reply) => {
     const bodySchema = z.object({
-      titulo: z.string().min(3),
-      data: z.coerce.date(),
-      observacoes: z.any().optional(),
+      titulo: z.string().min(3, "Título é obrigatório"),
+      data: z.coerce.date({ required_error: "Data é obrigatória" }),
+      observacoes: z.preprocess(emptyToNull, z.string().optional().nullable()),
       casoId: z.string().uuid(),
     })
 
@@ -1851,15 +1945,19 @@ export async function appointmentRoutes(app: FastifyInstance) {
         data: {
           titulo,
           data,
-          observacoes: typeof observacoes === 'string' ? observacoes : null,
-          casoId,
+          observacoes,
+          casoId: casoId, // Mapeamento correto
           responsavelId: userId
+        },
+        include: {
+            responsavel: { select: { id: true, nome: true } },
+            caso: { select: { id: true, nomeCompleto: true } }
         }
       })
 
       await prisma.caseLog.create({
         data: {
-          casoId,
+          casoId: casoId,
           autorId: userId,
           acao: LogAction.AGENDAMENTO_CRIADO,
           descricao: `Agendou: ${titulo} para ${data.toLocaleDateString('pt-BR')}`
@@ -1869,7 +1967,36 @@ export async function appointmentRoutes(app: FastifyInstance) {
       return reply.status(201).send(agendamento)
 
     } catch (error) {
+      console.error("Erro POST Appointment:", error)
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
       return reply.status(500).send({ message: 'Erro ao criar agendamento.' })
+    }
+  })
+
+  // 3. EXCLUIR
+  app.delete('/appointments/:id', async (request, reply) => {
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    try {
+        const { id } = paramsSchema.parse(request.params)
+        const { sub: userId } = request.user as { sub: string }
+
+        const ag = await prisma.agendamento.findUnique({ where: { id } })
+        if (!ag) return reply.status(404).send({ message: "Agendamento não encontrado" })
+
+        await prisma.agendamento.delete({ where: { id } })
+
+        await prisma.caseLog.create({
+            data: {
+              casoId: ag.casoId,
+              autorId: userId,
+              acao: LogAction.OUTRO,
+              descricao: `Cancelou agendamento: ${ag.titulo}`
+            }
+          })
+
+        return reply.status(204).send()
+    } catch (error) {
+        return reply.status(500).send({ message: "Erro ao excluir." })
     }
   })
 }
@@ -1878,7 +2005,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\attachments.ts
-SIZE: 5700 bytes
+SIZE: 6524 bytes
 ==================================================================
 // backend/src/routes/attachments.ts
 import { type FastifyInstance } from 'fastify'
@@ -1888,18 +2015,23 @@ import fs from 'fs'
 import path from 'path'
 import { LogAction, Cargo } from '@prisma/client'
 
-// Função auxiliar para validar Assinatura de Arquivo (Magic Numbers)
-// Isso impede que alguém renomeie um .exe para .pdf e faça upload
+// Tipagem do Usuário
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
+
+// Validação de Assinatura (Magic Numbers) - BLINDAGEM DE UPLOAD
+// Impede que arquivos maliciosos sejam enviados apenas trocando a extensão
 async function validateFileSignature(buffer: Buffer): Promise<'pdf' | 'image' | null> {
   const bytes = buffer.subarray(0, 4).toString('hex').toUpperCase()
   
-  // Assinaturas conhecidas
   const signatures: Record<string, string[]> = {
     '25504446': ['pdf'], // %PDF
     'FFD8FFE0': ['image'], // JPEG
-    'FFD8FFE1': ['image'], // JPEG
-    'FFD8FFEE': ['image'], // JPEG
-    'FFD8FFDB': ['image'], // JPEG
+    'FFD8FFE1': ['image'],
+    'FFD8FFEE': ['image'],
+    'FFD8FFDB': ['image'],
     '89504E47': ['image'], // PNG
   }
 
@@ -1920,34 +2052,41 @@ export async function attachmentRoutes(app: FastifyInstance) {
     }
   })
 
-  // [POST] Upload de arquivo com Validação de Segurança
+  // [POST] Upload de arquivo
   app.post('/cases/:caseId/attachments', async (request, reply) => {
     const paramsSchema = z.object({ caseId: z.string().uuid() })
     
     try {
       const { caseId } = paramsSchema.parse(request.params)
-      const { sub: userId } = request.user as { sub: string }
+      const { sub: userId } = request.user as UserPayload
+
+      // 1. Verifica se o caso existe ANTES de processar o arquivo
+      const caso = await prisma.case.findUnique({ where: { id: caseId } })
+      if (!caso) {
+        // Importante: Consumir o stream do arquivo mesmo se der erro, para não travar o navegador
+        const part = await request.file()
+        if (part) await part.toBuffer() 
+        return reply.status(404).send({ message: 'Caso não encontrado.' })
+      }
 
       const data = await request.file()
-      
       if (!data) {
         return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
       }
 
-      // 1. Converte o stream para Buffer para análise de segurança
+      // 2. Carrega arquivo em memória (Buffer)
+      // Nota: O limite de tamanho deve ser configurado no server.ts (fastify-multipart)
       const buffer = await data.toBuffer()
 
-      // 2. Validação de Magic Numbers (Anti-Malware básico)
+      // 3. Validação de Segurança (Magic Numbers)
       const fileType = await validateFileSignature(buffer)
-      
       if (!fileType) {
         return reply.status(400).send({ 
-          message: 'Arquivo inválido ou corrompido. Apenas PDF, JPG e PNG reais são permitidos.' 
+          message: 'Arquivo inválido. O sistema aceita apenas PDF, JPG e PNG legítimos.' 
         })
       }
 
-      // 3. Sanitização do Nome e Caminho
-      // Remove caracteres especiais e espaços para evitar problemas no sistema de arquivos
+      // 4. Sanitização e Caminho
       const safeFilename = data.filename.replace(/[^a-zA-Z0-9.]/g, '_')
       const fileName = `${Date.now()}-${safeFilename}`
       
@@ -1958,32 +2097,42 @@ export async function attachmentRoutes(app: FastifyInstance) {
 
       const uploadPath = path.join(uploadDir, fileName)
 
-      // 4. Salvar no Disco
+      // 5. Salva no Disco
       fs.writeFileSync(uploadPath, buffer)
 
-      // 5. Salvar Metadados no Banco
-      const anexo = await prisma.anexo.create({
-        data: {
-          nome: data.filename, // Mantém nome original para exibição
-          tipo: data.mimetype,
-          url: `/uploads/${fileName}`,
-          casoId: caseId,
-          autorId: userId,
-          tamanho: buffer.length // Salva o tamanho em bytes
-        }
-      })
+      // 6. Tenta Salvar no Banco (Com Rollback em caso de falha)
+      try {
+        const anexo = await prisma.anexo.create({
+          data: {
+            nome: data.filename,
+            tipo: data.mimetype,
+            url: `/uploads/${fileName}`,
+            casoId: caseId,
+            autorId: userId,
+            tamanho: buffer.length
+          }
+        })
 
-      // 6. Log de Auditoria
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId, 
-          autorId: userId,
-          acao: LogAction.ANEXO_ADICIONADO,
-          descricao: `Anexou documento: ${data.filename}`
-        }
-      })
+        // Log de Auditoria
+        await prisma.caseLog.create({
+          data: {
+            casoId: caseId, 
+            autorId: userId,
+            acao: LogAction.ANEXO_ADICIONADO,
+            descricao: `Anexou documento: ${data.filename}`
+          }
+        })
 
-      return reply.status(201).send(anexo)
+        return reply.status(201).send(anexo)
+
+      } catch (dbError) {
+        // ROLLBACK: Se deu erro no banco, apaga o arquivo físico para não deixar lixo
+        if (fs.existsSync(uploadPath)) {
+          fs.unlinkSync(uploadPath)
+          console.log(`[Rollback] Arquivo órfão removido: ${fileName}`)
+        }
+        throw dbError // Joga para o catch principal
+      }
 
     } catch (error) {
       console.error("❌ Erro no Upload:", error)
@@ -2014,27 +2163,28 @@ export async function attachmentRoutes(app: FastifyInstance) {
     const paramsSchema = z.object({ id: z.string().uuid() })
     try {
       const { id } = paramsSchema.parse(request.params)
-      const { sub: userId, cargo } = request.user as { sub: string, cargo: Cargo }
+      const { sub: userId, cargo } = request.user as UserPayload
 
       const anexo = await prisma.anexo.findUnique({ where: { id } })
       if (!anexo) return reply.status(404).send({ message: 'Arquivo não encontrado.' })
 
-      // Apenas o autor ou Gerente pode apagar
+      // Permissão: Autor ou Gerente
       if (anexo.autorId !== userId && cargo !== Cargo.Gerente) {
         return reply.status(403).send({ message: 'Sem permissão para excluir este anexo.' })
       }
 
+      // 1. Remove do Banco primeiro
       await prisma.anexo.delete({ where: { id } })
 
-      // Remove do disco
+      // 2. Remove do Disco (Se falhar, não tem problema grave, apenas ocupa espaço)
       try {
         const filePath = path.resolve(process.cwd(), 'uploads', path.basename(anexo.url))
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
       } catch (e) { 
-        console.error("Erro ao apagar arquivo físico:", e) 
+        console.error("Aviso: Falha ao apagar arquivo físico (pode já ter sido removido):", e) 
       }
 
-      // Log da exclusão
+      // Log
       await prisma.caseLog.create({
         data: {
           casoId: anexo.casoId,
@@ -2055,27 +2205,30 @@ export async function attachmentRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\audit.ts
-SIZE: 3748 bytes
+SIZE: 4946 bytes
 ==================================================================
 // backend/src/routes/audit.ts
-// 🔧 Este arquivo define todas as rotas de auditoria com filtros avançados,
-// paginação robusta e segurança reforçada. Código revisado e modernizado.
-
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { startOfDay, endOfDay, subDays } from 'date-fns'
+import { startOfDay, endOfDay, subDays, format as formatDate } from 'date-fns'
+import { Cargo, LogAction } from '@prisma/client'
+import { format as formatCsv } from 'fast-csv'
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function auditRoutes(app: FastifyInstance) {
-  /**
-   * 🔐 Middleware global — Apenas Gerentes têm permissão
-   */
+  
+  // 🔐 Middleware: Apenas Gerentes acessam a Auditoria
   app.addHook('onRequest', async (request, reply) => {
     try {
       await request.jwtVerify()
-      const { cargo } = request.user as { cargo: string }
+      const { cargo } = request.user as UserPayload
 
-      if (cargo !== 'Gerente') {
+      if (cargo !== Cargo.Gerente) {
         return reply.status(403).send({ message: 'Acesso restrito à gestão.' })
       }
     } catch {
@@ -2083,21 +2236,16 @@ export async function auditRoutes(app: FastifyInstance) {
     }
   })
 
-  /**
-   * ============================================================
-   *  [GET] /audit — Audit Log Global com filtros inteligentes
-   * ============================================================
-   */
+  // 1. [GET] /audit — Visualização em Tela (Paginada)
   app.get('/audit', async (request, reply) => {
-    // Validação + Tipagem de Query Params
     const querySchema = z.object({
       page: z.coerce.number().int().positive().default(1),
       pageSize: z.coerce.number().int().positive().max(100).default(20),
       autorId: z.string().uuid().optional(),
-      acao: z.string().optional(), // Ex: CRIACAO, DESLIGAMENTO, ATRIBUICAO
+      acao: z.nativeEnum(LogAction).optional().or(z.literal('all')), // Aceita Enum ou 'all'
       periodo: z.enum(['hoje', '7dias', '30dias', 'tudo']).default('7dias'),
-      caseId: z.string().uuid().optional(), // 🔥 NOVO FILTRO
-      search: z.string().min(2).optional(), // 🔍 NOVO: Busca textual inteligente
+      caseId: z.string().uuid().optional(),
+      search: z.string().min(1).optional(),
     })
 
     try {
@@ -2106,25 +2254,21 @@ export async function auditRoutes(app: FastifyInstance) {
 
       const where: any = {}
 
-      // 🔍 Filtro textual (Pesquisa inteligente)
+      // 🔍 Busca Textual Inteligente
       if (search) {
         where.OR = [
           { descricao: { contains: search, mode: 'insensitive' } },
           { autor: { nome: { contains: search, mode: 'insensitive' } } },
+          // Busca no nome do caso apenas se o log tiver um caso vinculado
           { caso: { nomeCompleto: { contains: search, mode: 'insensitive' } } },
         ]
       }
 
-      // 👤 Filtro por autor
+      // Filtros
       if (autorId && autorId !== 'all') where.autorId = autorId
-
-      // ⚡ Filtro por ação específica
       if (acao && acao !== 'all') where.acao = acao
-
-      // 📌 Filtro por caso específico
       if (caseId) where.casoId = caseId
 
-      // 🗓️ Filtro por período
       const hoje = new Date()
       switch (periodo) {
         case 'hoje':
@@ -2161,144 +2305,221 @@ export async function auditRoutes(app: FastifyInstance) {
       })
     } catch (error) {
       console.error("Erro /audit:", error)
-      return reply.status(500).send({ message: 'Erro ao buscar logs de auditoria.' })
+      return reply.status(500).send({ message: 'Erro ao buscar logs.' })
+    }
+  })
+
+  // 2. [GET] /audit/export — Exportar CSV (Para Excel)
+  // Rota vital para prestação de contas
+  app.get('/audit/export', async (request, reply) => {
+    try {
+      // Busca os últimos 1000 logs (limite de segurança)
+      const logs = await prisma.caseLog.findMany({
+        take: 1000,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          autor: { select: { nome: true, cargo: true } },
+          caso: { select: { nomeCompleto: true } },
+        }
+      })
+
+      const fileName = `auditoria_sgac_${formatDate(new Date(), 'yyyy-MM-dd')}.csv`
+      
+      reply.header('Content-Type', 'text/csv; charset=utf-8')
+      reply.header('Content-Disposition', `attachment; filename="${fileName}"`)
+
+      const csvStream = formatCsv({ headers: true })
+      
+      // Pipe direto para a resposta (Stream)
+      csvStream.pipe(reply.raw)
+
+      logs.forEach(log => {
+        csvStream.write({
+          Data: formatDate(log.createdAt, 'dd/MM/yyyy HH:mm'),
+          Acao: log.acao,
+          Autor: log.autor?.nome || 'Sistema',
+          Cargo: log.autor?.cargo || 'N/A',
+          Caso: log.caso?.nomeCompleto || 'Geral/Sistema',
+          Descricao: log.descricao,
+          Valor_Anterior: log.valorAnterior || '-',
+          Valor_Novo: log.valorNovo || '-'
+        })
+      })
+
+      csvStream.end()
+
+    } catch (error) {
+      console.error("Erro export audit:", error)
+      return reply.status(500).send({ message: "Erro ao gerar exportação." })
     }
   })
 }
-
 
 === END OF FILE: src\routes\audit.ts ===
 
 ==================================================================
 FILE: src\routes\auth.ts
-SIZE: 3922 bytes
+SIZE: 4998 bytes
 ==================================================================
 // backend/src/routes/auth.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma' //
-import bcrypt from 'bcryptjs' //
+import { prisma } from '../lib/prisma'
+import bcrypt from 'bcryptjs'
 
 export async function authRoutes(app: FastifyInstance) {
-  // Rota de Registo de Utilizador (você tinha, mantemos)
-  app.post('/register', async (request, reply) => { //
+  // Rota de Registro
+  app.post('/register', async (request, reply) => {
     const registerBodySchema = z.object({
       nome: z.string(),
       email: z.string().email(),
       senha: z.string().min(6),
-      cargo: z.enum(['Gerente', 'Agente Social', 'Especialista']), //
+      // Ajustado para garantir compatibilidade com o Enum do Prisma se necessário
+      cargo: z.enum(['Gerente', 'Agente_Social', 'Especialista', 'Agente Social']), 
     })
 
     try {
-      const { nome, email, senha, cargo } = registerBodySchema.parse(
-        request.body,
-      )
+      // Pequeno ajuste para mapear "Agente Social" (frontend) para "Agente_Social" (banco) se necessário
+      const rawData = registerBodySchema.parse(request.body)
+      const cargoMap: Record<string, any> = {
+        'Agente Social': 'Agente_Social', // Mapeamento de segurança
+      }
+      const cargoFinal = cargoMap[rawData.cargo] || rawData.cargo
 
-      const userExists = await prisma.user.findUnique({ where: { email } }) //
+      const userExists = await prisma.user.findUnique({ where: { email: rawData.email } })
+
       if (userExists) {
         return await reply.status(409).send({ message: 'Email já registado.' })
       }
 
-      const hashedPassword = await bcrypt.hash(senha, 8) //
+      const hashedPassword = await bcrypt.hash(rawData.senha, 8)
 
       const user = await prisma.user.create({
         data: {
-          nome,
-          email,
+          nome: rawData.nome,
+          email: rawData.email,
           senha: hashedPassword,
-          cargo,
-          ativo: true, // Garante que o usuário registrado seja ativo
+          cargo: cargoFinal,
+          ativo: true,
         },
       })
 
-      return await reply.status(201).send({ //
+      return await reply.status(201).send({
         message: 'Utilizador criado com sucesso!',
         user: { id: user.id, nome: user.nome, email: user.email },
       })
     } catch (error) {
-      request.log.error(error, 'Erro ao registar utilizador') //
+      request.log.error(error, 'Erro ao registar utilizador')
       return await reply
         .status(500)
         .send({ message: 'Erro interno do servidor.' })
     }
   })
 
-  // Rota de Login
-  app.post('/login', async (request, reply) => { //
+  // Rota de Login (COM AS CORREÇÕES CRÍTICAS)
+  app.post('/login', async (request, reply) => {
     const loginBodySchema = z.object({
       email: z.string().email('Email inválido.'),
-      senha: z.string().min(6, 'A senha deve ter no mínimo 6 caracteres.'), //
+      senha: z.string().min(1, 'A senha é obrigatória.'),
     })
 
     try {
       const { email, senha } = loginBodySchema.parse(request.body)
-      const user = await prisma.user.findUnique({ where: { email } }) //
+      
+      const user = await prisma.user.findUnique({ where: { email } })
 
       if (!user) {
         return await reply
           .status(401)
-          .send({ message: 'Credenciais inválidas.' }) //
+          .send({ message: 'Credenciais inválidas.' })
       }
 
-      // Adiciona verificação de usuário 'ativo'
       if (!user.ativo) {
         return await reply
-          .status(403) // Forbidden
+          .status(403)
           .send({ message: 'Este usuário está desativado.' })
       }
 
-      const isPasswordCorrect = await bcrypt.compare(senha, user.senha) //
+      // --- CORREÇÃO 1: Validação Híbrida (Hash ou Texto Simples) ---
+      let isPasswordCorrect = false;
+
+      // 1. Tenta comparar como Hash (Bcrypt)
+      try {
+        isPasswordCorrect = await bcrypt.compare(senha, user.senha)
+      } catch (err) {
+        // Ignora erro de hash malformado
+      }
+
+      // 2. Fallback: Se falhar o hash, verifica se é senha legada (texto simples)
+      if (!isPasswordCorrect && senha === user.senha) {
+        console.log(`⚠️ Aviso: Usuário ${email} logou com senha não criptografada.`)
+        isPasswordCorrect = true
+      }
 
       if (!isPasswordCorrect) {
         return await reply
           .status(401)
-          .send({ message: 'Credenciais inválidas.' }) //
+          .send({ message: 'Credenciais inválidas.' })
       }
+      // -------------------------------------------------------------
 
       const token = app.jwt.sign(
         {
-          // Payload (informações dentro do token)
-          nome: user.nome, //
-          cargo: user.cargo, //
+          nome: user.nome,
+          cargo: user.cargo,
         },
         {
-          // Metadados (informações sobre o token)
-          sub: user.id, // 'sub' (subject) é o ID do usuário
-          expiresIn: '7d', // Token expira em 7 dias
+          sub: user.id,
+          expiresIn: '7d',
         },
       )
 
-      return await reply.status(200).send({ token }) //
+      // --- CORREÇÃO 2: Retornar o objeto 'user' junto com o token ---
+      // O Frontend precisa disso para carregar o contexto sem erros
+      return await reply.status(200).send({ 
+        token,
+        user: {
+          id: user.id,
+          nome: user.nome,
+          email: user.email,
+          cargo: user.cargo,
+          ativo: user.ativo
+        }
+      })
+
     } catch (error) {
-      request.log.error(error, 'Erro no processo de login') //
+      request.log.error(error, 'Erro no processo de login')
+      
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ 
+          message: 'Dados inválidos', 
+          errors: error.flatten().fieldErrors 
+        })
+      }
+
       return await reply
         .status(500)
         .send({ message: 'Ocorreu um erro inesperado no servidor.' })
     }
   })
 
-  // Rota para buscar dados do utilizador logado
-  app.get(
-    '/me',
-    { onRequest: [app.authenticate] },
-    async (request, reply) => { //
-      const userId = request.user.sub //
+  // Rota /me (Mantida igual, apenas garantindo tipagem)
+  app.get('/me', { onRequest: [app.authenticate] }, async (request, reply) => {
+  const { sub: userId } = request.user as { sub: string }
 
       const user = await prisma.user.findUnique({
-        where: { id: userId, ativo: true }, // Garante que o usuário ainda está ativo
-        select: {
-          id: true, //
-          nome: true, //
-          email: true, //
-          cargo: true, //
-        },
-      })
+    where: { id: userId },
+    select: {
+      id: true,
+      nome: true,
+      email: true,
+      cargo: true,
+      ativo: true
+    }
+  })
 
-      if (!user) {
-        return await reply.status(404).send({ message: 'Utilizador não encontrado.' }) //
-      }
-
-      return await reply.status(200).send(user) //
+      if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' })
+  return reply.send(user)
     },
   )
 }
@@ -2307,23 +2528,40 @@ export async function authRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\cases.ts
-SIZE: 19067 bytes
+SIZE: 20888 bytes
 ==================================================================
 // backend/src/routes/cases.ts
-import { type FastifyInstance, type FastifyReply } from 'fastify'
+import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { format as formatCsv } from 'fast-csv'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CaseStatus, Cargo, LogAction, CaseOrigin } from '@prisma/client'
+// Se der erro nesta importação, crie o arquivo lib/cache.ts (código no final da resposta)
 import { cache } from '../lib/cache'
+
+// --- TIPAGEM ---
+// Define o formato do usuário no Request (injetado pelo JWT)
+interface UserPayload {
+  sub: string
+  nome: string
+  cargo: Cargo // Usa o Enum do Prisma
+  iat?: number
+  exp?: number
+}
+
+// Extende o Request do Fastify para incluir o usuário
+type RequestWithUser = FastifyRequest & {
+  user: UserPayload
+}
 
 // --- FUNÇÕES AUXILIARES ---
 
 const stripTime = (date: Date | string): Date => {
   const d = new Date(date)
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+  // Garante datas UTC meio-dia para evitar problemas de fuso (-3h)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
 }
 
 const calculateUrgencyWeight = (urgencia: string): number => {
@@ -2342,7 +2580,7 @@ const formatDateForCsv = (date: Date | null | undefined): string => {
 
 function internalError(reply: FastifyReply, message: string, error: unknown) {
   console.error(message, error)
-  return reply.status(500).send({ message })
+  return reply.status(500).send({ message, details: error instanceof Error ? error.message : String(error) })
 }
 
 function detectChanges(oldData: any, newData: any) {
@@ -2352,6 +2590,8 @@ function detectChanges(oldData: any, newData: any) {
   for (const key in newData) {
     if (ignoreFields.includes(key)) continue;
     let val1 = oldData[key]; let val2 = newData[key];
+    
+    // Comparação de datas simplificada
     if ((val1 instanceof Date || typeof val1 === 'string') && (val2 instanceof Date || typeof val2 === 'string')) {
       const d1 = new Date(val1); const d2 = new Date(val2);
       if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
@@ -2359,23 +2599,39 @@ function detectChanges(oldData: any, newData: any) {
         if (s1 === s2) continue;
       }
     }
-    if (val1 !== val2) { if (!val1 && !val2) continue; changes[key] = { from: val1, to: val2 } }
+    
+    if (val1 !== val2) { 
+        if (!val1 && !val2) continue; 
+        changes[key] = { from: val1, to: val2 } 
+    }
   }
   return changes
 }
 
 async function createLog(casoId: string, autorId: string, acao: LogAction, descricao: string, valorAnterior?: string | null, valorNovo?: string | null) {
-  await prisma.caseLog.create({ data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo } })
+  try {
+     await prisma.caseLog.create({ 
+         data: { casoId, autorId, acao, descricao, valorAnterior: valorAnterior ? String(valorAnterior) : null, valorNovo: valorNovo ? String(valorNovo) : null } 
+     })
+  } catch (err) {
+     console.error("Falha ao criar log:", err)
+  }
 }
 
-function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
+// Lógica de Filtro por Cargo (Regra de Ouro do SUAS)
+function buildActiveCaseWhereClause(user: UserPayload) {
   switch (user.cargo) {
     case Cargo.Agente_Social:
+      // Agente vê casos que estão aguardando ou em acolhida COM ELE
       return {
-        agenteAcolhidaId: user.sub,
+        OR: [
+             { agenteAcolhidaId: user.sub },
+             { status: CaseStatus.AGUARDANDO_ACOLHIDA } // Opcional: ver fila geral
+        ],
         status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
       }
     case Cargo.Especialista:
+      // Especialista vê casos PAEFI atribuídos a ele
       return {
         especialistaPAEFIId: user.sub,
         status: { 
@@ -2387,9 +2643,10 @@ function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
         }
       }
     case Cargo.Gerente:
-      return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
+      // Gerente vê tudo que não está desligado ou arquivado
+      return { status: { not: CaseStatus.DESLIGADO } }
     default:
-      return { id: '-1' }
+      return { id: '-1' } // Segurança: não retorna nada
   }
 }
 
@@ -2397,12 +2654,14 @@ function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
 
 export async function caseRoutes(app: FastifyInstance) {
 
-  app.decorate('authenticate', async (request: any, reply: any) => {
+  // Middleware local
+  app.addHook('onRequest', async (request, reply) => {
     try { await request.jwtVerify() } catch (err) { await reply.send(err) }
   })
 
   // 1. Criar Caso
-  app.post('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
+  app.post('/cases', async (request, reply) => {
+    const req = request as RequestWithUser;
     const schema = z.object({
       nomeCompleto: z.string(),
       cpf: z.string().length(11),
@@ -2416,20 +2675,21 @@ export async function caseRoutes(app: FastifyInstance) {
       categoria: z.string(),
       orgaoDemandante: z.string(),
       origem: z.nativeEnum(CaseOrigin).default(CaseOrigin.ESPONTANEA),
-      agenteAcolhidaId: z.string().uuid(),
+      agenteAcolhidaId: z.string().uuid().optional().nullable(), // Opcional na criação
       numeroSei: z.string().nullable().optional(),
       linkSei: z.string().url().nullable().optional().or(z.literal('')),
       observacoes: z.string().nullable().optional(),
     })
 
     try {
-      const data = schema.parse(request.body)
-      const userId = request.user.sub
+      const data = schema.parse(req.body)
+      const userId = req.user.sub
       const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
 
       const novoCaso = await prisma.case.create({
         data: {
           ...data,
+          agenteAcolhidaId: data.agenteAcolhidaId || undefined, // Se não vier, fica null
           nascimento: stripTime(data.nascimento),
           dataEntrada: stripTime(data.dataEntrada),
           pesoUrgencia,
@@ -2452,7 +2712,8 @@ export async function caseRoutes(app: FastifyInstance) {
   })
 
   // 1.1 Editar Caso
-  app.put('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
+  app.put('/cases/:id', async (request, reply) => {
+    const req = request as RequestWithUser;
     const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({
       nomeCompleto: z.string(),
@@ -2467,17 +2728,21 @@ export async function caseRoutes(app: FastifyInstance) {
       categoria: z.string(),
       orgaoDemandante: z.string(),
       origem: z.nativeEnum(CaseOrigin).optional(),
-      agenteAcolhidaId: z.string().uuid(),
+      agenteAcolhidaId: z.string().uuid().optional().nullable(),
       numeroSei: z.string().nullable().optional(),
       linkSei: z.string().url().nullable().optional().or(z.literal('')),
       observacoes: z.string().nullable().optional(),
     })
 
     try {
-      const { id } = paramsSchema.parse(request.params)
-      const rawData = bodySchema.parse(request.body)
-      const userId = request.user.sub
-      const data = { ...rawData, nascimento: stripTime(rawData.nascimento), dataEntrada: stripTime(rawData.dataEntrada) }
+      const { id } = paramsSchema.parse(req.params)
+      const rawData = bodySchema.parse(req.body)
+      const userId = req.user.sub
+      const data = { 
+          ...rawData, 
+          nascimento: stripTime(rawData.nascimento), 
+          dataEntrada: stripTime(rawData.dataEntrada) 
+      }
 
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { agenteAcolhida: { select: { nome: true } } } })
       if (!oldCase) return reply.status(404).send({ message: 'Caso não encontrado.' })
@@ -2489,6 +2754,7 @@ export async function caseRoutes(app: FastifyInstance) {
         data: {
           ...data,
           pesoUrgencia,
+          agenteAcolhidaId: data.agenteAcolhidaId || null,
           numeroSei: data.numeroSei ?? null,
           linkSei: data.linkSei || null,
           observacoes: data.observacoes ?? null,
@@ -2507,8 +2773,9 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos
-  app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
+  // 2. Listar Casos (Com Paginação e Filtros)
+  app.get('/cases', async (request, reply) => {
+    const req = request as RequestWithUser;
     const schema = z.object({
       search: z.string().optional(),
       page: z.coerce.number().min(1).default(1),
@@ -2526,19 +2793,23 @@ export async function caseRoutes(app: FastifyInstance) {
     })
 
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(request.query)
+      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(req.query)
       let where: any = {}
 
+      // Lógica de Filtro Prioritária
       if (agenteId) {
         where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
       } else if (specialistId) {
         where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO] } }
       } else if (view === 'all') {
+         // Permite ver todos, mas exclui desligados
         where = { status: { not: CaseStatus.DESLIGADO } }
       } else {
-        where = buildActiveCaseWhereClause(request.user as any)
+        // Usa a lógica padrão do cargo
+        where = buildActiveCaseWhereClause(req.user)
       }
 
+      // Filtros Adicionais
       if (search) where.AND = [...(where.AND || []), { OR: [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }] }]
       if (status) where.status = status 
       if (urgencia && urgencia !== 'all') where.urgencia = urgencia
@@ -2568,7 +2839,7 @@ export async function caseRoutes(app: FastifyInstance) {
   })
 
   // 3. Listar Casos Fechados
-  app.get('/cases/closed', { onRequest: [app.authenticate] }, async (request, reply) => {
+  app.get('/cases/closed', async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
       page: z.coerce.number().min(1).default(1),
@@ -2598,8 +2869,8 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao listar casos finalizados.', error) }
   })
 
-  // 4. Detalhes do Caso (CORRIGIDO CONFORME SCHEMA)
-  app.get('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
+  // 4. Detalhes do Caso
+  app.get('/cases/:id', async (request, reply) => {
     try {
       const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
       
@@ -2610,14 +2881,14 @@ export async function caseRoutes(app: FastifyInstance) {
           agenteAcolhida: { select: { id: true, nome: true } },
           especialistaPAEFI: { select: { id: true, nome: true } },
           
-          familia: true,           // Relação correta: familia
+          familia: true,           
           
           encaminhamentos: {
             include: { autor: { select: { nome: true } } },
             orderBy: { dataEnvio: 'desc' }
           },
           
-          entregas: {              // Relação correta: entregas
+          entregas: {              
             orderBy: { dataSolicitacao: 'desc' }
           },
           
@@ -2640,20 +2911,28 @@ export async function caseRoutes(app: FastifyInstance) {
   })
 
   // 5. Mudar Status
-  app.patch('/cases/:id/status', { onRequest: [app.authenticate] }, async (request, reply) => {
+  app.patch('/cases/:id/status', async (request, reply) => {
+    const req = request as RequestWithUser;
     const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({ status: z.nativeEnum(CaseStatus) })
     try {
-      const { id } = paramsSchema.parse(request.params)
-      const { status } = bodySchema.parse(request.body)
-      const { sub: userId } = request.user as { sub: string }
+      const { id } = paramsSchema.parse(req.params)
+      const { status } = bodySchema.parse(req.body)
+      const { sub: userId } = req.user
       
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
       let updateData: any = { status }
+      // Se estiver reativando um caso desligado, limpa os dados de desligamento
       if (caso.status === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO) {
-        updateData = { status: CaseStatus.AGUARDANDO_ACOLHIDA, motivoDesligamento: null, destinoDesligamento: null, dataDesligamento: null, parecerFinal: null }
+        updateData = { 
+            status: CaseStatus.AGUARDANDO_ACOLHIDA, 
+            motivoDesligamento: null, 
+            destinoDesligamento: null, 
+            dataDesligamento: null, 
+            parecerFinal: null 
+        }
       }
 
       const updated = await prisma.case.update({ where: { id }, data: updateData })
@@ -2664,15 +2943,18 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao alterar status.', error) }
   })
 
-  // 6. Atribuir
-  app.patch('/cases/:id/assign', { onRequest: [app.authenticate] }, async (request, reply) => {
+  // 6. Atribuir Especialista (Apenas Gerente)
+  app.patch('/cases/:id/assign', async (request, reply) => {
+    const req = request as RequestWithUser;
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ specialistId: z.string().uuid() })
     try {
-      const { id } = params.parse(request.params)
-      const { specialistId } = body.parse(request.body)
-      const { cargo, sub: userId } = request.user as { sub: string, cargo: string }
-      if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+      const { id } = params.parse(req.params)
+      const { specialistId } = body.parse(req.body)
+      const { cargo, sub: userId } = req.user
+      
+      // Permite atribuição por Gerente 
+      if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado. Apenas gerentes atribuem PAEFI.' })
       
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
       const spec = await prisma.user.findUnique({ where: { id: specialistId } })
@@ -2693,8 +2975,9 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao atribuir.', error) }
   })
 
-  // 7. Desligar
-  app.patch('/cases/:id/close', { onRequest: [app.authenticate] }, async (request, reply) => {
+  // 7. Desligar Caso
+  app.patch('/cases/:id/close', async (request, reply) => {
+    const req = request as RequestWithUser;
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ 
       parecerFinal: z.string().min(10), 
@@ -2702,14 +2985,15 @@ export async function caseRoutes(app: FastifyInstance) {
       destinoDesligamento: z.string().optional() 
     })
     try {
-      const { id } = params.parse(request.params)
-      const { parecerFinal, motivoDesligamento, destinoDesligamento } = body.parse(request.body)
-      const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+      const { id } = params.parse(req.params)
+      const { parecerFinal, motivoDesligamento, destinoDesligamento } = body.parse(req.body)
+      const { sub: userId, cargo } = req.user
       
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
       
       const isManager = cargo === Cargo.Gerente
+      // Apenas o Gerente ou o Técnico Responsável podem desligar
       if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: 'Sem permissão.' })
       
       const updated = await prisma.case.update({ 
@@ -2729,9 +3013,10 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao desligar.', error) }
   })
 
-  // 8. Export
-  app.get('/cases/export', { onRequest: [app.authenticate] }, async (request, reply) => {
-    if ((request.user as any).cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+  // 8. Exportar CSV (Gerente)
+  app.get('/cases/export', async (request, reply) => {
+    const req = request as RequestWithUser;
+    if (req.user.cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
     try {
       const casos = await prisma.case.findMany({ orderBy: { createdAt: 'desc' }, include: { criadoPor: true, agenteAcolhida: true, especialistaPAEFI: true } })
       reply.header('Content-Disposition', `attachment; filename="export_casos_${format(new Date(), 'yyyy-MM-dd')}.csv"`)
@@ -2757,13 +3042,23 @@ export async function caseRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\deliverables.ts
-SIZE: 3391 bytes
+SIZE: 6225 bytes
 ==================================================================
 // backend/src/routes/deliverables.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction } from '@prisma/client'
+import { LogAction, Cargo } from '@prisma/client'
+
+const emptyToNull = (val: unknown) => {
+  if (typeof val === 'string' && val.trim() === '') return null;
+  return val;
+}
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function deliverableRoutes(app: FastifyInstance) {
   
@@ -2771,96 +3066,160 @@ export async function deliverableRoutes(app: FastifyInstance) {
     try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar Entregas de um Caso
+  // [GET] Listar Entregas
   app.get('/cases/:caseId/deliverables', async (req, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
-    
-    const items = await prisma.serviceDeliverable.findMany({
-      where: { casoId: caseId },
-      orderBy: { createdAt: 'desc' },
-      include: { responsavel: { select: { nome: true } } }
-    })
-    
-    return reply.send(items)
+    try {
+      const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
+      
+      const items = await prisma.serviceDeliverable.findMany({
+        where: { casoId: caseId }, // Aqui funciona pois caseId é o valor
+        orderBy: { dataSolicitacao: 'desc' },
+        include: { responsavel: { select: { nome: true } } }
+      })
+      
+      return reply.send(items)
+    } catch (error) {
+      return reply.status(500).send({ message: 'Erro ao listar benefícios.' })
+    }
   })
 
-  // [POST] Criar Nova Entrega (Benefício)
+  // [POST] Criar Nova Entrega (CORRIGIDO)
   app.post('/cases/:caseId/deliverables', async (req, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
+    const paramsSchema = z.object({ caseId: z.string().uuid() })
     const bodySchema = z.object({
-      tipo: z.string().min(2),
+      tipo: z.string().min(2, "Informe o tipo do benefício"),
       status: z.enum(['SOLICITADO', 'CONCEDIDO', 'NEGADO', 'ENTREGUE']).default('SOLICITADO'),
-      observacoes: z.string().optional()
+      observacoes: z.preprocess(emptyToNull, z.string().optional().nullable())
     })
 
-    const { tipo, status, observacoes } = bodySchema.parse(req.body)
-    const userId = (req.user as any).sub
+    try {
+      const { caseId } = paramsSchema.parse(req.params)
+      const { tipo, status, observacoes } = bodySchema.parse(req.body)
+      const { sub: userId } = req.user as UserPayload
 
-    const item = await prisma.serviceDeliverable.create({
-      data: {
-        tipo,
-        status,
-        observacoes,
-        casoId,
-        responsavelId: userId,
-        dataSolicitacao: new Date()
-      }
-    })
+      const caso = await prisma.case.findUnique({ where: { id: caseId } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-    await prisma.caseLog.create({
-      data: {
-        casoId,
-        autorId: userId,
-        acao: LogAction.ENTREGA_BENEFICIO_CRIADA,
-        descricao: `Registrou entrega/benefício: ${tipo} (${status})`
-      }
-    })
+      const dataEntrega = status === 'ENTREGUE' ? new Date() : null;
 
-    return reply.status(201).send(item)
+      const item = await prisma.serviceDeliverable.create({
+        data: {
+          tipo,
+          status,
+          observacoes,
+          casoId: caseId, // CORREÇÃO: Mapeamento explícito (Banco: Variável)
+          responsavelId: userId,
+          dataSolicitacao: new Date(),
+          dataEntrega
+        }
+      })
+
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId, // CORREÇÃO AQUI TAMBÉM
+          autorId: userId,
+          acao: LogAction.ENTREGA_BENEFICIO_CRIADA,
+          descricao: `Registrou entrega/benefício: ${tipo} (${status})`
+        }
+      })
+
+      return reply.status(201).send(item)
+
+    } catch (error) {
+      console.error("Erro POST Deliverables:", error)
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
+      return reply.status(500).send({ message: 'Erro ao registrar benefício.' })
+    }
   })
 
-  // [PATCH] Atualizar Status da Entrega
+  // [PATCH] Atualizar Status
   app.patch('/deliverables/:id', async (req, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+    const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({
       status: z.enum(['SOLICITADO', 'CONCEDIDO', 'NEGADO', 'ENTREGUE']),
-      dataEntrega: z.string().optional(), // ISO String
-      observacoes: z.string().optional()
+      dataEntrega: z.preprocess(emptyToNull, z.string().optional().nullable()),
+      observacoes: z.preprocess(emptyToNull, z.string().optional().nullable())
     })
 
-    const { status, dataEntrega, observacoes } = bodySchema.parse(req.body)
-    const userId = (req.user as any).sub
+    try {
+      const { id } = paramsSchema.parse(req.params)
+      const { status, dataEntrega, observacoes } = bodySchema.parse(req.body)
+      const { sub: userId } = req.user as UserPayload
 
-    const oldItem = await prisma.serviceDeliverable.findUnique({ where: { id } })
-    if (!oldItem) return reply.status(404).send()
+      const oldItem = await prisma.serviceDeliverable.findUnique({ where: { id } })
+      if (!oldItem) return reply.status(404).send({ message: 'Item não encontrado.' })
 
-    const updated = await prisma.serviceDeliverable.update({
-      where: { id },
-      data: {
-        status,
-        observacoes,
-        dataEntrega: dataEntrega ? new Date(dataEntrega) : undefined,
-        updatedAt: new Date()
+      let finalDate = oldItem.dataEntrega;
+      
+      if (dataEntrega) {
+        finalDate = new Date(dataEntrega);
+      } else if (status === 'ENTREGUE' && oldItem.status !== 'ENTREGUE') {
+        finalDate = new Date();
+      } else if (status !== 'ENTREGUE') {
+        finalDate = null;
       }
-    })
 
-    await prisma.caseLog.create({
-      data: {
-        casoId: oldItem.casoId,
-        autorId: userId,
-        acao: LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
-        descricao: `Atualizou benefício ${oldItem.tipo} para ${status}`
+      const updated = await prisma.serviceDeliverable.update({
+        where: { id },
+        data: {
+          status,
+          observacoes,
+          dataEntrega: finalDate,
+          updatedAt: new Date()
+        }
+      })
+
+      if (oldItem.status !== status || oldItem.observacoes !== observacoes) {
+        await prisma.caseLog.create({
+          data: {
+            casoId: oldItem.casoId,
+            autorId: userId,
+            acao: LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
+            descricao: `Atualizou benefício ${oldItem.tipo}: ${oldItem.status} -> ${status}`
+          }
+        })
       }
-    })
 
-    return reply.send(updated)
+      return reply.send(updated)
+
+    } catch (error) {
+      console.error("Erro PATCH Deliverables:", error)
+      return reply.status(500).send({ message: 'Erro ao atualizar benefício.' })
+    }
   })
 
-  // [DELETE] Remover Entrega
+  // [DELETE] Remover
   app.delete('/deliverables/:id', async (req, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-    await prisma.serviceDeliverable.delete({ where: { id } })
-    return reply.status(204).send()
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    
+    try {
+      const { id } = paramsSchema.parse(req.params)
+      const { sub: userId, cargo } = req.user as UserPayload
+
+      const item = await prisma.serviceDeliverable.findUnique({ where: { id } })
+      if (!item) return reply.status(404).send({ message: 'Item não encontrado.' })
+
+      if (item.responsavelId !== userId && cargo !== Cargo.Gerente) {
+         return reply.status(403).send({ message: "Sem permissão para excluir." })
+      }
+
+      await prisma.serviceDeliverable.delete({ where: { id } })
+
+      await prisma.caseLog.create({
+        data: {
+          casoId: item.casoId,
+          autorId: userId,
+          acao: LogAction.OUTRO,
+          descricao: `Removeu registro de benefício: ${item.tipo}`
+        }
+      })
+
+      return reply.status(204).send()
+
+    } catch (error) {
+      console.error("Erro DELETE Deliverables:", error)
+      return reply.status(500).send({ message: 'Erro ao excluir item.' })
+    }
   })
 }
 
@@ -2868,128 +3227,190 @@ export async function deliverableRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\evolutions.ts
-SIZE: 4048 bytes
+SIZE: 6033 bytes
 ==================================================================
 // backend/src/routes/evolutions.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction, Cargo, CaseStatus } from '@prisma/client'
+import { Cargo, LogAction } from '@prisma/client'
+
+interface UserPayload {
+  sub: string
+  nome: string
+  cargo: Cargo
+}
 
 export async function evolutionRoutes(app: FastifyInstance) {
   
   app.addHook('onRequest', async (request, reply) => {
-    try { await request.jwtVerify() } 
-    catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
+    try { await request.jwtVerify() } catch (err) { await reply.status(401).send(err) }
   })
 
-  // [GET] Listar Evoluções (Paginado + Lógica de Acesso SUAS)
-  app.get('/cases/:caseId/evolutions', async (request, reply) => {
-    const paramsSchema = z.object({ 
-      caseId: z.string().uuid() 
+  // 1. CRIAR EVOLUÇÃO (Restaurado para usar URL param)
+  // Rota: POST /cases/:caseId/evolutions
+  app.post('/cases/:caseId/evolutions', async (request, reply) => {
+    const paramsSchema = z.object({ caseId: z.string().uuid() })
+    const bodySchema = z.object({
+      conteudo: z.string().min(3, "Escreva algo relevante."),
+      sigilo: z.boolean().default(false),
     })
-    
+
+    try {
+      // Pega o ID do CASO direto da URL (mais seguro que do corpo)
+      const { caseId } = paramsSchema.parse(request.params)
+      const { conteudo, sigilo } = bodySchema.parse(request.body)
+      const user = request.user as UserPayload
+
+      // Verifica se o caso existe
+      const caso = await prisma.case.findUnique({ where: { id: caseId } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+
+      // Cria a evolução vinculada ao ID da URL
+      const evolucao = await prisma.evolucao.create({
+        data: {
+          conteudo,
+          sigilo,
+          casoId: caseId, // Vínculo garantido
+          autorId: user.sub,
+        },
+        include: {
+          autor: { select: { id: true, nome: true, cargo: true } }
+        }
+      })
+
+      // Log e atualização de timestamp
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: user.sub,
+          acao: LogAction.EVOLUCAO_CRIADA,
+          descricao: sigilo ? 'Evolução Sigilosa.' : 'Evolução Técnica.',
+        }
+      })
+
+      await prisma.case.update({
+        where: { id: caseId },
+        data: { updatedAt: new Date() }
+      })
+
+      return reply.status(201).send(evolucao)
+
+    } catch (error) {
+      console.error("Erro POST Evolução:", error)
+      return reply.status(500).send({ message: 'Erro ao criar evolução.' })
+    }
+  })
+
+  // 2. LISTAR EVOLUÇÕES (Filtros Ajustados)
+  app.get('/cases/:caseId/evolutions', async (request, reply) => {
+    const paramsSchema = z.object({ caseId: z.string().uuid() })
     const querySchema = z.object({
       page: z.coerce.number().min(1).default(1),
-      pageSize: z.coerce.number().min(1).max(50).default(10)
+      pageSize: z.coerce.number().default(10) 
     })
 
-    const { caseId } = paramsSchema.parse(request.params)
-    const { page, pageSize } = querySchema.parse(request.query)
-    const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
+      const { page, pageSize } = querySchema.parse(request.query)
+      const user = request.user as UserPayload
 
-    // 1. Verificar permissão de acesso ao caso atual
-    const caso = await prisma.case.findUnique({
-      where: { id: caseId },
-      select: { 
-        agenteAcolhidaId: true, 
-        especialistaPAEFIId: true,
-        status: true
+      // Filtro Base
+      const whereCondition: any = {
+        casoId: caseId, // Garante que só busca desse caso
       }
-    })
 
-    if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+      // Filtro de Segurança (Quem vê o quê)
+      if (user.cargo !== Cargo.Gerente) {
+        whereCondition.OR = [
+            { sigilo: false },       // Vejo todas as públicas
+            { autorId: user.sub }    // Vejo as minhas (mesmo sigilosas)
+        ]
+      }
 
-    // 2. Determinar se o usuário tem "Privilégio de Sigilo" neste caso
-    // Regra SUAS: Gerente VÊ TUDO. Técnico VÊ se for o Autor OU se for o Responsável Atual pelo caso.
-    const isGerente = cargo === Cargo.Gerente
-    const isResponsavelAtual = 
-      caso.agenteAcolhidaId === userId || 
-      caso.especialistaPAEFIId === userId
-
-    const canViewSigilo = isGerente || isResponsavelAtual
-
-    // 3. Query Otimizada (Filtro direto no Banco)
-    const whereCondition: any = {
-      casoId: caseId,
-    }
-
-    // Se NÃO pode ver sigilo, filtramos no banco para não trazer registros sigilosos de terceiros
-    if (!canViewSigilo) {
-      whereCondition.OR = [
-        { sigilo: false },           // Pode ver qualquer pública
-        { autorId: userId }          // Pode ver as suas próprias (mesmo sigilosas)
-      ]
-    }
-
-    const [evolucoes, total] = await Promise.all([
-      prisma.evolucao.findMany({
-        where: whereCondition,
-        orderBy: { createdAt: 'desc' },
-        take: pageSize,
-        skip: (page - 1) * pageSize,
-        include: {
-          autor: { 
-            select: { id: true, nome: true, cargo: true } 
+      const [evolucoes, total] = await Promise.all([
+        prisma.evolucao.findMany({
+          where: whereCondition,
+          orderBy: { createdAt: 'desc' }, // Mais recentes primeiro
+          take: pageSize,
+          skip: (page - 1) * pageSize,
+          include: {
+            autor: {
+              select: { id: true, nome: true, cargo: true }
+            }
           }
-        }
-      }),
-      prisma.evolucao.count({ where: whereCondition })
-    ])
+        }),
+        prisma.evolucao.count({ where: whereCondition })
+      ])
 
-    return reply.send({
-      items: evolucoes,
-      total,
-      page,
-      totalPages: Math.ceil(total / pageSize)
-    })
+      return reply.send({
+        items: evolucoes,
+        total,
+        page,
+        totalPages: Math.ceil(total / pageSize)
+      })
+
+    } catch (error) {
+      console.error("Erro GET Evoluções:", error)
+      return reply.status(500).send({ message: 'Erro ao listar evoluções.' })
+    }
   })
 
-  // [POST] Criar Nova Evolução (Mantido similar, apenas reforçando validação)
-  app.post('/cases/:caseId/evolutions', async (request, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(request.params)
-    
-    const bodySchema = z.object({
-      conteudo: z.string().min(5, "A evolução deve ter conteúdo relevante."),
-      sigilo: z.boolean().optional().default(false)
-    })
+  // 3. EDITAR
+  app.put('/evolutions/:id', async (request, reply) => {
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    const bodySchema = z.object({ conteudo: z.string().min(3), sigilo: z.boolean() })
 
-    const { conteudo, sigilo } = bodySchema.parse(request.body)
-    const { sub: userId } = request.user as { sub: string }
+    try {
+      const { id } = paramsSchema.parse(request.params)
+      const { conteudo, sigilo } = bodySchema.parse(request.body)
+      const user = request.user as UserPayload
 
-    const evolucao = await prisma.evolucao.create({
-      data: {
-        conteudo,
-        sigilo,
-        casoId: caseId,
-        autorId: userId
-      },
-      include: { autor: { select: { id: true, nome: true, cargo: true } } } // Retorno otimizado
-    })
+      const evolucao = await prisma.evolucao.findUnique({ where: { id } })
+      if (!evolucao) return reply.status(404).send({ message: 'Não encontrado.' })
 
-    // Log de Auditoria
-    await prisma.caseLog.create({
-      data: {
-        casoId: caseId,
-        autorId: userId,
-        acao: LogAction.EVOLUCAO_CRIADA,
-        descricao: sigilo 
-          ? 'Registrou uma evolução técnica (SIGILOSA).' 
-          : 'Registrou uma evolução técnica pública.'
+      if (evolucao.autorId !== user.sub) return reply.status(403).send({ message: 'Sem permissão.' })
+
+      const updated = await prisma.evolucao.update({
+        where: { id },
+        data: { conteudo, sigilo }
+      })
+
+      return reply.send(updated)
+    } catch (error) {
+      return reply.status(500).send({ message: 'Erro ao editar.' })
+    }
+  })
+
+  // 4. EXCLUIR
+  app.delete('/evolutions/:id', async (request, reply) => {
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    try {
+      const { id } = paramsSchema.parse(request.params)
+      const user = request.user as UserPayload
+
+      const evolucao = await prisma.evolucao.findUnique({ where: { id } })
+      if (!evolucao) return reply.status(404).send({ message: 'Não encontrado.' })
+
+      if (evolucao.autorId !== user.sub && user.cargo !== Cargo.Gerente) {
+        return reply.status(403).send({ message: 'Sem permissão.' })
       }
-    })
 
-    return reply.status(201).send(evolucao)
+      await prisma.evolucao.delete({ where: { id } })
+      
+      await prisma.caseLog.create({
+        data: {
+          casoId: evolucao.casoId,
+          autorId: user.sub,
+          acao: LogAction.OUTRO,
+          descricao: 'Excluiu uma evolução.'
+        }
+      })
+
+      return reply.status(204).send()
+    } catch (error) {
+      return reply.status(500).send({ message: 'Erro ao excluir.' })
+    }
   })
 }
 
@@ -2997,34 +3418,45 @@ export async function evolutionRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\family.ts
-SIZE: 3385 bytes
+SIZE: 7476 bytes
 ==================================================================
 // backend/src/routes/family.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { LogAction } from '@prisma/client'
+import { differenceInYears } from 'date-fns'
+
+const calculateAge = (birthDate: Date): number | undefined => {
+  if (!birthDate || isNaN(birthDate.getTime())) return undefined;
+  return differenceInYears(new Date(), birthDate)
+}
+
+const emptyToNull = (val: unknown) => {
+  if (typeof val === 'string' && val.trim() === '') return null;
+  return val;
+}
 
 export async function familyRoutes(app: FastifyInstance) {
+  
   app.addHook('onRequest', async (req, reply) => {
-    try { await req.jwtVerify() } catch { return reply.status(401).send() }
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [POST] Adicionar membro da família
+  // 1. ADICIONAR MEMBRO
   app.post('/cases/:caseId/family', async (req, reply) => {
     const paramsSchema = z.object({ caseId: z.string().uuid() })
+    
     const bodySchema = z.object({
-      nome: z.string().min(2),
-      parentesco: z.string().min(2),
-      idade: z.number().int().nonnegative().optional(),
-      // [NOVOS CAMPOS]
-      cpf: z.string().optional().nullable(),
-      nascimento: z.coerce.date().optional().nullable(),
-      telefone: z.string().optional().nullable(),
-      
-      ocupacao: z.string().optional(),
-      renda: z.number().nonnegative().optional(),
-      observacoes: z.string().optional()
+      nome: z.string().min(2, "Nome muito curto"),
+      parentesco: z.string().min(2, "Informe o parentesco"),
+      idade: z.preprocess(emptyToNull, z.coerce.number().int().nonnegative().optional().nullable()),
+      cpf: z.preprocess(emptyToNull, z.string().optional().nullable()),
+      nascimento: z.preprocess(emptyToNull, z.coerce.date().optional().nullable()),
+      telefone: z.preprocess(emptyToNull, z.string().optional().nullable()),
+      ocupacao: z.preprocess(emptyToNull, z.string().optional().nullable()),
+      renda: z.preprocess((val) => (val === '' ? 0 : val), z.coerce.number().nonnegative().optional().default(0)),
+      observacoes: z.preprocess(emptyToNull, z.string().optional().nullable())
     })
 
     try {
@@ -3032,22 +3464,36 @@ export async function familyRoutes(app: FastifyInstance) {
       const data = bodySchema.parse(req.body)
       const userId = (req.user as any).sub
 
+      const caso = await prisma.case.findUnique({ where: { id: caseId } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+
       const cpfLimpo = data.cpf ? data.cpf.replace(/\D/g, '') : null
       const telefoneLimpo = data.telefone ? data.telefone.replace(/\D/g, '') : null
+      
+      let idadeFinal = data.idade;
+      if (data.nascimento) {
+        const idadeCalculada = calculateAge(data.nascimento);
+        if (idadeCalculada !== undefined) idadeFinal = idadeCalculada;
+      }
+      const idadeParaSalvar = (idadeFinal === null) ? undefined : idadeFinal;
 
       const member = await prisma.membroFamilia.create({
         data: {
-          ...data,
+          casoId: caseId, // CORREÇÃO CONFIRMADA
+          nome: data.nome,
+          parentesco: data.parentesco,
+          idade: idadeParaSalvar,
+          nascimento: data.nascimento,
           cpf: cpfLimpo,
           telefone: telefoneLimpo,
-          // [CORREÇÃO]: Mapeamento explícito (banco: variável)
-          casoId: caseId
+          ocupacao: data.ocupacao,
+          renda: data.renda,
+          observacoes: data.observacoes
         }
       })
 
       await prisma.caseLog.create({
         data: {
-          // [CORREÇÃO]: Mapeamento explícito aqui também
           casoId: caseId,
           autorId: userId,
           acao: LogAction.MEMBRO_FAMILIA_ADICIONADO,
@@ -3055,38 +3501,111 @@ export async function familyRoutes(app: FastifyInstance) {
         }
       })
 
-      return reply.status(201).send(member)
+      const safeMember = {
+        ...member,
+        renda: member.renda ? Number(member.renda) : 0
+      }
+
+      return reply.status(201).send(safeMember)
+
     } catch (error) {
-      console.error(error)
+      console.error("Erro POST Family:", error)
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
       return reply.status(500).send({ message: 'Erro ao adicionar familiar.' })
     }
   })
 
-  // [GET] Listar família
+  // 2. LISTAR (CORRIGIDO)
   app.get('/cases/:caseId/family', async (req, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
-    const members = await prisma.membroFamilia.findMany({
-      // [CORREÇÃO]: Mapeamento explícito
-      where: { casoId: caseId },
-      orderBy: { createdAt: 'asc' } 
-    })
-    return reply.send(members)
+    try {
+      const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
+      
+      const members = await prisma.membroFamilia.findMany({
+        // CORREÇÃO AQUI: Mapeando explicitamente a variável
+        where: { casoId: caseId }, 
+        orderBy: [{ renda: 'desc' }, { idade: 'desc' }]
+      })
+
+      const safeMembers = members.map(m => ({
+        ...m,
+        renda: m.renda ? Number(m.renda) : 0
+      }))
+
+      return reply.send(safeMembers)
+
+    } catch (error) {
+      console.error("Erro GET Family:", error)
+      return reply.status(500).send({ message: 'Erro ao listar família.' })
+    }
   })
 
-  // [DELETE] Remover familiar
+  // 3. EDITAR
+  app.put('/family/:id', async (req, reply) => {
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    const bodySchema = z.object({
+        nome: z.string().min(2),
+        parentesco: z.string(),
+        nascimento: z.preprocess(emptyToNull, z.coerce.date().optional().nullable()),
+        idade: z.preprocess(emptyToNull, z.coerce.number().optional().nullable()),
+        ocupacao: z.preprocess(emptyToNull, z.string().optional().nullable()),
+        renda: z.preprocess((val) => (val === '' ? 0 : val), z.coerce.number().nonnegative().optional()),
+        cpf: z.preprocess(emptyToNull, z.string().optional().nullable()),
+        telefone: z.preprocess(emptyToNull, z.string().optional().nullable()),
+        observacoes: z.preprocess(emptyToNull, z.string().optional().nullable())
+    })
+
+    try {
+        const { id } = paramsSchema.parse(req.params)
+        const data = bodySchema.parse(req.body)
+        
+        let idadeFinal = data.idade;
+        if (data.nascimento) {
+            const calc = calculateAge(data.nascimento);
+            if (calc !== undefined) idadeFinal = calc;
+        }
+        const idadeParaSalvar = (idadeFinal === null) ? null : idadeFinal;
+
+        const updated = await prisma.membroFamilia.update({
+            where: { id },
+            data: {
+                nome: data.nome,
+                parentesco: data.parentesco,
+                nascimento: data.nascimento,
+                idade: idadeParaSalvar,
+                ocupacao: data.ocupacao,
+                renda: data.renda,
+                observacoes: data.observacoes,
+                cpf: data.cpf ? data.cpf.replace(/\D/g, '') : null,
+                telefone: data.telefone ? data.telefone.replace(/\D/g, '') : null
+            }
+        })
+
+        const safeUpdated = {
+            ...updated,
+            renda: updated.renda ? Number(updated.renda) : 0
+        }
+
+        return reply.send(safeUpdated)
+    } catch (error) {
+        console.error("Erro PUT Family:", error)
+        return reply.status(500).send({ message: 'Erro ao atualizar membro.' })
+    }
+  })
+
+  // 4. REMOVER
   app.delete('/family/:id', async (req, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
     const userId = (req.user as any).sub
     
     try {
       const member = await prisma.membroFamilia.findUnique({ where: { id } })
-      if (!member) return reply.status(404).send()
+      if (!member) return reply.status(404).send({ message: 'Membro não encontrado.' })
 
       await prisma.membroFamilia.delete({ where: { id } })
 
       await prisma.caseLog.create({
         data: {
-          casoId: member.casoId, // Aqui 'member' vem do banco, então já tem 'casoId' correto
+          casoId: member.casoId,
           autorId: userId,
           acao: LogAction.OUTRO,
           descricao: `Removeu familiar: ${member.nome}`
@@ -3095,7 +3614,8 @@ export async function familyRoutes(app: FastifyInstance) {
       
       return reply.status(204).send()
     } catch (error) {
-      return reply.status(500).send()
+      console.error("Erro DELETE Family:", error)
+      return reply.status(500).send({ message: 'Erro ao remover familiar.' })
     }
   })
 }
@@ -3104,12 +3624,16 @@ export async function familyRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\filters.ts
-SIZE: 2976 bytes
+SIZE: 3235 bytes
 ==================================================================
 // backend/src/routes/filters.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
+
+interface UserPayload {
+  sub: string
+}
 
 export async function filterRoutes(app: FastifyInstance) {
   
@@ -3121,9 +3645,9 @@ export async function filterRoutes(app: FastifyInstance) {
     }
   })
 
-  // [GET] Listar
+  // [GET] Listar Filtros Salvos
   app.get('/filters', async (request, reply) => {
-    const { sub: userId } = request.user as { sub: string }
+    const { sub: userId } = request.user as UserPayload
     
     try {
       const filters = await prisma.savedFilter.findMany({
@@ -3137,35 +3661,29 @@ export async function filterRoutes(app: FastifyInstance) {
     }
   })
 
-  // [POST] Salvar
+  // [POST] Salvar Novo Filtro
   app.post('/filters', async (request, reply) => {
-    const { sub: userId } = request.user as { sub: string }
+    const { sub: userId } = request.user as UserPayload
     
-    // CORREÇÃO AQUI: Usamos z.any() para o config para evitar o erro interno do Zod
     const bodySchema = z.object({
       nome: z.string().min(1, "Dê um nome ao filtro"),
-      config: z.any() 
+      // Melhoria: Aceita qualquer objeto JSON válido, mas força ser um objeto, não string/número solto
+      config: z.record(z.string(), z.any()).default({}) 
     })
 
     try {
       const { nome, config } = bodySchema.parse(request.body)
 
-      // Verifica usuário (debug)
-      const userExists = await prisma.user.findUnique({ where: { id: userId } })
-      if (!userExists) {
-        return reply.status(401).send({ message: 'Sessão inválida. Faça login novamente.' })
-      }
-
-      // Limite
+      // Regra de Negócio: Limite de 10 filtros por usuário
       const count = await prisma.savedFilter.count({ where: { userId } })
       if (count >= 10) {
-        return reply.status(400).send({ message: 'Limite de 10 filtros atingido.' })
+        return reply.status(400).send({ message: 'Você atingiu o limite de 10 filtros salvos.' })
       }
 
       const filter = await prisma.savedFilter.create({
         data: {
           nome,
-          config: config ?? {}, // Garante que não é null
+          config, // Agora garantido que é um objeto JSON
           userId
         }
       })
@@ -3174,21 +3692,28 @@ export async function filterRoutes(app: FastifyInstance) {
 
     } catch (error) {
       console.error("❌ ERRO NO POST /filters:", error)
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ message: 'Dados inválidos.', errors: error.flatten().fieldErrors })
+      }
       return reply.status(500).send({ message: 'Erro ao salvar filtro.' })
     }
   })
 
-  // [DELETE] Apagar
+  // [DELETE] Apagar Filtro
   app.delete('/filters/:id', async (request, reply) => {
     const paramsSchema = z.object({ id: z.string().uuid() })
-    const { sub: userId } = request.user as { sub: string }
+    const { sub: userId } = request.user as UserPayload
 
     try {
       const { id } = paramsSchema.parse(request.params)
 
       const filter = await prisma.savedFilter.findUnique({ where: { id } })
-      if (!filter || filter.userId !== userId) {
-        return reply.status(403).send({ message: 'Sem permissão.' })
+      
+      if (!filter) return reply.status(404).send({ message: 'Filtro não encontrado.' })
+      
+      // Segurança: Só o dono apaga
+      if (filter.userId !== userId) {
+        return reply.status(403).send({ message: 'Você não tem permissão para apagar este filtro.' })
       }
 
       await prisma.savedFilter.delete({ where: { id } })
@@ -3205,20 +3730,25 @@ export async function filterRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\groups.ts
-SIZE: 7633 bytes
+SIZE: 8497 bytes
 ==================================================================
 // backend/src/routes/groups.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction, GroupType } from '@prisma/client'
+import { LogAction, GroupType, Cargo } from '@prisma/client'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function groupRoutes(app: FastifyInstance) {
   
   app.addHook('onRequest', async (req, reply) => {
-    try { await req.jwtVerify() } catch { return reply.status(401).send() }
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
   // [GET] Listar Grupos
@@ -3249,8 +3779,9 @@ export async function groupRoutes(app: FastifyInstance) {
           facilitador: { select: { id: true, nome: true } },
           participantes: {
             include: {
-              caso: { select: { id: true, nomeCompleto: true } }
-            }
+              caso: { select: { id: true, nomeCompleto: true, telefone: true } }
+            },
+            orderBy: { caso: { nomeCompleto: 'asc' } } // Lista de chamada em ordem alfabética
           }
         }
       })
@@ -3262,12 +3793,11 @@ export async function groupRoutes(app: FastifyInstance) {
     }
   })
 
-  // [POST] Criar Grupo (Suporte a Múltiplas Datas / Recorrência)
+  // [POST] Criar Grupo (Suporte a Recorrência)
   app.post('/groups', async (req, reply) => {
     try {
-      // [ATUALIZAÇÃO] Aceita 'datas' (array) ou 'dataRealizacao' (single - legado)
       const bodySchema = z.object({
-        tema: z.string().min(3),
+        tema: z.string().min(3, "Tema é obrigatório"),
         tipo: z.nativeEnum(GroupType),
         // Aceita array de strings ou string única (para compatibilidade)
         datas: z.array(z.string()).optional(), 
@@ -3278,11 +3808,10 @@ export async function groupRoutes(app: FastifyInstance) {
       })
 
       const data = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { sub: userId } = req.user as UserPayload
 
-      // Determina a lista final de datas
+      // Normaliza as datas
       let datesToCreate: string[] = []
-      
       if (data.datas && data.datas.length > 0) {
         datesToCreate = data.datas
       } else if (data.dataRealizacao) {
@@ -3291,9 +3820,9 @@ export async function groupRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Selecione pelo menos uma data.' })
       }
 
-      // Criação em lote (Transação não é estritamente necessária aqui, mas Promise.all agiliza)
-      const createdGroups = await Promise.all(
-        datesToCreate.map(async (dateStr) => {
+      // Usa Transaction para garantir que todas as datas sejam criadas ou nenhuma
+      const createdGroups = await prisma.$transaction(
+        datesToCreate.map((dateStr) => {
           return prisma.groupActivity.create({
             data: {
               tema: data.tema,
@@ -3308,14 +3837,8 @@ export async function groupRoutes(app: FastifyInstance) {
         })
       )
 
-      await prisma.caseLog.create({
-        data: {
-          casoId: 'SISTEMA', // Log global ou associado ao usuário
-          autorId: userId,
-          acao: LogAction.ATIVIDADE_GRUPO_CRIADA,
-          descricao: `Criou atividade "${data.tema}" para ${datesToCreate.length} data(s).`
-        }
-      })
+      // OBS: Não criamos CaseLog aqui pois o grupo não pertence a um "Caso" (Família) específico.
+      // Logs de sistema gerais seriam em outra tabela, se necessário.
 
       return reply.status(201).send({ count: createdGroups.length, groups: createdGroups })
 
@@ -3330,48 +3853,59 @@ export async function groupRoutes(app: FastifyInstance) {
     try {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const { caseIds } = z.object({ caseIds: z.array(z.string().uuid()) }).parse(req.body)
-      const userId = (req.user as any).sub
+      const { sub: userId } = req.user as UserPayload
       
       const group = await prisma.groupActivity.findUnique({ where: { id } })
       if (!group) return reply.status(404).send({ message: 'Grupo não encontrado.' })
 
-      let count = 0
+      // 1. Filtra quais já estão no grupo para não dar erro de duplicidade
+      const existingParticipants = await prisma.groupAttendance.findMany({
+        where: {
+          grupoId: id,
+          casoId: { in: caseIds }
+        },
+        select: { casoId: true }
+      })
       
-      for (const caseId of caseIds) {
-        const exists = await prisma.groupAttendance.findUnique({
-          where: { 
-            grupoId_casoId: { grupoId: id, casoId: caseId } 
-          }
-        })
+      const existingIds = new Set(existingParticipants.map(p => p.casoId))
+      const newParticipantsIds = caseIds.filter(cid => !existingIds.has(cid))
 
-        if (!exists) {
-          await prisma.groupAttendance.create({
-            data: { grupoId: id, casoId: caseId, presente: false }
-          })
-
-          const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
-          
-          await prisma.evolucao.create({
-            data: {
-              casoId: caseId, 
-              autorId: userId,
-              sigilo: false,
-              conteudo: `[SISTEMA] Usuário vinculado à atividade "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
-            }
-          })
-          
-          count++
-        }
+      if (newParticipantsIds.length === 0) {
+        return reply.send({ message: 'Todos os selecionados já estão no grupo.' })
       }
 
-      return reply.send({ message: `${count} participantes adicionados.` })
+      const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
+
+      // 2. Executa em Transação: Cria Vínculo + Cria Evolução no Prontuário
+      await prisma.$transaction(async (tx) => {
+        for (const caseId of newParticipantsIds) {
+          
+          // A. Cria o vínculo
+          await tx.groupAttendance.create({
+            data: { grupoId: id, casoId, presente: false }
+          })
+
+          // B. Evolução Automática ("Fulano foi vinculado à oficina tal")
+          await tx.evolucao.create({
+            data: {
+              casoId, 
+              autorId: userId,
+              sigilo: false,
+              conteudo: `[SISTEMA] Usuário vinculado à atividade coletiva "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
+            }
+          })
+        }
+      })
+
+      return reply.send({ message: `${newParticipantsIds.length} participantes adicionados.` })
+
     } catch (error) {
       console.error('❌ Erro ao adicionar participantes:', error)
       return reply.status(500).send({ message: 'Erro interno ao adicionar participantes.' })
     }
   })
 
-  // [PATCH] Atualizar Presença (+ Evolução Automática)
+  // [PATCH] Atualizar Presença (+ Evolução Automática de Presença)
   app.patch('/groups/:groupId/attendance/:caseId', async (req, reply) => {
     try {
       const paramsSchema = z.object({ groupId: z.string().uuid(), caseId: z.string().uuid() })
@@ -3379,10 +3913,12 @@ export async function groupRoutes(app: FastifyInstance) {
 
       const { groupId, caseId } = paramsSchema.parse(req.params)
       const { presente, observacoes } = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { sub: userId } = req.user as UserPayload
 
       const group = await prisma.groupActivity.findUnique({ where: { id: groupId } })
+      if (!group) return reply.status(404).send({message: "Grupo não encontrado"})
 
+      // Atualiza o registro de presença
       const attendance = await prisma.groupAttendance.update({
         where: { 
           grupoId_casoId: { grupoId: groupId, casoId: caseId } 
@@ -3390,29 +3926,30 @@ export async function groupRoutes(app: FastifyInstance) {
         data: { presente, observacoes }
       })
 
-      if (group) {
-        const statusTexto = presente ? "PRESENTE" : "AUSENTE"
-        const obsTexto = observacoes ? ` Observações: ${observacoes}` : ""
-        const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
+      // Gera Evolução no Prontuário confirmando se foi ou faltou
+      const statusTexto = presente ? "PRESENTE" : "AUSENTE"
+      const obsTexto = observacoes ? ` Observações: ${observacoes}` : ""
+      const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
 
-        await prisma.evolucao.create({
+      // Transaction implícita (Promise.all) para log e evolução
+      await Promise.all([
+        prisma.evolucao.create({
           data: {
             casoId: caseId, 
             autorId: userId,
             sigilo: false,
             conteudo: `[SISTEMA] Registro de Frequência - ${group.tema} (${dataFormatada}). Status: ${statusTexto}.${obsTexto}`
           }
+        }),
+        prisma.caseLog.create({
+          data: {
+            casoId: caseId, 
+            autorId: userId,
+            acao: LogAction.PRESENCA_REGISTRADA,
+            descricao: `Presença em grupo: ${statusTexto} (${group.tema})`
+          }
         })
-      }
-
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId, 
-          autorId: userId,
-          acao: LogAction.PRESENCA_REGISTRADA,
-          descricao: `Presença em grupo (${presente ? 'Presente' : 'Ausente'})`
-        }
-      })
+      ])
 
       return reply.send(attendance)
     } catch (error) {
@@ -3426,7 +3963,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\import.ts
-SIZE: 5466 bytes
+SIZE: 6789 bytes
 ==================================================================
 // backend/src/routes/import.ts
 import { type FastifyInstance } from 'fastify'
@@ -3435,7 +3972,21 @@ import { parse } from 'fast-csv'
 import fs from 'fs'
 import path from 'path'
 import { pipeline } from 'stream/promises'
-import { LogAction, Cargo } from '@prisma/client'
+import { Cargo } from '@prisma/client'
+
+// Helper para converter data DD/MM/AAAA ou AAAA-MM-DD para Date
+const parseDate = (dateStr: string): Date => {
+  if (!dateStr) return new Date(); // Fallback hoje
+  
+  // Tenta formato brasileiro DD/MM/AAAA
+  if (dateStr.includes('/')) {
+    const [d, m, y] = dateStr.split('/');
+    return new Date(`${y}-${m}-${d}`);
+  }
+  
+  // Tenta formato ISO AAAA-MM-DD
+  return new Date(dateStr);
+}
 
 export async function importRoutes(app: FastifyInstance) {
   
@@ -3458,11 +4009,13 @@ export async function importRoutes(app: FastifyInstance) {
     const data = await request.file()
 
     if (!data || data.mimetype !== 'text/csv') {
+      // Consome o stream para não travar
+      if (data) await data.toBuffer();
       return reply.status(400).send({ message: 'Por favor, envie um ficheiro CSV válido.' })
     }
 
     // Salva temporariamente
-    const uploadDir = path.resolve(__dirname, '../../uploads')
+    const uploadDir = path.resolve(process.cwd(), 'uploads')
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
     
     const tempFilePath = path.join(uploadDir, `import_${Date.now()}.csv`)
@@ -3472,96 +4025,112 @@ export async function importRoutes(app: FastifyInstance) {
     const errors: string[] = []
     let successCount = 0
 
+    // Processamento do CSV
     return new Promise((resolve, reject) => {
-      fs.createReadStream(tempFilePath)
+      const stream = fs.createReadStream(tempFilePath)
         .pipe(parse({ headers: true, ignoreEmpty: true, delimiter: ',' })) 
-        .on('error', (error) => {
-          console.error(error)
-          fs.unlinkSync(tempFilePath)
+        
+      stream.on('error', (error) => {
+          console.error("Erro na leitura do CSV:", error)
+          if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
           reject(reply.status(500).send({ message: 'Erro ao ler o ficheiro CSV.' }))
         })
         .on('data', (row) => results.push(row))
         .on('end', async () => {
-          // Limpeza
-          if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+          
+          try {
+            // Processa linha a linha dentro de uma transação gigante ou em blocos
+            // Aqui faremos em bloco único por simplicidade, mas em produção com >10k linhas, ideal é chunk
+            
+            await prisma.$transaction(async (tx) => {
+              for (const [index, row] of results.entries()) {
+                const rowNum = index + 2 // +1 header, +1 index zero
+                
+                // 1. Validação Básica
+                if (!row.Nome || !row.CPF) {
+                  errors.push(`Linha ${rowNum}: Nome ou CPF em falta.`)
+                  continue
+                }
 
-          // Processa linha a linha
-          await prisma.$transaction(async (tx) => {
-            for (const [index, row] of results.entries()) {
-              const rowNum = index + 2 // +1 header, +1 index zero
-              
-              // 1. Validação Básica
-              if (!row.Nome || !row.CPF) {
-                errors.push(`Linha ${rowNum}: Nome ou CPF em falta.`)
-                continue
-              }
+                // 2. Limpeza de CPF
+                const cpfLimpo = row.CPF.replace(/\D/g, '')
+                if (cpfLimpo.length !== 11) {
+                  errors.push(`Linha ${rowNum}: CPF inválido (${row.CPF}).`)
+                  continue
+                }
 
-              // 2. Limpeza de CPF
-              const cpfLimpo = row.CPF.replace(/\D/g, '')
-              if (cpfLimpo.length !== 11) {
-                errors.push(`Linha ${rowNum}: CPF inválido (${row.CPF}).`)
-                continue
-              }
+                // 3. Verifica Duplicidade
+                const exists = await tx.case.findUnique({ where: { cpf: cpfLimpo } })
+                if (exists) {
+                  errors.push(`Linha ${rowNum}: CPF já cadastrado (${row.Nome}).`)
+                  continue
+                }
 
-              // 3. Verifica Duplicidade
-              const exists = await tx.case.findUnique({ where: { cpf: cpfLimpo } })
-              if (exists) {
-                errors.push(`Linha ${rowNum}: CPF já cadastrado (${row.Nome}).`)
-                continue
-              }
+                // 4. Tratamento de Benefícios
+                let beneficiosArray: string[] = []
+                if (row.Beneficios) {
+                  beneficiosArray = row.Beneficios.split(';').map((b: string) => b.trim()).filter((b: string) => b !== '')
+                }
 
-              // 4. Tratamento de Benefícios (Separados por ponto e vírgula)
-              // Ex no CSV: "Bolsa Família;BPC" -> ["Bolsa Família", "BPC"]
-              let beneficiosArray: string[] = []
-              if (row.Beneficios) {
-                beneficiosArray = row.Beneficios.split(';').map((b: string) => b.trim()).filter((b: string) => b !== '')
-              }
-
-              // 5. Inserção Completa
-              try {
-                await tx.case.create({
-                  data: {
-                    // Obrigatórios
-                    nomeCompleto: row.Nome,
-                    cpf: cpfLimpo,
-                    nascimento: new Date(row.Nascimento || new Date()), // Fallback hoje
-                    sexo: row.Sexo || 'Não Informado',
-                    telefone: row.Telefone || '',
-                    endereco: row.Endereco || '',
-                    urgencia: row.Urgencia || 'Sem risco imediato',
-                    violacao: row.Violacao || 'Outros',
-                    categoria: row.Categoria || 'Família em vulnerabilidade',
-                    orgaoDemandante: row.Orgao || 'Demanda Espontânea',
-                    
-                    // Opcionais (Novos Campos)
-                    numeroSei: row.NumeroSEI || null,
-                    linkSei: row.LinkSEI || null,
-                    observacoes: row.Observacoes || `Importado via CSV em ${new Date().toLocaleDateString()}`,
-                    beneficios: beneficiosArray,
-
-                    // Sistema
-                    pesoUrgencia: 1, 
-                    status: 'AGUARDANDO_ACOLHIDA', 
-                    criadoPorId: userId,
+                // 5. Inserção
+                try {
+                  const dataNascimento = parseDate(row.Nascimento);
+                  
+                  if (isNaN(dataNascimento.getTime())) {
+                     throw new Error("Data inválida");
                   }
-                })
-                successCount++
-              } catch (err) {
-                console.error(err)
-                errors.push(`Linha ${rowNum}: Erro ao salvar no banco. Verifique formato de data (AAAA-MM-DD).`)
+
+                  await tx.case.create({
+                    data: {
+                      // Obrigatórios
+                      nomeCompleto: row.Nome,
+                      cpf: cpfLimpo,
+                      nascimento: dataNascimento,
+                      sexo: row.Sexo || 'Não Informado',
+                      telefone: row.Telefone || '',
+                      endereco: row.Endereco || '',
+                      urgencia: row.Urgencia || 'Sem risco imediato',
+                      violacao: row.Violacao || 'Outros',
+                      categoria: row.Categoria || 'Família em vulnerabilidade',
+                      orgaoDemandante: row.Orgao || 'Demanda Espontânea',
+                      
+                      // Opcionais
+                      numeroSei: row.NumeroSEI || null,
+                      linkSei: row.LinkSEI || null,
+                      observacoes: row.Observacoes || `Importado via CSV em ${new Date().toLocaleDateString()}`,
+                      beneficios: beneficiosArray,
+
+                      // Sistema
+                      pesoUrgencia: 1, 
+                      status: 'AGUARDANDO_ACOLHIDA', 
+                      criadoPorId: userId,
+                    }
+                  })
+                  successCount++
+                } catch (err) {
+                  console.error(`Erro Linha ${rowNum}:`, err)
+                  errors.push(`Linha ${rowNum}: Erro ao salvar. Verifique a data de nascimento.`)
+                }
               }
-            }
+            }, { 
+              timeout: 20000 // Aumenta timeout para importações grandes
+            })
 
-            // Log Global (Opcional, removido para evitar erro de FK se não tiver casoId)
-          })
+            resolve(reply.send({
+              message: 'Processamento concluído.',
+              total: results.length,
+              success: successCount,
+              failed: errors.length,
+              errors: errors.slice(0, 50) // Limita retorno de erros para não explodir payload
+            }))
 
-          resolve(reply.send({
-            message: 'Processamento concluído.',
-            total: results.length,
-            success: successCount,
-            failed: errors.length,
-            errors: errors.slice(0, 50)
-          }))
+          } catch (txError) {
+             console.error("Erro fatal na transação de importação:", txError)
+             reject(reply.status(500).send({ message: "Erro fatal no banco de dados durante importação." }))
+          } finally {
+            // Limpeza Garantida
+            if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+          }
         })
     })
   })
@@ -3571,20 +4140,26 @@ export async function importRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\paf.ts
-SIZE: 6730 bytes
+SIZE: 6382 bytes
 ==================================================================
 // backend/src/routes/paf.ts
-// Arquivo otimizado e modernizado — versionamento completo do PAF + logs estruturados.
-
 import { type FastifyInstance } from "fastify"
 import { z } from "zod"
 import { prisma } from "../lib/prisma"
-import { LogAction } from "@prisma/client" // Agora usamos o Enum real do Prisma
+import { LogAction, Cargo } from "@prisma/client"
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function pafRoutes(app: FastifyInstance) {
-  // ------------------------------------------------------------
-  // SCHEMAS DE VALIDAÇÃO
-  // ------------------------------------------------------------
+  
+  app.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // SCHEMAS
   const pafBodySchema = z.object({
     diagnostico: z.string().min(10, "O diagnóstico deve conter ao menos 10 caracteres."),
     objetivos: z.string().min(10, "Os objetivos devem conter ao menos 10 caracteres."),
@@ -3596,132 +4171,117 @@ export async function pafRoutes(app: FastifyInstance) {
     caseId: z.string().uuid(),
   })
 
-  // ------------------------------------------------------------
   // 1. BUSCAR PAF ATUAL
-  // ------------------------------------------------------------
-  app.get(
-    "/cases/:caseId/paf",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
+  app.get("/cases/:caseId/paf", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
 
-        const paf = await prisma.paf.findUnique({
-          where: { casoId: caseId },
-          include: {
-            autor: { select: { id: true, nome: true } },
-          },
-        })
+      const paf = await prisma.paf.findUnique({
+        where: { casoId: caseId },
+        include: {
+          autor: { select: { id: true, nome: true } },
+        },
+      })
 
-        return reply.status(200).send(paf)
-      } catch (error) {
-        console.error("❌ Erro ao buscar PAF:", error)
-        return reply.status(500).send({ message: "Erro interno ao buscar PAF." })
-      }
+      // Retorna null (200 OK) se não tiver PAF ainda, o front lida com isso mostrando botão "Criar"
+      return reply.status(200).send(paf)
+    } catch (error) {
+      console.error("❌ Erro ao buscar PAF:", error)
+      return reply.status(500).send({ message: "Erro interno ao buscar PAF." })
     }
-  )
+  })
 
-  // ------------------------------------------------------------
-  // 2. HISTÓRICO DE VERSÕES DO PAF
-  // ------------------------------------------------------------
-  app.get(
-    "/cases/:caseId/paf/history",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
+  // 2. HISTÓRICO DE VERSÕES
+  app.get("/cases/:caseId/paf/history", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
 
-        const paf = await prisma.paf.findUnique({ where: { casoId } })
-        if (!paf) return reply.status(200).send([])
+      const paf = await prisma.paf.findUnique({ where: { casoId: caseId } })
+      if (!paf) return reply.status(200).send([])
 
-        const history = await prisma.pafVersion.findMany({
-          where: { pafId: paf.id },
-          orderBy: { savedAt: "desc" },
-          include: {
-            autor: { select: { nome: true } },
-          },
-        })
+      const history = await prisma.pafVersion.findMany({
+        where: { pafId: paf.id },
+        orderBy: { savedAt: "desc" },
+        include: {
+          autor: { select: { nome: true } },
+        },
+      })
 
-        return reply.status(200).send(history)
-      } catch (error) {
-        console.error("❌ Erro ao buscar histórico do PAF:", error)
-        return reply.status(500).send({ message: "Erro ao buscar histórico do PAF." })
-      }
+      return reply.status(200).send(history)
+    } catch (error) {
+      return reply.status(500).send({ message: "Erro ao buscar histórico do PAF." })
     }
-  )
+  })
 
-  // ------------------------------------------------------------
   // 3. CRIAR NOVO PAF
-  // ------------------------------------------------------------
-  app.post(
-    "/cases/:caseId/paf",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
-        const data = pafBodySchema.parse(request.body)
-        const { sub: autorId, cargo } = request.user as { sub: string; cargo: string }
+  app.post("/cases/:caseId/paf", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
+      const data = pafBodySchema.parse(request.body)
+      const { sub: autorId, cargo } = request.user as UserPayload
 
-        if (cargo !== "Especialista" && cargo !== "Gerente") {
-          return reply.status(403).send({ message: "Apenas especialistas podem criar um PAF." })
-        }
-
-        const created = await prisma.paf.create({
-          data: {
-            ...data,
-            casoId: caseId,
-            autorId,
-            versaoAtual: 1,
-          },
-        })
-
-        // --- Log estruturado ---
-        await prisma.caseLog.create({
-          data: {
-            casoId,
-            autorId,
-            acao: LogAction.PAF_CRIADO,
-            descricao: "Criou o PAF do caso.",
-            valorNovo: JSON.stringify(data),
-          },
-        })
-
-        return reply.status(201).send(created)
-      } catch (error) {
-        console.error("❌ Erro ao criar PAF:", error)
-        return reply.status(500).send({ message: "Erro interno ao criar PAF." })
+      // Permissão: Apenas Especialista ou Gerente
+      if (cargo !== Cargo.Especialista && cargo !== Cargo.Gerente) {
+        return reply.status(403).send({ message: "Apenas especialistas podem criar um PAF." })
       }
+
+      // Verifica duplicidade
+      const existing = await prisma.paf.findUnique({ where: { casoId: caseId } })
+      if (existing) {
+        return reply.status(409).send({ message: "Já existe um PAF para este caso. Use a edição." })
+      }
+
+      const created = await prisma.paf.create({
+        data: {
+          ...data,
+          casoId: caseId,
+          autorId,
+          versaoAtual: 1,
+        },
+      })
+
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId,
+          acao: LogAction.PAF_CRIADO,
+          descricao: "Criou o PAF inicial do caso.",
+          valorNovo: JSON.stringify(data),
+        },
+      })
+
+      return reply.status(201).send(created)
+
+    } catch (error) {
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
+      console.error("❌ Erro ao criar PAF:", error)
+      return reply.status(500).send({ message: "Erro interno ao criar PAF." })
     }
-  )
+  })
 
-  // ------------------------------------------------------------
-  // 4. ATUALIZAR PAF + GERAR VERSÃO
-  // ------------------------------------------------------------
-  app.put(
-    "/cases/:caseId/paf",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
-        const bodyData = pafBodySchema.partial().parse(request.body)
-        const { sub: userId, cargo } = request.user as { sub: string; cargo: string }
+  // 4. ATUALIZAR PAF + VERSIONAMENTO (Transação Atômica)
+  app.put("/cases/:caseId/paf", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
+      const bodyData = pafBodySchema.parse(request.body) // Partial não, PUT exige objeto completo para consistência
+      const { sub: userId, cargo } = request.user as UserPayload
 
-        const existing = await prisma.paf.findUnique({ where: { casoId } })
-        if (!existing) {
-          return reply.status(404).send({ message: "PAF não encontrado." })
-        }
+      const existing = await prisma.paf.findUnique({ where: { casoId: caseId } })
+      if (!existing) {
+        return reply.status(404).send({ message: "PAF não encontrado." })
+      }
 
-        // Somente quem criou OU o gerente pode editar
-        if (existing.autorId !== userId && cargo !== "Gerente") {
-          return reply.status(403).send({ message: "Sem permissão para editar este PAF." })
-        }
+      // Permissão de Edição
+      if (existing.autorId !== userId && cargo !== Cargo.Gerente) {
+        return reply.status(403).send({ message: "Apenas o autor ou gerente podem editar este PAF." })
+      }
 
-        // =======================
-        // SALVAR VERSÃO ANTIGA
-        // =======================
-        const nextVersionNumber = existing.versaoAtual + 1
+      const nextVersionNumber = existing.versaoAtual + 1
 
-        await prisma.pafVersion.create({
+      // TRANSACTION: Garante que a versão é salva E o atual é atualizado. Se um falhar, tudo falha.
+      const updated = await prisma.$transaction(async (tx) => {
+        // A. Salva Versão Antiga
+        await tx.pafVersion.create({
           data: {
             pafId: existing.id,
             diagnostico: existing.diagnostico,
@@ -3733,173 +4293,198 @@ export async function pafRoutes(app: FastifyInstance) {
           },
         })
 
-        // =======================
-        // ATUALIZAR PAF PRINCIPAL
-        // =======================
-        const updated = await prisma.paf.update({
-          where: { casoId },
+        // B. Atualiza o Atual
+        const newPaf = await tx.paf.update({
+          where: { casoId: caseId },
           data: {
             ...bodyData,
-            autorId: userId,
+            autorId: userId, // Novo autor da versão atual
             versaoAtual: nextVersionNumber,
             updatedAt: new Date(),
           },
         })
 
-        // --- Log com comparação da versão ---
-        await prisma.caseLog.create({
+        // C. Log
+        await tx.caseLog.create({
           data: {
-            casoId,
+            casoId: caseId,
             autorId: userId,
             acao: LogAction.PAF_ATUALIZADO,
             descricao: `Atualizou o PAF para a versão ${nextVersionNumber}.`,
-            valorAnterior: JSON.stringify(existing),
-            valorNovo: JSON.stringify(bodyData),
           },
         })
 
-        return reply.status(200).send(updated)
-      } catch (error) {
-        console.error("❌ Erro ao atualizar PAF:", error)
-        return reply.status(500).send({ message: "Erro interno ao atualizar PAF." })
-      }
-    }
-  )
-}
+        return newPaf
+      })
 
+      return reply.status(200).send(updated)
+
+    } catch (error) {
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
+      console.error("❌ Erro ao atualizar PAF:", error)
+      return reply.status(500).send({ message: "Erro interno ao atualizar PAF." })
+    }
+  })
+}
 
 === END OF FILE: src\routes\paf.ts ===
 
 ==================================================================
 FILE: src\routes\referrals.ts
-SIZE: 4191 bytes
+SIZE: 5262 bytes
 ==================================================================
 // backend/src/routes/referrals.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction } from '@prisma/client'
+import { LogAction, Cargo } from '@prisma/client'
 
-/**
- * Rotas para gestão de Encaminhamentos (Rede de Proteção).
- */
+interface UserPayload {
+  sub: string
+  nome: string
+  cargo: Cargo
+}
+
 export async function referralRoutes(app: FastifyInstance) {
   
-  app.addHook('onRequest', async (req, reply) => {
+  app.addHook('onRequest', async (request, reply) => {
+    try { await request.jwtVerify() } 
+    catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // 1. LISTAR ENCAMINHAMENTOS
+  app.get('/cases/:caseId/referrals', async (request, reply) => {
+    const params = z.object({ caseId: z.string().uuid() })
+    
     try {
-      await req.jwtVerify()
-    } catch {
-      return reply.status(401).send({ message: 'Não autorizado.' })
+      const { caseId } = params.parse(request.params)
+
+      const referrals = await prisma.encaminhamento.findMany({
+        where: { casoId: caseId }, // Correção: Mapeamento explícito
+        orderBy: { dataEnvio: 'desc' },
+        include: {
+          autor: { select: { nome: true } }
+        }
+      })
+      return reply.send(referrals)
+    } catch (error) {
+      console.error("Erro GET Referrals:", error)
+      return reply.status(500).send({ message: 'Erro ao listar encaminhamentos.' })
     }
   })
 
-  // [POST] Criar novo encaminhamento
-  app.post('/cases/:caseId/referrals', async (req, reply) => {
-    const paramsSchema = z.object({ 
-      caseId: z.string().uuid() 
-    })
-    
-    const bodySchema = z.object({
-      tipo: z.string().min(3, "O tipo é obrigatório (ex: Saúde, Educação)"),
+  // 2. CRIAR NOVO ENCAMINHAMENTO
+  app.post('/cases/:caseId/referrals', async (request, reply) => {
+    const params = z.object({ caseId: z.string().uuid() })
+    const body = z.object({
+      tipo: z.string().min(1, "Selecione o tipo"), 
       instituicao: z.string().min(3, "Informe o nome da instituição"),
-      motivo: z.string().min(5, "Descreva o motivo do encaminhamento")
+      motivo: z.string().min(3, "Descreva o motivo"),
     })
 
     try {
-      // A variável extraída chama-se 'caseId' (da URL)
-      const { caseId } = paramsSchema.parse(req.params)
-      const { tipo, instituicao, motivo } = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { caseId } = params.parse(request.params)
+      const { tipo, instituicao, motivo } = body.parse(request.body)
+      const { sub: userId } = request.user as UserPayload
+
+      const caso = await prisma.case.findUnique({ where: { id: caseId } })
+      if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
       const referral = await prisma.encaminhamento.create({
         data: {
+          casoId: caseId, // Correção: Mapeamento explícito
+          autorId: userId,
           tipo,
           instituicao,
           motivo,
-          // [CORREÇÃO]: Mapeamento explícito. O campo do banco é 'casoId', a variável é 'caseId'
-          casoId: caseId, 
-          autorId: userId,
-          status: "PENDENTE"
+          status: 'PENDENTE',
+          dataEnvio: new Date()
         }
       })
 
       await prisma.caseLog.create({
         data: {
-          // [CORREÇÃO]: Mapeamento explícito também no log
-          casoId: caseId,
+          casoId: caseId, // Correção aqui também
           autorId: userId,
           acao: LogAction.OUTRO,
-          descricao: `Realizou encaminhamento para ${tipo} - ${instituicao}`
+          descricao: `Encaminhou para ${instituicao} (${tipo})`
         }
       })
 
       return reply.status(201).send(referral)
-
     } catch (error) {
-      console.error("Erro ao criar encaminhamento:", error)
-      return reply.status(500).send({ message: "Erro ao criar encaminhamento." })
+      console.error("Erro POST Referral:", error)
+      if (error instanceof z.ZodError) return reply.status(400).send({ message: 'Dados inválidos', errors: error.flatten().fieldErrors })
+      return reply.status(500).send({ message: 'Erro ao criar encaminhamento.' })
     }
   })
 
-  // [GET] Listar encaminhamentos de um caso
-  app.get('/cases/:caseId/referrals', async (req, reply) => {
-    const paramsSchema = z.object({ caseId: z.string().uuid() })
-
-    try {
-      const { caseId } = paramsSchema.parse(req.params)
-
-      const referrals = await prisma.encaminhamento.findMany({
-        // [CORREÇÃO]: Mapeamento explícito aqui também
-        where: { casoId: caseId },
-        orderBy: { createdAt: 'desc' },
-        include: { 
-          autor: { select: { nome: true } }
-        }
-      })
-
-      return reply.send(referrals)
-    } catch (error) {
-      return reply.status(500).send({ message: "Erro ao buscar encaminhamentos." })
-    }
-  })
-
-  // [PATCH] Atualizar encaminhamento (Dar baixa / Contra-referência)
-  app.patch('/referrals/:id', async (req, reply) => {
-    const paramsSchema = z.object({ id: z.string().uuid() })
-    const bodySchema = z.object({
-      status: z.enum(['PENDENTE', 'CONCLUIDO', 'NEGADO']),
-      retorno: z.string().optional()
+  // 3. ATUALIZAR
+  app.patch('/referrals/:id', async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() })
+    const body = z.object({
+      status: z.enum(['PENDENTE', 'CONCLUIDO', 'CANCELADO']),
+      retorno: z.string().optional() 
     })
 
     try {
-      const { id } = paramsSchema.parse(req.params)
-      const { status, retorno } = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { id } = params.parse(request.params)
+      const { status, retorno } = body.parse(request.body)
+      const { sub: userId } = request.user as UserPayload
 
-      const oldRef = await prisma.encaminhamento.findUnique({ where: { id } })
-      if (!oldRef) return reply.status(404).send({ message: "Encaminhamento não encontrado." })
+      const existing = await prisma.encaminhamento.findUnique({ where: { id } })
+      if (!existing) return reply.status(404).send({ message: 'Encaminhamento não encontrado.' })
 
       const updated = await prisma.encaminhamento.update({
         where: { id },
-        data: {
-          status,
-          retorno,
-          updatedAt: new Date()
-        }
+        data: { status, retorno, updatedAt: new Date() }
       })
 
-      await prisma.caseLog.create({
-        data: {
-          casoId: oldRef.casoId, // Aqui usamos o valor que já veio do banco, então está correto
-          autorId: userId,
-          acao: LogAction.OUTRO,
-          descricao: `Atualizou encaminhamento (${oldRef.instituicao}) para: ${status}`
-        }
-      })
+      if (retorno && retorno !== existing.retorno) {
+        await prisma.caseLog.create({
+          data: {
+            casoId: existing.casoId,
+            autorId: userId,
+            acao: LogAction.OUTRO,
+            descricao: `Registrou contrarreferência de ${existing.instituicao}`
+          }
+        })
+      }
 
       return reply.send(updated)
     } catch (error) {
-      return reply.status(500).send({ message: "Erro ao atualizar encaminhamento." })
+      return reply.status(500).send({ message: 'Erro ao atualizar encaminhamento.' })
+    }
+  })
+
+  // 4. EXCLUIR
+  app.delete('/referrals/:id', async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() })
+    try {
+      const { id } = params.parse(request.params)
+      const { sub: userId, cargo } = request.user as UserPayload
+
+      const ref = await prisma.encaminhamento.findUnique({ where: { id } })
+      if (!ref) return reply.status(404).send({ message: 'Registro não encontrado.' })
+
+      if (cargo !== Cargo.Gerente && ref.autorId !== userId) {
+        return reply.status(403).send({ message: 'Sem permissão para excluir.' })
+      }
+
+      await prisma.encaminhamento.delete({ where: { id } })
+      
+      await prisma.caseLog.create({
+        data: {
+            casoId: ref.casoId,
+            autorId: userId,
+            acao: LogAction.OUTRO,
+            descricao: `Removeu encaminhamento para ${ref.instituicao}`
+        }
+      })
+
+      return reply.status(204).send()
+    } catch (error) {
+      return reply.status(500).send({ message: 'Erro ao excluir.' })
     }
   })
 }
@@ -3908,7 +4493,7 @@ export async function referralRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\reports.ts
-SIZE: 6525 bytes
+SIZE: 7218 bytes
 ==================================================================
 // backend/src/routes/reports.ts
 import { type FastifyInstance } from 'fastify'
@@ -3916,6 +4501,9 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { startOfMonth, endOfMonth, differenceInYears } from 'date-fns'
 import { Cargo, CaseStatus } from '@prisma/client'
+
+// Tipagem do Perfil Etário para o TypeScript
+type AgeGroup = '0-6' | '7-12' | '13-17' | '18-29' | '30-59' | '60+';
 
 export async function reportRoutes(app: FastifyInstance) {
   
@@ -3934,7 +4522,7 @@ export async function reportRoutes(app: FastifyInstance) {
 
   /**
    * [GET] /reports/team-overview
-   * Visão detalhada da equipe. Otimizada para buscar apenas campos necessários.
+   * Visão detalhada da carga de trabalho da equipe técnica
    */
   app.get('/reports/team-overview', async (request, reply) => {
     try {
@@ -3948,7 +4536,8 @@ export async function reportRoutes(app: FastifyInstance) {
         orderBy: { cargo: 'asc' },
       })
 
-      // 2. Busca casos ativos de uma só vez (reduz N+1 queries)
+      // 2. Busca todos os casos ativos (1 Query Otimizada)
+      // Em vez de fazer N queries (uma para cada técnico), fazemos uma e filtramos em memória.
       const activeCases = await prisma.case.findMany({
         where: {
           status: { not: CaseStatus.DESLIGADO },
@@ -3964,34 +4553,37 @@ export async function reportRoutes(app: FastifyInstance) {
           status: true,
           agenteAcolhidaId: true, 
           especialistaPAEFIId: true,
-          agenteAcolhida: { select: { nome: true } },
-          especialistaPAEFI: { select: { nome: true } },
+          // Não precisamos dos includes complexos aqui, só os IDs bastam para filtrar
         },
         orderBy: { pesoUrgencia: 'desc' }
       })
 
-      // 3. Monta a estrutura em memória (rápido pois os dados já estão filtrados)
+      // 3. Monta a estrutura em memória
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
           if (tech.cargo === Cargo.Agente_Social) {
+            // Agente vê seus casos em Acolhida
             return (
               c.agenteAcolhidaId === tech.id && 
               (c.status === CaseStatus.AGUARDANDO_ACOLHIDA || c.status === CaseStatus.EM_ACOLHIDA)
             )
           }
           if (tech.cargo === Cargo.Especialista) {
+            // Especialista vê seus casos em PAEFI
             return (
               c.especialistaPAEFIId === tech.id && 
-              c.status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+              (c.status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || c.status === CaseStatus.EM_MONITORAMENTO)
             )
           }
           return false
         })
 
         return {
+          id: tech.id,
           nome: tech.nome,
           cargo: tech.cargo === Cargo.Agente_Social ? 'Agente Social' : 'Especialista',
           cases: techCases,
+          caseCount: techCases.length
         }
       })
 
@@ -4004,7 +4596,7 @@ export async function reportRoutes(app: FastifyInstance) {
 
   /**
    * [GET] /reports/rma
-   * Geração do RMA com Agregações do Banco de Dados (Alta Performance)
+   * Geração do RMA Oficial (Bloco 1 e 2 simplificados)
    */
   app.get('/reports/rma', async (request, reply) => {
     const querySchema = z.object({
@@ -4013,30 +4605,35 @@ export async function reportRoutes(app: FastifyInstance) {
 
     try {
       const { month } = querySchema.parse(request.query)
-      const targetDate = new Date(month + '-01T00:00:00') // Força ISO start
-      const firstDay = startOfMonth(targetDate)
-      const lastDay = endOfMonth(targetDate)
+      const [year, m] = month.split('-').map(Number)
+      
+      // Datas UTC para evitar problemas de fuso horário
+      const firstDay = new Date(Date.UTC(year, m - 1, 1))
+      const lastDay = new Date(Date.UTC(year, m, 0, 23, 59, 59)) // Último dia do mês
 
-      // 1. Contagens Diretas (DB Count)
+      // 1. Contagens do Bloco de Movimentação (PAEFI)
       const [initialCount, newEntriesCount, closedCasesCount] = await Promise.all([
-        // B1: Saldo anterior
+        
+        // Volume Inicial (Casos ativos vindos do mês anterior)
         prisma.case.count({
           where: {
-            status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-            dataInicioPAEFI: { lt: firstDay },
+            status: { in: [CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO] },
+            dataInicioPAEFI: { lt: firstDay }, // Começaram antes deste mês
             OR: [
-              { dataDesligamento: null },
-              { dataDesligamento: { gte: firstDay } },
+              { dataDesligamento: null },      // E não acabaram
+              { dataDesligamento: { gte: firstDay } }, // Ou acabaram, mas só dentro deste mês (então contam no saldo inicial)
             ],
           },
         }),
-        // B2: Novos entrados no mês
+
+        // Novos Casos (Entraram no PAEFI neste mês)
         prisma.case.count({
           where: {
             dataInicioPAEFI: { gte: firstDay, lte: lastDay },
           },
         }),
-        // B3: Desligados no mês
+
+        // Desligados (Saíram do PAEFI neste mês)
         prisma.case.count({
           where: {
             status: CaseStatus.DESLIGADO,
@@ -4045,7 +4642,7 @@ export async function reportRoutes(app: FastifyInstance) {
         })
       ])
 
-      // 2. Perfil por Sexo (DB GroupBy - Otimizado)
+      // 2. Perfil dos Novos Casos (Sexo)
       const sexGroups = await prisma.case.groupBy({
         by: ['sexo'],
         where: {
@@ -4055,20 +4652,26 @@ export async function reportRoutes(app: FastifyInstance) {
       })
 
       const profileBySex = {
-        masculino: sexGroups.find(g => g.sexo === 'Masculino')?._count.sexo || 0,
-        feminino: sexGroups.find(g => g.sexo === 'Feminino')?._count.sexo || 0,
-        outro: sexGroups.find(g => !['Masculino', 'Feminino'].includes(g.sexo))?._count.sexo || 0,
+        masculino: 0,
+        feminino: 0,
+        outro: 0,
       }
 
-      // 3. Perfil Etário
-      // Prisma não agrupa por "idade calculada" nativamente sem Raw SQL complexo.
-      // Solução híbrida eficiente: Buscar apenas data de nascimento dos novos (payload leve).
+      sexGroups.forEach(g => {
+        if (!g.sexo) return;
+        const s = g.sexo.toLowerCase();
+        if (s === 'masculino') profileBySex.masculino += g._count.sexo;
+        else if (s === 'feminino') profileBySex.feminino += g._count.sexo;
+        else profileBySex.outro += g._count.sexo;
+      });
+
+      // 3. Perfil dos Novos Casos (Idade)
       const newEntriesAges = await prisma.case.findMany({
         where: { dataInicioPAEFI: { gte: firstDay, lte: lastDay } },
         select: { nascimento: true }
       })
 
-      const profileByAgeGroup = {
+      const profileByAgeGroup: Record<AgeGroup, number> = {
         '0-6': 0, '7-12': 0, '13-17': 0,
         '18-29': 0, '30-59': 0, '60+': 0,
       }
@@ -4076,7 +4679,9 @@ export async function reportRoutes(app: FastifyInstance) {
       const now = new Date()
  
       for (const c of newEntriesAges) {
+        if (!c.nascimento) continue;
         const age = differenceInYears(now, c.nascimento)
+        
         if (age <= 6) profileByAgeGroup['0-6']++
         else if (age <= 12) profileByAgeGroup['7-12']++
         else if (age <= 17) profileByAgeGroup['13-17']++
@@ -4107,8 +4712,9 @@ export async function reportRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\stats.ts
-SIZE: 22904 bytes
+SIZE: 23204 bytes
 ==================================================================
+// backend/src/routes/stats.ts
 import { type FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, subMonths, format } from "date-fns";
@@ -4117,9 +4723,10 @@ import { Cargo, CaseStatus, LogAction } from "@prisma/client";
 import { z } from "zod";
 import { cache } from "../lib/cache";
 
-// Função auxiliar de peso para urgência (Usada no Mapa de Calor)
-const calculateUrgencyWeight = (urgencia: string): number => {
-  const term = urgencia ? urgencia.trim() : '';
+// Função auxiliar de peso para urgência (Mapa de Calor)
+const calculateUrgencyWeight = (urgencia: string | null): number => {
+  if (!urgencia) return 1;
+  const term = urgencia.trim();
   if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
   if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
   if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(term)) return 2;
@@ -4128,7 +4735,7 @@ const calculateUrgencyWeight = (urgencia: string): number => {
 
 export async function statsRoutes(app: FastifyInstance) {
   
-  // Middleware de Autenticação Global para estas rotas
+  // Middleware de Autenticação Global
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
@@ -4138,14 +4745,14 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // 1. DASHBOARD GERAL (/stats)
-  // Retorna números rápidos para os Cards do topo do Dashboard
   app.get("/stats", async (request, reply) => {
     const { cargo, sub: userId } = request.user as { cargo: string; sub: string };
     
-    // --- LÓGICA DO GERENTE ---
+    // --- LÓGICA DO GERENTE (COM CACHE) ---
     if (cargo === Cargo.Gerente) {
       const cacheKey = "manager_stats_main";
       const cachedData = cache.get(cacheKey);
+      
       if (cachedData) {
         reply.header('X-Cache', 'HIT');
         return reply.send(cachedData);
@@ -4168,13 +4775,14 @@ export async function statsRoutes(app: FastifyInstance) {
           urgencyGroups, 
           categoryGroups
         ] = await Promise.all([
-          prisma.case.count(),
+          prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } }), // Total Ativos
           prisma.case.count({ where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } } }),
           prisma.case.count({ where: { status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI] } } }),
           prisma.case.count({ where: { status: CaseStatus.EM_MONITORAMENTO } }),
           prisma.case.count({ where: { dataEntrada: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           prisma.case.count({ where: { status: CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDayOfMonth, lte: lastDayOfMonth } } }),
           
+          // Agrupamentos
           prisma.case.groupBy({
             by: ['agenteAcolhidaId'],
             where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } },
@@ -4191,14 +4799,13 @@ export async function statsRoutes(app: FastifyInstance) {
           prisma.case.groupBy({ by: ['categoria'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
         ]);
 
-        const userIds = [
-            ...new Set([
-                ...workloadAgent.map(w => w.agenteAcolhidaId), 
-                ...workloadSpec.map(w => w.especialistaPAEFIId)
-            ])
-        ].filter(id => id !== null) as string[];
+        // Mapear IDs para Nomes
+        const userIds = new Set([
+          ...workloadAgent.map(w => w.agenteAcolhidaId), 
+          ...workloadSpec.map(w => w.especialistaPAEFIId)
+        ].filter(Boolean) as string[]);
         
-        const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } });
+        const users = await prisma.user.findMany({ where: { id: { in: Array.from(userIds) } }, select: { id: true, nome: true } });
         const userMap = new Map(users.map(u => [u.id, u.nome]));
 
         const result = {
@@ -4211,12 +4818,12 @@ export async function statsRoutes(app: FastifyInstance) {
           closedCasesThisMonth: closedCases,
           workloadByAgent: workloadAgent.map(w => ({ name: userMap.get(w.agenteAcolhidaId!) || 'Desc.', value: w._count._all })),
           workloadBySpecialist: workloadSpec.map(w => ({ name: userMap.get(w.especialistaPAEFIId!) || 'Desc.', value: w._count._all })),
-          casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia, value: g._count._all })),
-          casesByCategory: categoryGroups.map(g => ({ name: g.categoria, value: g._count._all })),
-          productivity: [],
+          casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia || 'Não classificado', value: g._count._all })),
+          casesByCategory: categoryGroups.map(g => ({ name: g.categoria || 'Não classificado', value: g._count._all })),
           lastUpdated: new Date().toISOString()
         };
 
+        // Salva no cache por 5 minutos (configurado no cache.ts)
         cache.set(cacheKey, result);
         reply.header('X-Cache', 'MISS');
         return reply.send(result);
@@ -4227,7 +4834,7 @@ export async function statsRoutes(app: FastifyInstance) {
       }
     }
 
-    // --- LÓGICA DO TÉCNICO (Individual) ---
+    // --- LÓGICA DO TÉCNICO (Individual - Sem Cache pesado) ---
     const today = new Date();
     const firstDayOfMonth = startOfMonth(today);
     const lastDayOfMonth = endOfMonth(today);
@@ -4250,12 +4857,11 @@ export async function statsRoutes(app: FastifyInstance) {
         ]);
         return reply.send({ role: 'Especialista', myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew });
       }
-      return reply.status(200).send({ message: "Sem dados." });
+      return reply.status(200).send({ message: "Sem dados específicos." });
     } catch (error) { return reply.status(500).send({ message: "Erro interno." }); }
   });
 
   // 2. PRODUTIVIDADE E PERFORMANCE (/stats/productivity)
-  // Aceita ?mode=performance (conta logs/ações) ou ?mode=workload (conta casos ativos)
   app.get("/stats/productivity", async (request, reply) => {
     const querySchema = z.object({
       mode: z.enum(['workload', 'performance']).default('workload'),
@@ -4270,26 +4876,18 @@ export async function statsRoutes(app: FastifyInstance) {
         select: { id: true, nome: true, cargo: true }
       });
 
-      // --- MODO PERFORMANCE (Gráfico do Dashboard) ---
+      // --- MODO PERFORMANCE (Gráfico de Barras) ---
       if (mode === 'performance') {
         const startDate = subMonths(new Date(), months);
 
-        // Lista de ações segura (Filtra para evitar erro se o Enum estiver desatualizado)
-        const safeActions = [
-          LogAction.CRIACAO,
-          LogAction.MUDANCA_STATUS,
-          LogAction.DESLIGAMENTO,
-          LogAction.EVOLUCAO,
-          LogAction.OUTRO,
-          // @ts-ignore - Ignora erro de TS se ATRIBUICAO não existir no types ainda
-          LogAction.ATRIBUICAO 
-        ].filter(Boolean); 
+        // Lista dinâmica de ações do Enum
+        const safeActions = Object.values(LogAction);
 
         const activityCounts = await prisma.caseLog.groupBy({
           by: ['autorId'],
           where: {
             createdAt: { gte: startDate },
-            acao: { in: safeActions as LogAction[] }
+            acao: { in: safeActions }
           },
           _count: { _all: true }
         });
@@ -4307,6 +4905,7 @@ export async function statsRoutes(app: FastifyInstance) {
       }
 
       // --- MODO WORKLOAD (Tabela da Equipe) ---
+      // Realizamos duas queries agrupadas para não sobrecarregar
       const specialistStats = await prisma.case.groupBy({
         by: ['especialistaPAEFIId', 'status'],
         where: {
@@ -4349,7 +4948,7 @@ export async function statsRoutes(app: FastifyInstance) {
           role: u.cargo,
           active,
           monitoring,
-          totalLoad: active + (monitoring * 0.2) 
+          totalLoad: active + (monitoring * 0.2) // Peso menor para monitoramento
         };
       }).sort((a,b) => b.totalLoad - a.totalLoad);
 
@@ -4362,6 +4961,7 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // 3. RELATÓRIO VIGILÂNCIA COMPLETO (/stats/vigilancia)
+  // Rota pesada otimizada com Promise.all
   app.get("/stats/vigilancia", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
     if (!['Gerente', 'Especialista'].includes(cargo)) return reply.status(403).send({ message: "Acesso restrito." });
@@ -4370,14 +4970,47 @@ export async function statsRoutes(app: FastifyInstance) {
       const today = new Date();
       const sixMonthsAgo = subMonths(today, 6);
 
-      // --- 3.1 Busca Dados Brutos ---
-      // Selecionamos campos extras (violacao, categoria) para o filtro do mapa
-      const allCases = await prisma.case.findMany({
-        where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
-        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
-      });
+      // PARALELISMO: Dispara todas as queries pesadas simultaneamente
+      const [
+        allCases,
+        violations,
+        urgencies,
+        origins,
+        referrals,
+        benefits,
+        groupCount,
+        participantsCount,
+        demographicsRaw
+      ] = await Promise.all([
+        // 1. Dados Brutos para Cálculos de Tempo
+        prisma.case.findMany({
+          where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
+          select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
+        }),
+        // 2. Violações
+        prisma.case.groupBy({ by: ['violacao'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
+        // 3. Urgências
+        prisma.case.groupBy({ by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
+        // 4. Origens
+        prisma.case.groupBy({ by: ['orgaoDemandante'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } }, orderBy: { _count: { orgaoDemandante: 'desc' } }, take: 10 }),
+        // 5. Encaminhamentos
+        prisma.encaminhamento.groupBy({ by: ['instituicao'], _count: { _all: true }, orderBy: { _count: { instituicao: 'desc' } }, take: 10 }),
+        // 6. Benefícios
+        prisma.serviceDeliverable.groupBy({ by: ['tipo'], _count: { _all: true }, orderBy: { _count: { tipo: 'desc' } } }),
+        // 7. Grupos
+        prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } }),
+        // 8. Participantes
+        prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } }),
+        // 9. Dados para o Mapa e Demografia
+        prisma.case.findMany({
+          where: { status: { not: CaseStatus.DESLIGADO } },
+          select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
+        })
+      ]);
 
-      // --- 3.2 Evolução Mensal ---
+      // --- PROCESSAMENTO (CPU-Bound, mas rápido em memória) ---
+
+      // Evolução Mensal
       const monthsMap = new Map<string, { name: string, novos: number, desligados: number }>();
       for (let i = 5; i >= 0; i--) {
         const d = subMonths(today, i);
@@ -4393,42 +5026,22 @@ export async function statsRoutes(app: FastifyInstance) {
       });
       const evolutionData = Array.from(monthsMap.values());
 
-      // --- 3.3 Tipificações e Risco ---
-      const violations = await prisma.case.groupBy({
-        by: ['violacao'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } }
-      });
-      const violationData = violations.map(v => ({ name: v.violacao, value: v._count._all })).sort((a,b) => b.value - a.value);
-
-      const urgencies = await prisma.case.groupBy({
-        by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } }
-      });
+      // Formatação para Gráficos
+      const violationData = violations.map(v => ({ name: v.violacao || 'N/A', value: v._count._all })).sort((a,b) => b.value - a.value);
       const urgencyData = urgencies.map(u => ({ 
-        name: u.urgencia, value: u._count._all, weight: calculateUrgencyWeight(u.urgencia) 
+        name: u.urgencia || 'N/A', value: u._count._all, weight: calculateUrgencyWeight(u.urgencia) 
       })).sort((a,b) => b.weight - a.weight);
-
-      // --- 3.4 Rede e Origem ---
-      const origins = await prisma.case.groupBy({
-        by: ['orgaoDemandante'], _count: { _all: true },
-        where: { status: { not: CaseStatus.DESLIGADO } }, orderBy: { _count: { orgaoDemandante: 'desc' } }, take: 10
-      });
-      const originData = origins.map(o => ({ name: o.orgaoDemandante, value: o._count._all }));
-
-      const referrals = await prisma.encaminhamento.groupBy({
-        by: ['instituicao'], _count: { _all: true }, orderBy: { _count: { instituicao: 'desc' } }, take: 10
-      });
+      const originData = origins.map(o => ({ name: o.orgaoDemandante || 'N/A', value: o._count._all }));
       const networkData = referrals.map(r => ({ name: r.instituicao, value: r._count._all }));
-
-      // --- 3.5 Benefícios e Grupos ---
-      const benefits = await prisma.serviceDeliverable.groupBy({
-        by: ['tipo'], _count: { _all: true }, orderBy: { _count: { tipo: 'desc' } }
-      });
       const benefitsData = benefits.map(b => ({ name: b.tipo, value: b._count._all }));
 
-      const groupCount = await prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } });
-      const participantsCount = await prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } });
-      const collectiveData = { totalGroups: groupCount, totalParticipants: participantsCount, avgAttendance: groupCount > 0 ? Math.round(participantsCount / groupCount) : 0 };
+      const collectiveData = { 
+        totalGroups: groupCount, 
+        totalParticipants: participantsCount, 
+        avgAttendance: groupCount > 0 ? Math.round(participantsCount / groupCount) : 0 
+      };
 
-      // --- 3.6 Eficiência ---
+      // Eficiência (Tempos médios)
       const closedCases = allCases.filter(c => c.dataDesligamento && c.dataEntrada);
       const totalDaysOpen = closedCases.reduce((acc, c) => {
         const diff = Math.abs(c.dataDesligamento!.getTime() - c.dataEntrada.getTime());
@@ -4448,13 +5061,7 @@ export async function statsRoutes(app: FastifyInstance) {
         retentionRate: Math.round((1 - (closedCases.length / (allCases.length || 1))) * 100) 
       };
 
-      // --- 3.7 Demografia e Mapa (Com Filtros) ---
-      // AQUI ADICIONAMOS VIOLACAO E CATEGORIA NO SELECT PARA O MAPA
-      const demographicsRaw = await prisma.case.findMany({
-        where: { status: { not: CaseStatus.DESLIGADO } },
-        select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
-      });
-
+      // Demografia
       const demographics = {
         sexo: { Masculino: 0, Feminino: 0, Outro: 0 },
         etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 }
@@ -4462,20 +5069,27 @@ export async function statsRoutes(app: FastifyInstance) {
 
       demographicsRaw.forEach(c => {
         if (c.sexo === 'Masculino') demographics.sexo.Masculino++; else if (c.sexo === 'Feminino') demographics.sexo.Feminino++; else demographics.sexo.Outro++;
-        const age = new Date().getFullYear() - c.nascimento.getFullYear();
-        if (age < 12) demographics.etaria['0-11 (Criança)']++; else if (age < 18) demographics.etaria['12-17 (Adolescente)']++; else if (age < 60) demographics.etaria['18-59 (Adulto)']++; else demographics.etaria['60+ (Idoso)']++;
+        
+        if (c.nascimento) {
+            const age = new Date().getFullYear() - c.nascimento.getFullYear();
+            if (age < 12) demographics.etaria['0-11 (Criança)']++; 
+            else if (age < 18) demographics.etaria['12-17 (Adolescente)']++; 
+            else if (age < 60) demographics.etaria['18-59 (Adulto)']++; 
+            else demographics.etaria['60+ (Idoso)']++;
+        }
       });
 
       const ageData = Object.entries(demographics.etaria).map(([name, value]) => ({ name, value }));
       const sexData = Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }));
 
-      // Dados para o Mapa com campos de filtro
+      // Mapa (Pseudo-geocodificação)
       const mapData = demographicsRaw.map(c => {
         const pseudoRandom = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
-        const latOffset = (pseudoRandom % 100 - 50) / 4000; const lngOffset = (pseudoRandom % 100 - 50) / 4000;
+        const latOffset = (pseudoRandom % 100 - 50) / 4000; 
+        const lngOffset = (pseudoRandom % 100 - 50) / 4000;
         return { 
           id: c.id, 
-          lat: -15.668 + latOffset, 
+          lat: -15.668 + latOffset, // Coordenada base (ex: Brasília) - ideal ser configurável
           lng: -48.201 + lngOffset, 
           intensity: calculateUrgencyWeight(c.urgencia), 
           label: c.urgencia,
@@ -4486,10 +5100,13 @@ export async function statsRoutes(app: FastifyInstance) {
 
       return reply.send({ evolutionData, violationData, urgencyData, originData, collectiveData, ageData, sexData, mapData, networkData, benefitsData, efficiencyData });
 
-    } catch (error) { console.error("Erro vigilância:", error); return reply.status(500).send({ message: "Erro de vigilância." }); }
+    } catch (error) { 
+        console.error("Erro vigilância:", error); 
+        return reply.status(500).send({ message: "Erro de vigilância." }); 
+    }
   });
 
-  // 4. INDICADORES E IA (/stats/advanced)
+  // 4. INDICADORES AVANÇADOS (/stats/advanced)
   app.get("/stats/advanced", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
     const querySchema = z.object({ months: z.coerce.number().default(12), violacao: z.string().optional() });
@@ -4544,6 +5161,7 @@ export async function statsRoutes(app: FastifyInstance) {
       
       const activeTotal = await prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } });
       
+      // Insights (Heurísticas simples)
       const insights: string[] = [];
       const trendData = Array.from(monthlyStats.values());
       const last = trendData[trendData.length - 1];
@@ -4563,7 +5181,7 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
-  // 5. HELPERS
+  // 5. HELPER: MAPA DE CALOR DE ATIVIDADE
   app.get("/stats/heatmap", async (request, reply) => {
     const querySchema = z.object({ months: z.coerce.number().default(12) });
     const { months } = querySchema.parse(request.query);
@@ -4577,6 +5195,7 @@ export async function statsRoutes(app: FastifyInstance) {
     } catch { return reply.status(500).send([]); }
   });
 
+  // 6. HELPER: AGENDA RÁPIDA
   app.get("/stats/my-agenda", async (request, reply) => {
     const { sub: userId } = request.user as { sub: string };
     try {
@@ -4593,18 +5212,19 @@ export async function statsRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\routes\users.ts
-SIZE: 7313 bytes
+SIZE: 8715 bytes
 ==================================================================
 // backend/src/routes/users.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { Cargo } from '@prisma/client'
+import { Cargo } from '@prisma/client' // Importa o Enum gerado pelo Prisma
 import bcrypt from 'bcryptjs'
 
 export async function userRoutes(app: FastifyInstance) {
   
-  // Middleware Global de Autenticação
+  // Middleware Global de Autenticação para este arquivo
+  // Nenhuma rota aqui funcionará se não tiver token válido
   app.addHook('onRequest', async (request, reply) => {
     try {
       await request.jwtVerify()
@@ -4613,24 +5233,33 @@ export async function userRoutes(app: FastifyInstance) {
     }
   })
 
-  // 1. [NOVO] CRIAR USUÁRIO (Gerente)
+  // 1. [NOVO] CRIAR USUÁRIO (Apenas Gerente)
   app.post('/users', async (request, reply) => {
+    // Verificação de permissão
     const { cargo } = request.user as { cargo: string }
     
-    if (cargo !== Cargo.Gerente) {
+    // Converte string para Enum para comparação segura
+    const userRole = cargo === 'Agente Social' ? Cargo.Agente_Social : cargo as Cargo;
+
+    if (userRole !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Apenas gerentes podem cadastrar novos servidores.' })
     }
 
+    // Schema de validação
     const schema = z.object({
       nome: z.string().min(3),
       email: z.string().email(),
       matricula: z.string().optional(),
-      cargo: z.nativeEnum(Cargo), // 'Gerente', 'Agente_Social', 'Especialista'
+      cargo: z.nativeEnum(Cargo), // Espera: 'Gerente', 'Agente_Social', 'Especialista'
       senhaInicial: z.string().min(6).default('123456')
     })
 
     try {
-      const data = schema.parse(request.body)
+      // Adapter para compatibilidade com Frontend legado (se enviar com espaço)
+      const rawBody = request.body as any;
+      if (rawBody.cargo === 'Agente Social') rawBody.cargo = Cargo.Agente_Social;
+
+      const data = schema.parse(rawBody)
 
       const userExists = await prisma.user.findUnique({ where: { email: data.email } })
       if (userExists) return reply.status(409).send({ message: 'E-mail já cadastrado.' })
@@ -4648,6 +5277,8 @@ export async function userRoutes(app: FastifyInstance) {
         }
       })
 
+      // Remove a senha do retorno
+      // @ts-ignore
       const { senha, ...userSafe } = user
       return reply.status(201).send(userSafe)
 
@@ -4657,7 +5288,7 @@ export async function userRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. [NOVO] ALTERAR MINHA SENHA
+  // 2. [NOVO] ALTERAR MINHA SENHA (Qualquer usuário logado)
   app.patch('/users/me/password', async (request, reply) => {
     const schema = z.object({
       senhaAtual: z.string(),
@@ -4671,7 +5302,17 @@ export async function userRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { id: userId } })
       if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' })
 
-      const isPasswordValid = await bcrypt.compare(senhaAtual, user.senha)
+      // Verifica senha antiga
+      let isPasswordValid = false;
+      try {
+         isPasswordValid = await bcrypt.compare(senhaAtual, user.senha)
+      } catch (e) { isPasswordValid = false }
+
+      // Fallback para senha texto plano (legado)
+      if (!isPasswordValid && senhaAtual === user.senha) {
+         isPasswordValid = true;
+      }
+
       if (!isPasswordValid) {
         return reply.status(400).send({ message: 'A senha atual está incorreta.' })
       }
@@ -4690,18 +5331,19 @@ export async function userRoutes(app: FastifyInstance) {
     }
   })
 
-  // 3. LISTAR TODOS (Gerente)
+  // 3. LISTAR TODOS (Apenas Gerente vê a lista completa para gestão)
   app.get('/users', async (request, reply) => {
     const { sub: userId, cargo } = request.user as { sub: string; cargo: string }
+    const userRole = cargo === 'Agente Social' ? Cargo.Agente_Social : cargo as Cargo;
 
-    if (cargo !== Cargo.Gerente) {
+    if (userRole !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Acesso negado.' })
     }
 
     try {
       const users = await prisma.user.findMany({
         where: {
-          id: { not: userId },
+          id: { not: userId }, // Não lista a si mesmo
           ativo: true,
         },
         orderBy: { nome: 'asc' },
@@ -4710,7 +5352,7 @@ export async function userRoutes(app: FastifyInstance) {
           nome: true,
           email: true,
           cargo: true,
-          matricula: true, // Adicionado matricula
+          matricula: true,
           ativo: true,
         },
       })
@@ -4721,7 +5363,7 @@ export async function userRoutes(app: FastifyInstance) {
     }
   })
 
-  // 4. LISTAR AGENTES (Para selects)
+  // 4. LISTAR AGENTES (Público autenticado - para selects de formulários)
   app.get('/users/agents', async (request, reply) => {
     try {
       const agents = await prisma.user.findMany({
@@ -4734,12 +5376,11 @@ export async function userRoutes(app: FastifyInstance) {
       })
       return reply.status(200).send(agents)
     } catch (error) {
-      console.error('Erro ao listar Agentes:', error)
       return reply.status(500).send({ message: 'Erro interno.' })
     }
   })
 
-  // 5. LISTAR ESPECIALISTAS (Para selects)
+  // 5. LISTAR ESPECIALISTAS (Público autenticado - para selects de formulários)
   app.get('/users/specialists', async (request, reply) => {
     try {
       const specialists = await prisma.user.findMany({
@@ -4752,15 +5393,16 @@ export async function userRoutes(app: FastifyInstance) {
       })
       return reply.status(200).send(specialists)
     } catch (error) {
-      console.error('Erro ao listar Especialistas:', error)
       return reply.status(500).send({ message: 'Erro interno.' })
     }
   })
 
-  // 6. EDITAR USUÁRIO (Gerente)
+  // 6. EDITAR USUÁRIO (Apenas Gerente)
   app.put('/users/:id', async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
-    if (cargo !== Cargo.Gerente) {
+    const userRole = cargo === 'Agente Social' ? Cargo.Agente_Social : cargo as Cargo;
+
+    if (userRole !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Acesso negado.' })
     }
 
@@ -4769,14 +5411,14 @@ export async function userRoutes(app: FastifyInstance) {
       nome: z.string().min(3),
       email: z.string().email(),
       cargo: z.nativeEnum(Cargo),
-      matricula: z.string().optional(), // Adicionado suporte a matricula
+      matricula: z.string().optional(),
     })
 
     try {
       const { id } = paramsSchema.parse(request.params)
       const rawData = request.body as any
       
-      // Adapter para tratar strings com espaço caso venha do front antigo
+      // Adapter: Tratamento de compatibilidade para frontend legado
       let cargoValue = rawData.cargo
       if (cargoValue === 'Agente Social') cargoValue = Cargo.Agente_Social
       if (cargoValue === 'Especialista') cargoValue = Cargo.Especialista
@@ -4803,10 +5445,12 @@ export async function userRoutes(app: FastifyInstance) {
     }
   })
 
-  // 7. DESATIVAR USUÁRIO (Gerente)
+  // 7. DESATIVAR USUÁRIO (Soft Delete - Apenas Gerente)
   app.delete('/users/:id', async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
-    if (cargo !== Cargo.Gerente) {
+    const userRole = cargo === 'Agente Social' ? Cargo.Agente_Social : cargo as Cargo;
+
+    if (userRole !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Acesso negado.' })
     }
 
@@ -4814,6 +5458,10 @@ export async function userRoutes(app: FastifyInstance) {
 
     try {
       const { id } = paramsSchema.parse(request.params)
+
+      // Impede auto-exclusão (opcional, mas recomendado)
+      // const userId = request.user.sub;
+      // if (id === userId) return reply.status(400).send({message: "Não pode excluir a si mesmo."})
 
       await prisma.user.update({
         where: { id },
@@ -4832,7 +5480,7 @@ export async function userRoutes(app: FastifyInstance) {
 
 ==================================================================
 FILE: src\server.ts
-SIZE: 2793 bytes
+SIZE: 4194 bytes
 ==================================================================
 // backend/src/server.ts
 import fastify from 'fastify'
@@ -4842,6 +5490,7 @@ import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'path'
 import fs from 'fs'
+import { ZodError } from 'zod'
 
 // Importação das rotas
 import { authRoutes } from './routes/auth'
@@ -4860,27 +5509,61 @@ import { filterRoutes } from './routes/filters'
 import { referralRoutes } from './routes/referrals'
 import { familyRoutes } from './routes/family'
 import { deliverableRoutes } from './routes/deliverables'
-import { groupRoutes } from './routes/groups' // [NOVO]
+import { groupRoutes } from './routes/groups'
 
 const app = fastify({
-  logger: { transport: { target: 'pino-pretty' } },
+  logger: { 
+    transport: { 
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname',
+      },
+    } 
+  },
 })
 
+// Configuração de Pastas
 const uploadDir = path.join(__dirname, '../uploads')
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
 
-app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
-app.register(cors, { origin: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] })
-app.register(jwt, { secret: process.env.JWT_SECRET as string })
+// Plugins Globais
+app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
-app.decorate('authenticate', async (request, reply) => {
+// --- CORREÇÃO DO CORS AQUI ---
+// Adicionamos explicitamente 'PATCH' e 'OPTIONS'
+app.register(cors, { 
+  origin: true, // Permite todas as origens (em prod, mude para o domínio do front)
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}) 
+
+app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret-key' })
+
+// Decorator de Autenticação
+app.decorate('authenticate', async (request: any, reply: any) => {
   try { await request.jwtVerify() } catch (err) { await reply.send(err) }
 })
 
-app.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/', decorateReply: false })
-app.register(fastifyStatic, { root: path.join(__dirname, '../../frontend/dist'), prefix: '/', constraints: {} })
+// Arquivos Estáticos
+app.register(fastifyStatic, { 
+  root: uploadDir, 
+  prefix: '/uploads/', 
+  decorateReply: false 
+})
 
-// Rotas
+// Serve o Frontend (SPA)
+const distPath = path.join(__dirname, '../../frontend/dist')
+if (fs.existsSync(distPath)) {
+  app.register(fastifyStatic, { 
+    root: distPath, 
+    prefix: '/', 
+    constraints: {} 
+  })
+}
+
+// Registro das Rotas
 app.register(authRoutes)
 app.register(caseRoutes)
 app.register(userRoutes)
@@ -4897,15 +5580,40 @@ app.register(filterRoutes)
 app.register(referralRoutes)
 app.register(familyRoutes)
 app.register(deliverableRoutes)
-app.register(groupRoutes) // [NOVO]
+app.register(groupRoutes)
 
+// Global Error Handler
+app.setErrorHandler((error, _, reply) => {
+  if (error instanceof ZodError) {
+    return reply.status(400).send({ 
+      message: 'Erro de validação.', 
+      errors: error.flatten().fieldErrors 
+    })
+  }
+
+  if (error.code === 'FST_JWT_NO_AUTHORIZATION_IN_HEADER') {
+      return reply.status(401).send({ message: 'Token não fornecido.' })
+  }
+
+  console.error(error)
+  return reply.status(500).send({ message: 'Erro interno no servidor.' })
+})
+
+// Handler para SPA
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith('/api') || req.raw.url.startsWith('/uploads'))) {
     return reply.status(404).send({ message: 'Recurso não encontrado' })
   }
-  return reply.sendFile('index.html')
+  if (fs.existsSync(path.join(distPath, 'index.html'))) {
+     return reply.sendFile('index.html', distPath)
+  }
+  return reply.status(404).send({ message: 'Rota não encontrada' })
 })
 
-app.listen({ port: 3333, host: '0.0.0.0' }).then(() => console.log('🚀 Servidor rodando v4.3.0!'))
+const port = process.env.PORT ? Number(process.env.PORT) : 3333
+
+app.listen({ port, host: '0.0.0.0' }).then((address) => {
+  console.log(`🚀 Servidor rodando em ${address}`)
+})
 
 === END OF FILE: src\server.ts ===

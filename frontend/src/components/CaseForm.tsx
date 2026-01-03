@@ -8,7 +8,7 @@ import { IMaskInput } from 'react-imask'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {

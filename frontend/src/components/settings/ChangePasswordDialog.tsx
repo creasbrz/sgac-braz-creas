@@ -1,7 +1,7 @@
 // frontend/src/components/settings/ChangePasswordDialog.tsx
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"

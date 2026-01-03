@@ -1,7 +1,7 @@
 // frontend/src/components/SavedFilters.tsx
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { Bookmark, Trash2, Save, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 

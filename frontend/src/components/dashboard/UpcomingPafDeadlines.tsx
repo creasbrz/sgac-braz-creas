@@ -1,6 +1,6 @@
 // frontend/src/components/dashboard/UpcomingPafDeadlines.tsx
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { AlertTriangle, Calendar, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 

@@ -2,14 +2,19 @@
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction, GroupType } from '@prisma/client'
+import { LogAction, GroupType, Cargo } from '@prisma/client'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+
+interface UserPayload {
+  sub: string
+  cargo: Cargo
+}
 
 export async function groupRoutes(app: FastifyInstance) {
   
   app.addHook('onRequest', async (req, reply) => {
-    try { await req.jwtVerify() } catch { return reply.status(401).send() }
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
   // [GET] Listar Grupos
@@ -40,8 +45,9 @@ export async function groupRoutes(app: FastifyInstance) {
           facilitador: { select: { id: true, nome: true } },
           participantes: {
             include: {
-              caso: { select: { id: true, nomeCompleto: true } }
-            }
+              caso: { select: { id: true, nomeCompleto: true, telefone: true } }
+            },
+            orderBy: { caso: { nomeCompleto: 'asc' } } // Lista de chamada em ordem alfabética
           }
         }
       })
@@ -53,12 +59,11 @@ export async function groupRoutes(app: FastifyInstance) {
     }
   })
 
-  // [POST] Criar Grupo (Suporte a Múltiplas Datas / Recorrência)
+  // [POST] Criar Grupo (Suporte a Recorrência)
   app.post('/groups', async (req, reply) => {
     try {
-      // [ATUALIZAÇÃO] Aceita 'datas' (array) ou 'dataRealizacao' (single - legado)
       const bodySchema = z.object({
-        tema: z.string().min(3),
+        tema: z.string().min(3, "Tema é obrigatório"),
         tipo: z.nativeEnum(GroupType),
         // Aceita array de strings ou string única (para compatibilidade)
         datas: z.array(z.string()).optional(), 
@@ -69,11 +74,10 @@ export async function groupRoutes(app: FastifyInstance) {
       })
 
       const data = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { sub: userId } = req.user as UserPayload
 
-      // Determina a lista final de datas
+      // Normaliza as datas
       let datesToCreate: string[] = []
-      
       if (data.datas && data.datas.length > 0) {
         datesToCreate = data.datas
       } else if (data.dataRealizacao) {
@@ -82,9 +86,9 @@ export async function groupRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Selecione pelo menos uma data.' })
       }
 
-      // Criação em lote (Transação não é estritamente necessária aqui, mas Promise.all agiliza)
-      const createdGroups = await Promise.all(
-        datesToCreate.map(async (dateStr) => {
+      // Usa Transaction para garantir que todas as datas sejam criadas ou nenhuma
+      const createdGroups = await prisma.$transaction(
+        datesToCreate.map((dateStr) => {
           return prisma.groupActivity.create({
             data: {
               tema: data.tema,
@@ -99,14 +103,8 @@ export async function groupRoutes(app: FastifyInstance) {
         })
       )
 
-      await prisma.caseLog.create({
-        data: {
-          casoId: 'SISTEMA', // Log global ou associado ao usuário
-          autorId: userId,
-          acao: LogAction.ATIVIDADE_GRUPO_CRIADA,
-          descricao: `Criou atividade "${data.tema}" para ${datesToCreate.length} data(s).`
-        }
-      })
+      // OBS: Não criamos CaseLog aqui pois o grupo não pertence a um "Caso" (Família) específico.
+      // Logs de sistema gerais seriam em outra tabela, se necessário.
 
       return reply.status(201).send({ count: createdGroups.length, groups: createdGroups })
 
@@ -121,48 +119,59 @@ export async function groupRoutes(app: FastifyInstance) {
     try {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
       const { caseIds } = z.object({ caseIds: z.array(z.string().uuid()) }).parse(req.body)
-      const userId = (req.user as any).sub
+      const { sub: userId } = req.user as UserPayload
       
       const group = await prisma.groupActivity.findUnique({ where: { id } })
       if (!group) return reply.status(404).send({ message: 'Grupo não encontrado.' })
 
-      let count = 0
+      // 1. Filtra quais já estão no grupo para não dar erro de duplicidade
+      const existingParticipants = await prisma.groupAttendance.findMany({
+        where: {
+          grupoId: id,
+          casoId: { in: caseIds }
+        },
+        select: { casoId: true }
+      })
       
-      for (const caseId of caseIds) {
-        const exists = await prisma.groupAttendance.findUnique({
-          where: { 
-            grupoId_casoId: { grupoId: id, casoId: caseId } 
-          }
-        })
+      const existingIds = new Set(existingParticipants.map(p => p.casoId))
+      const newParticipantsIds = caseIds.filter(cid => !existingIds.has(cid))
 
-        if (!exists) {
-          await prisma.groupAttendance.create({
-            data: { grupoId: id, casoId: caseId, presente: false }
-          })
-
-          const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
-          
-          await prisma.evolucao.create({
-            data: {
-              casoId: caseId, 
-              autorId: userId,
-              sigilo: false,
-              conteudo: `[SISTEMA] Usuário vinculado à atividade "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
-            }
-          })
-          
-          count++
-        }
+      if (newParticipantsIds.length === 0) {
+        return reply.send({ message: 'Todos os selecionados já estão no grupo.' })
       }
 
-      return reply.send({ message: `${count} participantes adicionados.` })
+      const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
+
+      // 2. Executa em Transação: Cria Vínculo + Cria Evolução no Prontuário
+      await prisma.$transaction(async (tx) => {
+        for (const caseId of newParticipantsIds) {
+          
+          // A. Cria o vínculo
+          await tx.groupAttendance.create({
+            data: { grupoId: id, casoId, presente: false }
+          })
+
+          // B. Evolução Automática ("Fulano foi vinculado à oficina tal")
+          await tx.evolucao.create({
+            data: {
+              casoId, 
+              autorId: userId,
+              sigilo: false,
+              conteudo: `[SISTEMA] Usuário vinculado à atividade coletiva "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
+            }
+          })
+        }
+      })
+
+      return reply.send({ message: `${newParticipantsIds.length} participantes adicionados.` })
+
     } catch (error) {
       console.error('❌ Erro ao adicionar participantes:', error)
       return reply.status(500).send({ message: 'Erro interno ao adicionar participantes.' })
     }
   })
 
-  // [PATCH] Atualizar Presença (+ Evolução Automática)
+  // [PATCH] Atualizar Presença (+ Evolução Automática de Presença)
   app.patch('/groups/:groupId/attendance/:caseId', async (req, reply) => {
     try {
       const paramsSchema = z.object({ groupId: z.string().uuid(), caseId: z.string().uuid() })
@@ -170,10 +179,12 @@ export async function groupRoutes(app: FastifyInstance) {
 
       const { groupId, caseId } = paramsSchema.parse(req.params)
       const { presente, observacoes } = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
+      const { sub: userId } = req.user as UserPayload
 
       const group = await prisma.groupActivity.findUnique({ where: { id: groupId } })
+      if (!group) return reply.status(404).send({message: "Grupo não encontrado"})
 
+      // Atualiza o registro de presença
       const attendance = await prisma.groupAttendance.update({
         where: { 
           grupoId_casoId: { grupoId: groupId, casoId: caseId } 
@@ -181,29 +192,30 @@ export async function groupRoutes(app: FastifyInstance) {
         data: { presente, observacoes }
       })
 
-      if (group) {
-        const statusTexto = presente ? "PRESENTE" : "AUSENTE"
-        const obsTexto = observacoes ? ` Observações: ${observacoes}` : ""
-        const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
+      // Gera Evolução no Prontuário confirmando se foi ou faltou
+      const statusTexto = presente ? "PRESENTE" : "AUSENTE"
+      const obsTexto = observacoes ? ` Observações: ${observacoes}` : ""
+      const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
 
-        await prisma.evolucao.create({
+      // Transaction implícita (Promise.all) para log e evolução
+      await Promise.all([
+        prisma.evolucao.create({
           data: {
             casoId: caseId, 
             autorId: userId,
             sigilo: false,
             conteudo: `[SISTEMA] Registro de Frequência - ${group.tema} (${dataFormatada}). Status: ${statusTexto}.${obsTexto}`
           }
+        }),
+        prisma.caseLog.create({
+          data: {
+            casoId: caseId, 
+            autorId: userId,
+            acao: LogAction.PRESENCA_REGISTRADA,
+            descricao: `Presença em grupo: ${statusTexto} (${group.tema})`
+          }
         })
-      }
-
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId, 
-          autorId: userId,
-          acao: LogAction.PRESENCA_REGISTRADA,
-          descricao: `Presença em grupo (${presente ? 'Presente' : 'Ausente'})`
-        }
-      })
+      ])
 
       return reply.send(attendance)
     } catch (error) {

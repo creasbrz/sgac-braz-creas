@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

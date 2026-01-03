@@ -1,7 +1,7 @@
 // frontend/src/components/case/CaseAttachments.tsx
 import { useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api } from '@/lib/axios'
 import { FileText, Download, Trash2, Upload, Loader2, Paperclip, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'

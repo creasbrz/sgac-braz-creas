@@ -1,7 +1,7 @@
 // frontend/src/pages/AdvancedAnalytics.tsx
 import { useState, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 
 import {
   LineChart,

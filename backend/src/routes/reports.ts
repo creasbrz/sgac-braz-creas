@@ -5,6 +5,9 @@ import { prisma } from '../lib/prisma'
 import { startOfMonth, endOfMonth, differenceInYears } from 'date-fns'
 import { Cargo, CaseStatus } from '@prisma/client'
 
+// Tipagem do Perfil Etário para o TypeScript
+type AgeGroup = '0-6' | '7-12' | '13-17' | '18-29' | '30-59' | '60+';
+
 export async function reportRoutes(app: FastifyInstance) {
   
   app.addHook('onRequest', async (request, reply) => {
@@ -22,7 +25,7 @@ export async function reportRoutes(app: FastifyInstance) {
 
   /**
    * [GET] /reports/team-overview
-   * Visão detalhada da equipe. Otimizada para buscar apenas campos necessários.
+   * Visão detalhada da carga de trabalho da equipe técnica
    */
   app.get('/reports/team-overview', async (request, reply) => {
     try {
@@ -36,7 +39,8 @@ export async function reportRoutes(app: FastifyInstance) {
         orderBy: { cargo: 'asc' },
       })
 
-      // 2. Busca casos ativos de uma só vez (reduz N+1 queries)
+      // 2. Busca todos os casos ativos (1 Query Otimizada)
+      // Em vez de fazer N queries (uma para cada técnico), fazemos uma e filtramos em memória.
       const activeCases = await prisma.case.findMany({
         where: {
           status: { not: CaseStatus.DESLIGADO },
@@ -52,34 +56,37 @@ export async function reportRoutes(app: FastifyInstance) {
           status: true,
           agenteAcolhidaId: true, 
           especialistaPAEFIId: true,
-          agenteAcolhida: { select: { nome: true } },
-          especialistaPAEFI: { select: { nome: true } },
+          // Não precisamos dos includes complexos aqui, só os IDs bastam para filtrar
         },
         orderBy: { pesoUrgencia: 'desc' }
       })
 
-      // 3. Monta a estrutura em memória (rápido pois os dados já estão filtrados)
+      // 3. Monta a estrutura em memória
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
           if (tech.cargo === Cargo.Agente_Social) {
+            // Agente vê seus casos em Acolhida
             return (
               c.agenteAcolhidaId === tech.id && 
               (c.status === CaseStatus.AGUARDANDO_ACOLHIDA || c.status === CaseStatus.EM_ACOLHIDA)
             )
           }
           if (tech.cargo === Cargo.Especialista) {
+            // Especialista vê seus casos em PAEFI
             return (
               c.especialistaPAEFIId === tech.id && 
-              c.status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI
+              (c.status === CaseStatus.EM_ACOMPANHAMENTO_PAEFI || c.status === CaseStatus.EM_MONITORAMENTO)
             )
           }
           return false
         })
 
         return {
+          id: tech.id,
           nome: tech.nome,
           cargo: tech.cargo === Cargo.Agente_Social ? 'Agente Social' : 'Especialista',
           cases: techCases,
+          caseCount: techCases.length
         }
       })
 
@@ -92,7 +99,7 @@ export async function reportRoutes(app: FastifyInstance) {
 
   /**
    * [GET] /reports/rma
-   * Geração do RMA com Agregações do Banco de Dados (Alta Performance)
+   * Geração do RMA Oficial (Bloco 1 e 2 simplificados)
    */
   app.get('/reports/rma', async (request, reply) => {
     const querySchema = z.object({
@@ -101,30 +108,35 @@ export async function reportRoutes(app: FastifyInstance) {
 
     try {
       const { month } = querySchema.parse(request.query)
-      const targetDate = new Date(month + '-01T00:00:00') // Força ISO start
-      const firstDay = startOfMonth(targetDate)
-      const lastDay = endOfMonth(targetDate)
+      const [year, m] = month.split('-').map(Number)
+      
+      // Datas UTC para evitar problemas de fuso horário
+      const firstDay = new Date(Date.UTC(year, m - 1, 1))
+      const lastDay = new Date(Date.UTC(year, m, 0, 23, 59, 59)) // Último dia do mês
 
-      // 1. Contagens Diretas (DB Count)
+      // 1. Contagens do Bloco de Movimentação (PAEFI)
       const [initialCount, newEntriesCount, closedCasesCount] = await Promise.all([
-        // B1: Saldo anterior
+        
+        // Volume Inicial (Casos ativos vindos do mês anterior)
         prisma.case.count({
           where: {
-            status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-            dataInicioPAEFI: { lt: firstDay },
+            status: { in: [CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO] },
+            dataInicioPAEFI: { lt: firstDay }, // Começaram antes deste mês
             OR: [
-              { dataDesligamento: null },
-              { dataDesligamento: { gte: firstDay } },
+              { dataDesligamento: null },      // E não acabaram
+              { dataDesligamento: { gte: firstDay } }, // Ou acabaram, mas só dentro deste mês (então contam no saldo inicial)
             ],
           },
         }),
-        // B2: Novos entrados no mês
+
+        // Novos Casos (Entraram no PAEFI neste mês)
         prisma.case.count({
           where: {
             dataInicioPAEFI: { gte: firstDay, lte: lastDay },
           },
         }),
-        // B3: Desligados no mês
+
+        // Desligados (Saíram do PAEFI neste mês)
         prisma.case.count({
           where: {
             status: CaseStatus.DESLIGADO,
@@ -133,7 +145,7 @@ export async function reportRoutes(app: FastifyInstance) {
         })
       ])
 
-      // 2. Perfil por Sexo (DB GroupBy - Otimizado)
+      // 2. Perfil dos Novos Casos (Sexo)
       const sexGroups = await prisma.case.groupBy({
         by: ['sexo'],
         where: {
@@ -143,20 +155,26 @@ export async function reportRoutes(app: FastifyInstance) {
       })
 
       const profileBySex = {
-        masculino: sexGroups.find(g => g.sexo === 'Masculino')?._count.sexo || 0,
-        feminino: sexGroups.find(g => g.sexo === 'Feminino')?._count.sexo || 0,
-        outro: sexGroups.find(g => !['Masculino', 'Feminino'].includes(g.sexo))?._count.sexo || 0,
+        masculino: 0,
+        feminino: 0,
+        outro: 0,
       }
 
-      // 3. Perfil Etário
-      // Prisma não agrupa por "idade calculada" nativamente sem Raw SQL complexo.
-      // Solução híbrida eficiente: Buscar apenas data de nascimento dos novos (payload leve).
+      sexGroups.forEach(g => {
+        if (!g.sexo) return;
+        const s = g.sexo.toLowerCase();
+        if (s === 'masculino') profileBySex.masculino += g._count.sexo;
+        else if (s === 'feminino') profileBySex.feminino += g._count.sexo;
+        else profileBySex.outro += g._count.sexo;
+      });
+
+      // 3. Perfil dos Novos Casos (Idade)
       const newEntriesAges = await prisma.case.findMany({
         where: { dataInicioPAEFI: { gte: firstDay, lte: lastDay } },
         select: { nascimento: true }
       })
 
-      const profileByAgeGroup = {
+      const profileByAgeGroup: Record<AgeGroup, number> = {
         '0-6': 0, '7-12': 0, '13-17': 0,
         '18-29': 0, '30-59': 0, '60+': 0,
       }
@@ -164,7 +182,9 @@ export async function reportRoutes(app: FastifyInstance) {
       const now = new Date()
  
       for (const c of newEntriesAges) {
+        if (!c.nascimento) continue;
         const age = differenceInYears(now, c.nascimento)
+        
         if (age <= 6) profileByAgeGroup['0-6']++
         else if (age <= 12) profileByAgeGroup['7-12']++
         else if (age <= 17) profileByAgeGroup['13-17']++

@@ -1,7 +1,7 @@
 // frontend/src/pages/GlobalAudit.tsx
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api } from "@/lib/axios"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ShieldCheck, Filter, Search } from "lucide-react"

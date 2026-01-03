@@ -26,16 +26,23 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  // Habilite logs apenas se quiser debugar queries lentas ou erros
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/audit.ts
 var import_date_fns = require("date-fns");
+var import_client2 = require("@prisma/client");
+var import_fast_csv = require("fast-csv");
 async function auditRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
       const { cargo } = request.user;
-      if (cargo !== "Gerente") {
+      if (cargo !== import_client2.Cargo.Gerente) {
         return reply.status(403).send({ message: "Acesso restrito \xE0 gest\xE3o." });
       }
     } catch {
@@ -47,13 +54,11 @@ async function auditRoutes(app) {
       page: import_zod.z.coerce.number().int().positive().default(1),
       pageSize: import_zod.z.coerce.number().int().positive().max(100).default(20),
       autorId: import_zod.z.string().uuid().optional(),
-      acao: import_zod.z.string().optional(),
-      // Ex: CRIACAO, DESLIGAMENTO, ATRIBUICAO
+      acao: import_zod.z.nativeEnum(import_client2.LogAction).optional().or(import_zod.z.literal("all")),
+      // Aceita Enum ou 'all'
       periodo: import_zod.z.enum(["hoje", "7dias", "30dias", "tudo"]).default("7dias"),
       caseId: import_zod.z.string().uuid().optional(),
-      // 🔥 NOVO FILTRO
-      search: import_zod.z.string().min(2).optional()
-      // 🔍 NOVO: Busca textual inteligente
+      search: import_zod.z.string().min(1).optional()
     });
     try {
       const params = querySchema.parse(request.query);
@@ -63,6 +68,7 @@ async function auditRoutes(app) {
         where.OR = [
           { descricao: { contains: search, mode: "insensitive" } },
           { autor: { nome: { contains: search, mode: "insensitive" } } },
+          // Busca no nome do caso apenas se o log tiver um caso vinculado
           { caso: { nomeCompleto: { contains: search, mode: "insensitive" } } }
         ];
       }
@@ -103,7 +109,41 @@ async function auditRoutes(app) {
       });
     } catch (error) {
       console.error("Erro /audit:", error);
-      return reply.status(500).send({ message: "Erro ao buscar logs de auditoria." });
+      return reply.status(500).send({ message: "Erro ao buscar logs." });
+    }
+  });
+  app.get("/audit/export", async (request, reply) => {
+    try {
+      const logs = await prisma.caseLog.findMany({
+        take: 1e3,
+        orderBy: { createdAt: "desc" },
+        include: {
+          autor: { select: { nome: true, cargo: true } },
+          caso: { select: { nomeCompleto: true } }
+        }
+      });
+      const fileName = `auditoria_sgac_${(0, import_date_fns.format)(/* @__PURE__ */ new Date(), "yyyy-MM-dd")}.csv`;
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      reply.header("Content-Disposition", `attachment; filename="${fileName}"`);
+      const csvStream = (0, import_fast_csv.format)({ headers: true });
+      csvStream.pipe(reply.raw);
+      logs.forEach((log) => {
+        var _a, _b, _c;
+        csvStream.write({
+          Data: (0, import_date_fns.format)(log.createdAt, "dd/MM/yyyy HH:mm"),
+          Acao: log.acao,
+          Autor: ((_a = log.autor) == null ? void 0 : _a.nome) || "Sistema",
+          Cargo: ((_b = log.autor) == null ? void 0 : _b.cargo) || "N/A",
+          Caso: ((_c = log.caso) == null ? void 0 : _c.nomeCompleto) || "Geral/Sistema",
+          Descricao: log.descricao,
+          Valor_Anterior: log.valorAnterior || "-",
+          Valor_Novo: log.valorNovo || "-"
+        });
+      });
+      csvStream.end();
+    } catch (error) {
+      console.error("Erro export audit:", error);
+      return reply.status(500).send({ message: "Erro ao gerar exporta\xE7\xE3o." });
     }
   });
 }

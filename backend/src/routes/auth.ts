@@ -1,129 +1,96 @@
 // backend/src/routes/auth.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma' //
-import bcrypt from 'bcryptjs' //
+import { prisma } from '../lib/prisma'
+import bcrypt from 'bcryptjs'
+import { Cargo } from '@prisma/client'
 
 export async function authRoutes(app: FastifyInstance) {
-  // Rota de Registo de Utilizador (você tinha, mantemos)
-  app.post('/register', async (request, reply) => { //
+  
+  // [POST] Registro
+  app.post('/register', async (request, reply) => {
     const registerBodySchema = z.object({
-      nome: z.string(),
+      nome: z.string().min(3),
       email: z.string().email(),
       senha: z.string().min(6),
-      cargo: z.enum(['Gerente', 'Agente Social', 'Especialista']), //
+      cargo: z.string().transform((val) => {
+        if (val === 'Agente Social') return Cargo.Agente_Social
+        return val as Cargo
+      }),
+      matricula: z.string().optional()
     })
 
     try {
-      const { nome, email, senha, cargo } = registerBodySchema.parse(
-        request.body,
-      )
+      const { nome, email, senha, cargo, matricula } = registerBodySchema.parse(request.body)
 
-      const userExists = await prisma.user.findUnique({ where: { email } }) //
-      if (userExists) {
-        return await reply.status(409).send({ message: 'Email já registado.' })
-      }
+      const userExists = await prisma.user.findUnique({ where: { email } })
+      if (userExists) return reply.status(409).send({ message: 'Email já registrado.' })
 
-      const hashedPassword = await bcrypt.hash(senha, 8) //
+      const hashedPassword = await bcrypt.hash(senha, 8)
 
       const user = await prisma.user.create({
-        data: {
-          nome,
-          email,
-          senha: hashedPassword,
-          cargo,
-          ativo: true, // Garante que o usuário registrado seja ativo
-        },
+        data: { nome, email, senha: hashedPassword, cargo, matricula, ativo: true },
       })
 
-      return await reply.status(201).send({ //
-        message: 'Utilizador criado com sucesso!',
-        user: { id: user.id, nome: user.nome, email: user.email },
-      })
+      const { senha: _, ...userSafe } = user
+      return reply.status(201).send(userSafe)
+
     } catch (error) {
-      request.log.error(error, 'Erro ao registar utilizador') //
-      return await reply
-        .status(500)
-        .send({ message: 'Erro interno do servidor.' })
+      return reply.status(400).send({ message: 'Erro no registro', error })
     }
   })
 
-  // Rota de Login
-  app.post('/login', async (request, reply) => { //
-    const loginBodySchema = z.object({
-      email: z.string().email('Email inválido.'),
-      senha: z.string().min(6, 'A senha deve ter no mínimo 6 caracteres.'), //
-    })
+  // [POST] Login
+  app.post('/login', async (request, reply) => {
+    const loginBodySchema = z.object({ email: z.string().email(), senha: z.string() })
 
     try {
       const { email, senha } = loginBodySchema.parse(request.body)
-      const user = await prisma.user.findUnique({ where: { email } }) //
 
-      if (!user) {
-        return await reply
-          .status(401)
-          .send({ message: 'Credenciais inválidas.' }) //
-      }
+      const user = await prisma.user.findUnique({ where: { email } })
+      if (!user) return reply.status(401).send({ message: 'Credenciais inválidas.' })
+      
+      // Checa se está ativo
+      if (!user.ativo) return reply.status(401).send({ message: 'Usuário desativado.' })
 
-      // Adiciona verificação de usuário 'ativo'
-      if (!user.ativo) {
-        return await reply
-          .status(403) // Forbidden
-          .send({ message: 'Este usuário está desativado.' })
-      }
-
-      const isPasswordCorrect = await bcrypt.compare(senha, user.senha) //
-
-      if (!isPasswordCorrect) {
-        return await reply
-          .status(401)
-          .send({ message: 'Credenciais inválidas.' }) //
-      }
+      const isPasswordCorrect = await bcrypt.compare(senha, user.senha)
+      if (!isPasswordCorrect) return reply.status(401).send({ message: 'Credenciais inválidas.' })
 
       const token = app.jwt.sign(
-        {
-          // Payload (informações dentro do token)
-          nome: user.nome, //
-          cargo: user.cargo, //
-        },
-        {
-          // Metadados (informações sobre o token)
-          sub: user.id, // 'sub' (subject) é o ID do usuário
-          expiresIn: '7d', // Token expira em 7 dias
-        },
+        { nome: user.nome, cargo: user.cargo, email: user.email },
+        { sub: user.id, expiresIn: '7d' }
       )
 
-      return await reply.status(200).send({ token }) //
+      return reply.status(200).send({ token })
+
     } catch (error) {
-      request.log.error(error, 'Erro no processo de login') //
-      return await reply
-        .status(500)
-        .send({ message: 'Ocorreu um erro inesperado no servidor.' })
+      return reply.status(500).send({ message: 'Erro interno no login.' })
     }
   })
 
-  // Rota para buscar dados do utilizador logado
-  app.get(
-    '/me',
-    { onRequest: [app.authenticate] },
-    async (request, reply) => { //
-      const userId = request.user.sub //
+  // [GET] Dados do Usuário (/me) - CORRIGIDO
+  app.get('/me', { onRequest: [app.authenticate] }, async (request, reply) => {
+      const userId = request.user.sub
 
+      // CORREÇÃO: findUnique só aceita o ID no where.
+      // Removemos 'ativo: true' daqui.
       const user = await prisma.user.findUnique({
-        where: { id: userId, ativo: true }, // Garante que o usuário ainda está ativo
+        where: { id: userId }, 
         select: {
-          id: true, //
-          nome: true, //
-          email: true, //
-          cargo: true, //
-        },
+          id: true,
+          nome: true,
+          email: true,
+          cargo: true,
+          matricula: true,
+          ativo: true // Selecionamos o campo para checar depois
+        }
       })
 
-      if (!user) {
-        return await reply.status(404).send({ message: 'Utilizador não encontrado.' }) //
-      }
+      if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' })
+      
+      // Validação de segurança extra
+      if (!user.ativo) return reply.status(401).send({ message: 'Usuário desativado.' })
 
-      return await reply.status(200).send(user) //
-    },
-  )
+      return reply.send(user)
+  })
 }

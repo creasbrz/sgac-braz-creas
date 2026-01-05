@@ -1,10 +1,10 @@
 // frontend/src/pages/GlobalAudit.tsx
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, keepPreviousData } from "@tanstack/react-query" // [CORREÇÃO] Importando keepPreviousData se for v5
 import { api } from "@/lib/api"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { ShieldCheck, Filter, Search } from "lucide-react"
+import { ShieldCheck, Filter, Search } from "lucide-react" // [CORREÇÃO] Loader2 está sendo usado no loading
 
 import {
   Table, TableBody, TableCell, TableHead,
@@ -29,6 +29,16 @@ const ACOES = [
   { value: "PAF_ATUALIZADO", label: "Edição de PAF" },
 ]
 
+// [CORREÇÃO] Interface para a resposta da API
+interface AuditResponse {
+  data: any[]
+  meta: {
+    total: number
+    totalPages: number
+    page: number
+  }
+}
+
 export function GlobalAudit() {
   const { user } = useAuth()
   const [page, setPage] = useState(1)
@@ -39,7 +49,8 @@ export function GlobalAudit() {
     search: "",
   })
 
-  const { data, isLoading} = useQuery({
+  // [CORREÇÃO] Tipagem do useQuery
+  const { data: responseData, isLoading } = useQuery<AuditResponse>({
     queryKey: ["audit-logs", page, filters],
     queryFn: async () => {
       const res = await api.get("/audit", {
@@ -53,7 +64,12 @@ export function GlobalAudit() {
       })
       return res.data
     },
+    // [CORREÇÃO] Ajuste para TanStack Query v5 (placeholderData)
+    placeholderData: keepPreviousData 
   })
+
+  const logs = responseData?.data || []
+  const meta = responseData?.meta || { total: 0, totalPages: 1, page: 1 }
 
   const actionBadge = (acao: string) => {
     const map: Record<string, string> = {
@@ -127,7 +143,6 @@ export function GlobalAudit() {
         </CardHeader>
 
         <CardContent className="p-0">
-          {/* A Tabela melhorada já cuida do scroll e sticky header */}
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
@@ -143,25 +158,25 @@ export function GlobalAudit() {
               {isLoading && [...Array(8)].map((_, i) => (
                   <TableRow key={i}><TableCell colSpan={5}><div className="h-8 w-full animate-pulse bg-muted/20 rounded" /></TableCell></TableRow>
               ))}
-              {!isLoading && data?.items.length === 0 && (
+              {!isLoading && logs.length === 0 && (
                 <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Nenhum registro encontrado.</TableCell></TableRow>
               )}
-              {data?.items.map((log: any) => (
+              {logs.map((log: any) => (
                 <TableRow key={log.id} className="hover:bg-muted/10">
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col leading-tight">
-                      <span className="font-medium text-sm">{log.autor.nome}</span>
-                      <span className="text-[10px] uppercase text-muted-foreground">{log.autor.cargo}</span>
+                      <span className="font-medium text-sm">{log.autor?.nome || 'Sistema'}</span>
+                      <span className="text-[10px] uppercase text-muted-foreground">{log.autor?.cargo || '-'}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`${actionBadge(log.acao)} text-[10px]`}>{log.acao}</Badge>
                   </TableCell>
                   <TableCell className="text-sm">{log.descricao}</TableCell>
-                  <TableCell className="text-sm font-medium text-primary">{log.caso?.nomeCompleto || "--"}</TableCell>
+                  <TableCell className="text-sm font-medium text-primary">{log.caso?.nome || "--"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -171,8 +186,8 @@ export function GlobalAudit() {
         <div className="p-4 border-t">
           <Pagination
             currentPage={page}
-            totalPages={data?.totalPages || 1}
-            totalItems={data?.total || 0}
+            totalPages={meta.totalPages}
+            totalItems={meta.total}
             pageSize={15}
             onPageChange={setPage}
           />

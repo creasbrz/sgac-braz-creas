@@ -1,9 +1,13 @@
 // backend/src/lib/prisma.ts
+import { PrismaClient } from '@prisma/client'
 
-// Importa o PrismaClient da biblioteca instalada
-import { PrismaClient } from '@prisma/client'; //
+// Adiciona propriedade ao objeto global do Node para evitar múltiplas instâncias no Hot Reload
+const globalForPrisma = global as unknown as { prisma: PrismaClient }
 
-// Cria e exporta uma instância única do PrismaClient.
-// Esta abordagem (singleton) garante que a nossa aplicação não crie
-// múltiplas conexões desnecessárias com o banco de dados.
-export const prisma = new PrismaClient(); //
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: ['error'], // Reduzi logs para limpar o terminal, use ['query'] para debug
+  })
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

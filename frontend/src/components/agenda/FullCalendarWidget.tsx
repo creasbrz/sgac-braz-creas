@@ -1,4 +1,3 @@
-// frontend/src/components/agenda/FullCalendarWidget.tsx
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
@@ -17,13 +16,16 @@ interface Event {
   extendedProps?: any
 }
 
+// [CORREÇÃO] Adicionada a propriedade 'datesSet' na interface
 interface FullCalendarWidgetProps {
   events: Event[]
   onDateClick: (date: Date) => void
   onEventClick: (info: any) => void
+  datesSet?: (arg: { start: Date; end: Date; startStr: string; endStr: string }) => void
 }
 
-export function FullCalendarWidget({ events, onDateClick, onEventClick }: FullCalendarWidgetProps) {
+// [CORREÇÃO] Recebendo e repassando 'datesSet'
+export function FullCalendarWidget({ events, onDateClick, onEventClick, datesSet }: FullCalendarWidgetProps) {
   const calendarRef = useRef<FullCalendar>(null)
 
   // Função que desenha o conteúdo de cada evento
@@ -83,7 +85,8 @@ export function FullCalendarWidget({ events, onDateClick, onEventClick }: FullCa
         events={events}
         dateClick={(info) => onDateClick(info.date)}
         eventClick={(info) => onEventClick(info)}
-        eventContent={renderEventContent} // <--- AQUI ESTÁ A MÁGICA
+        datesSet={datesSet} // [CORREÇÃO] Conectando a prop ao componente
+        eventContent={renderEventContent}
         height="100%"
         dayMaxEvents={3} // Limita a 3 para não esticar demais a célula
         editable={false}

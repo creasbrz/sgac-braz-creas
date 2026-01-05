@@ -476,4 +476,35 @@ export async function statsRoutes(app: FastifyInstance) {
       return reply.send(appointments);
     } catch { return reply.status(500).send({ message: "Erro agenda." }); }
   });
+  
+// 6. FEED DE ATIVIDADES RECENTES (Real-time)
+  app.get("/stats/activity", async (request, reply) => {
+    const { sub: userId, cargo } = request.user as { sub: string, cargo: string };
+    
+    try {
+      // Se for gerente, vê tudo. Se for técnico, vê apenas dos casos vinculados.
+      const whereScope = cargo === 'Gerente' ? {} : {
+        caso: {
+          OR: [
+            { agenteAcolhidaId: userId },
+            { especialistaPAEFIId: userId }
+          ]
+        }
+      };
+
+      const logs = await prisma.caseLog.findMany({
+        where: whereScope,
+        take: 10, // Últimas 10 ações
+        orderBy: { createdAt: 'desc' },
+        include: {
+          autor: { select: { nome: true, cargo: true } },
+          caso: { select: { id: true, nomeCompleto: true } }
+        }
+      });
+
+      return reply.send(logs);
+    } catch (error) {
+      return reply.status(500).send([]);
+    }
+  });
 }

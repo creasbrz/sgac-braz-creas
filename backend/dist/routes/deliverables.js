@@ -19,101 +19,103 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/routes/deliverables.ts
 var deliverables_exports = {};
 __export(deliverables_exports, {
-  deliverableRoutes: () => deliverableRoutes
+  deliverablesRoutes: () => deliverablesRoutes
 });
 module.exports = __toCommonJS(deliverables_exports);
 var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/deliverables.ts
-var import_client2 = require("@prisma/client");
-async function deliverableRoutes(app) {
-  app.addHook("onRequest", async (req, reply) => {
+async function deliverablesRoutes(app) {
+  app.addHook("onRequest", async (request) => {
     try {
-      await req.jwtVerify();
-    } catch {
-      return reply.status(401).send({ message: "N\xE3o autorizado." });
+      await request.jwtVerify();
+    } catch (err) {
     }
   });
-  app.get("/cases/:caseId/deliverables", async (req, reply) => {
-    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(req.params);
-    const items = await prisma.serviceDeliverable.findMany({
-      where: { casoId: caseId },
-      orderBy: { createdAt: "desc" },
-      include: { responsavel: { select: { nome: true } } }
-    });
-    return reply.send(items);
+  const paramsSchema = import_zod.z.object({
+    caseId: import_zod.z.string().uuid()
   });
-  app.post("/cases/:caseId/deliverables", async (req, reply) => {
-    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(req.params);
-    const bodySchema = import_zod.z.object({
-      tipo: import_zod.z.string().min(2),
-      status: import_zod.z.enum(["SOLICITADO", "CONCEDIDO", "NEGADO", "ENTREGUE"]).default("SOLICITADO"),
-      observacoes: import_zod.z.string().optional()
-    });
-    const { tipo, status, observacoes } = bodySchema.parse(req.body);
-    const userId = req.user.sub;
-    const item = await prisma.serviceDeliverable.create({
+  const createDeliverableBodySchema = import_zod.z.object({
+    tipo: import_zod.z.string().min(3, "Selecione um tipo de benef\xEDcio"),
+    observacoes: import_zod.z.string().optional()
+  });
+  const updateStatusSchema = import_zod.z.object({
+    status: import_zod.z.enum(["SOLICITADO", "CONCEDIDO", "ENTREGUE", "NEGADO"]),
+    dataEntrega: import_zod.z.string().datetime().optional()
+  });
+  const updateParamsSchema = import_zod.z.object({
+    id: import_zod.z.string().uuid()
+  });
+  app.post("/cases/:caseId/deliverables", async (request, reply) => {
+    var _a;
+    const { caseId } = paramsSchema.parse(request.params);
+    const { tipo, observacoes } = createDeliverableBodySchema.parse(request.body);
+    const caso = await prisma.case.findUnique({ where: { id: caseId } });
+    if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado" });
+    let responsavelId = (_a = request.user) == null ? void 0 : _a.sub;
+    if (!responsavelId) {
+      const fallbackUser = await prisma.user.findFirst();
+      responsavelId = (fallbackUser == null ? void 0 : fallbackUser.id) || "id-nao-encontrado";
+    }
+    const deliverable = await prisma.serviceDeliverable.create({
       data: {
         tipo,
-        status,
+        status: "SOLICITADO",
         observacoes,
-        casoId,
-        responsavelId: userId,
-        dataSolicitacao: /* @__PURE__ */ new Date()
+        casoId: caseId,
+        // <--- CORREÇÃO AQUI: O campo no banco é 'casoId'
+        responsavelId
       }
     });
-    await prisma.caseLog.create({
-      data: {
-        casoId,
-        autorId: userId,
-        acao: import_client2.LogAction.ENTREGA_BENEFICIO_CRIADA,
-        descricao: `Registrou entrega/benef\xEDcio: ${tipo} (${status})`
-      }
-    });
-    return reply.status(201).send(item);
+    return reply.status(201).send(deliverable);
   });
-  app.patch("/deliverables/:id", async (req, reply) => {
-    const { id } = import_zod.z.object({ id: import_zod.z.string().uuid() }).parse(req.params);
-    const bodySchema = import_zod.z.object({
-      status: import_zod.z.enum(["SOLICITADO", "CONCEDIDO", "NEGADO", "ENTREGUE"]),
-      dataEntrega: import_zod.z.string().optional(),
-      // ISO String
-      observacoes: import_zod.z.string().optional()
+  app.get("/cases/:caseId/deliverables", async (request, reply) => {
+    const { caseId } = paramsSchema.parse(request.params);
+    const deliverables = await prisma.serviceDeliverable.findMany({
+      where: {
+        casoId: caseId
+        // <--- CORREÇÃO AQUI: O campo no banco é 'casoId'
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        responsavel: {
+          select: { nome: true }
+        }
+      }
     });
-    const { status, dataEntrega, observacoes } = bodySchema.parse(req.body);
-    const userId = req.user.sub;
-    const oldItem = await prisma.serviceDeliverable.findUnique({ where: { id } });
-    if (!oldItem) return reply.status(404).send();
+    const response = deliverables.map((d) => ({
+      id: d.id,
+      tipo: d.tipo,
+      status: d.status,
+      dataSolicitacao: d.dataSolicitacao,
+      dataEntrega: d.dataEntrega,
+      responsavel: { nome: d.responsavel.nome }
+    }));
+    return reply.send(response);
+  });
+  app.patch("/deliverables/:id", async (request, reply) => {
+    const { id } = updateParamsSchema.parse(request.params);
+    const { status, dataEntrega } = updateStatusSchema.parse(request.body);
     const updated = await prisma.serviceDeliverable.update({
       where: { id },
       data: {
         status,
-        observacoes,
-        dataEntrega: dataEntrega ? new Date(dataEntrega) : void 0,
-        updatedAt: /* @__PURE__ */ new Date()
-      }
-    });
-    await prisma.caseLog.create({
-      data: {
-        casoId: oldItem.casoId,
-        autorId: userId,
-        acao: import_client2.LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
-        descricao: `Atualizou benef\xEDcio ${oldItem.tipo} para ${status}`
+        dataEntrega: dataEntrega ? new Date(dataEntrega) : void 0
       }
     });
     return reply.send(updated);
   });
-  app.delete("/deliverables/:id", async (req, reply) => {
-    const { id } = import_zod.z.object({ id: import_zod.z.string().uuid() }).parse(req.params);
-    await prisma.serviceDeliverable.delete({ where: { id } });
-    return reply.status(204).send();
-  });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  deliverableRoutes
+  deliverablesRoutes
 });

@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/appointments.ts
 var import_client2 = require("@prisma/client");
@@ -39,106 +44,175 @@ async function appointmentRoutes(app) {
     }
   });
   app.get("/appointments", async (request, reply) => {
-    const { caseId, month, pageSize } = import_zod.z.object({
+    const querySchema = import_zod.z.object({
       caseId: import_zod.z.string().uuid().optional(),
-      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/).optional(),
-      // YYYY-MM
-      pageSize: import_zod.z.coerce.number().optional().default(100)
-    }).parse(request.query);
-    const userId = request.user.sub;
-    let dateFilter = {};
-    if (month) {
-      const start = /* @__PURE__ */ new Date(`${month}-01T00:00:00`);
-      const end = new Date(new Date(start).setMonth(start.getMonth() + 1));
-      dateFilter = { gte: start, lt: end };
-    }
-    const appointmentsWhere = { ...caseId ? { casoId } : {} };
-    if (month) appointmentsWhere.data = dateFilter;
-    const appointments = await prisma.agendamento.findMany({
-      where: appointmentsWhere,
-      orderBy: { data: "asc" },
-      take: pageSize,
-      include: {
-        responsavel: { select: { nome: true } },
-        caso: {
-          select: { id: true, nomeCompleto: true, telefone: true }
-        }
-      }
+      start: import_zod.z.coerce.date().optional(),
+      end: import_zod.z.coerce.date().optional()
     });
-    let groupsWhere = {};
-    if (month) groupsWhere.dataRealizacao = dateFilter;
+    const { caseId, start: reqStart, end: reqEnd } = querySchema.parse(request.query);
+    const { sub: userId, cargo } = request.user;
+    let start = reqStart;
+    let end = reqEnd;
+    if (!start || !end) {
+      const now = /* @__PURE__ */ new Date();
+      if (caseId) {
+        if (!start) start = new Date(now.getFullYear() - 5, 0, 1);
+        if (!end) end = new Date(now.getFullYear() + 2, 11, 31);
+      } else {
+        if (!start) start = new Date(now.getFullYear(), now.getMonth(), 1);
+        if (!end) end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      }
+    }
+    const queryStart = start;
+    const queryEnd = end;
+    const whereClause = {
+      data: { gte: queryStart, lte: queryEnd }
+    };
     if (caseId) {
-      groupsWhere.participantes = { some: { casoId } };
-    }
-    const groups = await prisma.groupActivity.findMany({
-      where: groupsWhere,
-      orderBy: { dataRealizacao: "asc" },
-      take: pageSize,
-      include: {
-        facilitador: { select: { nome: true } }
-        // Não precisamos dos participantes aqui para o calendário leve
+      whereClause.casoId = caseId;
+    } else {
+      if (cargo !== "Gerente" && cargo !== import_client2.Cargo.Gerente) {
+        whereClause.OR = [
+          { responsavelId: userId },
+          // Criado por mim
+          // OU sou o técnico do caso vinculado ao agendamento
+          { caso: { OR: [{ agenteAcolhidaId: userId }, { especialistaPAEFIId: userId }] } }
+        ];
       }
+    }
+    const individualPromise = prisma.agendamento.findMany({
+      where: whereClause,
+      include: { caso: { select: { nomeCompleto: true } } }
     });
-    const mappedAppointments = appointments.map((a) => ({
-      id: a.id,
-      titulo: a.titulo,
-      data: a.data,
-      observacoes: a.observacoes,
-      tipo: "INDIVIDUAL",
-      responsavel: a.responsavel,
-      caso: a.caso,
-      isGroup: false
-    }));
-    const mappedGroups = groups.map((g) => ({
-      id: g.id,
-      titulo: `[GRUPO] ${g.tema}`,
-      // Prefixo para identificar visualmente
-      data: g.dataRealizacao,
-      observacoes: `${g.tipo.replace("_", " ")} - Local: ${g.local || "N/A"}`,
-      tipo: "COLETIVO",
-      responsavel: g.facilitador,
-      caso: null,
-      // Grupo não tem um caso único "pai"
-      isGroup: true,
-      originalId: g.id
-      // ID original do grupo para links
-    }));
-    const combined = [...mappedAppointments, ...mappedGroups].sort(
-      (a, b) => new Date(a.data).getTime() - new Date(b.data).getTime()
-    );
-    return reply.send(combined);
+    const groupPromise = caseId ? prisma.groupActivity.findMany({
+      where: {
+        dataRealizacao: { gte: queryStart, lte: queryEnd },
+        participantes: { some: { casoId: caseId } }
+      },
+      include: { facilitador: { select: { nome: true } } }
+    }) : prisma.groupActivity.findMany({
+      where: {
+        dataRealizacao: { gte: queryStart, lte: queryEnd }
+      },
+      include: { facilitador: { select: { nome: true } } }
+    });
+    try {
+      const [appointments, groups] = await Promise.all([individualPromise, groupPromise]);
+      const normalizedEvents = [
+        ...appointments.map((a) => ({
+          id: a.id,
+          title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
+          start: a.data,
+          type: "INDIVIDUAL",
+          resourceId: a.casoId,
+          description: a.observacoes || "",
+          status: "SCHEDULED"
+        })),
+        ...groups.map((g) => ({
+          id: g.id,
+          title: `[GRUPO] ${g.tema} (${g.tipo.replace("_", " ")})`,
+          start: g.dataRealizacao,
+          type: "GRUPO",
+          resourceId: g.id,
+          description: g.descricao || `Facilitador: ${g.facilitador.nome}`,
+          status: "SCHEDULED"
+        }))
+      ];
+      return reply.send(normalizedEvents.sort((a, b) => a.start.getTime() - b.start.getTime()));
+    } catch (error) {
+      console.error("ERRO GET /appointments:", error);
+      return reply.status(500).send({ message: "Erro ao buscar agenda." });
+    }
   });
   app.post("/appointments", async (request, reply) => {
     const bodySchema = import_zod.z.object({
       titulo: import_zod.z.string().min(3),
       data: import_zod.z.coerce.date(),
-      observacoes: import_zod.z.any().optional(),
-      casoId: import_zod.z.string().uuid()
+      observacoes: import_zod.z.string().nullable().optional(),
+      casoId: import_zod.z.string().uuid(),
+      tipo: import_zod.z.string().optional()
+      // Adicionado tipo
     });
+    const { titulo, data, observacoes, casoId, tipo } = bodySchema.parse(request.body);
+    const userId = request.user.sub;
     try {
-      const { titulo, data, observacoes, casoId: casoId2 } = bodySchema.parse(request.body);
-      const { sub: userId } = request.user;
       const agendamento = await prisma.agendamento.create({
         data: {
           titulo,
           data,
-          observacoes: typeof observacoes === "string" ? observacoes : null,
-          casoId: casoId2,
+          observacoes: observacoes || null,
+          casoId,
           responsavelId: userId
+          // Se tiver campo 'tipo' no banco, adicione aqui. Se não, remova.
+          // tipo: tipo 
         }
       });
-      await prisma.caseLog.create({
-        data: {
-          casoId: casoId2,
-          autorId: userId,
-          acao: import_client2.LogAction.AGENDAMENTO_CRIADO,
-          descricao: `Agendou: ${titulo} para ${data.toLocaleDateString("pt-BR")}`
-        }
-      });
+      try {
+        await prisma.caseLog.create({
+          data: {
+            casoId,
+            autorId: userId,
+            acao: import_client2.LogAction.AGENDAMENTO_CRIADO,
+            descricao: `Agendamento criado: ${titulo} para ${data.toLocaleString()}`
+          }
+        });
+      } catch (logError) {
+        console.warn("\u26A0\uFE0F Log falhou, mas agendamento ok.", logError);
+      }
       return reply.status(201).send(agendamento);
-    } catch (error) {
+    } catch (mainError) {
+      console.error("\u274C ERRO POST /appointments:", mainError);
       return reply.status(500).send({ message: "Erro ao criar agendamento." });
     }
+  });
+  app.put("/appointments/:id", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+    const bodySchema = import_zod.z.object({
+      titulo: import_zod.z.string().min(3).optional(),
+      data: import_zod.z.coerce.date().optional(),
+      observacoes: import_zod.z.string().nullable().optional()
+    });
+    const { id } = paramsSchema.parse(request.params);
+    const data = bodySchema.parse(request.body);
+    const userId = request.user.sub;
+    const { cargo } = request.user;
+    const existing = await prisma.agendamento.findUnique({ where: { id } });
+    if (!existing || existing.responsavelId !== userId && cargo !== "Gerente") {
+      return reply.status(403).send({ message: "Sem permiss\xE3o." });
+    }
+    const updated = await prisma.agendamento.update({
+      where: { id },
+      data: {
+        ...data,
+        ...data.observacoes !== void 0 ? { observacoes: data.observacoes } : {}
+      }
+    });
+    return reply.send(updated);
+  });
+  app.delete("/appointments/:id", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+    const { id } = paramsSchema.parse(request.params);
+    const userId = request.user.sub;
+    const { cargo } = request.user;
+    const existing = await prisma.agendamento.findUnique({ where: { id } });
+    if (!existing || existing.responsavelId !== userId && cargo !== "Gerente") {
+      return reply.status(403).send({ message: "Sem permiss\xE3o." });
+    }
+    await prisma.agendamento.delete({ where: { id } });
+    if (existing.casoId) {
+      try {
+        await prisma.caseLog.create({
+          data: {
+            casoId: existing.casoId,
+            autorId: userId,
+            acao: import_client2.LogAction.OUTRO,
+            descricao: `Agendamento exclu\xEDdo: ${existing.titulo}`
+          }
+        });
+      } catch (e) {
+      }
+    }
+    return reply.status(204).send();
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

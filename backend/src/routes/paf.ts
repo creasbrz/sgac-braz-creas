@@ -1,193 +1,180 @@
-// backend/src/routes/paf.ts
-// Arquivo otimizado e modernizado — versionamento completo do PAF + logs estruturados.
-
 import { type FastifyInstance } from "fastify"
 import { z } from "zod"
 import { prisma } from "../lib/prisma"
-import { LogAction } from "@prisma/client" // Agora usamos o Enum real do Prisma
+import { LogAction } from "@prisma/client"
+
+// Helper para garantir que a data seja salva como UTC (evita volta de 1 dia)
+const stripTime = (date: Date | string): Date => {
+  const d = new Date(date)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
 
 export async function pafRoutes(app: FastifyInstance) {
-  // ------------------------------------------------------------
-  // SCHEMAS DE VALIDAÇÃO
-  // ------------------------------------------------------------
+  
+  app.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // Schemas de Validação
   const pafBodySchema = z.object({
     diagnostico: z.string().min(10, "O diagnóstico deve conter ao menos 10 caracteres."),
     objetivos: z.string().min(10, "Os objetivos devem conter ao menos 10 caracteres."),
     estrategias: z.string().min(10, "As estratégias devem conter ao menos 10 caracteres."),
-    deadline: z.coerce.date({ required_error: "A data do prazo é obrigatória." }),
+    deadline: z.coerce.date({ required_error: "O prazo é obrigatório." }),
   })
 
   const paramsSchema = z.object({
     caseId: z.string().uuid(),
   })
 
-  // ------------------------------------------------------------
-  // 1. BUSCAR PAF ATUAL
-  // ------------------------------------------------------------
-  app.get(
-    "/cases/:caseId/paf",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
-
-        const paf = await prisma.paf.findUnique({
-          where: { casoId: caseId },
-          include: {
-            autor: { select: { id: true, nome: true } },
-          },
-        })
-
-        return reply.status(200).send(paf)
-      } catch (error) {
-        console.error("❌ Erro ao buscar PAF:", error)
-        return reply.status(500).send({ message: "Erro interno ao buscar PAF." })
-      }
+  // 1. Buscar PAF Atual
+  app.get("/cases/:caseId/paf", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
+      
+      const paf = await prisma.paf.findUnique({
+        where: { casoId: caseId }, // Mapeamento correto
+        include: { autor: { select: { id: true, nome: true } } },
+      })
+      return reply.send(paf)
+    } catch (error) {
+      console.error("❌ Erro GET /paf:", error)
+      return reply.status(500).send({ message: "Erro ao buscar PAF." })
     }
-  )
+  })
 
-  // ------------------------------------------------------------
-  // 2. HISTÓRICO DE VERSÕES DO PAF
-  // ------------------------------------------------------------
-  app.get(
-    "/cases/:caseId/paf/history",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
+  // 2. Histórico de Versões
+  app.get("/cases/:caseId/paf/history", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
+      
+      const paf = await prisma.paf.findUnique({ where: { casoId: caseId } })
+      if (!paf) return reply.send([])
 
-        const paf = await prisma.paf.findUnique({ where: { casoId } })
-        if (!paf) return reply.status(200).send([])
-
-        const history = await prisma.pafVersion.findMany({
-          where: { pafId: paf.id },
-          orderBy: { savedAt: "desc" },
-          include: {
-            autor: { select: { nome: true } },
-          },
-        })
-
-        return reply.status(200).send(history)
-      } catch (error) {
-        console.error("❌ Erro ao buscar histórico do PAF:", error)
-        return reply.status(500).send({ message: "Erro ao buscar histórico do PAF." })
-      }
+      const history = await prisma.pafVersion.findMany({
+        where: { pafId: paf.id },
+        orderBy: { savedAt: "desc" },
+        include: { autor: { select: { nome: true } } },
+      })
+      return reply.send(history)
+    } catch (error) {
+      console.error("❌ Erro GET /paf/history:", error)
+      return reply.status(500).send({ message: "Erro ao buscar histórico." })
     }
-  )
+  })
 
-  // ------------------------------------------------------------
-  // 3. CRIAR NOVO PAF
-  // ------------------------------------------------------------
-  app.post(
-    "/cases/:caseId/paf",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
-        const data = pafBodySchema.parse(request.body)
-        const { sub: autorId, cargo } = request.user as { sub: string; cargo: string }
+  // 3. Criar PAF
+  app.post("/cases/:caseId/paf", async (request, reply) => {
+    try {
+      const { caseId } = paramsSchema.parse(request.params)
+      const data = pafBodySchema.parse(request.body)
+      const { sub: autorId, cargo } = request.user as { sub: string; cargo: string }
 
-        if (cargo !== "Especialista" && cargo !== "Gerente") {
-          return reply.status(403).send({ message: "Apenas especialistas podem criar um PAF." })
-        }
-
-        const created = await prisma.paf.create({
-          data: {
-            ...data,
-            casoId: caseId,
-            autorId,
-            versaoAtual: 1,
-          },
-        })
-
-        // --- Log estruturado ---
-        await prisma.caseLog.create({
-          data: {
-            casoId,
-            autorId,
-            acao: LogAction.PAF_CRIADO,
-            descricao: "Criou o PAF do caso.",
-            valorNovo: JSON.stringify(data),
-          },
-        })
-
-        return reply.status(201).send(created)
-      } catch (error) {
-        console.error("❌ Erro ao criar PAF:", error)
-        return reply.status(500).send({ message: "Erro interno ao criar PAF." })
+      // Validação de Permissão
+      if (cargo !== "Especialista" && cargo !== "Gerente") {
+        return reply.status(403).send({ message: "Apenas especialistas/gerentes criam PAF." })
       }
-    }
-  )
 
-  // ------------------------------------------------------------
-  // 4. ATUALIZAR PAF + GERAR VERSÃO
-  // ------------------------------------------------------------
-  app.put(
-    "/cases/:caseId/paf",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      try {
-        const { caseId } = paramsSchema.parse(request.params)
-        const bodyData = pafBodySchema.partial().parse(request.body)
-        const { sub: userId, cargo } = request.user as { sub: string; cargo: string }
+      const created = await prisma.paf.create({
+        data: {
+          ...data,
+          deadline: stripTime(data.deadline),
+          casoId: caseId, // Campo do banco: Variável
+          autorId,
+          versaoAtual: 1,
+        },
+      })
 
-        const existing = await prisma.paf.findUnique({ where: { casoId } })
-        if (!existing) {
-          return reply.status(404).send({ message: "PAF não encontrado." })
-        }
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId, 
+          autorId,
+          acao: LogAction.PAF_CRIADO,
+          descricao: "Elaborou o Plano de Acompanhamento Familiar (PAF).",
+        },
+      })
 
-        // Somente quem criou OU o gerente pode editar
-        if (existing.autorId !== userId && cargo !== "Gerente") {
-          return reply.status(403).send({ message: "Sem permissão para editar este PAF." })
-        }
+      return reply.status(201).send(created)
 
-        // =======================
-        // SALVAR VERSÃO ANTIGA
-        // =======================
-        const nextVersionNumber = existing.versaoAtual + 1
-
-        await prisma.pafVersion.create({
-          data: {
-            pafId: existing.id,
-            diagnostico: existing.diagnostico,
-            objetivos: existing.objetivos,
-            estrategias: existing.estrategias,
-            deadline: existing.deadline,
-            autorId: existing.autorId,
-            versaoNumero: existing.versaoAtual,
-          },
-        })
-
-        // =======================
-        // ATUALIZAR PAF PRINCIPAL
-        // =======================
-        const updated = await prisma.paf.update({
-          where: { casoId },
-          data: {
-            ...bodyData,
-            autorId: userId,
-            versaoAtual: nextVersionNumber,
-            updatedAt: new Date(),
-          },
-        })
-
-        // --- Log com comparação da versão ---
-        await prisma.caseLog.create({
-          data: {
-            casoId,
-            autorId: userId,
-            acao: LogAction.PAF_ATUALIZADO,
-            descricao: `Atualizou o PAF para a versão ${nextVersionNumber}.`,
-            valorAnterior: JSON.stringify(existing),
-            valorNovo: JSON.stringify(bodyData),
-          },
-        })
-
-        return reply.status(200).send(updated)
-      } catch (error) {
-        console.error("❌ Erro ao atualizar PAF:", error)
-        return reply.status(500).send({ message: "Erro interno ao atualizar PAF." })
+    } catch (error) {
+      console.error("❌ Erro POST /paf:", error)
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ message: "Dados inválidos.", errors: error.flatten().fieldErrors })
       }
+      return reply.status(500).send({ message: "Erro interno ao criar PAF." })
     }
-  )
+  })
+
+  // 4. Atualizar PAF (Gera Versão)
+  app.put("/cases/:caseId/paf", async (request, reply) => {
+    try {
+      // Extração da variável 'caseId'
+      const { caseId } = paramsSchema.parse(request.params)
+      
+      const bodyData = pafBodySchema.partial().parse(request.body)
+      const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
+
+      // CORREÇÃO AQUI: Uso explícito de 'casoId: caseId'
+      const existing = await prisma.paf.findUnique({ where: { casoId: caseId } })
+      
+      if (!existing) return reply.status(404).send({ message: "PAF não encontrado." })
+
+      // Trava de segurança
+      if (existing.autorId !== userId && cargo !== "Gerente") {
+        return reply.status(403).send({ message: "Sem permissão para editar este PAF." })
+      }
+
+      // 1. Salvar versão antiga
+      await prisma.pafVersion.create({
+        data: {
+          pafId: existing.id,
+          diagnostico: existing.diagnostico,
+          objetivos: existing.objetivos,
+          estrategias: existing.estrategias,
+          deadline: existing.deadline,
+          autorId: existing.autorId,
+          versaoNumero: existing.versaoAtual,
+        },
+      })
+
+      // 2. Atualizar registro atual
+      const nextVersion = existing.versaoAtual + 1
+      const updated = await prisma.paf.update({
+        where: { casoId: caseId }, // CORREÇÃO AQUI TAMBÉM
+        data: {
+          ...bodyData,
+          deadline: bodyData.deadline ? stripTime(bodyData.deadline) : undefined,
+          autorId: userId,
+          versaoAtual: nextVersion,
+          updatedAt: new Date(),
+        },
+      })
+
+      // 3. Auditoria
+      await prisma.caseLog.create({
+        data: {
+          casoId: caseId, // CORREÇÃO
+          autorId: userId,
+          acao: LogAction.PAF_ATUALIZADO,
+          descricao: `Atualizou PAF para versão ${nextVersion}.`,
+        },
+      })
+
+      return reply.send(updated)
+
+    } catch (error) {
+      console.error("❌ Erro PUT /paf:", error)
+      
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ message: "Dados inválidos.", errors: error.flatten().fieldErrors })
+      }
+      
+      // Erro de tabela inexistente
+      if ((error as any).code === 'P2021') {
+        return reply.status(500).send({ message: "Erro de banco: Tabela PafVersion não encontrada. Rode 'npx prisma migrate dev'." })
+      }
+
+      return reply.status(500).send({ message: "Erro interno ao atualizar PAF." })
+    }
+  })
 }

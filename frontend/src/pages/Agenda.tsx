@@ -1,7 +1,6 @@
-// frontend/src/pages/Agenda.tsx
 import { useState, useEffect, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useForm, type SubmitHandler, Controller, type Resolver } from 'react-hook-form'
@@ -33,15 +32,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Badge } from '@/components/ui/badge'
 
+// Cores
 const TYPE_COLORS: Record<string, string> = {
-  'Atendimento': '#2563eb',
-  'Visita': '#16a34a',
-  'Retorno': '#f97316',
-  'Reunião': '#9333ea',
-  'Grupo': '#7c3aed',
-  'Outro': '#64748b'
+  'Atendimento': '#2563eb', // Azul
+  'Visita': '#16a34a',      // Verde
+  'Retorno': '#f97316',     // Laranja
+  'Reunião': '#9333ea',     // Roxo
+  'Grupo': '#7c3aed',       // Roxo Escuro
+  'Outro': '#64748b'        // Cinza
 }
 
+// --- SCHEMA DO FORMULÁRIO ---
 const appointmentFormSchema = z.object({
   titulo: z.string().min(3, 'O título é muito curto.'),
   data: z.string().min(1, 'Data obrigatória'),
@@ -53,6 +54,7 @@ const appointmentFormSchema = z.object({
 
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
 
+// --- MODAL DE NOVO AGENDAMENTO ---
 function NewAppointmentModal({
   open,
   onOpenChange,
@@ -68,7 +70,8 @@ function NewAppointmentModal({
 }) {
   const queryClient = useQueryClient()
 
-  const { data: casesResponse } = useQuery<{ items: { id: string, nomeCompleto: string }[] }>( {
+  // Busca lista de casos para o select
+  const { data: casesResponse } = useQuery({ 
     queryKey: ['cases', 'all-select'],
     queryFn: async () => {
       const response = await api.get('/cases', { params: { pageSize: 100 } })
@@ -77,7 +80,13 @@ function NewAppointmentModal({
     staleTime: 1000 * 60 * 5
   })
 
-  const cases = casesResponse?.items || []
+  // [CORREÇÃO CRÍTICA] Verifica se é array direto OU se está dentro de .data/.items
+  const cases: any[] = useMemo(() => {
+    if (!casesResponse) return []
+    if (Array.isArray(casesResponse)) return casesResponse
+    return casesResponse.data || casesResponse.items || []
+  }, [casesResponse])
+
   const resolver = zodResolver(appointmentFormSchema) as unknown as Resolver<AppointmentFormData>
 
   const {
@@ -114,12 +123,12 @@ function NewAppointmentModal({
         casoId: data.casoId,
         observacoes: data.observacoes || null,
         data: isoDate,
+        tipo: data.tipo,
       })
     },
     onSuccess: () => {
       toast.success('Agendamento criado com sucesso!')
       queryClient.invalidateQueries({ queryKey: ['appointments'] })
-      queryClient.invalidateQueries({ queryKey: ['myAgendaStats'] })
       onOpenChange(false)
       reset()
     },
@@ -201,10 +210,10 @@ function NewAppointmentModal({
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value} disabled={!!defaultCaseId}>
                   <SelectTrigger>
-                     <SelectValue placeholder={cases.length > 0 ? "Selecione um caso..." : "Carregando..."} />
+                     <SelectValue placeholder={cases.length > 0 ? "Selecione um caso..." : "Nenhum caso disponível"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {cases.map((c) => (
+                    {cases.map((c: any) => (
                       <SelectItem key={c.id} value={c.id}>{c.nomeCompleto}</SelectItem>
                     ))}
                   </SelectContent>
@@ -237,11 +246,13 @@ function NewAppointmentModal({
   )
 }
 
+// --- MODAL DE DETALHES ---
 function EventDetailModal({ event, onClose }: { event: any, onClose: () => void }) {
   if (!event) return null
 
-  // [CORREÇÃO] Removido originalId que não estava sendo usado
-  const { casoId, nomeCompleto, observacoes, isGroup } = event.extendedProps
+  const { resourceId, description, type } = event.extendedProps
+  const isGroup = type === 'GRUPO'
+  const linkTo = isGroup ? ROUTES.GROUPS : ROUTES.CASE_DETAIL(resourceId)
 
   return (
     <Dialog open={!!event} onOpenChange={() => onClose()}>
@@ -263,28 +274,28 @@ function EventDetailModal({ event, onClose }: { event: any, onClose: () => void 
                <div className="flex items-center gap-2 font-semibold mb-1">
                  <Users className="h-4 w-4" /> Atividade Coletiva
                </div>
-               <p className="mb-2">Esta é uma atividade de grupo. Para gerenciar a lista de presença e detalhes, acesse o módulo de Grupos.</p>
+               <p className="mb-2">Esta é uma atividade de grupo.</p>
                <Button asChild size="sm" variant="outline" className="w-full">
                  <Link to={ROUTES.GROUPS}>Ir para Gestão de Grupos</Link>
                </Button>
              </div>
           ) : (
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground uppercase">Usuário / Caso</Label>
+              <Label className="text-xs text-muted-foreground uppercase">Link Rápido</Label>
               <p className="font-medium text-base">
-                {nomeCompleto ? (
-                  <Link to={ROUTES.CASE_DETAIL(casoId)} className="hover:underline text-primary flex items-center gap-1">
-                    {nomeCompleto} <ChevronRight className="h-3 w-3" />
+                {resourceId ? (
+                  <Link to={linkTo} className="hover:underline text-primary flex items-center gap-1">
+                    Ver Detalhes do Caso / Grupo <ChevronRight className="h-3 w-3" />
                   </Link>
-                ) : 'N/A'}
+                ) : 'Sem vínculo'}
               </p>
             </div>
           )}
 
-          {observacoes && (
+          {description && (
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground uppercase">Observações</Label>
-              <p className="text-sm bg-muted/50 p-3 rounded-md">{observacoes}</p>
+              <Label className="text-xs text-muted-foreground uppercase">Detalhes/Observações</Label>
+              <p className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">{description}</p>
             </div>
           )}
         </div>
@@ -297,15 +308,35 @@ function EventDetailModal({ event, onClose }: { event: any, onClose: () => void 
   )
 }
 
+// --- COMPONENTE PRINCIPAL ---
 export function Agenda() {
-  const { data: appointments = [], isLoading } = useQuery({
-    queryKey: ['appointments', 'all'],
+  const [dateRange, setDateRange] = useState<{ start: Date, end: Date }>({
+    start: startOfMonth(new Date()),
+    end: endOfMonth(new Date())
+  })
+
+  // [CORREÇÃO] Recebe os dados brutos e trata dentro do componente
+  const { data: appointmentsData, isLoading } = useQuery({
+    queryKey: ['appointments', dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: async () => {
-      const response = await api.get('/appointments', { params: { pageSize: 500 } })
+      const response = await api.get('/appointments', {
+        params: {
+          start: dateRange.start.toISOString(),
+          end: dateRange.end.toISOString()
+        }
+      })
       return response.data
     },
-    staleTime: 1000 * 60 * 2
+    placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 60 * 5 
   })
+
+  // [CORREÇÃO CRÍTICA] Normaliza a lista de agendamentos (Array vs Objeto)
+  const appointments: any[] = useMemo(() => {
+    if (!appointmentsData) return []
+    if (Array.isArray(appointmentsData)) return appointmentsData
+    return appointmentsData.data || appointmentsData.items || []
+  }, [appointmentsData])
 
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | undefined>()
@@ -323,29 +354,29 @@ export function Agenda() {
     return appointments.map((app: any) => {
       let color = TYPE_COLORS['Outro']
       
-      if (app.isGroup) {
+      if (app.type === 'GRUPO') {
         color = TYPE_COLORS['Grupo']
       } else {
-        const lowerTitle = app.titulo?.toLowerCase?.() ?? ''
+        const lowerTitle = app.title?.toLowerCase?.() ?? ''
         if (lowerTitle.includes('visita')) color = TYPE_COLORS['Visita']
         else if (lowerTitle.includes('atendimento')) color = TYPE_COLORS['Atendimento']
         else if (lowerTitle.includes('reunião')) color = TYPE_COLORS['Reunião']
         else if (lowerTitle.includes('retorno')) color = TYPE_COLORS['Retorno']
       }
 
+      // [CORREÇÃO] Aceita 'start' ou 'data' como propriedade de data
+      const eventStart = app.start || app.data
+
       return {
         id: app.id,
-        title: app.titulo,
-        start: app.data,
+        title: app.title,
+        start: eventStart,
         backgroundColor: color,
         borderColor: color,
         extendedProps: {
-          casoId: app.caso?.id,
-          nomeCompleto: app.caso?.nomeCompleto,
-          observacoes: app.observacoes,
-          telefone: app.caso?.telefone,
-          isGroup: app.isGroup,
-          originalId: app.originalId
+          type: app.type,
+          description: app.description,
+          resourceId: app.resourceId
         }
       }
     })
@@ -359,6 +390,10 @@ export function Agenda() {
 
   const handleEventClick = (info: any) => {
     setSelectedEvent(info.event)
+  }
+
+  const handleDatesSet = (arg: { start: Date; end: Date }) => {
+    setDateRange({ start: arg.start, end: arg.end })
   }
 
   return (
@@ -408,6 +443,7 @@ export function Agenda() {
           events={calendarEvents}
           onDateClick={handleDateClick}
           onEventClick={handleEventClick}
+          datesSet={handleDatesSet}
         />
       </div>
 

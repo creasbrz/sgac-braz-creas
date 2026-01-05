@@ -1,4 +1,3 @@
-// frontend/src/components/modals/AssignSpecialistModal.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
@@ -46,10 +45,11 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
   const { data: specialists } = useQuery<Specialist[]>({
     queryKey: ['users', 'specialists'],
     queryFn: async () => {
-      const res = await api.get('/users', { params: { role: 'Especialista', active: true } })
+      // [CORREÇÃO] Alterado 'role' para 'cargo' para bater com o filtro do backend
+      const res = await api.get('/users', { params: { cargo: 'Especialista', active: true } })
       return res.data
     },
-    enabled: isOpen
+    enabled: isOpen // Só carrega quando o modal abre
   })
 
   // Mutação de Atribuição

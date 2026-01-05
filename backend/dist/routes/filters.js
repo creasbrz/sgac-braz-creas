@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/filters.ts
 async function filterRoutes(app) {
@@ -34,7 +39,7 @@ async function filterRoutes(app) {
     try {
       await request.jwtVerify();
     } catch (err) {
-      return reply.status(401).send({ message: "N\xE3o autorizado." });
+      return reply.status(401).send({ message: "Sess\xE3o expirada ou inv\xE1lida." });
     }
   });
   app.get("/filters", async (request, reply) => {
@@ -46,38 +51,60 @@ async function filterRoutes(app) {
       });
       return reply.send(filters);
     } catch (error) {
-      console.error("\u274C ERRO AO BUSCAR FILTROS:", error);
-      return reply.status(500).send({ message: "Erro ao buscar filtros." });
+      request.log.error(error);
+      return reply.status(500).send({ message: "Erro ao buscar seus filtros." });
     }
   });
   app.post("/filters", async (request, reply) => {
     const { sub: userId } = request.user;
     const bodySchema = import_zod.z.object({
-      nome: import_zod.z.string().min(1, "D\xEA um nome ao filtro"),
+      nome: import_zod.z.string().min(1, "D\xEA um nome para identificar este filtro (Ex: Meus casos na Vila)"),
       config: import_zod.z.any()
     });
     try {
       const { nome, config } = bodySchema.parse(request.body);
-      const userExists = await prisma.user.findUnique({ where: { id: userId } });
-      if (!userExists) {
-        return reply.status(401).send({ message: "Sess\xE3o inv\xE1lida. Fa\xE7a login novamente." });
-      }
       const count = await prisma.savedFilter.count({ where: { userId } });
-      if (count >= 10) {
-        return reply.status(400).send({ message: "Limite de 10 filtros atingido." });
+      if (count >= 15) {
+        return reply.status(400).send({ message: "Limite de 15 filtros atingido. Exclua alguns antigos." });
       }
       const filter = await prisma.savedFilter.create({
         data: {
           nome,
           config: config ?? {},
-          // Garante que não é null
           userId
         }
       });
       return reply.status(201).send(filter);
     } catch (error) {
-      console.error("\u274C ERRO NO POST /filters:", error);
+      request.log.error(error);
       return reply.status(500).send({ message: "Erro ao salvar filtro." });
+    }
+  });
+  app.patch("/filters/:id", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+    const bodySchema = import_zod.z.object({
+      nome: import_zod.z.string().min(1).optional(),
+      config: import_zod.z.any().optional()
+    });
+    const { sub: userId } = request.user;
+    const { id } = paramsSchema.parse(request.params);
+    const { nome, config } = bodySchema.parse(request.body);
+    try {
+      const existing = await prisma.savedFilter.findUnique({ where: { id } });
+      if (!existing) return reply.status(404).send({ message: "Filtro n\xE3o encontrado." });
+      if (existing.userId !== userId) return reply.status(403).send({ message: "Voc\xEA s\xF3 pode editar seus pr\xF3prios filtros." });
+      const updated = await prisma.savedFilter.update({
+        where: { id },
+        data: {
+          nome,
+          config: config ?? void 0
+          // undefined faz o Prisma ignorar o campo se não foi enviado
+        }
+      });
+      return reply.send(updated);
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ message: "Erro ao atualizar filtro." });
     }
   });
   app.delete("/filters/:id", async (request, reply) => {
@@ -86,13 +113,14 @@ async function filterRoutes(app) {
     try {
       const { id } = paramsSchema.parse(request.params);
       const filter = await prisma.savedFilter.findUnique({ where: { id } });
-      if (!filter || filter.userId !== userId) {
-        return reply.status(403).send({ message: "Sem permiss\xE3o." });
+      if (!filter) return reply.status(404).send({ message: "Filtro n\xE3o encontrado." });
+      if (filter.userId !== userId) {
+        return reply.status(403).send({ message: "Sem permiss\xE3o para excluir este filtro." });
       }
       await prisma.savedFilter.delete({ where: { id } });
       return reply.status(204).send();
     } catch (error) {
-      console.error("\u274C ERRO NO DELETE /filters:", error);
+      request.log.error(error);
       return reply.status(500).send({ message: "Erro ao remover filtro." });
     }
   });

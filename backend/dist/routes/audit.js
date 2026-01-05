@@ -26,10 +26,16 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/audit.ts
 var import_date_fns = require("date-fns");
+var import_client2 = require("@prisma/client");
 async function auditRoutes(app) {
   app.addHook("onRequest", async (request, reply) => {
     try {
@@ -44,67 +50,75 @@ async function auditRoutes(app) {
   });
   app.get("/audit", async (request, reply) => {
     const querySchema = import_zod.z.object({
-      page: import_zod.z.coerce.number().int().positive().default(1),
-      pageSize: import_zod.z.coerce.number().int().positive().max(100).default(20),
-      autorId: import_zod.z.string().uuid().optional(),
-      acao: import_zod.z.string().optional(),
-      // Ex: CRIACAO, DESLIGAMENTO, ATRIBUICAO
-      periodo: import_zod.z.enum(["hoje", "7dias", "30dias", "tudo"]).default("7dias"),
-      caseId: import_zod.z.string().uuid().optional(),
-      // 🔥 NOVO FILTRO
-      search: import_zod.z.string().min(2).optional()
-      // 🔍 NOVO: Busca textual inteligente
+      page: import_zod.z.coerce.number().default(1),
+      pageSize: import_zod.z.coerce.number().default(20),
+      search: import_zod.z.string().optional(),
+      // Busca textual
+      autorId: import_zod.z.string().optional(),
+      // Filtro por Técnico
+      acao: import_zod.z.nativeEnum(import_client2.LogAction).optional(),
+      // Filtro por Tipo de Ação
+      periodo: import_zod.z.enum(["hoje", "7dias", "30dias", "todo"]).default("7dias")
     });
+    const { page, pageSize, search, autorId, acao, periodo } = querySchema.parse(request.query);
+    const where = {};
+    if (search) {
+      where.OR = [
+        { descricao: { contains: search, mode: "insensitive" } },
+        { autor: { nome: { contains: search, mode: "insensitive" } } },
+        { caso: { nomeCompleto: { contains: search, mode: "insensitive" } } }
+      ];
+    }
+    if (autorId && autorId !== "all") where.autorId = autorId;
+    if (acao) where.acao = acao;
+    const hoje = /* @__PURE__ */ new Date();
+    if (periodo === "hoje") {
+      where.createdAt = { gte: (0, import_date_fns.startOfDay)(hoje), lte: (0, import_date_fns.endOfDay)(hoje) };
+    } else if (periodo === "7dias") {
+      where.createdAt = { gte: (0, import_date_fns.startOfDay)((0, import_date_fns.subDays)(hoje, 7)) };
+    } else if (periodo === "30dias") {
+      where.createdAt = { gte: (0, import_date_fns.startOfDay)((0, import_date_fns.subDays)(hoje, 30)) };
+    }
     try {
-      const params = querySchema.parse(request.query);
-      const { page, pageSize, autorId, acao, periodo, caseId, search } = params;
-      const where = {};
-      if (search) {
-        where.OR = [
-          { descricao: { contains: search, mode: "insensitive" } },
-          { autor: { nome: { contains: search, mode: "insensitive" } } },
-          { caso: { nomeCompleto: { contains: search, mode: "insensitive" } } }
-        ];
-      }
-      if (autorId && autorId !== "all") where.autorId = autorId;
-      if (acao && acao !== "all") where.acao = acao;
-      if (caseId) where.casoId = caseId;
-      const hoje = /* @__PURE__ */ new Date();
-      switch (periodo) {
-        case "hoje":
-          where.createdAt = { gte: (0, import_date_fns.startOfDay)(hoje), lte: (0, import_date_fns.endOfDay)(hoje) };
-          break;
-        case "7dias":
-          where.createdAt = { gte: (0, import_date_fns.startOfDay)((0, import_date_fns.subDays)(hoje, 7)) };
-          break;
-        case "30dias":
-          where.createdAt = { gte: (0, import_date_fns.startOfDay)((0, import_date_fns.subDays)(hoje, 30)) };
-          break;
-      }
-      const [items, total] = await Promise.all([
+      const [total, items] = await Promise.all([
+        prisma.caseLog.count({ where }),
         prisma.caseLog.findMany({
           where,
+          take: pageSize,
+          skip: (page - 1) * pageSize,
           orderBy: { createdAt: "desc" },
           include: {
-            autor: { select: { nome: true, cargo: true } },
-            caso: { select: { nomeCompleto: true } }
-          },
-          take: pageSize,
-          skip: (page - 1) * pageSize
-        }),
-        prisma.caseLog.count({ where })
+            autor: { select: { nome: true, cargo: true, email: true } },
+            caso: { select: { id: true, nomeCompleto: true } }
+          }
+        })
       ]);
       return reply.send({
-        items,
-        total,
-        totalPages: Math.ceil(total / pageSize),
-        page,
-        appliedFilters: params
+        data: items,
+        meta: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize)
+        }
       });
     } catch (error) {
-      console.error("Erro /audit:", error);
-      return reply.status(500).send({ message: "Erro ao buscar logs de auditoria." });
+      console.error("Erro na auditoria:", error);
+      return reply.status(500).send({ message: "Erro ao processar logs de auditoria." });
     }
+  });
+  app.get("/audit/stats", async (request, reply) => {
+    const todayStart = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
+    const stats = await prisma.caseLog.groupBy({
+      by: ["acao"],
+      where: {
+        createdAt: { gte: todayStart }
+      },
+      _count: {
+        _all: true
+      }
+    });
+    return reply.send(stats);
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

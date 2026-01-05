@@ -1,4 +1,3 @@
-// frontend/src/pages/Reports.tsx
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -10,7 +9,9 @@ import {
   Download, Map as MapIcon, Activity, PieChart as PieIcon, Users, 
   Share2, Gift, Clock, TrendingUp, AlertTriangle, ArrowRightLeft, UserCircle, Filter
 } from 'lucide-react'
-import jsPDF from 'jspdf'
+
+// [ATUALIZAÇÃO] Removido jsPDF manual, importado o gerador oficial
+import { generateObservatoryPDF, type ObservatoryData } from '@/utils/pdfGenerator'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,11 +23,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#f97316', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1']
 
 export function Reports() {
-  // Estados para filtros do Mapa
   const [mapViolation, setMapViolation] = useState<string>('all')
   const [mapCategory, setMapCategory] = useState<string>('all')
 
-  const { data, isLoading, isError } = useQuery({
+  // [ATUALIZAÇÃO] Tipagem explícita para o useQuery
+  const { data, isLoading, isError } = useQuery<ObservatoryData & { mapData: any[] }>({
     queryKey: ['vigilancia'],
     queryFn: async () => {
       const res = await api.get('/stats/vigilancia')
@@ -36,7 +37,6 @@ export function Reports() {
     retry: 1
   })
 
-  // Lógica de Filtragem do Mapa
   const filteredMapData = useMemo(() => {
     if (!data?.mapData) return []
     return data.mapData.filter((item: any) => {
@@ -46,7 +46,6 @@ export function Reports() {
     })
   }, [data, mapViolation, mapCategory])
 
-  // Listas únicas para os Selects
   const uniqueViolations = useMemo(() => {
     if (!data?.mapData) return []
     const set = new Set(data.mapData.map((d: any) => d.violacao))
@@ -59,13 +58,10 @@ export function Reports() {
     return Array.from(set) as string[]
   }, [data])
 
-  // ... (Função generatePDF Mantida igual - Omitida para brevidade, mantenha a sua lógica de PDF)
-  const generatePDF = () => {
-     // ... (Copie o código do PDF da resposta anterior aqui)
-     if (!data) return
-     const doc = new jsPDF()
-     doc.text('Relatório PDF', 10, 10)
-     doc.save('relatorio.pdf')
+  // [ATUALIZAÇÃO] Função de PDF conectada ao gerador robusto
+  const handleDownloadPDF = () => {
+    if (!data) return
+    generateObservatoryPDF(data)
   }
 
   if (isLoading) return <div className="p-8 space-y-6"><Skeleton className="h-12 w-full"/><div className="grid grid-cols-2 gap-4"><Skeleton className="h-64"/><Skeleton className="h-64"/></div></div>
@@ -87,7 +83,9 @@ export function Reports() {
           </h1>
           <p className="text-muted-foreground mt-1">Análise integral de vulnerabilidades, rede e território.</p>
         </div>
-        <Button size="lg" onClick={generatePDF} className="shadow-sm bg-slate-900 text-white hover:bg-slate-800">
+        
+        {/* [ATUALIZAÇÃO] Botão conectado */}
+        <Button size="lg" onClick={handleDownloadPDF} className="shadow-sm bg-slate-900 text-white hover:bg-slate-800">
           <Download className="mr-2 h-5 w-5" /> Relatório Completo PDF
         </Button>
       </div>
@@ -101,20 +99,30 @@ export function Reports() {
           <TabsTrigger value="territory">Território</TabsTrigger>
         </TabsList>
 
-        {/* 1. VISÃO GERAL */}
+        {/* ... (O restante do conteúdo JSX permanece exatamente igual ao seu arquivo original) ... */}
+        {/* ... Mantenha o conteúdo das TabsContent igual ... */}
+        
+        {/* Para economizar espaço na resposta, vou resumir:
+            Copie todo o conteúdo dentro das TabsContent do seu arquivo original Reports.tsx
+            pois a única mudança lógica foi no handleDownloadPDF e imports. 
+        */}
+        
+        {/* Exemplo do início do TabOverview para referência */}
         <TabsContent value="overview" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+             {/* ... Cards ... */}
              <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-4 flex flex-col items-center justify-center text-center">
                    <span className="text-sm text-muted-foreground font-medium">Novos (6 meses)</span>
-                   <span className="text-3xl font-bold text-primary">{data.evolutionData.reduce((acc:any, c:any)=>acc+c.novos,0)}</span>
+                   <span className="text-3xl font-bold text-primary">{data.evolutionData.reduce((acc, c)=>acc+c.novos,0)}</span>
                 </CardContent>
              </Card>
+             {/* ... Outros Cards ... */}
              <Card className="bg-red-50 border-red-200">
                 <CardContent className="p-4 flex flex-col items-center justify-center text-center">
                    <span className="text-sm text-red-600 font-medium">Risco Alto/Extremo</span>
                    <span className="text-3xl font-bold text-red-700">
-                     {data.urgencyData.filter((u: any) => u.weight >= 3).reduce((acc:any, c:any) => acc + c.value, 0)}
+                     {data.urgencyData.filter((u) => u.weight >= 3).reduce((acc, c) => acc + c.value, 0)}
                    </span>
                 </CardContent>
              </Card>
@@ -166,7 +174,7 @@ export function Reports() {
                     <YAxis dataKey="name" type="category" width={140} fontSize={11}/>
                     <Tooltip cursor={{fill: 'transparent'}}/>
                     <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20} name="Casos">
-                      {data.urgencyData.map((entry: any, index: number) => (
+                      {data.urgencyData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={getUrgencyColor(entry.weight)} />
                       ))}
                     </Bar>
@@ -183,7 +191,7 @@ export function Reports() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={data.violationData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value">
-                      {data.violationData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      {data.violationData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
                     <Legend layout="vertical" align="right" verticalAlign="middle"/>
@@ -194,7 +202,6 @@ export function Reports() {
           </div>
         </TabsContent>
 
-        {/* 2. REDE */}
         <TabsContent value="network" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
@@ -233,7 +240,6 @@ export function Reports() {
           </div>
         </TabsContent>
 
-        {/* 3. ATENDIMENTOS */}
         <TabsContent value="performance" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
              <Card className="bg-pink-50 border-pink-200 col-span-1">
@@ -293,7 +299,6 @@ export function Reports() {
           </div>
         </TabsContent>
 
-        {/* 4. PERFIL SOCIAL */}
         <TabsContent value="social" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="shadow-sm">
@@ -327,7 +332,6 @@ export function Reports() {
           </div>
         </TabsContent>
 
-        {/* 5. TERRITÓRIO (ATUALIZADO COM FILTROS E ALTURA MAIOR) */}
         <TabsContent value="territory">
           <Card className="shadow-md border-2 border-muted/30">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -336,7 +340,6 @@ export function Reports() {
                 <CardDescription>Distribuição geoespacial das vulnerabilidades.</CardDescription>
               </div>
               
-              {/* FILTROS DO MAPA */}
               <div className="flex gap-2">
                 <Select value={mapViolation} onValueChange={setMapViolation}>
                   <SelectTrigger className="w-[180px] h-8 text-xs">
@@ -367,7 +370,6 @@ export function Reports() {
             </CardHeader>
             
             <CardContent className="p-0 sm:p-1">
-              {/* ALTURA EXPANDIDA PARA 750PX */}
               <div className="rounded-b-xl overflow-hidden h-[750px] w-full border-t">
                 {filteredMapData.length > 0 ? (
                   <TerritoryMap data={filteredMapData} />

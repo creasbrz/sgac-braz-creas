@@ -36,114 +36,78 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/auth.ts
 var import_bcryptjs = __toESM(require("bcryptjs"));
+var import_client2 = require("@prisma/client");
 async function authRoutes(app) {
   app.post("/register", async (request, reply) => {
     const registerBodySchema = import_zod.z.object({
-      nome: import_zod.z.string(),
+      nome: import_zod.z.string().min(3),
       email: import_zod.z.string().email(),
       senha: import_zod.z.string().min(6),
-      cargo: import_zod.z.enum(["Gerente", "Agente Social", "Especialista"])
-      //
+      cargo: import_zod.z.string().transform((val) => {
+        if (val === "Agente Social") return import_client2.Cargo.Agente_Social;
+        return val;
+      }),
+      matricula: import_zod.z.string().optional()
     });
     try {
-      const { nome, email, senha, cargo } = registerBodySchema.parse(
-        request.body
-      );
+      const { nome, email, senha, cargo, matricula } = registerBodySchema.parse(request.body);
       const userExists = await prisma.user.findUnique({ where: { email } });
-      if (userExists) {
-        return await reply.status(409).send({ message: "Email j\xE1 registado." });
-      }
+      if (userExists) return reply.status(409).send({ message: "Email j\xE1 registrado." });
       const hashedPassword = await import_bcryptjs.default.hash(senha, 8);
       const user = await prisma.user.create({
-        data: {
-          nome,
-          email,
-          senha: hashedPassword,
-          cargo,
-          ativo: true
-          // Garante que o usuário registrado seja ativo
-        }
+        data: { nome, email, senha: hashedPassword, cargo, matricula, ativo: true }
       });
-      return await reply.status(201).send({
-        //
-        message: "Utilizador criado com sucesso!",
-        user: { id: user.id, nome: user.nome, email: user.email }
-      });
+      const { senha: _, ...userSafe } = user;
+      return reply.status(201).send(userSafe);
     } catch (error) {
-      request.log.error(error, "Erro ao registar utilizador");
-      return await reply.status(500).send({ message: "Erro interno do servidor." });
+      return reply.status(400).send({ message: "Erro no registro", error });
     }
   });
   app.post("/login", async (request, reply) => {
-    const loginBodySchema = import_zod.z.object({
-      email: import_zod.z.string().email("Email inv\xE1lido."),
-      senha: import_zod.z.string().min(6, "A senha deve ter no m\xEDnimo 6 caracteres.")
-      //
-    });
+    const loginBodySchema = import_zod.z.object({ email: import_zod.z.string().email(), senha: import_zod.z.string() });
     try {
       const { email, senha } = loginBodySchema.parse(request.body);
       const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        return await reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
-      }
-      if (!user.ativo) {
-        return await reply.status(403).send({ message: "Este usu\xE1rio est\xE1 desativado." });
-      }
+      if (!user) return reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
+      if (!user.ativo) return reply.status(401).send({ message: "Usu\xE1rio desativado." });
       const isPasswordCorrect = await import_bcryptjs.default.compare(senha, user.senha);
-      if (!isPasswordCorrect) {
-        return await reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
-      }
+      if (!isPasswordCorrect) return reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
       const token = app.jwt.sign(
-        {
-          // Payload (informações dentro do token)
-          nome: user.nome,
-          //
-          cargo: user.cargo
-          //
-        },
-        {
-          // Metadados (informações sobre o token)
-          sub: user.id,
-          // 'sub' (subject) é o ID do usuário
-          expiresIn: "7d"
-          // Token expira em 7 dias
-        }
+        { nome: user.nome, cargo: user.cargo, email: user.email },
+        { sub: user.id, expiresIn: "7d" }
       );
-      return await reply.status(200).send({ token });
+      return reply.status(200).send({ token });
     } catch (error) {
-      request.log.error(error, "Erro no processo de login");
-      return await reply.status(500).send({ message: "Ocorreu um erro inesperado no servidor." });
+      return reply.status(500).send({ message: "Erro interno no login." });
     }
   });
-  app.get(
-    "/me",
-    { onRequest: [app.authenticate] },
-    async (request, reply) => {
-      const userId = request.user.sub;
-      const user = await prisma.user.findUnique({
-        where: { id: userId, ativo: true },
-        // Garante que o usuário ainda está ativo
-        select: {
-          id: true,
-          //
-          nome: true,
-          //
-          email: true,
-          //
-          cargo: true
-          //
-        }
-      });
-      if (!user) {
-        return await reply.status(404).send({ message: "Utilizador n\xE3o encontrado." });
+  app.get("/me", { onRequest: [app.authenticate] }, async (request, reply) => {
+    const userId = request.user.sub;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        cargo: true,
+        matricula: true,
+        ativo: true
+        // Selecionamos o campo para checar depois
       }
-      return await reply.status(200).send(user);
-    }
-  );
+    });
+    if (!user) return reply.status(404).send({ message: "Usu\xE1rio n\xE3o encontrado." });
+    if (!user.ativo) return reply.status(401).send({ message: "Usu\xE1rio desativado." });
+    return reply.send(user);
+  });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

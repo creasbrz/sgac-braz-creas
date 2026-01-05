@@ -1,276 +1,257 @@
-// frontend/src/components/case/tabs/ReferralsTab.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import { 
+  Network, Plus, Calendar, CheckCircle2, Clock, XCircle, Trash2, MapPin
+} from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { 
-  Network, PlusCircle, CheckCircle2, XCircle, Clock, 
-  ArrowRight, ExternalLink, Loader2 
-} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+import { 
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter 
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select'
-import { Card, CardContent } from '@/components/ui/card'
-import type { Referral } from '@/types/case'
+import { Loader2 } from 'lucide-react'
 
-interface ReferralsTabProps {
-  caseId: string
+// Interface local
+interface Referral {
+  id: string
+  tipo: string
+  instituicao: string
+  motivo: string
+  status: 'PENDENTE' | 'CONCLUIDO' | 'CANCELADO'
+  dataEnvio: string
+  retorno?: string
+  autor: { nome: string }
 }
 
-export function ReferralsTab({ caseId }: ReferralsTabProps) {
+// [ATUALIZAÇÃO] Categorias contextualizadas para o DF/Brazlândia
+const TIPOS_REDE = [
+  "Saúde (SES/DF)",
+  "Educação (SEEDF)",
+  "Assistência Social (SEDES)",
+  "Justiça & Direitos (MP/TJDFT)",
+  "Conselho Tutelar",
+  "Segurança Pública (PCDF/PMDF)",
+  "Trabalho & Renda (SETEMP)",
+  "Habitação (CODHAB)",
+  "Transporte (Mobilidade)",
+  "Outros"
+]
+
+// [NOVO] Placeholders dinâmicos baseados na realidade de Brazlândia
+const EXEMPLOS_INSTITUICAO: Record<string, string> = {
+  "Saúde (SES/DF)": "Ex: HRBz (Hospital Regional), UBS 01 (Vila São José), CAPS AD, CAPS i...",
+  "Educação (SEEDF)": "Ex: CRE Brazlândia, Escola Classe 01, CED 02, Creche Jequitibá...",
+  "Assistência Social (SEDES)": "Ex: CRAS Brazlândia, Restaurante Comunitário, Unidade de Acolhimento...",
+  "Justiça & Direitos (MP/TJDFT)": "Ex: MPDFT (Promotoria), Defensoria Pública, Fórum, NAFAVD...",
+  "Conselho Tutelar": "Ex: Conselho Tutelar de Brazlândia (I ou II)",
+  "Segurança Pública (PCDF/PMDF)": "Ex: 18ª DP, DEAM (Delegacia da Mulher), Provid...",
+  "Trabalho & Renda (SETEMP)": "Ex: Agência do Trabalhador (Sine), Qualifica DF...",
+  "Habitação (CODHAB)": "Ex: CODHAB (Inscrição/Regularização)",
+  "Transporte (Mobilidade)": "Ex: Passe Livre Estudantil, Cartão PCD..."
+}
+
+export function ReferralsTab({ caseId }: { caseId: string }) {
   const queryClient = useQueryClient()
-  
-  // Estados para Criação
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [newType, setNewType] = useState('')
-  const [newInst, setNewInst] = useState('')
-  const [newReason, setNewReason] = useState('')
+  const [isAddOpen, setIsAddOpen] = useState(false)
 
-  // Estados para Atualização (Feedback)
-  const [editingRef, setEditingRef] = useState<Referral | null>(null)
-  const [editStatus, setEditStatus] = useState<'PENDENTE' | 'CONCLUIDO' | 'NEGADO'>('PENDENTE')
-  const [editRetorno, setEditRetorno] = useState('')
+  // Estados do Form
+  const [tipo, setTipo] = useState('')
+  const [instituicao, setInstituicao] = useState('')
+  const [motivo, setMotivo] = useState('')
 
-  // 1. Buscar Encaminhamentos
+  // Listar
   const { data: referrals = [], isLoading } = useQuery<Referral[]>({
     queryKey: ['referrals', caseId],
     queryFn: async () => (await api.get(`/cases/${caseId}/referrals`)).data
   })
 
-  // 2. Criar Encaminhamento
-  const { mutate: createReferral, isPending: isCreating } = useMutation({
+  // Criar
+  const { mutate: addReferral, isPending } = useMutation({
     mutationFn: async () => {
-      await api.post(`/cases/${caseId}/referrals`, {
-        tipo: newType,
-        instituicao: newInst,
-        motivo: newReason
-      })
+      await api.post(`/cases/${caseId}/referrals`, { tipo, instituicao, motivo })
     },
     onSuccess: () => {
-      toast.success("Encaminhamento registrado!")
-      setIsCreateOpen(false)
-      setNewType(''); setNewInst(''); setNewReason('')
+      toast.success("Encaminhamento registrado.")
+      setIsAddOpen(false)
+      setTipo(''); setInstituicao(''); setMotivo('')
       queryClient.invalidateQueries({ queryKey: ['referrals', caseId] })
     },
     onError: () => toast.error("Erro ao registrar.")
   })
 
-  // 3. Atualizar Encaminhamento
-  const { mutate: updateReferral, isPending: isUpdating } = useMutation({
-    mutationFn: async () => {
-      if (!editingRef) return
-      await api.patch(`/referrals/${editingRef.id}`, {
-        status: editStatus,
-        retorno: editRetorno
-      })
+  // Atualizar Status
+  const { mutate: updateStatus } = useMutation({
+    mutationFn: async ({ id, status }: { id: string, status: string }) => {
+      await api.patch(`/referrals/${id}`, { status })
     },
     onSuccess: () => {
-      toast.success("Status atualizado!")
-      setEditingRef(null)
+      toast.success("Status atualizado.")
       queryClient.invalidateQueries({ queryKey: ['referrals', caseId] })
-    },
-    onError: () => toast.error("Erro ao atualizar.")
+    }
   })
 
-  // Helper para Status Badge
-  const getStatusConfig = (status: string) => {
+  // Excluir
+  const { mutate: removeReferral } = useMutation({
+    mutationFn: async (id: string) => await api.delete(`/referrals/${id}`),
+    onSuccess: () => {
+      toast.success("Removido com sucesso.")
+      queryClient.invalidateQueries({ queryKey: ['referrals', caseId] })
+    },
+    onError: () => toast.error("Apenas o autor pode remover.")
+  })
+
+  const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'CONCLUIDO': return { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2, text: 'Concluído' }
-      case 'NEGADO': return { color: 'bg-red-100 text-red-700', icon: XCircle, text: 'Negado/Sem vaga' }
-      default: return { color: 'bg-amber-100 text-amber-700', icon: Clock, text: 'Pendente' }
+      case 'CONCLUIDO': return <Badge className="bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="w-3 h-3 mr-1"/> Concluído</Badge>
+      case 'CANCELADO': return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1"/> Cancelado</Badge>
+      default: return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200"><Clock className="w-3 h-3 mr-1"/> Pendente</Badge>
     }
   }
+
+  // Define o placeholder com base na seleção
+  const placeholderInstituicao = tipo ? (EXEMPLOS_INSTITUICAO[tipo] || "Nome da instituição ou órgão") : "Selecione o tipo de serviço primeiro..."
 
   return (
     <div className="space-y-6 animate-in fade-in">
       
-      {/* Header da Aba */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
           <h3 className="text-base font-semibold flex items-center gap-2">
-            <Network className="h-5 w-5 text-primary" />
-            Rede de Proteção
+            <Network className="h-5 w-5 text-primary" /> Articulação em Rede (Brazlândia)
           </h3>
-          <p className="text-sm text-muted-foreground">
-            Gestão de encaminhamentos e contra-referências.
-          </p>
+          <p className="text-sm text-muted-foreground">Gestão de encaminhamentos para a rede intersetorial.</p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} size="sm">
-          <PlusCircle className="mr-2 h-4 w-4" /> Novo Encaminhamento
+        <Button size="sm" onClick={() => setIsAddOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Novo Encaminhamento
         </Button>
       </div>
 
-      {/* Lista */}
-      <div className="grid gap-4">
-        {isLoading && <div className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>}
+      <div className="grid gap-4 md:grid-cols-2">
+        {isLoading && <Loader2 className="animate-spin h-8 w-8 mx-auto col-span-2" />}
         
         {!isLoading && referrals.length === 0 && (
-          <div className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground">
-            <Network className="h-8 w-8 mx-auto mb-2 opacity-20" />
-            <p className="text-sm">Nenhum encaminhamento registrado.</p>
+          <div className="col-span-2 text-center py-10 border-2 border-dashed rounded-lg text-muted-foreground bg-muted/10">
+            Nenhum encaminhamento registrado para este caso.
           </div>
         )}
 
-        {referrals.map((ref) => {
-          const statusConfig = getStatusConfig(ref.status)
-          const StatusIcon = statusConfig.icon
-
-          return (
-            <Card key={ref.id} className="group hover:border-primary/30 transition-colors">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row justify-between gap-4">
-                  
-                  {/* Info Principal */}
-                  <div className="space-y-2 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="font-semibold bg-muted/50">
-                        {ref.tipo}
-                      </Badge>
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                      <span className="font-bold text-foreground">{ref.instituicao}</span>
-                    </div>
-                    
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground/80">Motivo: </span> 
-                      {ref.motivo}
-                    </p>
-
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
-                      <span>{format(new Date(ref.createdAt), "dd/MM/yyyy", { locale: ptBR })}</span>
-                      <span>•</span>
-                      <span>Por: {ref.autor?.nome}</span>
-                    </div>
-                  </div>
-
-                  {/* Status e Ação */}
-                  <div className="flex flex-col items-end gap-2 min-w-[140px]">
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusConfig.color} bg-opacity-50`}>
-                      <StatusIcon className="h-3.5 w-3.5" />
-                      {statusConfig.text}
-                    </div>
-
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-xs h-7"
-                      onClick={() => {
-                        setEditingRef(ref)
-                        setEditStatus(ref.status)
-                        setEditRetorno(ref.retorno || '')
-                      }}
-                    >
-                      <ExternalLink className="mr-1.5 h-3 w-3" />
-                      Atualizar/Ver
-                    </Button>
-                  </div>
+        {referrals.map((ref) => (
+          <Card key={ref.id} className="border shadow-sm flex flex-col justify-between group hover:border-primary/30 transition-colors">
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start gap-2">
+                <div className="space-y-1 overflow-hidden">
+                  <Badge variant="outline" className="mb-2 truncate max-w-full">{ref.tipo}</Badge>
+                  <CardTitle className="text-base font-bold leading-tight flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground mt-1 shrink-0" />
+                    {ref.instituicao}
+                  </CardTitle>
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Calendar className="h-3 w-3"/> {format(new Date(ref.dataEnvio), "dd/MM/yyyy", { locale: ptBR })}
+                    <span>•</span>
+                    <span className="truncate">Resp: {ref.autor?.nome}</span>
+                  </span>
                 </div>
-
-                {/* Contra-referência (se houver) */}
-                {ref.retorno && (
-                  <div className="mt-4 pt-3 border-t bg-muted/20 -mx-4 -mb-4 px-4 pb-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Contra-referência / Retorno</p>
-                    <p className="text-sm text-foreground">{ref.retorno}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
+                <div className="shrink-0">
+                  {getStatusBadge(ref.status)}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-3 flex-1">
+              <p className="text-sm text-foreground/80 mt-2 bg-muted/30 p-2 rounded-md italic border">
+                "{ref.motivo}"
+              </p>
+              {ref.retorno && (
+                <p className="text-xs text-emerald-700 mt-2 p-2 bg-emerald-50 rounded-md border border-emerald-100">
+                  <strong>Retorno:</strong> {ref.retorno}
+                </p>
+              )}
+            </CardContent>
+            
+            <div className="px-4 py-3 bg-muted/20 border-t flex justify-between items-center">
+               <div className="flex gap-2">
+                  {ref.status === 'PENDENTE' && (
+                    <Button variant="outline" size="sm" className="h-8 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50" 
+                      onClick={() => updateStatus({ id: ref.id, status: 'CONCLUIDO' })}>
+                      <CheckCircle2 className="w-3 h-3 mr-1"/> Concluir
+                    </Button>
+                  )}
+                  {ref.status !== 'CANCELADO' && (
+                     <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-red-600"
+                      onClick={() => updateStatus({ id: ref.id, status: 'CANCELADO' })}>
+                      Cancelar
+                    </Button>
+                  )}
+               </div>
+               
+               <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeReferral(ref.id)}>
+                  <Trash2 className="h-4 w-4"/>
+               </Button>
+            </div>
+          </Card>
+        ))}
       </div>
 
-      {/* --- MODAL CRIAR --- */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent>
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Novo Encaminhamento</DialogTitle>
-            <DialogDescription>Registre o envio do usuário para outro serviço da rede.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Tipo de Serviço</Label>
-                <Select value={newType} onValueChange={setNewType}>
-                  <SelectTrigger><SelectValue placeholder="Ex: Saúde" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Saúde">Saúde (UBS, CAPS)</SelectItem>
-                    <SelectItem value="Educação">Educação (Escola)</SelectItem>
-                    <SelectItem value="Assistência Social">Assistência (CRAS)</SelectItem>
-                    <SelectItem value="Jurídico">Jurídico (Defensoria)</SelectItem>
-                    <SelectItem value="Conselho Tutelar">Conselho Tutelar</SelectItem>
-                    <SelectItem value="Outro">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Instituição/Unidade</Label>
-                <Input placeholder="Ex: UBS 01 de Brazlândia" value={newInst} onChange={e => setNewInst(e.target.value)} />
-              </div>
-            </div>
+            
             <div className="space-y-2">
-              <Label>Motivo do Encaminhamento</Label>
-              <Textarea placeholder="Descreva a demanda..." value={newReason} onChange={e => setNewReason(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createReferral()} disabled={!newType || !newInst || !newReason || isCreating}>
-              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Registrar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- MODAL ATUALIZAR --- */}
-      <Dialog open={!!editingRef} onOpenChange={(open) => !open && setEditingRef(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Atualizar Encaminhamento</DialogTitle>
-            <DialogDescription>
-              {editingRef?.instituicao} ({editingRef?.tipo})
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Status Atual</Label>
-              <Select value={editStatus} onValueChange={(v: any) => setEditStatus(v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PENDENTE">Pendente (Aguardando resposta)</SelectItem>
-                  <SelectItem value="CONCLUIDO">Concluído (Atendido/Inserido)</SelectItem>
-                  <SelectItem value="NEGADO">Negado / Sem vaga</SelectItem>
+              <Label>Eixo / Rede</Label>
+              <Select value={tipo} onValueChange={setTipo}>
+                <SelectTrigger><SelectValue placeholder="Selecione o eixo..." /></SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {TIPOS_REDE.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-2">
-              <Label>Contra-referência / Observações</Label>
+              <Label>Instituição de Destino</Label>
+              <Input 
+                placeholder={placeholderInstituicao} 
+                value={instituicao} 
+                onChange={e => setInstituicao(e.target.value)} 
+                disabled={!tipo}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Especifique o equipamento exato (Ex: UBS Vila São José)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Motivo / Solicitação</Label>
               <Textarea 
-                placeholder="Resposta da instituição ou observações sobre o resultado..." 
-                value={editRetorno} 
-                onChange={e => setEditRetorno(e.target.value)}
-                className="h-32"
+                placeholder="Descreva o que está sendo solicitado (Ex: Vaga em creche, Avaliação psiquiátrica, Inclusão no Cadastro Único...)" 
+                value={motivo} 
+                onChange={e => setMotivo(e.target.value)} 
+                rows={4}
               />
             </div>
+
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingRef(null)}>Fechar</Button>
-            <Button onClick={() => updateReferral()} disabled={isUpdating}>
-              {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Salvar
+            <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancelar</Button>
+            <Button onClick={() => addReferral()} disabled={isPending || !instituicao || !motivo}>
+              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Registrar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   )
 }

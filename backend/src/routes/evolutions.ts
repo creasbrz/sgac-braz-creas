@@ -1,8 +1,7 @@
-// backend/src/routes/evolutions.ts
 import { type FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction, Cargo, CaseStatus } from '@prisma/client'
+import { LogAction, Cargo } from '@prisma/client'
 
 export async function evolutionRoutes(app: FastifyInstance) {
   
@@ -11,7 +10,7 @@ export async function evolutionRoutes(app: FastifyInstance) {
     catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar Evoluções (Paginado + Lógica de Acesso SUAS)
+  // [GET] Listar Evoluções
   app.get('/cases/:caseId/evolutions', async (request, reply) => {
     const paramsSchema = z.object({ 
       caseId: z.string().uuid() 
@@ -26,7 +25,6 @@ export async function evolutionRoutes(app: FastifyInstance) {
     const { page, pageSize } = querySchema.parse(request.query)
     const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
 
-    // 1. Verificar permissão de acesso ao caso atual
     const caso = await prisma.case.findUnique({
       where: { id: caseId },
       select: { 
@@ -38,8 +36,6 @@ export async function evolutionRoutes(app: FastifyInstance) {
 
     if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-    // 2. Determinar se o usuário tem "Privilégio de Sigilo" neste caso
-    // Regra SUAS: Gerente VÊ TUDO. Técnico VÊ se for o Autor OU se for o Responsável Atual pelo caso.
     const isGerente = cargo === Cargo.Gerente
     const isResponsavelAtual = 
       caso.agenteAcolhidaId === userId || 
@@ -47,16 +43,14 @@ export async function evolutionRoutes(app: FastifyInstance) {
 
     const canViewSigilo = isGerente || isResponsavelAtual
 
-    // 3. Query Otimizada (Filtro direto no Banco)
     const whereCondition: any = {
       casoId: caseId,
     }
 
-    // Se NÃO pode ver sigilo, filtramos no banco para não trazer registros sigilosos de terceiros
     if (!canViewSigilo) {
       whereCondition.OR = [
-        { sigilo: false },           // Pode ver qualquer pública
-        { autorId: userId }          // Pode ver as suas próprias (mesmo sigilosas)
+        { sigilo: false },
+        { autorId: userId }
       ]
     }
 
@@ -83,7 +77,7 @@ export async function evolutionRoutes(app: FastifyInstance) {
     })
   })
 
-  // [POST] Criar Nova Evolução (Mantido similar, apenas reforçando validação)
+  // [POST] Criar Nova Evolução
   app.post('/cases/:caseId/evolutions', async (request, reply) => {
     const { caseId } = z.object({ caseId: z.string().uuid() }).parse(request.params)
     
@@ -102,10 +96,9 @@ export async function evolutionRoutes(app: FastifyInstance) {
         casoId: caseId,
         autorId: userId
       },
-      include: { autor: { select: { id: true, nome: true, cargo: true } } } // Retorno otimizado
+      include: { autor: { select: { id: true, nome: true, cargo: true } } }
     })
 
-    // Log de Auditoria
     await prisma.caseLog.create({
       data: {
         casoId: caseId,
@@ -118,5 +111,62 @@ export async function evolutionRoutes(app: FastifyInstance) {
     })
 
     return reply.status(201).send(evolucao)
+  })
+
+  // --- NOVAS ROTAS QUE FALTAVAM ---
+
+  // [PATCH] Editar Evolução (Apenas Autor)
+  app.patch('/evolutions/:id', async (request, reply) => {
+    const paramsSchema = z.object({ id: z.string().uuid() })
+    const bodySchema = z.object({
+      conteudo: z.string().min(5, "Conteúdo muito curto.").optional(),
+      sigilo: z.boolean().optional()
+    })
+
+    const { id } = paramsSchema.parse(request.params)
+    const { conteudo, sigilo } = bodySchema.parse(request.body)
+    const { sub: userId } = request.user as { sub: string }
+
+    // Verifica existência
+    const existingEvolucao = await prisma.evolucao.findUnique({
+      where: { id }
+    })
+
+    if (!existingEvolucao) return reply.status(404).send({ message: 'Evolução não encontrada.' })
+
+    // TRAVA DE SEGURANÇA: Apenas o autor edita
+    if (existingEvolucao.autorId !== userId) {
+      return reply.status(403).send({ message: 'Você só pode editar evoluções criadas por você.' })
+    }
+
+    const updated = await prisma.evolucao.update({
+      where: { id },
+      data: {
+        conteudo,
+        sigilo
+      },
+      include: { autor: { select: { id: true, nome: true, cargo: true } } }
+    })
+
+    return reply.send(updated)
+  })
+
+  // [DELETE] Excluir Evolução (Apenas Autor)
+  app.delete('/evolutions/:id', async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const { sub: userId } = request.user as { sub: string }
+
+    const existingEvolucao = await prisma.evolucao.findUnique({ where: { id } })
+
+    if (!existingEvolucao) return reply.status(404).send({ message: 'Evolução não encontrada.' })
+
+    // TRAVA DE SEGURANÇA: Apenas o autor exclui
+    if (existingEvolucao.autorId !== userId) {
+      return reply.status(403).send({ message: 'Você só pode excluir evoluções criadas por você.' })
+    }
+
+    await prisma.evolucao.delete({ where: { id } })
+
+    return reply.status(204).send() // No Content
   })
 }

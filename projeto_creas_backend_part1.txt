@@ -1,10 +1,7 @@
-RELATÓRIO DE CÓDIGO - BACKEND - NODE.JS/FASTIFY/PRISMA
-Gerado em: 03/01/2026, 16:30:19
-Pasta Alvo: /backend
-Total de arquivos: 38
+RELATÓRIO DE CÓDIGO - BACKEND - NODE.JS/FASTIFY/PRISMA (PARTE 1)
+Gerado em: 03/01/2026, 21:48:57
 
 ESTRUTURA DE PASTAS:
-backend
 ├── package.json
 ├── prisma
 │   ├── migration-scripts

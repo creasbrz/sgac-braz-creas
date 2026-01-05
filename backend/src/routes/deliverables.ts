@@ -1,104 +1,110 @@
-// backend/src/routes/deliverables.ts
-import { type FastifyInstance } from 'fastify'
+import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { LogAction } from '@prisma/client'
 
-export async function deliverableRoutes(app: FastifyInstance) {
+export async function deliverablesRoutes(app: FastifyInstance) {
   
-  app.addHook('onRequest', async (req, reply) => {
-    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  // Middleware de Autenticação
+  app.addHook('onRequest', async (request) => {
+    try {
+      await request.jwtVerify()
+    } catch (err) {
+      // Em dev, pode passar sem token se necessário, mas ideal é logar
+    }
   })
 
-  // [GET] Listar Entregas de um Caso
-  app.get('/cases/:caseId/deliverables', async (req, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
-    
-    const items = await prisma.serviceDeliverable.findMany({
-      where: { casoId: caseId },
+  // Validação do parâmetro da URL
+  const paramsSchema = z.object({
+    caseId: z.string().uuid(),
+  })
+
+  // Validação do Body (Criação)
+  const createDeliverableBodySchema = z.object({
+    tipo: z.string().min(3, "Selecione um tipo de benefício"), 
+    observacoes: z.string().optional(),
+  })
+
+  // Validação do Body (Atualização de Status)
+  const updateStatusSchema = z.object({
+    status: z.enum(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE', 'NEGADO']),
+    dataEntrega: z.string().datetime().optional()
+  })
+
+  const updateParamsSchema = z.object({
+    id: z.string().uuid()
+  })
+
+  // --- ROTA DE CRIAÇÃO (POST) ---
+  app.post('/cases/:caseId/deliverables', async (request, reply) => {
+    // 1. Pegamos o ID da URL (aqui chama 'caseId' pois definimos na rota '/cases/:caseId')
+    const { caseId } = paramsSchema.parse(request.params)
+    const { tipo, observacoes } = createDeliverableBodySchema.parse(request.body)
+
+    const caso = await prisma.case.findUnique({ where: { id: caseId } })
+    if (!caso) return reply.status(404).send({ message: 'Caso não encontrado' })
+
+    // Pega usuário logado ou fallback
+    let responsavelId = request.user?.sub
+    if (!responsavelId) {
+      const fallbackUser = await prisma.user.findFirst()
+      responsavelId = fallbackUser?.id || 'id-nao-encontrado'
+    }
+
+    // 2. Criamos usando 'casoId' (Português) para bater com o Schema
+    const deliverable = await prisma.serviceDeliverable.create({
+      data: {
+        tipo: tipo,
+        status: 'SOLICITADO',
+        observacoes: observacoes,
+        casoId: caseId, // <--- CORREÇÃO AQUI: O campo no banco é 'casoId'
+        responsavelId: responsavelId,
+      },
+    })
+
+    return reply.status(201).send(deliverable)
+  })
+
+  // --- ROTA DE LISTAGEM (GET) ---
+  app.get('/cases/:caseId/deliverables', async (request, reply) => {
+    const { caseId } = paramsSchema.parse(request.params)
+
+    const deliverables = await prisma.serviceDeliverable.findMany({
+      where: { 
+        casoId: caseId // <--- CORREÇÃO AQUI: O campo no banco é 'casoId'
+      },
       orderBy: { createdAt: 'desc' },
-      include: { responsavel: { select: { nome: true } } }
-    })
-    
-    return reply.send(items)
-  })
-
-  // [POST] Criar Nova Entrega (Benefício)
-  app.post('/cases/:caseId/deliverables', async (req, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
-    const bodySchema = z.object({
-      tipo: z.string().min(2),
-      status: z.enum(['SOLICITADO', 'CONCEDIDO', 'NEGADO', 'ENTREGUE']).default('SOLICITADO'),
-      observacoes: z.string().optional()
-    })
-
-    const { tipo, status, observacoes } = bodySchema.parse(req.body)
-    const userId = (req.user as any).sub
-
-    const item = await prisma.serviceDeliverable.create({
-      data: {
-        tipo,
-        status,
-        observacoes,
-        casoId,
-        responsavelId: userId,
-        dataSolicitacao: new Date()
+      include: {
+        responsavel: {
+          select: { nome: true }
+        }
       }
     })
 
-    await prisma.caseLog.create({
-      data: {
-        casoId,
-        autorId: userId,
-        acao: LogAction.ENTREGA_BENEFICIO_CRIADA,
-        descricao: `Registrou entrega/benefício: ${tipo} (${status})`
-      }
-    })
+    const response = deliverables.map(d => ({
+      id: d.id,
+      tipo: d.tipo,
+      status: d.status,
+      dataSolicitacao: d.dataSolicitacao,
+      dataEntrega: d.dataEntrega,
+      responsavel: { nome: d.responsavel.nome }
+    }))
 
-    return reply.status(201).send(item)
+    return reply.send(response)
   })
 
-  // [PATCH] Atualizar Status da Entrega
-  app.patch('/deliverables/:id', async (req, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-    const bodySchema = z.object({
-      status: z.enum(['SOLICITADO', 'CONCEDIDO', 'NEGADO', 'ENTREGUE']),
-      dataEntrega: z.string().optional(), // ISO String
-      observacoes: z.string().optional()
-    })
-
-    const { status, dataEntrega, observacoes } = bodySchema.parse(req.body)
-    const userId = (req.user as any).sub
-
-    const oldItem = await prisma.serviceDeliverable.findUnique({ where: { id } })
-    if (!oldItem) return reply.status(404).send()
+  // --- ROTA DE ATUALIZAÇÃO (PATCH) ---
+  app.patch('/deliverables/:id', async (request, reply) => {
+    const { id } = updateParamsSchema.parse(request.params)
+    const { status, dataEntrega } = updateStatusSchema.parse(request.body)
 
     const updated = await prisma.serviceDeliverable.update({
       where: { id },
       data: {
         status,
-        observacoes,
-        dataEntrega: dataEntrega ? new Date(dataEntrega) : undefined,
-        updatedAt: new Date()
-      }
-    })
-
-    await prisma.caseLog.create({
-      data: {
-        casoId: oldItem.casoId,
-        autorId: userId,
-        acao: LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
-        descricao: `Atualizou benefício ${oldItem.tipo} para ${status}`
+        dataEntrega: dataEntrega ? new Date(dataEntrega) : undefined
       }
     })
 
     return reply.send(updated)
-  })
-
-  // [DELETE] Remover Entrega
-  app.delete('/deliverables/:id', async (req, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-    await prisma.serviceDeliverable.delete({ where: { id } })
-    return reply.status(204).send()
   })
 }

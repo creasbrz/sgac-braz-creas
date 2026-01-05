@@ -23,7 +23,7 @@ import { importRoutes } from './routes/import'
 import { filterRoutes } from './routes/filters'
 import { referralRoutes } from './routes/referrals'
 import { familyRoutes } from './routes/family'
-import { deliverableRoutes } from './routes/deliverables'
+import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups' // [NOVO]
 
 const app = fastify({
@@ -60,7 +60,7 @@ app.register(importRoutes)
 app.register(filterRoutes)
 app.register(referralRoutes)
 app.register(familyRoutes)
-app.register(deliverableRoutes)
+app.register(deliverablesRoutes)
 app.register(groupRoutes) // [NOVO]
 
 app.setNotFoundHandler((req, reply) => {

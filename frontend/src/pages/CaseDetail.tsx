@@ -1,13 +1,17 @@
-// frontend/src/pages/CaseDetail.tsx
 import { useState, Suspense, lazy } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, MapPin, Phone, FileText, Clock, AlertTriangle,
   Paperclip, Activity, Edit, CheckCircle2, Circle, ShieldCheck, Network, 
-  Loader2, Users, PackageCheck, Printer
-} from "lucide-react"
+  Loader2, Users, PackageCheck, Printer} from "lucide-react"
 import { clsx } from "clsx"
+
+// Imports para o Formulário Padronizado
+import { useForm, Controller, type SubmitHandler } from "react-hook-form"
+import { z } from "zod"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 import { api } from '@/lib/api'
 import { Button } from "@/components/ui/button"
@@ -25,7 +29,7 @@ import { toast } from "sonner"
 import { CaseStatusBadge } from "@/components/CaseStatusBadge"
 import { getUrgencyColor } from "@/constants/caseConstants"
 import { isValidBrazilianPhone } from "@/utils/phone"
-import { format } from "date-fns"
+import { format, parse } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { formatCPF, formatPhone } from '@/utils/formatters'
 
@@ -41,14 +45,50 @@ import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
 const CaseForm = lazy(() => import("@/components/CaseForm").then(module => ({ default: module.CaseForm })))
 const CaseHistory = lazy(() => import("@/components/case/CaseHistory").then(module => ({ default: module.CaseHistory })))
 const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").then(module => ({ default: module.CaseEvolutions })))
-const CaseAttachments = lazy(() => import("@/components/case/CaseAttachments").then(module => ({ default: module.CaseAttachments })))
+// CaseAttachments agora é importado diretamente para evitar erro de lazy loading de componente interno com props
+import { CaseAttachments } from "@/components/case/CaseAttachments"
 const WhatsAppButton = lazy(() => import("@/components/common/WhatsAppButton").then(module => ({ default: module.WhatsAppButton })))
 const CaseActions = lazy(() => import("@/components/case/CaseActions").then(module => ({ default: module.CaseActions })))
 const PafSection = lazy(() => import("@/components/case/PafSection").then(module => ({ default: module.PafSection })))
 
 import type { CaseDetailData } from '@/types/case'
 
-// Função Geradora de PDF (CORRIGIDA)
+// --- CONSTANTES E UTILITÁRIOS LOCAIS ---
+
+const TYPE_COLORS: Record<string, string> = {
+  'Atendimento': '#2563eb',
+  'Visita': '#16a34a',
+  'Retorno': '#f97316',
+  'Reunião': '#9333ea',
+  'Grupo': '#7c3aed',
+  'Outro': '#64748b'
+}
+
+function combineDateAndTime(dateStr: string, timeStr: string): string {
+  try {
+    const date = parse(dateStr, 'yyyy-MM-dd', new Date())
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    date.setHours(hours, minutes, 0, 0)
+    return date.toISOString()
+  } catch (e) {
+    return new Date().toISOString()
+  }
+}
+
+// [CORREÇÃO] Schema Zod Ajustado para Build
+// Removemos o .optional() e .default() para evitar conflito de tipos com o useForm.
+// Como inicializamos o form com valores padrão, isso é seguro e satisfaz o TypeScript.
+const appointmentFormSchema = z.object({
+  titulo: z.string().min(1, 'O título é obrigatório.'),
+  data: z.string().min(1, 'Data obrigatória'),
+  time: z.string().regex(/^([0-1]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (HH:MM).'),
+  tipo: z.string(), // Tipagem estrita: string
+  observacoes: z.string(), // Tipagem estrita: string
+})
+
+type AppointmentFormData = z.infer<typeof appointmentFormSchema>
+
+// --- FUNÇÕES DE PDF (Mantidas Originais) ---
 const generateCasePDF = (caso: any) => {
   const doc = new jsPDF()
   const today = new Date().toLocaleDateString('pt-BR')
@@ -80,14 +120,13 @@ const generateCasePDF = (caso: any) => {
   y += 7
   doc.text(`Endereço: ${caso.endereco}`, 14, y)
   
-  // Benefícios Fixos (Array)
   if (caso.beneficios && caso.beneficios.length > 0) {
     y += 7
     doc.text(`Benefícios Ativos: ${caso.beneficios.join(', ')}`, 14, y)
   }
   y += 15
 
-  // 2. FAMÍLIA (Usando relação correta 'familia')
+  // 2. FAMÍLIA
   doc.setFontSize(12).setFont('helvetica', 'bold').text('2. COMPOSIÇÃO FAMILIAR', 14, y)
   doc.line(14, y + 2, 196, y + 2)
   y += 5
@@ -112,7 +151,7 @@ const generateCasePDF = (caso: any) => {
     y += 15
   }
 
-  // 3. BENEFÍCIOS EVENTUAIS E REDE
+  // 3. BENEFÍCIOS E REDE
   if (y > 220) { doc.addPage(); y = 20 }
   
   doc.setFontSize(12).setFont('helvetica', 'bold').text('3. BENEFÍCIOS EVENTUAIS E REDE', 14, y)
@@ -121,7 +160,6 @@ const generateCasePDF = (caso: any) => {
 
   doc.setFontSize(10).text('Benefícios Eventuais (Entregas):', 14, y + 5)
   
-  // [CORREÇÃO] Usando 'entregas' (ServiceDeliverable)
   const benData = caso.entregas?.length ? caso.entregas.map((b: any) => [
       new Date(b.dataSolicitacao).toLocaleDateString('pt-BR'),
       b.tipo,
@@ -320,7 +358,6 @@ function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: ()
       </div>
 
       <div className="flex flex-wrap gap-2 pl-1 sm:pl-0 mt-4 md:mt-0 items-start justify-end">
-        {/* BOTÃO PRONTUÁRIO */}
         <Button variant="outline" onClick={() => generateCasePDF(caseData)} className="shadow-sm">
           <Printer className="mr-2 h-4 w-4" /> Prontuário
         </Button>
@@ -352,12 +389,26 @@ export function CaseDetail() {
   
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
-  
   const [isApptOpen, setIsApptOpen] = useState(false)
-  const [apptTitle, setApptTitle] = useState("")
-  const [apptDate, setApptDate] = useState("")
-  const [apptObs, setApptObs] = useState("")
 
+  // --- FORMULÁRIO PADRONIZADO (HOOK FORM + ZOD) ---
+  const { 
+    control, 
+    handleSubmit, 
+    reset, 
+    formState: { errors } 
+  } = useForm<AppointmentFormData>({
+    resolver: zodResolver(appointmentFormSchema),
+    defaultValues: {
+      titulo: '',
+      data: format(new Date(), 'yyyy-MM-dd'),
+      time: '09:00',
+      tipo: 'Atendimento',
+      observacoes: ''
+    }
+  })
+
+  // Queries e Mutations
   const { data: caseData, isLoading, isError, refetch } = useQuery<CaseDetailData>({
     queryKey: ["case", id],
     queryFn: async () => (await api.get(`/cases/${id}`)).data,
@@ -378,25 +429,28 @@ export function CaseDetail() {
   const appointmentsList = Array.isArray(appointmentsQuery.data) ? appointmentsQuery.data : []
 
   const { mutate: createAppointment, isPending: isCreatingAppt } = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (data: AppointmentFormData) => {
+      const isoDate = combineDateAndTime(data.data, data.time)
       await api.post("/appointments", {
-        titulo: apptTitle,
-        data: new Date(apptDate).toISOString(),
-        observacoes: apptObs,
+        titulo: data.titulo,
+        data: isoDate,
+        tipo: data.tipo,
+        observacoes: data.observacoes,
         casoId: id
       })
     },
     onSuccess: () => {
       toast.success("Agendamento criado com sucesso!")
       setIsApptOpen(false)
-      setApptTitle("")
-      setApptDate("")
-      setApptObs("")
+      reset() // Limpa o form
       queryClient.invalidateQueries({ queryKey: ["appointments", id] })
       queryClient.invalidateQueries({ queryKey: ["case-logs", id] })
     },
     onError: () => toast.error("Erro ao criar agendamento.")
   })
+
+  // [CORREÇÃO] Tipagem explícita do handler
+  const onSubmitAppt: SubmitHandler<AppointmentFormData> = (data) => createAppointment(data)
 
   if (isLoading) {
     return (
@@ -453,7 +507,6 @@ export function CaseDetail() {
             <PackageCheck className="h-4 w-4" /> Benefícios
           </TabsTrigger>
 
-          {/* Mostrar PAF se estiver em acompanhamento, acolhida especializada ou desligado */}
           {['EM_ACOLHIDA_ESPECIALIZADA', 'EM_ACOMPANHAMENTO_PAEFI', 'DESLIGADO'].includes(caseData.status) && (
             <TabsTrigger value="paf" className="gap-2 data-[state=active]:bg-background">
               <FileText className="h-4 w-4" /> PAF
@@ -528,12 +581,36 @@ export function CaseDetail() {
               <CardContent>
                  {appointmentsQuery.isLoading ? <TabSkeleton /> : (appointmentsList.length === 0 ? <div className="text-center py-10 text-muted-foreground">Nenhum agendamento.</div> : (
                    <div className="space-y-3">
-                      {appointmentsList.map((app: any) => (
-                       <div key={app.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/5 transition-all">
-                          <div className="flex gap-4"><div className="bg-primary/10 p-2.5 rounded-lg h-fit text-primary"><Clock className="h-5 w-5"/></div><div><h4 className="font-semibold text-sm">{app.titulo}</h4><p className="text-sm text-muted-foreground capitalize">{format(new Date(app.data), "eeee, dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p></div></div>
-                          <Suspense fallback={null}>{isValidBrazilianPhone(caseData.telefone) && <WhatsAppButton phone={caseData.telefone!} name={caseData.nomeCompleto} template="agendamento" data={{ date: app.data }} label="Confirmar" size="sm" />}</Suspense>
-                       </div>
-                      ))}
+                      {appointmentsList.map((app: any) => {
+                        const safeDate = app.start || app.data;
+                        const safeTitle = app.title || app.titulo;
+                        
+                        return (
+                         <div key={app.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/5 transition-all">
+                            <div className="flex gap-4">
+                              <div className="bg-primary/10 p-2.5 rounded-lg h-fit text-primary"><Clock className="h-5 w-5"/></div>
+                              <div>
+                                <h4 className="font-semibold text-sm">{safeTitle}</h4>
+                                <p className="text-sm text-muted-foreground capitalize">
+                                  {safeDate ? format(new Date(safeDate), "eeee, dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : "Data a definir"}
+                                </p>
+                              </div>
+                            </div>
+                            <Suspense fallback={null}>
+                              {isValidBrazilianPhone(caseData.telefone) && safeDate && (
+                                <WhatsAppButton 
+                                  phone={caseData.telefone!} 
+                                  name={caseData.nomeCompleto} 
+                                  template="agendamento" 
+                                  data={{ date: safeDate }} 
+                                  label="Confirmar" 
+                                  size="sm" 
+                                />
+                              )}
+                            </Suspense>
+                         </div>
+                        )
+                      })}
                    </div>
                 ))}
               </CardContent>
@@ -543,6 +620,7 @@ export function CaseDetail() {
 
         <TabsContent value="attachments" className="mt-6">
            <Suspense fallback={<TabSkeleton />}>
+             {/* [CORREÇÃO] Passando a prop caseId corretamente agora */}
              <CaseAttachments caseId={id!} onError={() => toast.error("Erro ao carregar anexos.")} />
           </Suspense>
         </TabsContent>
@@ -563,32 +641,92 @@ export function CaseDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* MODAL PADRONIZADO IGUAL AGENDA */}
       <Dialog open={isApptOpen} onOpenChange={setIsApptOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
            <DialogHeader>
             <DialogTitle>Novo Agendamento</DialogTitle>
-            <DialogDescription>Marcar atendimento para {caseData.nomeCompleto}</DialogDescription>
+            <DialogDescription>Agendamento vinculado a {caseData.nomeCompleto}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="titulo">Título / Tipo</Label>
-              <Input id="titulo" placeholder="Ex: Atendimento Psicossocial" value={apptTitle} onChange={(e) => setApptTitle(e.target.value)} />
+
+          <form onSubmit={handleSubmit(onSubmitAppt)} className="space-y-4 py-2">
+            
+            {/* TÍTULO */}
+            <div className="space-y-2">
+              <Label htmlFor="titulo">Título</Label>
+              <Controller
+                name="titulo"
+                control={control}
+                render={({ field }) => <Input id="titulo" placeholder="Ex: Visita Domiciliar" {...field} />}
+              />
+              {errors.titulo && <p className="text-xs text-destructive">{errors.titulo.message}</p>}
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="data">Data e Hora</Label>
-              <Input id="data" type="datetime-local" value={apptDate} onChange={(e) => setApptDate(e.target.value)} />
+
+            {/* DATA E HORA */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="data">Data</Label>
+                <Controller
+                  name="data"
+                  control={control}
+                  render={({ field }) => <Input type="date" id="data" {...field} />}
+                />
+                {errors.data && <p className="text-xs text-destructive">{errors.data.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="time">Hora</Label>
+                <Controller
+                  name="time"
+                  control={control}
+                  render={({ field }) => <Input type="time" id="time" {...field} />}
+                />
+                {errors.time && <p className="text-xs text-destructive">{errors.time.message}</p>}
+              </div>
             </div>
-            <div className="grid gap-2">
+
+            {/* TIPO (COLORIDO) */}
+            <div className="space-y-2">
+              <Label>Tipo de Agenda</Label>
+              <Controller
+                name="tipo"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(TYPE_COLORS).filter(t => t !== 'Grupo').map(type => (
+                        <SelectItem key={type} value={type}>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+                            {type}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+
+            {/* OBSERVAÇÕES */}
+            <div className="space-y-2">
               <Label htmlFor="obs">Observações</Label>
-               <Textarea id="obs" placeholder="Detalhes do agendamento..." value={apptObs} onChange={(e) => setApptObs(e.target.value)} />
+              <Controller
+                name="observacoes"
+                control={control}
+                render={({ field }) => (
+                  <Textarea id="obs" placeholder="Detalhes adicionais..." className="resize-none" {...field} value={field.value || ''} />
+                )}
+              />
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsApptOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createAppointment()} disabled={!apptTitle || !apptDate || isCreatingAppt}>
-              {isCreatingAppt && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Salvar
-            </Button>
-          </DialogFooter>
+
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setIsApptOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={isCreatingAppt}>
+                {isCreatingAppt && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Agendar
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

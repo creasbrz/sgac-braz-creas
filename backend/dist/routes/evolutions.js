@@ -26,7 +26,12 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/evolutions.ts
 var import_client2 = require("@prisma/client");
@@ -67,9 +72,7 @@ async function evolutionRoutes(app) {
     if (!canViewSigilo) {
       whereCondition.OR = [
         { sigilo: false },
-        // Pode ver qualquer pública
         { autorId: userId }
-        // Pode ver as suas próprias (mesmo sigilosas)
       ];
     }
     const [evolucoes, total] = await Promise.all([
@@ -109,7 +112,6 @@ async function evolutionRoutes(app) {
         autorId: userId
       },
       include: { autor: { select: { id: true, nome: true, cargo: true } } }
-      // Retorno otimizado
     });
     await prisma.caseLog.create({
       data: {
@@ -120,6 +122,43 @@ async function evolutionRoutes(app) {
       }
     });
     return reply.status(201).send(evolucao);
+  });
+  app.patch("/evolutions/:id", async (request, reply) => {
+    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+    const bodySchema = import_zod.z.object({
+      conteudo: import_zod.z.string().min(5, "Conte\xFAdo muito curto.").optional(),
+      sigilo: import_zod.z.boolean().optional()
+    });
+    const { id } = paramsSchema.parse(request.params);
+    const { conteudo, sigilo } = bodySchema.parse(request.body);
+    const { sub: userId } = request.user;
+    const existingEvolucao = await prisma.evolucao.findUnique({
+      where: { id }
+    });
+    if (!existingEvolucao) return reply.status(404).send({ message: "Evolu\xE7\xE3o n\xE3o encontrada." });
+    if (existingEvolucao.autorId !== userId) {
+      return reply.status(403).send({ message: "Voc\xEA s\xF3 pode editar evolu\xE7\xF5es criadas por voc\xEA." });
+    }
+    const updated = await prisma.evolucao.update({
+      where: { id },
+      data: {
+        conteudo,
+        sigilo
+      },
+      include: { autor: { select: { id: true, nome: true, cargo: true } } }
+    });
+    return reply.send(updated);
+  });
+  app.delete("/evolutions/:id", async (request, reply) => {
+    const { id } = import_zod.z.object({ id: import_zod.z.string().uuid() }).parse(request.params);
+    const { sub: userId } = request.user;
+    const existingEvolucao = await prisma.evolucao.findUnique({ where: { id } });
+    if (!existingEvolucao) return reply.status(404).send({ message: "Evolu\xE7\xE3o n\xE3o encontrada." });
+    if (existingEvolucao.autorId !== userId) {
+      return reply.status(403).send({ message: "Voc\xEA s\xF3 pode excluir evolu\xE7\xF5es criadas por voc\xEA." });
+    }
+    await prisma.evolucao.delete({ where: { id } });
+    return reply.status(204).send();
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

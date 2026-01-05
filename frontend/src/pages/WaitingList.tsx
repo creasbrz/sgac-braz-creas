@@ -28,9 +28,14 @@ export function WaitingList() {
     queryKey: ['cases', 'waiting-list'],
     queryFn: async () => {
       const res = await api.get('/cases', { 
-        params: { status: 'AGUARDANDO_DISTRIBUICAO_PAEFI', pageSize: 100 } 
+        params: { 
+          status: 'AGUARDANDO_DISTRIBUICAO_PAEFI', 
+          pageSize: 100,
+          view: 'all' // [CORREÇÃO CRÍTICA] Força buscar no banco todo, ignorando o dono
+        } 
       })
-      return res.data.items || []
+      
+      return res.data.data || res.data.items || []
     }
   })
 
@@ -38,7 +43,7 @@ export function WaitingList() {
     queryKey: ['users', 'specialists'],
     queryFn: async () => {
       const res = await api.get('/users')
-      return res.data.filter((u: any) => u.cargo === 'Especialista')
+      return res.data.filter((u: any) => u.cargo === 'Especialista' && u.ativo !== false)
     },
     enabled: isAssignOpen
   })
@@ -49,12 +54,13 @@ export function WaitingList() {
       await api.patch(`/cases/${selectedCaseId}/assign`, { specialistId: selectedSpecialist })
     },
     onSuccess: () => {
-      toast.success("Técnico atribuído.")
+      toast.success("Técnico atribuído com sucesso.")
       setIsAssignOpen(false)
       setSelectedCaseId(null)
       queryClient.invalidateQueries({ queryKey: ['cases', 'waiting-list'] })
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
     },
-    onError: () => toast.error("Erro ao atribuir.")
+    onError: () => toast.error("Erro ao atribuir técnico.")
   })
 
   const sortedCases = casesData?.sort((a: any, b: any) => {
@@ -63,7 +69,7 @@ export function WaitingList() {
   }) || []
 
   return (
-    <div className="space-y-6 animate-in fade-in">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-amber-700 flex items-center gap-2">
           <AlertTriangle className="h-6 w-6" /> Fila de Espera PAEFI
@@ -83,42 +89,45 @@ export function WaitingList() {
           <div className="rounded-md border bg-background">
             <Table>
               <TableHeader>
-                {/* [CORREÇÃO] Ordem das colunas ajustada */}
                 <TableRow>
                   <TableHead className="w-[300px]">Nome / CPF</TableHead>
                   <TableHead>Prioridade</TableHead>
                   <TableHead>Tempo de Espera</TableHead>
-                  <TableHead>Violação</TableHead> {/* [CORREÇÃO] Renomeado de Demanda para Violação */}
+                  <TableHead>Violação</TableHead>
                   <TableHead className="text-right">Ação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading && <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow>}
+                {isLoading && <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin mx-auto text-amber-600"/></TableCell></TableRow>}
+                
                 {!isLoading && sortedCases.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">Fila zerada! Bom trabalho.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-2xl">🎉</span>
+                      <span>Fila zerada! Não há casos aguardando distribuição.</span>
+                    </div>
+                  </TableCell></TableRow>
                 )}
+
                 {sortedCases.map((c: any) => {
                   const daysWaiting = differenceInDays(new Date(), new Date(c.dataEntrada))
                   const isCriticalDelay = daysWaiting > 30
 
                   return (
                     <TableRow key={c.id}>
-                      {/* Coluna 1: Nome/CPF */}
                       <TableCell>
                         <Link to={ROUTES.CASE_DETAIL(c.id)} className="font-medium hover:underline text-primary block">
                           {c.nomeCompleto}
                         </Link>
-                        <span className="text-xs text-muted-foreground">{c.cpf}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{c.cpf}</span>
                       </TableCell>
                       
-                      {/* Coluna 2: Prioridade */}
                       <TableCell>
                         <Badge variant="outline" className={`${getUrgencyColor(c.urgencia)} border`}>
                           {c.urgencia}
                         </Badge>
                       </TableCell>
                       
-                      {/* Coluna 3: Tempo */}
                       <TableCell>
                         <div className={`font-mono font-bold ${isCriticalDelay ? 'text-red-600' : 'text-foreground'}`}>
                           {daysWaiting} dias
@@ -126,12 +135,10 @@ export function WaitingList() {
                         <span className="text-[10px] text-muted-foreground">desde {new Date(c.dataEntrada).toLocaleDateString()}</span>
                       </TableCell>
                       
-                      {/* Coluna 4: Violação */}
-                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate" title={c.violacao}>
                         {c.violacao}
                       </TableCell>
                       
-                      {/* Coluna 5: Ação */}
                       <TableCell className="text-right">
                         <Button size="sm" onClick={() => { setSelectedCaseId(c.id); setIsAssignOpen(true); }}>
                           <UserPlus className="h-4 w-4 mr-1" /> Atribuir
@@ -148,19 +155,31 @@ export function WaitingList() {
 
       <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Distribuir Caso</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Distribuir Caso</DialogTitle>
+          </DialogHeader>
           <div className="py-4 space-y-2">
             <Label>Selecione o Especialista Responsável</Label>
             <Select value={selectedSpecialist} onValueChange={setSelectedSpecialist}>
-              <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Selecione um técnico..." /></SelectTrigger>
               <SelectContent>
-                {specialists.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                {specialists.map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.nome}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <p className="text-[10px] text-muted-foreground">
+              O caso será movido para "Acolhida Especializada" automaticamente.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancelar</Button>
-            <Button onClick={() => assignSpecialist()} disabled={!selectedSpecialist || isAssigning}>Confirmar</Button>
+            <Button onClick={() => assignSpecialist()} disabled={!selectedSpecialist || isAssigning}>
+              {isAssigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

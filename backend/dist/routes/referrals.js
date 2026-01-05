@@ -26,107 +26,98 @@ var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/referrals.ts
-var import_client2 = require("@prisma/client");
 async function referralRoutes(app) {
   app.addHook("onRequest", async (req, reply) => {
     try {
       await req.jwtVerify();
     } catch {
-      return reply.status(401).send({ message: "N\xE3o autorizado." });
-    }
-  });
-  app.post("/cases/:caseId/referrals", async (req, reply) => {
-    const paramsSchema = import_zod.z.object({
-      caseId: import_zod.z.string().uuid()
-    });
-    const bodySchema = import_zod.z.object({
-      tipo: import_zod.z.string().min(3, "O tipo \xE9 obrigat\xF3rio (ex: Sa\xFAde, Educa\xE7\xE3o)"),
-      instituicao: import_zod.z.string().min(3, "Informe o nome da institui\xE7\xE3o"),
-      motivo: import_zod.z.string().min(5, "Descreva o motivo do encaminhamento")
-    });
-    try {
-      const { caseId } = paramsSchema.parse(req.params);
-      const { tipo, instituicao, motivo } = bodySchema.parse(req.body);
-      const userId = req.user.sub;
-      const referral = await prisma.encaminhamento.create({
-        data: {
-          tipo,
-          instituicao,
-          motivo,
-          // [CORREÇÃO]: Mapeamento explícito. O campo do banco é 'casoId', a variável é 'caseId'
-          casoId: caseId,
-          autorId: userId,
-          status: "PENDENTE"
-        }
-      });
-      await prisma.caseLog.create({
-        data: {
-          // [CORREÇÃO]: Mapeamento explícito também no log
-          casoId: caseId,
-          autorId: userId,
-          acao: import_client2.LogAction.OUTRO,
-          descricao: `Realizou encaminhamento para ${tipo} - ${instituicao}`
-        }
-      });
-      return reply.status(201).send(referral);
-    } catch (error) {
-      console.error("Erro ao criar encaminhamento:", error);
-      return reply.status(500).send({ message: "Erro ao criar encaminhamento." });
+      return reply.status(401).send();
     }
   });
   app.get("/cases/:caseId/referrals", async (req, reply) => {
+    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(req.params);
+    const referrals = await prisma.encaminhamento.findMany({
+      where: { casoId: caseId },
+      // Nome correto do campo no banco
+      orderBy: { dataEnvio: "desc" },
+      include: {
+        autor: { select: { nome: true } }
+      }
+    });
+    return reply.send(referrals);
+  });
+  app.post("/cases/:caseId/referrals", async (req, reply) => {
     const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
-    try {
-      const { caseId } = paramsSchema.parse(req.params);
-      const referrals = await prisma.encaminhamento.findMany({
-        // [CORREÇÃO]: Mapeamento explícito aqui também
-        where: { casoId: caseId },
-        orderBy: { createdAt: "desc" },
-        include: {
-          autor: { select: { nome: true } }
-        }
-      });
-      return reply.send(referrals);
-    } catch (error) {
-      return reply.status(500).send({ message: "Erro ao buscar encaminhamentos." });
-    }
+    const bodySchema = import_zod.z.object({
+      instituicao: import_zod.z.string().min(2, "Informe a institui\xE7\xE3o de destino"),
+      tipo: import_zod.z.string().min(2, "Informe o tipo (Ex: Sa\xFAde, Educa\xE7\xE3o)"),
+      motivo: import_zod.z.string().min(5, "Descreva o motivo do encaminhamento")
+    });
+    const { caseId } = paramsSchema.parse(req.params);
+    const { instituicao, tipo, motivo } = bodySchema.parse(req.body);
+    const userId = req.user.sub;
+    const caso = await prisma.case.findUnique({ where: { id: caseId } });
+    if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado" });
+    const referral = await prisma.encaminhamento.create({
+      data: {
+        instituicao,
+        tipo,
+        motivo,
+        status: "PENDENTE",
+        casoId: caseId,
+        autorId: userId,
+        dataEnvio: /* @__PURE__ */ new Date()
+      }
+    });
+    await prisma.caseLog.create({
+      data: {
+        casoId: caseId,
+        autorId: userId,
+        acao: "OUTRO",
+        // Ou crie um enum ENCAMINHAMENTO_CRIADO se puder alterar o schema
+        descricao: `Encaminhou para: ${instituicao} (${tipo})`
+      }
+    });
+    return reply.status(201).send(referral);
   });
   app.patch("/referrals/:id", async (req, reply) => {
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
     const bodySchema = import_zod.z.object({
-      status: import_zod.z.enum(["PENDENTE", "CONCLUIDO", "NEGADO"]),
+      status: import_zod.z.enum(["PENDENTE", "CONCLUIDO", "CANCELADO"]),
       retorno: import_zod.z.string().optional()
+      // Texto com a resposta da instituição
     });
-    try {
-      const { id } = paramsSchema.parse(req.params);
-      const { status, retorno } = bodySchema.parse(req.body);
-      const userId = req.user.sub;
-      const oldRef = await prisma.encaminhamento.findUnique({ where: { id } });
-      if (!oldRef) return reply.status(404).send({ message: "Encaminhamento n\xE3o encontrado." });
-      const updated = await prisma.encaminhamento.update({
-        where: { id },
-        data: {
-          status,
-          retorno,
-          updatedAt: /* @__PURE__ */ new Date()
-        }
-      });
-      await prisma.caseLog.create({
-        data: {
-          casoId: oldRef.casoId,
-          // Aqui usamos o valor que já veio do banco, então está correto
-          autorId: userId,
-          acao: import_client2.LogAction.OUTRO,
-          descricao: `Atualizou encaminhamento (${oldRef.instituicao}) para: ${status}`
-        }
-      });
-      return reply.send(updated);
-    } catch (error) {
-      return reply.status(500).send({ message: "Erro ao atualizar encaminhamento." });
+    const { id } = paramsSchema.parse(req.params);
+    const { status, retorno } = bodySchema.parse(req.body);
+    const updated = await prisma.encaminhamento.update({
+      where: { id },
+      data: {
+        status,
+        retorno,
+        // Salva o feedback (Ex: "Vaga concedida")
+        updatedAt: /* @__PURE__ */ new Date()
+      }
+    });
+    return reply.send(updated);
+  });
+  app.delete("/referrals/:id", async (req, reply) => {
+    const { id } = import_zod.z.object({ id: import_zod.z.string().uuid() }).parse(req.params);
+    const userId = req.user.sub;
+    const existing = await prisma.encaminhamento.findUnique({ where: { id } });
+    if (!existing) return reply.status(404).send();
+    if (existing.autorId !== userId) {
+      return reply.status(403).send({ message: "Apenas o autor pode excluir." });
     }
+    await prisma.encaminhamento.delete({ where: { id } });
+    return reply.status(204).send();
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

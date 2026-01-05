@@ -25,7 +25,12 @@ module.exports = __toCommonJS(stats_exports);
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
-var prisma = new import_client.PrismaClient();
+var globalForPrisma = global;
+var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
+  log: ["error"]
+  // Reduzi logs para limpar o terminal, use ['query'] para debug
+});
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/stats.ts
 var import_date_fns = require("date-fns");
@@ -492,6 +497,32 @@ async function statsRoutes(app) {
       return reply.send(appointments);
     } catch {
       return reply.status(500).send({ message: "Erro agenda." });
+    }
+  });
+  app.get("/stats/activity", async (request, reply) => {
+    const { sub: userId, cargo } = request.user;
+    try {
+      const whereScope = cargo === "Gerente" ? {} : {
+        caso: {
+          OR: [
+            { agenteAcolhidaId: userId },
+            { especialistaPAEFIId: userId }
+          ]
+        }
+      };
+      const logs = await prisma.caseLog.findMany({
+        where: whereScope,
+        take: 10,
+        // Últimas 10 ações
+        orderBy: { createdAt: "desc" },
+        include: {
+          autor: { select: { nome: true, cargo: true } },
+          caso: { select: { id: true, nomeCompleto: true } }
+        }
+      });
+      return reply.send(logs);
+    } catch (error) {
+      return reply.status(500).send([]);
     }
   });
 }

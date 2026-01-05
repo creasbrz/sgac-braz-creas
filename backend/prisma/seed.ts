@@ -57,7 +57,6 @@ const MOTIVOS_DESLIGAMENTO = [
 const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT']
 const TEMAS_GRUPO = ['Oficina de Parentalidade', 'Grupo de Mulheres', 'Acolhida Coletiva', 'Roda de Conversa BPC', 'Grupo de Idosos']
 
-// Textos Templates
 const EVOLUCAO_TEMPLATES = [
   "Realizada visita domiciliar. Família apresenta vulnerabilidade habitacional. Orientado sobre documentação necessária para inclusão no Cadastro Único.",
   "Atendimento presencial na unidade. Usuário relata melhora na convivência familiar após encaminhamento para o CAPS.",
@@ -76,16 +75,13 @@ const PAF_OBJETIVOS = [
   "Inserção no mercado de trabalho e autonomia financeira."
 ]
 
-// --- UTILITÁRIOS ---
 const randInt = (min: number, max: number) => faker.number.int({ min, max })
 const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 
-// --- EXECUÇÃO ---
-
 async function main() {
-  console.log('🌱 [SEED V5.0.3] Iniciando povoamento (Schema Validado)...')
+  console.log('🌱 [SEED V5.1] Iniciando povoamento COMPLETO...')
 
-  // 1. Limpeza Segura
+  // 1. Limpeza
   console.log('🧹 Limpando base de dados...')
   try {
     await prisma.groupAttendance.deleteMany()
@@ -193,57 +189,34 @@ async function main() {
     })
     createdCases.push(newCase)
 
-    // LOG DE CRIAÇÃO
+    // Log Criação
     await prisma.caseLog.create({
-        data: { 
-            casoId: newCase.id, 
-            autorId: criador?.id, 
-            acao: LogAction.CRIACAO, // Correto conforme schema
-            descricao: 'Caso criado via Seed.', 
-            createdAt: dataEntrada 
-        }
+        data: { casoId: newCase.id, autorId: criador?.id, acao: LogAction.CRIACAO, descricao: 'Caso criado via Seed.', createdAt: dataEntrada }
     })
 
-    // --- EVOLUÇÕES ---
+    // Evoluções
     if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
-        const numEvolucoes = randInt(1, 8);
+        const numEvolucoes = randInt(1, 5);
         for(let e = 0; e < numEvolucoes; e++) {
             const dataEvolucao = faker.date.between({ from: dataEntrada, to: new Date() });
             const autorEvolucao = especialistaResp || agenteResp;
-            const tipoEvolucao = faker.helpers.arrayElement(['VISITA_DOMICILIAR', 'ATENDIMENTO_PRESENCIAL', 'CONTATO_TELEFONICO']);
-            
             await prisma.evolucao.create({
                 data: {
                     casoId: newCase.id,
                     autorId: autorEvolucao.id,
-                    // Schema pede "conteudo" e "sigilo"
-                    conteudo: `[${tipoEvolucao}] ` + faker.helpers.arrayElement(EVOLUCAO_TEMPLATES), 
-                    sigilo: Math.random() > 0.9, 
-                    createdAt: dataEvolucao
-                }
-            });
-
-            // LOG DA EVOLUÇÃO
-            await prisma.caseLog.create({
-                data: {
-                    casoId: newCase.id,
-                    autorId: autorEvolucao.id,
-                    // Schema pede LogAction.EVOLUCAO_CRIADA
-                    acao: LogAction.EVOLUCAO_CRIADA, 
-                    descricao: 'Registro de evolução no prontuário.',
-                    createdAt: dataEvolucao
+                    conteudo: `[ATENDIMENTO] ` + faker.helpers.arrayElement(EVOLUCAO_TEMPLATES), 
+                    sigilo: Math.random() > 0.9, createdAt: dataEvolucao
                 }
             });
         }
     }
 
-    // --- PAF ---
+    // PAF
     if ([CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO].includes(status) && especialistaResp) {
         await prisma.paf.create({
             data: {
                 casoId: newCase.id,
                 autorId: especialistaResp.id,
-                // Schema pede: diagnostico, objetivos, estrategias, deadline
                 diagnostico: `Situação de risco: ${urgencia}. Violação: ${newCase.violacao}`,
                 objetivos: faker.helpers.arrayElement(PAF_OBJETIVOS),
                 estrategias: "Visitas mensais, encaminhamento para CRAS e BPC.",
@@ -251,22 +224,42 @@ async function main() {
                 createdAt: addDays(dataEntrada, 30)
             }
         });
-        
-        // Log de PAF
-        await prisma.caseLog.create({
-            data: {
-                casoId: newCase.id,
-                autorId: especialistaResp.id,
-                acao: LogAction.PAF_CRIADO,
-                descricao: 'Plano de Acompanhamento Familiar elaborado.',
-                createdAt: addDays(dataEntrada, 30)
-            }
-        });
     }
 
-    // Benefícios Eventuais (ServiceDeliverable)
+    // =================================================================================
+    // [ADICIONADO] AGENDAMENTOS INDIVIDUAIS (CORREÇÃO: AGORA GERA PARA AGENDA)
+    // =================================================================================
+    
+    // 1. Agendamentos Passados (Para histórico e testes de prontuário)
+    if (Math.random() > 0.3) {
+       await prisma.agendamento.create({
+         data: {
+           titulo: 'Visita Domiciliar Realizada',
+           data: faker.date.recent({ days: 30 }), // Passado
+           casoId: newCase.id,
+           responsavelId: especialistaResp?.id || agenteResp.id,
+           observacoes: 'Visita de monitoramento realizada com sucesso.'
+         }
+       })
+    }
+
+    // 2. Agendamentos Futuros (Para aparecer na Tela de Agenda e Dashboard)
+    if (status !== CaseStatus.DESLIGADO && Math.random() > 0.4) {
+       await prisma.agendamento.create({
+         data: {
+           titulo: faker.helpers.arrayElement(['Atendimento Psicossocial', 'Renovação de PIA', 'Visita Domiciliar', 'Reunião de Rede']),
+           data: faker.date.soon({ days: 15 }), // Futuro (próximos 15 dias)
+           casoId: newCase.id,
+           responsavelId: especialistaResp?.id || agenteResp.id,
+           observacoes: 'Confirmar presença por telefone.'
+         }
+       })
+    }
+    // =================================================================================
+
+    // Benefícios
     if (status !== CaseStatus.AGUARDANDO_ACOLHIDA && Math.random() > 0.2) {
-        const numEventuais = randInt(1, 5)
+        const numEventuais = randInt(1, 3)
         for (let j = 0; j < numEventuais; j++) {
            await prisma.serviceDeliverable.create({
              data: {
@@ -312,7 +305,7 @@ async function main() {
           parentesco: faker.helpers.arrayElement(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)']),
           idade: randInt(2, 90),
           cpf: Math.random() > 0.3 ? generateCPF() : null,
-          renda: randInt(0, 1412) // Prisma converte int para Decimal automaticamente
+          renda: randInt(0, 1412) 
         }
       })
     }
@@ -320,11 +313,9 @@ async function main() {
     process.stdout.write('.')
   }
 
-  // 4. Logs Adicionais de Produtividade
+  // 4. Logs Adicionais
   console.log('\n📈 Gerando histórico de ações...')
   const allWorkers = [...especialistas, ...agentes]
-  
-  // Usando ações válidas do Schema
   const safeActions = [LogAction.MUDANCA_STATUS, LogAction.OUTRO, LogAction.ATRIBUICAO]
 
   for (const worker of allWorkers) {
@@ -332,7 +323,6 @@ async function main() {
     for (let k = 0; k < workVolume; k++) {
       const randomCase = faker.helpers.arrayElement(createdCases)
       if (!randomCase) continue;
-      
       await prisma.caseLog.create({
         data: {
           casoId: randomCase.id,
@@ -376,7 +366,7 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Seed V5.0.3 COMPLETO! Dados carregados sem erros.')
+  console.log('\n✅ Seed V5.1 COMPLETO! Agendamentos Individuais e Grupos gerados.')
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect())

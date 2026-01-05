@@ -1,11 +1,21 @@
 // backend/src/routes/alerts.ts
-import { type FastifyInstance } from 'fastify'
+import { type FastifyInstance, FastifyRequest } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { Cargo, CaseStatus } from '@prisma/client'
 import { addDays, startOfDay, subDays } from 'date-fns'
 
+// Definição de Tipos para clareza e manutenção
+interface Notification {
+  id: string
+  title: string
+  description: string
+  link: string
+  type: 'critical' | 'warning' | 'info'
+}
+
 export async function alertRoutes(app: FastifyInstance) {
   
+  // Hook de Autenticação
   app.addHook('onRequest', async (request, reply) => {
     try {
       await request.jwtVerify()
@@ -15,168 +25,138 @@ export async function alertRoutes(app: FastifyInstance) {
   })
 
   // [GET] /alerts - Central de Notificações Inteligente
-  app.get('/alerts', async (request, reply) => {
+  app.get('/alerts', async (request: FastifyRequest, reply) => {
     const { sub: userId, cargo } = request.user as { sub: string, cargo: Cargo }
-    const notifications = []
+    const notifications: Notification[] = []
 
     const today = startOfDay(new Date())
-    const tomorrowEnd = addDays(today, 2)
+    const tomorrowEnd = addDays(today, 2) // Hoje e amanhã
+    const thirtyDaysAgo = subDays(today, 30)
 
-    // 1. AGENDAMENTOS (Agenda Pessoal)
-    const agenda = await prisma.agendamento.findMany({
-      where: {
-        responsavelId: userId,
-        data: { gte: today, lt: tomorrowEnd }
-      },
-      include: { caso: { select: { nomeCompleto: true } } }
-    })
+    // Array de Promises para execução paralela (Performance)
+    const tasks = []
 
-    for (const ag of agenda) {
-      notifications.push({
-        id: `agenda-${ag.id}`,
-        title: 'Compromisso Próximo',
-        description: `${ag.titulo} - ${ag.caso.nomeCompleto}`,
-        link: `/dashboard/cases/${ag.casoId}`,
-        type: 'info'
-      })
-    }
-
-    // 2. REGRAS GERAIS
-    
-    // Alerta de Inatividade (Casos "Esquecidos")
-    const dataLimiteInatividade = subDays(new Date(), 30)
-    
-    const casosInativos = await prisma.case.findMany({
-      where: {
-        status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-        especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
-        evolucoes: {
-          none: {
-            createdAt: { gte: dataLimiteInatividade }
-          }
-        }
-      },
-      select: { id: true, nomeCompleto: true }
-    })
-
-    for (const caso of casosInativos) {
-      notifications.push({
-        id: `inativo-${caso.id}`,
-        title: 'Caso sem Movimentação',
-        description: `${caso.nomeCompleto} não tem evolução há +30 dias.`,
-        link: `/dashboard/cases/${caso.id}`,
-        type: 'critical'
-      })
-    }
-
-    // [NOVO] Alerta de Monitoramento (Busca Ativa)
-    // Regra: Casos em monitoramento devem ter alguma anotação a cada 60 dias (prazo mais longo)
-    const dataLimiteMonitoramento = subDays(new Date(), 60)
-    const casosMonitoramentoEsquecidos = await prisma.case.findMany({
-      where: {
-        status: CaseStatus.EM_MONITORAMENTO,
-        especialistaPAEFIId: cargo === Cargo.Especialista ? userId : undefined,
-        evolucoes: {
-          none: {
-            createdAt: { gte: dataLimiteMonitoramento }
-          }
-        }
-      },
-      select: { id: true, nomeCompleto: true }
-    })
-
-    for (const caso of casosMonitoramentoEsquecidos) {
-      notifications.push({
-        id: `monit-inativo-${caso.id}`,
-        title: 'Revisão de Monitoramento',
-        description: `Verificar situação de ${caso.nomeCompleto} (sem contato há 60 dias).`,
-        link: `/dashboard/cases/${caso.id}`,
-        type: 'info' // Amarelo/Info pois é menos crítico que PAEFI
-      })
-    }
-
-    // 3. REGRAS POR CARGO ESPECÍFICAS
-
-    // --- GERENTE ---
-    if (cargo === Cargo.Gerente) {
-      const distCount = await prisma.case.count({
-        where: { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
-      })
-
-      if (distCount > 0) {
-        notifications.push({
-          id: 'dist-queue',
-          title: 'Distribuição Pendente',
-          description: `${distCount} casos aguardam atribuição.`,
-          link: '/dashboard/cases?status=AGUARDANDO_DISTRIBUICAO_PAEFI',
-          type: 'critical'
-        })
-      }
-    }
-
-    // --- AGENTE SOCIAL ---
-    if (cargo === Cargo.Agente_Social) {
-      const acolhidaCount = await prisma.case.count({
+    // 1. TAREFA: Buscar Agendamentos (Comum a todos)
+    tasks.push(
+      prisma.agendamento.findMany({
         where: {
-          agenteAcolhidaId: userId,
-          status: CaseStatus.AGUARDANDO_ACOLHIDA
-        }
-      })
-
-      if (acolhidaCount > 0) {
-        notifications.push({
-          id: 'acolhida-queue',
-          title: 'Novos na Acolhida',
-          description: `Você tem ${acolhidaCount} casos para triagem inicial.`,
-          link: '/dashboard/cases?status=AGUARDANDO_ACOLHIDA',
-          type: 'critical'
-        })
-      }
-    }
-
-    // --- ESPECIALISTA ---
-    if (cargo === Cargo.Especialista) {
-      const casesWithoutPaf = await prisma.case.count({
-        where: {
-          especialistaPAEFIId: userId,
-          status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-          paf: { is: null }
-        }
-      })
-
-      if (casesWithoutPaf > 0) {
-        notifications.push({
-          id: 'missing-paf',
-          title: 'Casos sem PAF',
-          description: `${casesWithoutPaf} casos precisam do plano inicial.`,
-          link: '/dashboard/cases',
-          type: 'critical'
-        })
-      }
-
-      const pafDeadline = addDays(new Date(), 15)
-      const pafsExpiring = await prisma.paf.findMany({
-        where: {
-          caso: {
-            especialistaPAEFIId: userId,
-            status: { not: CaseStatus.DESLIGADO }
-          },
-          deadline: { gte: today, lte: pafDeadline },
+          responsavelId: userId,
+          data: { gte: today, lt: tomorrowEnd }
         },
-        include: { caso: { select: { nomeCompleto: true, id: true } } }
-      })
-
-      for (const p of pafsExpiring) {
-        notifications.push({
-          id: `paf-exp-${p.id}`,
-          title: 'Reavaliação de PAF',
-          description: `Prazo próximo: ${p.caso.nomeCompleto}`,
-          link: `/dashboard/cases/${p.caso.id}`,
-          type: 'critical'
+        include: { caso: { select: { nomeCompleto: true } } }
+      }).then(agenda => {
+        agenda.forEach(ag => {
+          notifications.push({
+            id: `agenda-${ag.id}`,
+            title: 'Compromisso Próximo',
+            description: `${ag.tipo} - ${ag.caso?.nomeCompleto || 'Sem caso vinculado'} às ${new Date(ag.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+            link: '/dashboard/agenda',
+            type: 'info'
+          })
         })
-      }
+      })
+    )
+
+    // 2. TAREFA: Coordenador - Triagem
+    if (cargo === Cargo.Coordenador) {
+      tasks.push(
+        prisma.case.count({
+          where: { status: CaseStatus.AGUARDANDO_ACOLHIDA }
+        }).then(waitingCount => {
+          if (waitingCount > 0) {
+            notifications.push({
+              id: 'waiting-cases',
+              title: 'Triagem Pendente',
+              description: `Existem ${waitingCount} famílias aguardando acolhida para triagem inicial.`,
+              link: '/dashboard/cases?status=AGUARDANDO_ACOLHIDA',
+              type: 'critical'
+            })
+          }
+        })
+      )
     }
 
-    return reply.send(notifications)
+    // 3. TAREFA: Especialista - Gestão de Casos (PAEFI)
+    if (cargo === Cargo.Especialista) {
+      // 3.1 Casos sem PAF
+      tasks.push(
+        prisma.case.count({
+          where: {
+            especialistaPAEFIId: userId,
+            status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+            paf: { is: null }
+          }
+        }).then(casesWithoutPaf => {
+          if (casesWithoutPaf > 0) {
+            notifications.push({
+              id: 'missing-paf',
+              title: 'Casos sem PAF',
+              description: `${casesWithoutPaf} casos precisam do plano inicial.`,
+              link: '/dashboard/cases',
+              type: 'critical'
+            })
+          }
+        })
+      )
+
+      // 3.2 PAFs vencendo em breve (Próximos 15 dias)
+      const pafDeadline = addDays(new Date(), 15)
+      tasks.push(
+        prisma.paf.findMany({
+          where: {
+            caso: {
+              especialistaPAEFIId: userId,
+              status: { not: CaseStatus.DESLIGADO }
+            },
+            deadline: { gte: today, lte: pafDeadline },
+          },
+          include: { caso: { select: { nomeCompleto: true, id: true } } }
+        }).then(pafsExpiring => {
+          pafsExpiring.forEach(p => {
+            notifications.push({
+              id: `paf-exp-${p.id}`,
+              title: 'Revisão de PAF',
+              description: `O plano de ${p.caso.nomeCompleto} vence em ${new Date(p.deadline).toLocaleDateString('pt-BR')}.`,
+              link: `/dashboard/cases/${p.caso.id}/paf`,
+              type: 'warning'
+            })
+          })
+        })
+      )
+
+      // 3.3 Estagnação (Casos sem evolução há +30 dias)
+      // OTIMIZAÇÃO: Usando filtro reverso do Prisma ao invés de loop no Node.js
+      tasks.push(
+        prisma.case.findMany({
+          select: { id: true, nomeCompleto: true },
+          where: {
+            especialistaPAEFIId: userId,
+            status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+            // Logica: Não tem NENHUMA evolução com data >= 30 dias atrás
+            // Ou seja, a última foi antes disso ou nunca houve.
+            evolucao: {
+              none: {
+                data: { gte: thirtyDaysAgo }
+              }
+            }
+          }
+        }).then(stagnantCases => {
+          stagnantCases.forEach(c => {
+            notifications.push({
+              id: `stagnant-${c.id}`,
+              title: 'Caso Sem Evolução',
+              description: `${c.nomeCompleto} não possui registros nos últimos 30 dias.`,
+              link: `/dashboard/cases/${c.id}`,
+              type: 'warning'
+            })
+          })
+        })
+      )
+    }
+
+    // Executa todas as queries em paralelo e espera terminarem
+    await Promise.all(tasks)
+
+    return notifications
   })
 }

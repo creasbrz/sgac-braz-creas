@@ -24,13 +24,11 @@ const calculateUrgencyWeight = (urgencia: string): number => {
 }
 
 const formatDateForCsv = (date: Date | null | undefined): string => {
-  return date && !isNaN(date.getTime())
-    ? format(date, 'dd/MM/yyyy', { locale: ptBR })
-    : 'N/A'
+  return date && !isNaN(date.getTime()) ? format(date, 'dd/MM/yyyy', { locale: ptBR }) : 'N/A'
 }
 
 function internalError(reply: FastifyReply, message: string, error: unknown) {
-  console.error(message, error)
+  request.log.error(message, error) // Uso do logger do Fastify
   return reply.status(500).send({ message })
 }
 
@@ -41,6 +39,8 @@ function detectChanges(oldData: any, newData: any) {
   for (const key in newData) {
     if (ignoreFields.includes(key)) continue;
     let val1 = oldData[key]; let val2 = newData[key];
+    
+    // Comparação de datas
     if ((val1 instanceof Date || typeof val1 === 'string') && (val2 instanceof Date || typeof val2 === 'string')) {
       const d1 = new Date(val1); const d2 = new Date(val2);
       if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
@@ -48,7 +48,11 @@ function detectChanges(oldData: any, newData: any) {
         if (s1 === s2) continue;
       }
     }
-    if (val1 !== val2) { if (!val1 && !val2) continue; changes[key] = { from: val1, to: val2 } }
+    
+    if (val1 !== val2) { 
+      if (!val1 && !val2) continue; 
+      changes[key] = { from: val1, to: val2 } 
+    }
   }
   return changes
 }
@@ -57,29 +61,38 @@ async function createLog(casoId: string, autorId: string, acao: LogAction, descr
   await prisma.caseLog.create({ data: { casoId, autorId, acao, descricao, valorAnterior, valorNovo } })
 }
 
+// Filtro Padrão Inteligente (Mantido)
 function buildActiveCaseWhereClause(user: { cargo: string; sub: string }) {
-  switch (user.cargo) {
-    case Cargo.Agente_Social:
-      return {
-        agenteAcolhidaId: user.sub,
-        status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
-      }
-    case Cargo.Especialista:
-      return {
-        especialistaPAEFIId: user.sub,
-        status: { 
-          in: [
-            CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
-            CaseStatus.EM_ACOMPANHAMENTO_PAEFI, 
-            CaseStatus.EM_MONITORAMENTO
-          ] 
-        }
-      }
-    case Cargo.Gerente:
-      return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
-    default:
-      return { id: '-1' }
+  const cargo = user.cargo
+  
+  // Gerente: Vê casos novos aguardando distribuição
+  if (cargo === 'Gerente' || cargo === Cargo.Gerente) {
+    return { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI }
   }
+  
+  // Agente Social: Vê seus casos em acolhida
+  if (cargo === 'Agente_Social' || cargo === Cargo.Agente_Social || cargo === 'Agente Social') {
+    return {
+      agenteAcolhidaId: user.sub,
+      status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }
+    }
+  }
+
+  // Especialista: Vê seus casos em acompanhamento
+  if (cargo === 'Especialista' || cargo === Cargo.Especialista) {
+    return {
+      especialistaPAEFIId: user.sub,
+      status: { 
+        in: [
+          CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
+          CaseStatus.EM_ACOMPANHAMENTO_PAEFI, 
+          CaseStatus.EM_MONITORAMENTO
+        ] 
+      }
+    }
+  }
+
+  return {} 
 }
 
 // --- ROTAS ---
@@ -196,13 +209,14 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. Listar Casos
+  // 2. Listar Casos (CORRIGIDA E OTIMIZADA PARA FILTROS)
   app.get('/cases', { onRequest: [app.authenticate] }, async (request, reply) => {
     const schema = z.object({
       search: z.string().optional(),
       page: z.coerce.number().min(1).default(1),
       pageSize: z.coerce.number().min(1).max(100).default(10),
-      status: z.nativeEnum(CaseStatus).optional(),
+      // [ATUALIZAÇÃO] Aceita status único ou separados por vírgula
+      status: z.string().optional(), 
       urgencia: z.string().optional(),
       violacao: z.string().optional(),
       categoria: z.string().optional(),
@@ -215,9 +229,12 @@ export async function caseRoutes(app: FastifyInstance) {
     })
 
     try {
-      const { search, page, pageSize, status, urgencia, violacao, categoria, sexo, view, sortBy, sortOrder, agenteId, specialistId } = schema.parse(request.query)
+      const query = schema.parse(request.query)
+      const { search, page, pageSize, view, sortBy, sortOrder, agenteId, specialistId } = query
+      
       let where: any = {}
 
+      // 1. Definição do Escopo (Quem está vendo o quê)
       if (agenteId) {
         where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
       } else if (specialistId) {
@@ -225,16 +242,42 @@ export async function caseRoutes(app: FastifyInstance) {
       } else if (view === 'all') {
         where = { status: { not: CaseStatus.DESLIGADO } }
       } else {
-        where = buildActiveCaseWhereClause(request.user as any)
+        const defaultFilters = buildActiveCaseWhereClause(request.user as any)
+        where = { ...where, ...defaultFilters }
       }
 
-      if (search) where.AND = [...(where.AND || []), { OR: [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }] }]
-      if (status) where.status = status 
-      if (urgencia && urgencia !== 'all') where.urgencia = urgencia
-      if (violacao && violacao !== 'all') where.violacao = { equals: violacao }
-      if (categoria && categoria !== 'all') where.categoria = { equals: categoria }
-      if (sexo && sexo !== 'all') where.sexo = { equals: sexo }
+      // 2. Filtro de Busca (AGORA INCLUI ENDEREÇO/BAIRRO)
+      if (search) {
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { nomeCompleto: { contains: search, mode: 'insensitive' } },
+              { cpf: { contains: search } },
+              // [NOVO] Essencial para filtros territoriais (ex: "Veredas")
+              { endereco: { contains: search, mode: 'insensitive' } } 
+            ]
+          }
+        ]
+      }
       
+      // 3. Filtros da UI
+      // Suporte para múltiplos status (ex: ?status=AGUARDANDO_ACOLHIDA,EM_ACOLHIDA)
+      if (query.status && query.status !== 'all') {
+        const statusList = query.status.split(',').map(s => s.trim()) as CaseStatus[]
+        // Filtra apenas valores válidos do Enum para evitar erro do Prisma
+        const validStatuses = statusList.filter(s => Object.values(CaseStatus).includes(s))
+        if (validStatuses.length > 0) {
+           where.status = { in: validStatuses }
+        }
+      }
+      
+      if (query.urgencia && query.urgencia !== 'all') where.urgencia = query.urgencia
+      if (query.violacao && query.violacao !== 'all') where.violacao = { equals: query.violacao }
+      if (query.categoria && query.categoria !== 'all') where.categoria = { equals: query.categoria }
+      if (query.sexo && query.sexo !== 'all') where.sexo = { equals: query.sexo }
+      
+      // Ordenação
       let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]; 
       if (sortBy) {
         if (sortBy === 'urgencia') {
@@ -247,12 +290,15 @@ export async function caseRoutes(app: FastifyInstance) {
       const [items, total] = await Promise.all([
         prisma.case.findMany({
           where, orderBy, take: pageSize, skip: (page - 1) * pageSize,
-          include: { agenteAcolhida: { select: { nome: true } }, especialistaPAEFI: { select: { nome: true } } },
+          include: { 
+            agenteAcolhida: { select: { nome: true } }, 
+            especialistaPAEFI: { select: { nome: true } } 
+          },
         }),
         prisma.case.count({ where }),
       ])
 
-      return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
+      return reply.send({ data: items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } })
     } catch (error) { return internalError(reply, 'Erro interno ao listar casos.', error) }
   })
 
@@ -267,7 +313,15 @@ export async function caseRoutes(app: FastifyInstance) {
     try {
       const { search, page, pageSize } = schema.parse(request.query)
       const where: any = { status: CaseStatus.DESLIGADO }
-      if (search) where.OR = [{ nomeCompleto: { contains: search, mode: 'insensitive' } }, { cpf: { contains: search } }]
+      
+      // [ATUALIZADO] Busca por endereço aqui também
+      if (search) {
+        where.OR = [
+          { nomeCompleto: { contains: search, mode: 'insensitive' } }, 
+          { cpf: { contains: search } },
+          { endereco: { contains: search, mode: 'insensitive' } }
+        ]
+      }
 
       const [items, total] = await Promise.all([
         prisma.case.findMany({
@@ -283,11 +337,11 @@ export async function caseRoutes(app: FastifyInstance) {
         prisma.case.count({ where }),
       ])
 
-      return reply.send({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
+      return reply.send({ data: items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } })
     } catch (error) { return internalError(reply, 'Erro ao listar casos finalizados.', error) }
   })
 
-  // 4. Detalhes do Caso (CORRIGIDO CONFORME SCHEMA)
+  // 4. Detalhes do Caso (Mantido)
   app.get('/cases/:id', { onRequest: [app.authenticate] }, async (request, reply) => {
     try {
       const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
@@ -298,28 +352,11 @@ export async function caseRoutes(app: FastifyInstance) {
           criadoPor: { select: { nome: true } },
           agenteAcolhida: { select: { id: true, nome: true } },
           especialistaPAEFI: { select: { id: true, nome: true } },
-          
-          familia: true,           // Relação correta: familia
-          
-          encaminhamentos: {
-            include: { autor: { select: { nome: true } } },
-            orderBy: { dataEnvio: 'desc' }
-          },
-          
-          entregas: {              // Relação correta: entregas
-            orderBy: { dataSolicitacao: 'desc' }
-          },
-          
-          evolucoes: {
-            include: { autor: { select: { nome: true } } },
-            orderBy: { createdAt: 'desc' }
-          },
-          
-          logs: {
-            orderBy: { createdAt: 'desc' }, 
-            take: 50, 
-            include: { autor: { select: { nome: true } } } 
-          },
+          familia: true,
+          encaminhamentos: { include: { autor: { select: { nome: true } } }, orderBy: { dataEnvio: 'desc' } },
+          entregas: { include: { responsavel: { select: { nome: true } } }, orderBy: { dataSolicitacao: 'desc' } }, // Include responsavel
+          evolucoes: { include: { autor: { select: { nome: true, cargo: true } } }, orderBy: { createdAt: 'desc' } },
+          logs: { orderBy: { createdAt: 'desc' }, take: 50, include: { autor: { select: { nome: true } } } },
         },
       })
       
@@ -328,7 +365,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao buscar detalhes.', error) }
   })
 
-  // 5. Mudar Status
+  // 5. Mudar Status (Mantido)
   app.patch('/cases/:id/status', { onRequest: [app.authenticate] }, async (request, reply) => {
     const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({ status: z.nativeEnum(CaseStatus) })
@@ -353,7 +390,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao alterar status.', error) }
   })
 
-  // 6. Atribuir
+  // 6. Atribuir (Mantido)
   app.patch('/cases/:id/assign', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ specialistId: z.string().uuid() })
@@ -361,7 +398,7 @@ export async function caseRoutes(app: FastifyInstance) {
       const { id } = params.parse(request.params)
       const { specialistId } = body.parse(request.body)
       const { cargo, sub: userId } = request.user as { sub: string, cargo: string }
-      if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+      if (cargo !== 'Gerente' && cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
       
       const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
       const spec = await prisma.user.findUnique({ where: { id: specialistId } })
@@ -382,7 +419,7 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao atribuir.', error) }
   })
 
-  // 7. Desligar
+  // 7. Desligar (Mantido)
   app.patch('/cases/:id/close', { onRequest: [app.authenticate] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() })
     const body = z.object({ 
@@ -398,7 +435,7 @@ export async function caseRoutes(app: FastifyInstance) {
       const caso = await prisma.case.findUnique({ where: { id } })
       if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
       
-      const isManager = cargo === Cargo.Gerente
+      const isManager = cargo === 'Gerente' || cargo === Cargo.Gerente
       if (!isManager && caso.agenteAcolhidaId !== userId && caso.especialistaPAEFIId !== userId) return reply.status(403).send({ message: 'Sem permissão.' })
       
       const updated = await prisma.case.update({ 
@@ -418,9 +455,10 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) { return internalError(reply, 'Erro ao desligar.', error) }
   })
 
-  // 8. Export
+  // 8. Export (Mantido)
   app.get('/cases/export', { onRequest: [app.authenticate] }, async (request, reply) => {
-    if ((request.user as any).cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+    const { cargo } = request.user as { cargo: string }
+    if (cargo !== 'Gerente' && cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
     try {
       const casos = await prisma.case.findMany({ orderBy: { createdAt: 'desc' }, include: { criadoPor: true, agenteAcolhida: true, especialistaPAEFI: true } })
       reply.header('Content-Disposition', `attachment; filename="export_casos_${format(new Date(), 'yyyy-MM-dd')}.csv"`)

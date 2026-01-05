@@ -1,9 +1,9 @@
-// frontend/src/pages/Cases.tsx
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { Loader2, LayoutList, Kanban as KanbanIcon, Users, User } from 'lucide-react'
+import { Loader2, LayoutList, Kanban as KanbanIcon, Users, User, FilterX } from 'lucide-react'
 import { CaseTable } from '@/components/CaseTable'
 import { CaseKanban } from '@/components/CaseKanban'
+import { CaseFilters } from '@/components/case/CaseFilters'
 import { Button } from '@/components/ui/button'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -18,59 +18,59 @@ export function Cases() {
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [filterView, setFilterView] = useState<FilterView>('my')
 
-  // [NOVO] Efeito para alternar o filtro padrão baseado no modo de visualização
+  const [filters, setFilters] = useState({
+    search: '',
+    status: '',
+    urgencia: ''
+  })
+
+  // [CORREÇÃO] Lógica de Visualização Padrão solicitada
   useEffect(() => {
     if (viewMode === 'kanban') {
-      setFilterView('all')
+      setFilterView('all') // Kanban vê o todo
     } else {
-      setFilterView('my')
+      setFilterView('my')  // Tabela vê o individual
     }
   }, [viewMode])
 
   // Query para o Kanban
   const { data: kanbanCases, isLoading: isLoadingKanban } = useQuery({
-    queryKey: ['cases', 'kanban', filterView],
+    queryKey: ['cases', 'kanban', filterView, filters],
     queryFn: async () => {
       const res = await api.get('/cases', { 
-        params: { pageSize: 100, view: filterView } 
+        params: { 
+          pageSize: 100, 
+          view: filterView,
+          ...filters 
+        } 
       })
-      return res.data.items
+      return res.data.data || res.data.items || [] 
     },
     enabled: viewMode === 'kanban', 
     staleTime: 1000 * 60
   })
 
   if (isSessionLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">
-          Sessão expirada. Faça login novamente.
-        </p>
-      </div>
-    )
+    return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
   }
 
   const getTitle = () => {
-    if (filterView === 'all') return 'Todos os Casos Ativos'
+    if (filterView === 'all') return 'Visão Geral da Unidade'
     
     const roleTitles: Record<string, string> = {
-      Gerente: 'Meus Casos (Gerência)',
-      'Agente_Social': 'Minhas Acolhidas',
-      Especialista: 'Meus Acompanhamentos',
+      Gerente: 'Distribuição e Pendências',
+      'Agente_Social': 'Minha Caixa de Acolhida',
+      Especialista: 'Meus Acompanhamentos (PAEFI)',
     }
-    return roleTitles[user.cargo] ?? 'Meus Casos'
+    return roleTitles[user?.cargo || ''] ?? 'Meus Casos'
   }
 
+  const clearFilters = () => setFilters({ search: '', status: '', urgencia: '' })
+  const hasActiveFilters = filters.search || filters.status || filters.urgencia
+
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="space-y-6 h-full flex flex-col p-2 sm:p-0 animate-in fade-in duration-500">
+      
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -78,12 +78,12 @@ export function Cases() {
           <p className="text-muted-foreground">
             {filterView === 'all' 
               ? 'Visualizando fluxo completo da unidade.' 
-              : 'Visualizando apenas casos sob sua responsabilidade.'}
+              : 'Focando apenas nos casos sob sua responsabilidade direta.'}
           </p>
         </div>
         
         <div className="flex flex-col sm:flex-row items-center gap-4">
-          {/* Seletor de Escopo */}
+          {/* Seletor de Escopo (Manual) */}
           <Tabs value={filterView} onValueChange={(v) => setFilterView(v as FilterView)} className="w-full sm:w-[240px]">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="my" className="gap-2">
@@ -95,6 +95,7 @@ export function Cases() {
             </TabsList>
           </Tabs>
 
+          {/* Alternador de Visualização */}
           <div className="flex items-center bg-muted p-1 rounded-lg">
             <Button 
               variant={viewMode === 'table' ? 'default' : 'ghost'} 
@@ -116,14 +117,27 @@ export function Cases() {
         </div>
       </div>
 
+      {/* Barra de Filtros */}
+      <div className="bg-background/50 backdrop-blur-sm sticky top-0 z-10 py-2 border-b flex items-center gap-2">
+        <div className="flex-1">
+          <CaseFilters filters={filters} setFilters={setFilters} />
+        </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground hover:text-destructive">
+            <FilterX className="h-4 w-4 mr-2" /> Limpar
+          </Button>
+        )}
+      </div>
+
       {/* Conteúdo */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-[400px]">
         {viewMode === 'table' ? (
           <CaseTable
             title="" 
             description=""
             endpoint="/cases"
             defaultView={filterView}
+            filters={filters} 
           />
         ) : (
           <CaseKanban 

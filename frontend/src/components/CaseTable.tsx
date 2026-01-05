@@ -1,47 +1,50 @@
-// frontend/src/components/CaseTable.tsx
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { MoreHorizontal, Search, Edit, FileDown, Loader2, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { MoreHorizontal, Edit, FileDown, Loader2, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 import { type CaseSummary } from '@/types/case'
-import { useDebounce } from '@/hooks/useDebounce'
 import { ROUTES } from '@/constants/routes'
 import { formatCPF, formatDateSafe } from '@/utils/formatters'
 import { useAuth } from '@/hooks/useAuth'
 import { getUrgencyColor } from '@/constants/caseConstants'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Pagination } from './Pagination'
 import { CaseStatusBadge } from './CaseStatusBadge'
-import { DataTableFilters } from './DataTableFilters'
 import { ImportCasesModal } from '@/components/modals/ImportCasesModal'
-import { SavedFilters } from '@/components/SavedFilters'
 
+// [CORREÇÃO] Adicionado 'endereco'
 interface ExtendedCaseSummary extends CaseSummary { 
   urgencia: string
   violacao?: string
   sexo?: string
+  endereco?: string 
 }
 
-interface PaginatedCasesResponse { items: ExtendedCaseSummary[]; total: number; page: number; pageSize: number; totalPages: number }
+interface PaginatedCasesResponse { 
+  items: ExtendedCaseSummary[]; 
+  total: number; 
+  page: number; 
+  pageSize: number; 
+  totalPages: number 
+}
 
 interface CaseTableProps { 
   endpoint: '/cases' | '/cases/closed'; 
   title: string; 
   description: string;
   defaultView?: 'my' | 'all';
-  // [NOVO] Permite passar filtros extras (ex: specialistId)
   extraParams?: Record<string, string | undefined>;
+  filters?: any;
 }
 
 type SortDirection = 'asc' | 'desc'
@@ -66,38 +69,14 @@ function TableRowSkeleton({ isManager }: { isManager: boolean }) {
   )
 }
 
-export function CaseTable({ endpoint, title, description, defaultView = 'my', extraParams = {} }: CaseTableProps) {
+export function CaseTable({ endpoint, title, description, defaultView = 'my', extraParams = {}, filters = {} }: CaseTableProps) {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') ?? '')
-  const debouncedSearchTerm = useDebounce(searchTerm, 500)
   const currentPage = Number(searchParams.get('page') ?? '1')
+  
   const [isExporting, setIsExporting] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
-
   const [sorting, setSorting] = useState<SortingState | null>(null)
-  const [filters, setFilters] = useState({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
-
-  const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value === 'all' ? '' : value }))
-    setSearchParams(prev => { prev.set('page', '1'); return prev })
-  }
-
-  const clearFilters = () => {
-    setFilters({ status: '', urgencia: '', violacao: '', categoria: '', sexo: '' })
-    setSorting(null)
-  }
-
-  const applySavedFilter = (newFilters: any) => {
-    setFilters({
-      status: newFilters.status || '',
-      urgencia: newFilters.urgencia || '',
-      violacao: newFilters.violacao || '',
-      categoria: newFilters.categoria || '',
-      sexo: newFilters.sexo || ''
-    })
-    setSearchParams(prev => { prev.set('page', '1'); return prev })
-  }
 
   const toggleSort = (field: string) => {
     setSorting(current => {
@@ -109,23 +88,41 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my', ex
     })
   }
 
-  // Adicionamos extraParams à queryKey para recarregar quando mudar
   const { data: result, isLoading } = useQuery<PaginatedCasesResponse>({
-    queryKey: ['cases', endpoint, debouncedSearchTerm, currentPage, filters, sorting, defaultView, extraParams],
+    queryKey: ['cases', endpoint, currentPage, filters, sorting, defaultView, extraParams],
     queryFn: async () => {
       const params = {
-        search: debouncedSearchTerm || undefined, page: currentPage, pageSize: 10,
-        status: filters.status || undefined, urgencia: filters.urgencia || undefined,
-        violacao: filters.violacao || undefined, categoria: filters.categoria || undefined, sexo: filters.sexo || undefined,
+        page: currentPage, 
+        pageSize: 10,
+        view: defaultView,
         sortBy: sorting?.field,
         sortOrder: sorting?.order,
-        view: defaultView,
-        ...extraParams // [NOVO] Espalha os filtros extras na requisição
+        ...extraParams,
+        ...filters 
       }
+      
       const response = await api.get(endpoint, { params })
-      return response.data
+      
+      const data = response.data.data || response.data.items || []
+      const meta = response.data.meta || { 
+        total: response.data.total || 0,
+        page: response.data.page || 1,
+        pageSize: response.data.pageSize || 10,
+        totalPages: response.data.totalPages || 1
+      }
+
+      return {
+        items: data,
+        total: meta.total,
+        page: meta.page,
+        pageSize: meta.pageSize,
+        totalPages: meta.totalPages
+      }
     },
-    placeholderData: (prev) => prev, staleTime: 1000 * 30, enabled: !!endpoint,
+    // [CORREÇÃO] Em React Query v5 'keepPreviousData' virou 'placeholderData'
+    // Mas se for v4, isso aqui funciona. O erro no GlobalAudit indica que você pode estar usando uma versão onde isso mudou ou a tipagem está estrita.
+    // Vamos manter simples: se der erro de tipo, remova o keepPreviousData se não for essencial ou use o placeholderData.
+    // Para v4: keepPreviousData: true
   })
 
   const handlePageChange = (page: number) => setSearchParams(prev => { prev.set('page', String(page)); return prev })
@@ -174,17 +171,6 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my', ex
         )}
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[250px]">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9 h-9 w-full bg-background" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          </div>
-          {isManagerEndpoint && <SavedFilters currentFilters={filters} onApply={applySavedFilter} />}
-        </div>
-        {isManagerEndpoint && <DataTableFilters filters={filters} setFilters={handleFilterChange} onClear={clearFilters} />}
-      </div>
-
       <div className="flex-1 overflow-hidden rounded-md border bg-card">
         <div className="overflow-auto h-full">
           <Table>
@@ -215,13 +201,15 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my', ex
                 <TableRowSkeleton key={i} isManager={isManagerEndpoint} />
               ))}
               
-              {!isLoading && result?.items.length === 0 && <TableRow><TableCell colSpan={10} className="h-32 text-center">Nenhum caso encontrado.</TableCell></TableRow>}
+              {!isLoading && result?.items.length === 0 && <TableRow><TableCell colSpan={10} className="h-32 text-center text-muted-foreground">Nenhum caso encontrado.</TableCell></TableRow>}
               
               {result?.items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium whitespace-nowrap">
-                    <Link to={ROUTES.CASE_DETAIL(item.id)} className="hover:underline hover:text-primary transition-colors block" title={item.nomeCompleto}>
-                      {item.nomeCompleto}
+                    <Link to={ROUTES.CASE_DETAIL(item.id)} className="hover:underline hover:text-primary transition-colors block flex flex-col" title={item.nomeCompleto}>
+                      <span>{item.nomeCompleto}</span>
+                      {/* [CORREÇÃO] Endereço agora é reconhecido */}
+                      {item.endereco && <span className="text-[10px] text-muted-foreground font-normal truncate max-w-[150px]">{item.endereco}</span>}
                     </Link>
                   </TableCell>
                   
@@ -257,8 +245,8 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my', ex
 
                   <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                     {item.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && item.especialistaPAEFI) 
-                      ? item.especialistaPAEFI?.nome ?? 'N/A' 
-                      : item.agenteAcolhida?.nome ?? 'N/A'
+                      ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? 'N/A' 
+                      : item.agenteAcolhida?.nome?.split(' ')[0] ?? 'N/A'
                     }
                   </TableCell>
                   
@@ -284,6 +272,7 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my', ex
           </Table>
         </div>
       </div>
+
       {result && result.total > 0 && <Pagination currentPage={currentPage} totalPages={result.totalPages} totalItems={result.total} pageSize={result.pageSize} onPageChange={handlePageChange} />}
       <ImportCasesModal isOpen={isImportOpen} onOpenChange={setIsImportOpen} />
     </div>

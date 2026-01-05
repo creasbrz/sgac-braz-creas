@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom"
 import { Sidebar } from "./Sidebar"
 import { Header } from "./Header"
 import { NewCaseModal } from "../NewCaseModal"
+import { CommandMenu } from "../CommandMenu" // [NOVO] Importação do componente
 
 export function MainLayout() {
   return (
@@ -15,7 +16,10 @@ export function MainLayout() {
           </div>
         </main>
       </div>
+      
+      {/* Componentes Globais (Modais) */}
       <NewCaseModal />
+      <CommandMenu /> {/* [NOVO] Menu Spotlight disponível em toda a aplicação */}
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { queryClient } from "./lib/react-query";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
-import { ThemeProvider } from "./components/theme-provider";
+import { ThemeProvider } from "./components/common/theme-provider";
 
 // Importação do Error Boundary (criado no passo anterior)
 import ErrorBoundary from "./components/ui/error-boundary";

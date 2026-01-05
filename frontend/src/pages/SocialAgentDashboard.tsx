@@ -4,7 +4,7 @@ import { Users, UserCheck, FolderInput, ArrowRight, AlertCircle, Clock } from 'l
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { UpcomingAppointments } from '@/components/UpcomingAppointments'
+import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
 import { Link } from 'react-router-dom'
 import { ROUTES } from '@/constants/routes'
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'

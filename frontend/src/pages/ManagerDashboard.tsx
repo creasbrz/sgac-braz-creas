@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Users, UserPlus, FolderOpen, FolderCheck, RefreshCw, FileText, Loader2 } from 'lucide-react' // [ADD FileText, Loader2]
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
 
-import { UpcomingAppointments } from '@/components/UpcomingAppointments'
+import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
 import { UpcomingPafDeadlines } from '@/components/dashboard/UpcomingPafDeadlines'
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
 import { AdvancedAnalytics } from './AdvancedAnalytics'

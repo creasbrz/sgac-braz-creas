@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Pagination } from '@/components/Pagination' // Usa o componente que você enviou
+import { Pagination } from '@/components/common/Pagination' // Usa o componente que você enviou
 
 import { ROUTES } from '@/constants/routes'
 import { getUrgencyColor } from '@/constants/caseConstants'

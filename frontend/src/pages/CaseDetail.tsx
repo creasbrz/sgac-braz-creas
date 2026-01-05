@@ -42,7 +42,7 @@ import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
 import { FamilyTab } from '@/components/case/tabs/FamilyTab'
 import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
 
-const CaseForm = lazy(() => import("@/components/CaseForm").then(module => ({ default: module.CaseForm })))
+const CaseForm = lazy(() => import("@/components/case/CaseForm").then(module => ({ default: module.CaseForm })))
 const CaseHistory = lazy(() => import("@/components/case/CaseHistory").then(module => ({ default: module.CaseHistory })))
 const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").then(module => ({ default: module.CaseEvolutions })))
 // CaseAttachments agora é importado diretamente para evitar erro de lazy loading de componente interno com props

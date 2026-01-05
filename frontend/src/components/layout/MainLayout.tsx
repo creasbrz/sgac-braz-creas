@@ -1,8 +1,8 @@
 import { Outlet } from "react-router-dom"
 import { Sidebar } from "./Sidebar"
 import { Header } from "./Header"
-import { NewCaseModal } from "../NewCaseModal"
-import { CommandMenu } from "../CommandMenu" // [NOVO] Importação do componente
+import { NewCaseModal } from "../modals/NewCaseModal"
+import { CommandMenu } from "../common/CommandMenu" // [NOVO] Importação do componente
 
 export function MainLayout() {
   return (

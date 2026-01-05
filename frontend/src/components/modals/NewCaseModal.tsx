@@ -7,7 +7,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog' //
 import { useModal } from '@/hooks/useModal' //
-import { CaseForm } from './CaseForm' //
+import { CaseForm } from './case/CaseForm' //
 
 export function NewCaseModal() {
   const { isNewCaseModalOpen, closeNewCaseModal } = useModal() //

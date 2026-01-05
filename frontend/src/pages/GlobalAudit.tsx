@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Pagination } from "@/components/Pagination"
+import { Pagination } from "@/components/common/Pagination"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
 

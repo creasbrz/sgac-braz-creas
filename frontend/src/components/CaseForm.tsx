@@ -4,13 +4,13 @@ import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { IMaskInput } from 'react-imask'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MaskedInput } from '@/components/ui/masked-input' // [NOVO] Componente padronizado
 import {
   Select,
   SelectContent,
@@ -74,14 +74,16 @@ const LISTS = {
   ]
 }
 
-const CPF_MASK = { mask: '000.000.000-00' }
-const PHONE_MASK = { mask: '(00) 00000-0000' }
-const SEI_MASK = { mask: '00000-00000000/0000-00' }
+// Máscaras Centralizadas
+const MASKS = {
+  CPF: '000.000.000-00',
+  PHONE: '(00) 00000-0000',
+  SEI: '00000-00000000/0000-00'
+}
 
 const getLocalDateOnly = (date = new Date()) =>
   new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split("T")[0]
 
-// [CORREÇÃO] Valores padrão estritos (sem undefined)
 const defaultValues: CreateCaseFormData = {
   nomeCompleto: '',
   cpf: '',
@@ -110,7 +112,6 @@ interface CaseFormProps {
 
 export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) {
   const queryClient = useQueryClient()
-  // [CORREÇÃO] Adicionada desestruturação de isErrorAgents
   const { data: agents, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgents()
   
   const isEditing = !!caseId
@@ -120,7 +121,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     defaultValues: initialData 
       ? { 
           ...initialData, 
-          // Garantias de fallback para evitar null/undefined
           dataEntrada: initialData.dataEntrada?.split('T')[0] || getLocalDateOnly(),
           nascimento: initialData.nascimento?.split('T')[0] || '',
           numeroSei: initialData.numeroSei ?? '',
@@ -151,7 +151,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     mutationFn: async (data: CreateCaseFormData) => {
       const payload = {
         ...data,
-        cpf: data.cpf.replace(/\D/g, ''),
+        cpf: data.cpf.replace(/\D/g, ''), // Remove formatação antes de enviar
         telefone: data.telefone.replace(/\D/g, ''),
         nascimento: data.nascimento,     
         dataEntrada: data.dataEntrada,
@@ -221,12 +221,13 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
                 <FormItem>
                   <FormLabel>CPF</FormLabel>
                   <FormControl>
-                    <IMaskInput
-                      {...CPF_MASK}
+                    {/* [ATUALIZADO] Uso do componente padronizado */}
+                    <MaskedInput
+                      mask={MASKS.CPF}
+                      placeholder="000.000.000-00"
                       value={field.value || ''}
-                      onAccept={(v: string) => field.onChange(v)}
+                      onChange={field.onChange}
                       onBlur={field.onBlur}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     />
                   </FormControl>
                   <FormMessage />
@@ -276,12 +277,12 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
                 <FormItem>
                   <FormLabel>Telefone</FormLabel>
                   <FormControl>
-                    <IMaskInput
-                      {...PHONE_MASK}
+                    <MaskedInput
+                      mask={MASKS.PHONE}
+                      placeholder="(61) 90000-0000"
                       value={field.value || ''}
-                      onAccept={(v: string) => field.onChange(v)}
+                      onChange={field.onChange}
                       onBlur={field.onBlur}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     />
                   </FormControl>
                   <FormMessage />
@@ -433,7 +434,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
                           <Checkbox
                             checked={field.value?.includes(item)}
                             onCheckedChange={(checked) => {
-                              // [CORREÇÃO] Tipagem explícita no callback do Checkbox
                               const currentValues = (field.value as string[]) || [];
                               
                               if (checked) {
@@ -481,13 +481,12 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
                 <FormItem>
                   <FormLabel>Número do SEI</FormLabel>
                   <FormControl>
-                    <IMaskInput
-                      {...SEI_MASK}
-                      value={field.value || ''}
-                      onAccept={(v: string) => field.onChange(v)}
-                      onBlur={field.onBlur}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    <MaskedInput
+                      mask={MASKS.SEI}
                       placeholder="00000-00000000/0000-00"
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
                     />
                   </FormControl>
                   <FormMessage />
@@ -533,7 +532,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
                     </FormControl>
 
                     <SelectContent>
-                      {/* Tratamento para erro ou lista vazia */}
                       {isErrorAgents && (
                         <div className="p-2 text-destructive text-sm flex justify-center gap-2">
                           <AlertCircle className="w-4 h-4" /> Falha ao carregar agentes

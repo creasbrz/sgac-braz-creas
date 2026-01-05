@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { differenceInDays } from 'date-fns'
-import { Loader2, AlertTriangle, UserPlus } from 'lucide-react'
+import { Loader2, AlertTriangle, UserPlus, CalendarClock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -31,7 +31,7 @@ export function WaitingList() {
         params: { 
           status: 'AGUARDANDO_DISTRIBUICAO_PAEFI', 
           pageSize: 100,
-          view: 'all' // [CORREÇÃO CRÍTICA] Força buscar no banco todo, ignorando o dono
+          view: 'all' // Garante visão gerencial
         } 
       })
       
@@ -71,15 +71,22 @@ export function WaitingList() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-amber-700 flex items-center gap-2">
+        <h1 className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-500 flex items-center gap-2">
           <AlertTriangle className="h-6 w-6" /> Fila de Espera PAEFI
         </h1>
         <p className="text-muted-foreground">Monitoramento de casos aguardando vinculação técnica.</p>
       </div>
 
-      <Card className="border-amber-200 bg-amber-50/30">
+      {/* [CORREÇÃO VISUAL] 
+          - Light Mode: bg-amber-50/50 (suave)
+          - Dark Mode: dark:bg-amber-950/20 (escuro transparente, evita o cinza)
+      */}
+      <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/10 dark:border-amber-900/50">
         <CardHeader>
-          <CardTitle>Demanda Reprimida</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+            Demanda Reprimida
+          </CardTitle>
           <CardDescription>
             {sortedCases.length} famílias aguardam atendimento especializado.
             <br/>Priorize os casos com maior tempo de espera e urgência.
@@ -98,15 +105,23 @@ export function WaitingList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading && <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin mx-auto text-amber-600"/></TableCell></TableRow>}
+                {isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center">
+                      <Loader2 className="animate-spin mx-auto text-amber-600"/>
+                    </TableCell>
+                  </TableRow>
+                )}
                 
                 {!isLoading && sortedCases.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center gap-2">
-                      <span className="text-2xl">🎉</span>
-                      <span>Fila zerada! Não há casos aguardando distribuição.</span>
-                    </div>
-                  </TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="text-2xl">🎉</span>
+                        <span>Fila zerada! Não há casos aguardando distribuição.</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 )}
 
                 {sortedCases.map((c: any) => {
@@ -129,7 +144,7 @@ export function WaitingList() {
                       </TableCell>
                       
                       <TableCell>
-                        <div className={`font-mono font-bold ${isCriticalDelay ? 'text-red-600' : 'text-foreground'}`}>
+                        <div className={`font-mono font-bold ${isCriticalDelay ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
                           {daysWaiting} dias
                         </div>
                         <span className="text-[10px] text-muted-foreground">desde {new Date(c.dataEntrada).toLocaleDateString()}</span>

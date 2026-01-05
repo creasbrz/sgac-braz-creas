@@ -2882,4 +2882,7 @@ app.setNotFoundHandler((req, reply) => {
   }
   return reply.sendFile("index.html");
 });
-app.listen({ port: 3333, host: "0.0.0.0" }).then(() => console.log("\u{1F680} Servidor rodando v4.3.0!"));
+var port = Number(process.env.PORT) || 3333;
+app.listen({ port, host: "0.0.0.0" }).then(() => {
+  console.log(`\u{1F680} Servidor rodando na porta ${port} (v6.0.0)!`);
+});

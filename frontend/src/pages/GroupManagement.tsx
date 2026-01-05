@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react' // [CORREÇÃO] Removido Trash2
+import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -128,6 +128,7 @@ export function GroupManagement() {
     }
   }
 
+  // [CORREÇÃO DARK MODE] Cores adaptadas para não ficarem cinzas/feias
   const getGroupStatusColor = (group: GroupActivity) => {
     const date = new Date(group.dataRealizacao)
     const isFutureDate = isFuture(date) || isToday(date)
@@ -135,8 +136,9 @@ export function GroupManagement() {
     if (isFutureDate) {
       return { 
         border: 'bg-blue-500', 
-        bg: 'hover:border-blue-300', 
-        badge: 'text-blue-700 bg-blue-50 border-blue-200',
+        // Light: Azul claro | Dark: Azul escuro transparente (sem cinza)
+        bg: 'hover:border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900/50', 
+        badge: 'text-blue-700 bg-blue-50 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800',
         label: 'Agendado'
       }
     }
@@ -144,16 +146,18 @@ export function GroupManagement() {
     if (group.attendanceConfirmed) {
       return { 
         border: 'bg-emerald-500', 
-        bg: 'hover:border-emerald-300', 
-        badge: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+        // Light: Verde claro | Dark: Verde escuro transparente
+        bg: 'hover:border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50', 
+        badge: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
         label: 'Realizado'
       }
     }
 
     return { 
       border: 'bg-amber-500', 
-      bg: 'hover:border-amber-300 border-amber-200 bg-amber-50/30', 
-      badge: 'text-amber-700 bg-amber-50 border-amber-200',
+      // Light: Laranja claro | Dark: Laranja escuro transparente
+      bg: 'hover:border-amber-300 border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50', 
+      badge: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
       label: 'Pendente Chamada'
     }
   }
@@ -188,7 +192,7 @@ export function GroupManagement() {
                   </Badge>
                   
                   <Badge variant="outline" className={`text-[10px] font-medium border ${statusStyle.badge}`}>
-                     {statusStyle.label}
+                      {statusStyle.label}
                   </Badge>
                 </div>
                 
@@ -203,16 +207,16 @@ export function GroupManagement() {
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/20 p-2 rounded-md">
+                <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/40 dark:bg-muted/10 p-2 rounded-md">
                   <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-primary/70" /> 
                   <span className="truncate leading-tight">{group.local || 'Local não definido'}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t">
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t dark:border-white/10">
                   <span className="truncate max-w-[140px] font-medium text-foreground/80">
                     Facilitador: {group.facilitador.nome.split(' ')[0]}
                   </span>
-                  <div className="flex items-center gap-1.5 bg-primary/5 px-2 py-0.5 rounded-full text-primary font-medium">
+                  <div className="flex items-center gap-1.5 bg-primary/10 dark:bg-primary/20 px-2 py-0.5 rounded-full text-primary font-medium">
                     <Users className="h-3.5 w-3.5"/> 
                     <span>{group._count?.participantes || 0}</span>
                   </div>
@@ -334,15 +338,15 @@ export function GroupManagement() {
                   <span className="block text-muted-foreground">Data</span>
                   <span className="font-medium">{selectedGroup?.dataRealizacao ? format(new Date(selectedGroup.dataRealizacao), "dd/MM/yyyy HH:mm") : '-'}</span>
                 </div>
-                <div className="p-2 border-l">
+                <div className="p-2 border-l border-border/50">
                   <span className="block text-muted-foreground">Total Inscritos</span>
                   <span className="font-bold text-lg">{groupDetails?.participantes?.length || 0}</span>
                 </div>
-                <div className="p-2 border-l">
+                <div className="p-2 border-l border-border/50">
                   <span className="block text-muted-foreground">Presentes</span>
-                  <span className="font-bold text-lg text-green-600">{groupDetails?.participantes?.filter(p => p.presente).length || 0}</span>
+                  <span className="font-bold text-lg text-green-600 dark:text-green-400">{groupDetails?.participantes?.filter(p => p.presente).length || 0}</span>
                 </div>
-                <div className="p-2 border-l">
+                <div className="p-2 border-l border-border/50">
                   <span className="block text-muted-foreground">Ausentes</span>
                   <span className="font-bold text-lg text-muted-foreground">{groupDetails?.participantes?.filter(p => !p.presente).length || 0}</span>
                 </div>
@@ -396,7 +400,7 @@ export function GroupManagement() {
                       <p>Nenhum participante vinculado ainda.</p>
                     </div>
                   ) : (
-                    <div className="divide-y">
+                    <div className="divide-y dark:divide-white/10">
                       {groupDetails?.participantes?.map((p) => (
                         <div key={p.id} className="flex items-center justify-between p-3 hover:bg-muted/10 transition-colors">
                           <div className="flex flex-col">
@@ -406,7 +410,10 @@ export function GroupManagement() {
                           
                           <button 
                             onClick={() => updateAttendance({ caseId: p.casoId, presente: !p.presente })}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${p.presente ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border 
+                              ${p.presente 
+                                ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/50' 
+                                : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 dark:bg-slate-900/30 dark:text-slate-400 dark:border-slate-800'}`}
                           >
                             {p.presente ? <CheckCircle2 className="h-3.5 w-3.5"/> : <X className="h-3.5 w-3.5"/>}
                             {p.presente ? 'PRESENTE' : 'AUSENTE'}

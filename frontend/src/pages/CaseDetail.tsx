@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 
-import { CaseStatusBadge } from "@/components/CaseStatusBadge"
+import { CaseStatusBadge } from "@/components/case/CaseStatusBadge"
 import { getUrgencyColor } from "@/constants/caseConstants"
 import { isValidBrazilianPhone } from "@/utils/phone"
 import { format, parse } from "date-fns"

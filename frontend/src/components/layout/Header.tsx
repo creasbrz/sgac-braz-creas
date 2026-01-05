@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom"
 import { LogOut, Slash, Eye, EyeOff, ChevronDown } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
-import { ThemeToggle } from "@/components/ThemeToggle"
+import { ThemeToggle } from "@/components/common/ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { MobileSidebar } from "./MobileSidebar"
 import { NotificationBell } from "./NotificationBell"

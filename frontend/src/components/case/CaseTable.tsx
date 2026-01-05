@@ -18,8 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { Pagination } from './Pagination'
-import { CaseStatusBadge } from './CaseStatusBadge'
+import { Pagination } from '@/components/common/Pagination'
+import { CaseStatusBadge } from '@/components/case/CaseStatusBadge'
 import { ImportCasesModal } from '@/components/modals/ImportCasesModal'
 
 // [CORREÇÃO] Adicionado 'endereco'

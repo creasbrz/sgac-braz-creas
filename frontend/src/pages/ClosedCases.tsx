@@ -1,5 +1,5 @@
 // frontend/src/pages/ClosedCases.tsx
-import { CaseTable } from '@/components/CaseTable'
+import { CaseTable } from '@/components/case/CaseTable'
 import { useAuth } from '@/hooks/useAuth'
 import { Loader2 } from 'lucide-react'
 

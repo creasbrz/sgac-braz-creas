@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { CaseTable } from '@/components/CaseTable'
+import { CaseTable } from '@/components/case/CaseTable'
 
 interface TeamMemberStats {
   id: string

@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, MapPin, Phone, FileText, Clock, AlertTriangle,
   Paperclip, Activity, Edit, CheckCircle2, Circle, ShieldCheck, Network, 
-  Loader2, Users, PackageCheck, Printer} from "lucide-react"
+  Loader2, Users, PackageCheck, Printer
+} from "lucide-react"
 import { clsx } from "clsx"
 
 // Imports para o Formulário Padronizado
@@ -33,19 +34,19 @@ import { format, parse } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { formatCPF, formatPhone } from '@/utils/formatters'
 
-// Gerador de PDF
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// [ATUALIZAÇÃO IMPORTANTE] Importando o gerador unificado
+import { generateCasePDF } from '@/utils/pdfGenerator'
 
 import { OverviewTab } from '@/components/case/tabs/OverviewTab'
 import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
 import { FamilyTab } from '@/components/case/tabs/FamilyTab'
 import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
 
+// Lazy Components
 const CaseForm = lazy(() => import("@/components/case/CaseForm").then(module => ({ default: module.CaseForm })))
 const CaseHistory = lazy(() => import("@/components/case/CaseHistory").then(module => ({ default: module.CaseHistory })))
 const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").then(module => ({ default: module.CaseEvolutions })))
-// CaseAttachments agora é importado diretamente para evitar erro de lazy loading de componente interno com props
+// Import direto conforme arquitetura atual
 import { CaseAttachments } from "@/components/case/CaseAttachments"
 const WhatsAppButton = lazy(() => import("@/components/common/WhatsAppButton").then(module => ({ default: module.WhatsAppButton })))
 const CaseActions = lazy(() => import("@/components/case/CaseActions").then(module => ({ default: module.CaseActions })))
@@ -53,8 +54,7 @@ const PafSection = lazy(() => import("@/components/case/PafSection").then(module
 
 import type { CaseDetailData } from '@/types/case'
 
-// --- CONSTANTES E UTILITÁRIOS LOCAIS ---
-
+// --- CONSTANTES ---
 const TYPE_COLORS: Record<string, string> = {
   'Atendimento': '#2563eb',
   'Visita': '#16a34a',
@@ -75,161 +75,16 @@ function combineDateAndTime(dateStr: string, timeStr: string): string {
   }
 }
 
-// [CORREÇÃO] Schema Zod Ajustado para Build
-// Removemos o .optional() e .default() para evitar conflito de tipos com o useForm.
-// Como inicializamos o form com valores padrão, isso é seguro e satisfaz o TypeScript.
+// Schema Zod para Build
 const appointmentFormSchema = z.object({
   titulo: z.string().min(1, 'O título é obrigatório.'),
   data: z.string().min(1, 'Data obrigatória'),
   time: z.string().regex(/^([0-1]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (HH:MM).'),
-  tipo: z.string(), // Tipagem estrita: string
-  observacoes: z.string(), // Tipagem estrita: string
+  tipo: z.string(),
+  observacoes: z.string(),
 })
 
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
-
-// --- FUNÇÕES DE PDF (Mantidas Originais) ---
-const generateCasePDF = (caso: any) => {
-  const doc = new jsPDF()
-  const today = new Date().toLocaleDateString('pt-BR')
-
-  doc.setFillColor(41, 37, 36)
-  doc.rect(0, 0, 210, 30, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(16)
-  doc.setFont('helvetica', 'bold')
-  doc.text('PRONTUÁRIO TÉCNICO - CREAS', 105, 12, { align: 'center' })
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'normal')
-  doc.text(`Gerado em: ${today} • Confidencial`, 105, 20, { align: 'center' })
-
-  let y = 45
-  doc.setTextColor(0, 0, 0)
-
-  // 1. IDENTIFICAÇÃO
-  doc.setFontSize(12).setFont('helvetica', 'bold').text('1. IDENTIFICAÇÃO', 14, y)
-  doc.setLineWidth(0.5).line(14, y + 2, 196, y + 2)
-  y += 10
-  
-  doc.setFontSize(10).setFont('helvetica', 'normal')
-  doc.text(`Nome: ${caso.nomeCompleto}`, 14, y)
-  doc.text(`CPF: ${caso.cpf || '-'}`, 120, y)
-  y += 7
-  doc.text(`Data Nasc.: ${caso.nascimento ? new Date(caso.nascimento).toLocaleDateString('pt-BR') : '-'}`, 14, y)
-  doc.text(`Telefone: ${caso.telefone || '-'}`, 120, y)
-  y += 7
-  doc.text(`Endereço: ${caso.endereco}`, 14, y)
-  
-  if (caso.beneficios && caso.beneficios.length > 0) {
-    y += 7
-    doc.text(`Benefícios Ativos: ${caso.beneficios.join(', ')}`, 14, y)
-  }
-  y += 15
-
-  // 2. FAMÍLIA
-  doc.setFontSize(12).setFont('helvetica', 'bold').text('2. COMPOSIÇÃO FAMILIAR', 14, y)
-  doc.line(14, y + 2, 196, y + 2)
-  y += 5
-
-  if (caso.familia && caso.familia.length > 0) {
-    autoTable(doc, {
-      startY: y,
-      head: [['Nome', 'Parentesco', 'Idade', 'Renda']],
-      body: caso.familia.map((m: any) => [
-        m.nome, 
-        m.parentesco, 
-        m.idade ? `${m.idade} anos` : '-',
-        m.renda ? `R$ ${m.renda}` : '-'
-      ]),
-      theme: 'striped',
-      styles: { fontSize: 9 }
-    })
-    // @ts-ignore
-    y = doc.lastAutoTable.finalY + 15
-  } else {
-    doc.setFont('helvetica', 'italic').text('Sem registros familiares.', 14, y + 5)
-    y += 15
-  }
-
-  // 3. BENEFÍCIOS E REDE
-  if (y > 220) { doc.addPage(); y = 20 }
-  
-  doc.setFontSize(12).setFont('helvetica', 'bold').text('3. BENEFÍCIOS EVENTUAIS E REDE', 14, y)
-  doc.line(14, y + 2, 196, y + 2)
-  y += 5
-
-  doc.setFontSize(10).text('Benefícios Eventuais (Entregas):', 14, y + 5)
-  
-  const benData = caso.entregas?.length ? caso.entregas.map((b: any) => [
-      new Date(b.dataSolicitacao).toLocaleDateString('pt-BR'),
-      b.tipo,
-      b.status
-  ]) : [['-', 'Nenhum', '-']]
-
-  autoTable(doc, {
-      startY: y + 8,
-      head: [['Data', 'Item', 'Status']],
-      body: benData,
-      theme: 'plain',
-      tableWidth: 85,
-      margin: { left: 14 },
-      styles: { fontSize: 8 }
-  })
-
-  // @ts-ignore
-  const finalYBen = doc.lastAutoTable.finalY
-  
-  doc.text('Encaminhamentos (Rede):', 110, y + 5)
-  
-  const encData = caso.encaminhamentos?.length ? caso.encaminhamentos.map((e: any) => [
-      new Date(e.dataEnvio).toLocaleDateString('pt-BR'),
-      e.instituicao,
-      e.status
-  ]) : [['-', 'Nenhum', '-']]
-
-  autoTable(doc, {
-      startY: y + 8,
-      head: [['Data', 'Local', 'Status']],
-      body: encData,
-      theme: 'plain',
-      tableWidth: 85,
-      margin: { left: 110 },
-      styles: { fontSize: 8 }
-  })
-
-  // @ts-ignore
-  y = Math.max(finalYBen, doc.lastAutoTable.finalY) + 20
-
-  // 4. EVOLUÇÕES
-  if (y > 250) { doc.addPage(); y = 20 }
-  doc.setFontSize(12).setFont('helvetica', 'bold').text('4. HISTÓRICO TÉCNICO', 14, y)
-  doc.line(14, y + 2, 196, y + 2)
-  y += 5
-
-  if (caso.evolucoes && caso.evolucoes.length > 0) {
-    autoTable(doc, {
-      startY: y,
-      head: [['Data', 'Técnico', 'Descrição']],
-      body: caso.evolucoes.map((e: any) => [
-        new Date(e.createdAt).toLocaleDateString('pt-BR') + ' ' + new Date(e.createdAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}),
-        e.autor?.nome || 'Sistema',
-        e.conteudo
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [50, 50, 50] },
-      columnStyles: { 
-        0: { cellWidth: 30 },
-        1: { cellWidth: 35 },
-        2: { cellWidth: 'auto' } 
-      },
-      styles: { fontSize: 9, cellPadding: 3 }
-    })
-  } else {
-    doc.setFont('helvetica', 'italic').text('Sem evoluções registradas.', 14, y + 5)
-  }
-
-  doc.save(`prontuario_${caso.nomeCompleto.replace(/\s/g, '_')}.pdf`)
-}
 
 function TabSkeleton() {
   return (
@@ -358,6 +213,7 @@ function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: ()
       </div>
 
       <div className="flex flex-wrap gap-2 pl-1 sm:pl-0 mt-4 md:mt-0 items-start justify-end">
+        {/* Chamada ao novo gerador de PDF unificado */}
         <Button variant="outline" onClick={() => generateCasePDF(caseData)} className="shadow-sm">
           <Printer className="mr-2 h-4 w-4" /> Prontuário
         </Button>
@@ -442,14 +298,13 @@ export function CaseDetail() {
     onSuccess: () => {
       toast.success("Agendamento criado com sucesso!")
       setIsApptOpen(false)
-      reset() // Limpa o form
+      reset()
       queryClient.invalidateQueries({ queryKey: ["appointments", id] })
       queryClient.invalidateQueries({ queryKey: ["case-logs", id] })
     },
     onError: () => toast.error("Erro ao criar agendamento.")
   })
 
-  // [CORREÇÃO] Tipagem explícita do handler
   const onSubmitAppt: SubmitHandler<AppointmentFormData> = (data) => createAppointment(data)
 
   if (isLoading) {
@@ -620,7 +475,6 @@ export function CaseDetail() {
 
         <TabsContent value="attachments" className="mt-6">
            <Suspense fallback={<TabSkeleton />}>
-             {/* [CORREÇÃO] Passando a prop caseId corretamente agora */}
              <CaseAttachments caseId={id!} onError={() => toast.error("Erro ao carregar anexos.")} />
           </Suspense>
         </TabsContent>
@@ -641,7 +495,6 @@ export function CaseDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL PADRONIZADO IGUAL AGENDA */}
       <Dialog open={isApptOpen} onOpenChange={setIsApptOpen}>
         <DialogContent className="sm:max-w-[500px]">
            <DialogHeader>
@@ -651,7 +504,6 @@ export function CaseDetail() {
 
           <form onSubmit={handleSubmit(onSubmitAppt)} className="space-y-4 py-2">
             
-            {/* TÍTULO */}
             <div className="space-y-2">
               <Label htmlFor="titulo">Título</Label>
               <Controller
@@ -662,7 +514,6 @@ export function CaseDetail() {
               {errors.titulo && <p className="text-xs text-destructive">{errors.titulo.message}</p>}
             </div>
 
-            {/* DATA E HORA */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="data">Data</Label>
@@ -684,7 +535,6 @@ export function CaseDetail() {
               </div>
             </div>
 
-            {/* TIPO (COLORIDO) */}
             <div className="space-y-2">
               <Label>Tipo de Agenda</Label>
               <Controller
@@ -708,7 +558,6 @@ export function CaseDetail() {
               />
             </div>
 
-            {/* OBSERVAÇÕES */}
             <div className="space-y-2">
               <Label htmlFor="obs">Observações</Label>
               <Controller

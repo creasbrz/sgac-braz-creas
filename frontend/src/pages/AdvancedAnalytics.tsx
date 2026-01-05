@@ -1,8 +1,10 @@
-// frontend/src/pages/AdvancedAnalytics.tsx
-import { useState, useRef } from "react"
+import { useState, useRef, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
 
+// Gráficos
 import {
   LineChart,
   Line,
@@ -19,6 +21,8 @@ import {
   Bar,
 } from "recharts"
 
+// Ícones e UI
+// [CORREÇÃO 1] Removidos Users e CheckCircle2 que não estavam sendo usados
 import { Loader2, BarChart3, Clock, TrendingUp, Download, AlertTriangle } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
@@ -26,12 +30,34 @@ import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { toast } from "sonner"
 
-const COLORS = ["hsl(var(--primary))", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
+// Bibliotecas de PDF
+import html2canvas from "html2canvas"
+import pdfMake from "pdfmake/build/pdfmake"
+import pdfFonts from "pdfmake/build/vfs_fonts"
+import type { TDocumentDefinitions } from "pdfmake/interfaces"
+
+// --- CONFIGURAÇÃO VFS DO PDFMAKE ---
+if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
+  pdfMake.vfs = pdfFonts.pdfMake.vfs;
+} else if (pdfFonts && (pdfFonts as any).vfs) {
+  pdfMake.vfs = (pdfFonts as any).vfs;
+} else if (pdfMake.vfs === undefined) {
+  pdfMake.vfs = pdfFonts;
+}
+
+const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
+
+// --- INTERFACES & HELPERS ---
+interface TrendData { name: string; novos: number; fechados: number }
+interface PieData { name: string; value: number }
+interface Insight { type: 'success' | 'warning' | 'info'; title: string; description: string }
+interface ProductivityItem { name: string; value: number }
 
 function PremiumSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Carregando dados">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[0,1,2].map(i => <div key={i} className="h-24 rounded-xl bg-muted/20" />)}
       </div>
@@ -40,7 +66,7 @@ function PremiumSkeleton() {
   )
 }
 
-function linearRegressionForecast(xs: number[], ys: number[]) {
+function linearRegressionForecast(xs: number[], ys: number[]): number | null {
   if (xs.length < 2) return null
   const n = xs.length
   const meanX = xs.reduce((a, b) => a + b, 0) / n
@@ -60,8 +86,10 @@ function linearRegressionForecast(xs: number[], ys: number[]) {
 
 export function AdvancedAnalytics() {
   const [periodMonths, setPeriodMonths] = useState<number>(12)
+  const exportRef = useRef<HTMLDivElement | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
   
-  const { data, isLoading, isError } = useQuery({
+  const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["stats", "advanced", periodMonths],
     queryFn: async () => {
       const res = await api.get("/stats/advanced", { params: { months: periodMonths } })
@@ -70,8 +98,15 @@ export function AdvancedAnalytics() {
     staleTime: 1000 * 60 * 5,
   })
 
-  // Modo Performance Ativado
-  const { data: productivity } = useQuery({
+  const data = useMemo(() => ({
+    avgHandlingTime: dataRaw?.avgHandlingTime || 0,
+    totalActive: dataRaw?.totalActive || 0,
+    trendData: (Array.isArray(dataRaw?.trendData) ? dataRaw.trendData : []) as TrendData[],
+    pieData: (Array.isArray(dataRaw?.pieData) ? dataRaw.pieData : []) as PieData[],
+    insights: (Array.isArray(dataRaw?.insights) ? dataRaw.insights : []) as Insight[]
+  }), [dataRaw])
+
+  const { data: productivityRaw } = useQuery<ProductivityItem[]>({
     queryKey: ["stats", "productivity", periodMonths],
     queryFn: async () => {
       try {
@@ -82,36 +117,76 @@ export function AdvancedAnalytics() {
       } catch { return [] }
     }
   })
+  const productivity = useMemo(() => Array.isArray(productivityRaw) ? productivityRaw : [], [productivityRaw])
 
-  const { data: heatmap } = useQuery({
-    queryKey: ["stats", "heatmap", periodMonths],
-    queryFn: async () => {
-      try {
-        const res = await api.get("/stats/heatmap", { params: { months: periodMonths } })
-        return res.data 
-      } catch { return [] }
-    }
-  })
+  const forecast = useMemo(() => {
+    const xs: number[] = []
+    const ys: number[] = []
+    data.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
+    return linearRegressionForecast(xs, ys)
+  }, [data.trendData])
 
-  const exportRef = useRef<HTMLDivElement | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
+  const tooltipStyle = useMemo(() => ({
+    backgroundColor: 'hsl(var(--popover))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: '8px',
+    color: 'hsl(var(--popover-foreground))',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    fontSize: '12px'
+  }), [])
 
   const handleExportPdf = async () => {
+    if (!exportRef.current) return
+
     try {
       setIsExporting(true)
-      // @ts-ignore
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
-      if (!exportRef.current) return
-      const canvas = await html2canvas(exportRef.current, { scale: 2, useCORS: true })
+      toast.info("Gerando PDF analítico...")
+
+      const canvas = await html2canvas(exportRef.current, { 
+        scale: 2, 
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        ignoreElements: (element) => element.hasAttribute('data-no-export')
+      })
+      
       const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF('landscape', 'pt', 'a4')
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = pdf.internal.pageSize.getHeight()
-      const ratio = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height)
-      pdf.addImage(imgData, 'PNG', 20, 20, canvas.width * ratio - 40, canvas.height * ratio - 40)
-      pdf.save(`analytics_sgac_${new Date().toISOString().slice(0,10)}.pdf`)
+
+      const docDefinition: TDocumentDefinitions = {
+        pageSize: 'A4',
+        pageOrientation: 'landscape',
+        pageMargins: [20, 20, 20, 20],
+        content: [
+          {
+            text: 'Relatório Analítico Avançado - CREAS',
+            style: 'header',
+            alignment: 'center',
+            margin: [0, 0, 0, 10]
+          },
+          {
+            text: `Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} | Período: ${periodMonths} meses`,
+            style: 'subheader',
+            alignment: 'center',
+            margin: [0, 0, 0, 20]
+          },
+          {
+            image: imgData,
+            width: 780,
+            alignment: 'center'
+          }
+        ],
+        styles: {
+          header: { fontSize: 18, bold: true, color: '#2e4a7d' },
+          subheader: { fontSize: 10, color: '#666' }
+        }
+      }
+
+      pdfMake.createPdf(docDefinition).download(`analytics_creas_${new Date().toISOString().slice(0,10)}.pdf`)
+      toast.success("PDF gerado com sucesso!")
+
     } catch (e) {
       console.error('Erro ao exportar', e)
+      toast.error("Erro ao gerar PDF.")
     } finally {
       setIsExporting(false)
     }
@@ -119,178 +194,176 @@ export function AdvancedAnalytics() {
 
   if (isLoading) return <PremiumSkeleton />
   
-  if (isError || !data) {
+  if (isError) {
     return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Erro</AlertTitle>
-        <AlertDescription>Não foi possível carregar os dados analíticos.</AlertDescription>
-      </Alert>
+      <div className="p-4" role="alert">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Erro</AlertTitle>
+          <AlertDescription>Não foi possível carregar os dados analíticos.</AlertDescription>
+        </Alert>
+        <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+          Tentar Novamente
+        </Button>
+      </div>
     )
   }
 
-  const trendData = Array.isArray(data.trendData) ? data.trendData : []
-  const pieData = Array.isArray(data.pieData) ? data.pieData : []
-  
-  const xs: number[] = []
-  const ys: number[] = []
-  trendData.forEach((d: any, i: number) => { xs.push(i); ys.push(d.novos) })
-  const forecast = linearRegressionForecast(xs, ys)
-
-  const tooltipStyle = {
-    backgroundColor: 'hsl(var(--popover))',
-    border: '1px solid hsl(var(--border))',
-    borderRadius: '8px',
-    color: 'hsl(var(--popover-foreground))',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-    fontSize: '12px'
-  }
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-700" ref={exportRef}>
+    <div className="space-y-6 animate-in fade-in duration-700">
 
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-           <DashboardStatCard index={0} title="Tempo Médio" value={data.avgHandlingTime} description="Dias" icon={Clock} colorClass="text-blue-500" />
-           <DashboardStatCard index={1} title="Total Ativos" value={data.totalActive} description="Casos hoje" icon={BarChart3} colorClass="text-purple-500" />
-           <DashboardStatCard index={2} title="Novos (Mês)" value={trendData[trendData.length-1]?.novos ?? 0} description="Entradas" icon={TrendingUp} colorClass="text-emerald-500" />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Análise Estratégica</h2>
+          <p className="text-muted-foreground">Monitoramento de KPIs e indicadores de performance.</p>
         </div>
 
-        <div className="flex gap-2 items-center justify-end">
+        <div className="flex gap-2 items-center">
           <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
-            <SelectTrigger className="w-[140px] bg-background"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[140px] bg-background" aria-label="Selecione o período"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="3">3 Meses</SelectItem>
               <SelectItem value="6">6 Meses</SelectItem>
               <SelectItem value="12">12 Meses</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={handleExportPdf} disabled={isExporting} variant="outline" size="icon">
-             {isExporting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4"/>}
+          <Button onClick={handleExportPdf} disabled={isExporting} variant="outline" size="sm" aria-label="Exportar PDF">
+             {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Download className="h-4 w-4 mr-2"/>}
+             Exportar
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Fluxo de Casos</CardTitle>
-            <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div style={{ width: '100%', height: 320 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                 <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
-                  <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={10} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Legend verticalAlign="top" height={36} />
-                  <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
-                  <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground text-center">
-               Previsão de novos casos (IA): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
-            </div>
-          </CardContent>
-        </Card>
+      <div ref={exportRef} className="space-y-6 bg-background p-2 rounded-lg">
+        
+        {/* KPI Cards */}
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-label="Indicadores Chave">
+            {/* [CORREÇÃO 2] Removido prop 'className' que não existia no componente */}
+            <DashboardStatCard 
+              index={0} 
+              title="Tempo Médio" 
+              value={data.avgHandlingTime} 
+              description="Dias para resolução" 
+              icon={Clock} 
+              colorClass="text-blue-500"
+            />
+            <DashboardStatCard 
+              index={1} 
+              title="Total Ativos" 
+              value={data.totalActive} 
+              description="Casos em andamento" 
+              icon={BarChart3} 
+              colorClass="text-purple-500" 
+            />
+            <DashboardStatCard 
+              index={2} 
+              title="Novos (Mês)" 
+              value={data.trendData[data.trendData.length-1]?.novos ?? 0} 
+              description="Entradas recentes" 
+              icon={TrendingUp} 
+              colorClass="text-emerald-500" 
+            />
+        </section>
 
-        <div className="lg:col-span-1">
-          <SmartInsightsCard insights={data.insights ?? []} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2" aria-label="Gráfico de Tendência de Casos">
+            <CardHeader>
+              <CardTitle>Fluxo de Casos</CardTitle>
+              <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                   <LineChart data={data.trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
+                    <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                    <YAxis fontSize={10} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={tooltipStyle} />
+                    <Legend verticalAlign="top" height={36} />
+                    <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                    <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground text-center flex items-center justify-center gap-2">
+                 <TrendingUp className="h-3 w-3" />
+                 Previsão de novos casos (Regressão Linear): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="lg:col-span-1">
+            {/* [CORREÇÃO 3] Removido prop 'title' e mapeado insights para string[] */}
+            <SmartInsightsCard 
+              insights={data.insights.map(i => `${i.title}: ${i.description}`)} 
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader><CardTitle>Violações (Top 5)</CardTitle></CardHeader>
-          <CardContent>
-             <div style={{ width: '100%', height: 340 }}>
-                {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie 
-                        data={pieData} 
-                        cx="50%" 
-                        cy="45%" 
-                        innerRadius={50} 
-                        outerRadius={70} 
-                        paddingAngle={5} 
-                        dataKey="value"
-                        stroke="hsl(var(--background))" 
-                        strokeWidth={2}
-                      >
-                        {pieData.map((_: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={tooltipStyle} />
-                      <Legend 
-                        layout="horizontal" 
-                        verticalAlign="bottom" 
-                        align="center" 
-                        iconType="circle" 
-                        wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de violação.</div>}
-             </div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card aria-label="Gráfico de Violações">
+            <CardHeader><CardTitle>Top 5 Violações</CardTitle></CardHeader>
+            <CardContent>
+               <div style={{ width: '100%', height: 340 }}>
+                  {data.pieData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie 
+                          // [CORREÇÃO 4] Cast para any[] para evitar erro de Index Signature do Recharts
+                          data={data.pieData as any[]} 
+                          cx="50%" 
+                          cy="45%" 
+                          innerRadius={50} 
+                          outerRadius={70} 
+                          paddingAngle={5} 
+                          dataKey="value"
+                          stroke="hsl(var(--background))" 
+                          strokeWidth={2}
+                        >
+                          {data.pieData.map((_: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={tooltipStyle} />
+                        <Legend 
+                          layout="horizontal" 
+                          verticalAlign="bottom" 
+                          align="center" 
+                          iconType="circle" 
+                          wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de violação.</div>}
+               </div>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Desempenho da Equipe</CardTitle>
-            <CardDescription>Intervenções (logs) realizadas.</CardDescription>
-          </CardHeader>
-          <CardContent>
-             <div style={{ width: '100%', height: 300 }}>
-                {productivity && productivity.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
-                      <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" width={70} tickLine={false} axisLine={false} fontSize={11}/>
-                      <Tooltip 
-                        cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
-                        contentStyle={tooltipStyle} 
-                        formatter={(value: any) => [value, 'Intervenções']}
-                      />
-                      <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de atividade no período.</div>}
-             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader><CardTitle>Intensidade de Atividades</CardTitle></CardHeader>
-          <CardContent>
-             <div className="h-[150px] overflow-y-auto pr-2">
-                {heatmap && heatmap.length > 0 ? (
-                   <div className="grid grid-cols-7 sm:grid-cols-12 md:grid-cols-[repeat(auto-fill,minmax(30px,1fr))] gap-1">
-                      {heatmap.slice(0, 90).map((h: any) => { 
-                          const intensity = Math.min(4, Math.ceil(h.count / 2));
-                          const colors = [
-                            'bg-muted/30 dark:bg-muted/10', 
-                            'bg-emerald-200 dark:bg-emerald-900/40', 
-                            'bg-emerald-300 dark:bg-emerald-800/60', 
-                            'bg-emerald-400 dark:bg-emerald-600/80', 
-                            'bg-emerald-600 dark:bg-emerald-500'
-                          ];
-                          return (
-                            <div key={h.date} title={`${h.date}: ${h.count} logs`} className={`aspect-square rounded-sm ${colors[intensity]} text-[10px] flex items-center justify-center text-transparent hover:text-foreground transition-all cursor-default`}>
-                                {h.count}
-                            </div>
-                          )
-                      })}
-                   </div>
-                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem histórico recente.</div>}
-             </div>
-          </CardContent>
-        </Card>
+          <Card aria-label="Gráfico de Desempenho da Equipe">
+            <CardHeader>
+              <CardTitle>Desempenho da Equipe</CardTitle>
+              <CardDescription>Intervenções registradas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+               <div style={{ width: '100%', height: 300 }}>
+                  {productivity.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} fontSize={11}/>
+                        <Tooltip 
+                          cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
+                          contentStyle={tooltipStyle} 
+                          formatter={(value: any) => [value, 'Intervenções']}
+                        />
+                        <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de atividade.</div>}
+               </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )

@@ -1,48 +1,52 @@
 import pdfMake from "pdfmake/build/pdfmake"
 import pdfFonts from "pdfmake/build/vfs_fonts"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { api } from "@/lib/api"
+import type { TDocumentDefinitions, StyleDictionary, Content } from "pdfmake/interfaces"
+
+// Imports de tipos do projeto
 import type { CaseDetailData, FamilyMember, PafData } from "@/types/case"
 import type { GroupActivity, GroupAttendance } from "@/types/group"
 import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
-// [CORREÇÃO] Estendendo a interface para evitar erros de TS
-interface ExtendedCaseData extends CaseDetailData {
+// --- ENUMS E TIPOS AUXILIARES ---
+export enum CaseStatus {
+  TRIAGEM = "AGUARDANDO_ACOLHIDA",
+  ACOLHIDA = "EM_ACOLHIDA",
+  PAEFI = "EM_ACOMPANHAMENTO_PAEFI",
+  MSE = "EM_ACOMPANHAMENTO_MSE",
+  DESLIGADO = "DESLIGADO"
+}
+
+// [CORREÇÃO] Omitimos 'beneficios' da base para redefinir sem conflito
+interface ExtendedCaseData extends Omit<CaseDetailData, 'beneficios'> {
   familia?: FamilyMember[]
   idade?: number
+  entregas?: any[]
+  encaminhamentos?: any[]
+  evolucoes?: any[]
+  beneficios?: string[]
 }
 
-// --- CONFIGURAÇÃO VFS ---
-// @ts-ignore
-if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
-  // @ts-ignore
-  pdfMake.vfs = pdfFonts.pdfMake.vfs
-} else if (pdfFonts && (pdfFonts as any).vfs) {
-  // @ts-ignore
-  pdfMake.vfs = (pdfFonts as any).vfs
-} else {
-  // @ts-ignore
-  pdfMake.vfs = pdfFonts
-}
-
-// ... (Interfaces e Styles mantidos) ...
 export interface ManagementReportData {
   periodo: string
-  stats: {
-    ativos: number
-    acolhidas: number
-    paefi: number
-    novos: number
-    desligados: number
+  stats: { 
+    ativos: number; 
+    acolhidas: number; 
+    paefi: number; 
+    novos: number; 
+    desligados: number 
   }
-  cargaHoraria: {
-    agentes: { name: string; value: number }[]
-    especialistas: { name: string; value: number }[]
+  cargaHoraria: { 
+    agentes: { name: string; value: number }[]; 
+    especialistas: { name: string; value: number }[] 
   }
-  vigilancia?: {
-    violacoes: { name: string; value: number }[]
-    demografia: { name: string; value: number }[]
-    territorio: { name: string; value: number }[]
+  vigilancia?: { 
+    violacoes: { name: string; value: number }[]; 
+    demografia: { name: string; value: number }[];
+    // [CORREÇÃO] Adicionado para evitar erro no ManagerDashboard
+    territorio?: { name: string; value: number }[]
   }
 }
 
@@ -59,55 +63,103 @@ export interface ObservatoryData {
   sexData: { name: string; value: number }[]
 }
 
+// --- CONFIGURAÇÃO VFS ---
+if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
+  pdfMake.vfs = pdfFonts.pdfMake.vfs;
+} else if (pdfFonts && (pdfFonts as any).vfs) {
+  pdfMake.vfs = (pdfFonts as any).vfs;
+} else if (pdfMake.vfs === undefined) {
+  pdfMake.vfs = pdfFonts;
+}
+
+// --- CONSTANTES E ESTILOS ---
 const BRAND_COLOR = "#2e4a7d"
 const HEADER_BG = "#eef2f6"
 
-const COMMON_STYLES = {
+const COMMON_STYLES: StyleDictionary = {
   header: { fontSize: 14, bold: true, color: BRAND_COLOR, margin: [0, 0, 0, 5] },
   subHeader: { fontSize: 12, bold: true, color: "#333", margin: [0, 10, 0, 5] },
   sectionTitle: { fontSize: 11, bold: true, color: "white", margin: [2, 2, 2, 2] },
   label: { fontSize: 9, bold: true, color: "#555" },
   value: { fontSize: 10, color: "#000" },
   tableHeader: { bold: true, fontSize: 10, color: "black", fillColor: "#e0e0e0", alignment: "center" },
-  smallText: { fontSize: 8, color: "#666" },
   kpiValue: { fontSize: 16, bold: true, alignment: "center", color: "#333", margin: [0, 5, 0, 0] }
 }
 
-const createSectionHeader = (title: string) => ({
-  table: {
-    widths: ['*'],
-    body: [
-      [{ 
-        text: title.toUpperCase(), 
-        style: 'sectionTitle', 
-        border: [false, false, false, false], 
-        fillColor: BRAND_COLOR 
-      }]
-    ]
+const REPORT_TEXTS = {
+  header: {
+    gov: "GOVERNO DO DISTRITO FEDERAL",
+    sec: "SECRETARIA DE ESTADO DE DESENVOLVIMENTO SOCIAL - SEDES",
+    unit: "CREAS BRAZLÂNDIA"
   },
-  margin: [0, 15, 0, 10]
-})
+  footer: { system: "Sistema de Gestão de Assistência - CREAS Brazlândia\n", page: "Página" }
+}
 
-const getOfficialHeader = (docTitle: string) => {
-  return {
-    stack: [
-      { text: "GOVERNO DO DISTRITO FEDERAL", style: "header", alignment: "center", fontSize: 11, margin: [0, 0, 0, 2] },
-      { text: "SECRETARIA DE ESTADO DE DESENVOLVIMENTO SOCIAL - SEDES", alignment: "center", fontSize: 9 },
-      { text: "CREAS BRAZLÂNDIA", alignment: "center", fontSize: 9, bold: true, margin: [0, 0, 0, 5] },
-      { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#ccc' }] },
-      { text: docTitle.toUpperCase(), style: "header", alignment: "center", margin: [0, 15, 0, 10] }
-    ],
-    margin: [0, 10, 0, 0]
+// --- HELPERS DE TABELA ---
+const TABLE_LAYOUTS = {
+  lightHorizontalLines: {
+    hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5,
+    vLineWidth: () => 0,
+    hLineColor: '#ccc'
+  },
+  alternatingRows: {
+    fillColor: (i: number) => (i === 0 ? '#e0e0e0' : (i % 2 === 0 ? null : '#f9f9f9')),
+    hLineWidth: () => 0.5,
+    vLineWidth: () => 0.5,
+    hLineColor: '#ccc',
+    vLineColor: '#ccc'
   }
 }
 
-const getOfficialFooter = (currentPage: number, pageCount: number) => ({
+// --- AUDITORIA ---
+const registerPdfAudit = async (type: string, details: string, caseId?: string) => {
+  try {
+    api.post('/audit/log', {
+      action: 'GENERATE_PDF',
+      resource: type,
+      details,
+      targetId: caseId,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.warn("Falha no log de auditoria PDF", err))
+  } catch (e) { console.warn(e) }
+}
+
+// --- HELPER FINALIZADOR ---
+const finalizePdf = (
+  docDefinition: TDocumentDefinitions, 
+  filenamePrefix: string, 
+  identifier: string,
+  mode: 'open' | 'download' = 'open'
+) => {
+  const sanitizedId = identifier.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
+  const dateStr = format(new Date(), 'yyyy-MM-dd')
+  const filename = `${filenamePrefix}_${sanitizedId}_${dateStr}.pdf`
+
+  const pdf = pdfMake.createPdf(docDefinition)
+  
+  if (mode === 'download') pdf.download(filename)
+  else pdf.open()
+}
+
+// --- HELPERS DE LAYOUT ---
+const getOfficialHeader = (docTitle: string): Content => ({
+  stack: [
+    { text: REPORT_TEXTS.header.gov, style: "header", alignment: "center", fontSize: 11, margin: [0, 0, 0, 2] },
+    { text: REPORT_TEXTS.header.sec, alignment: "center", fontSize: 9 },
+    { text: REPORT_TEXTS.header.unit, alignment: "center", fontSize: 9, bold: true, margin: [0, 0, 0, 5] },
+    { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#ccc' }] },
+    { text: docTitle.toUpperCase(), style: "header", alignment: "center", margin: [0, 15, 0, 10] }
+  ],
+  margin: [0, 10, 0, 0]
+})
+
+const getOfficialFooter = (currentPage: number, pageCount: number): Content => ({
   stack: [
     { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }] },
     {
       text: [
-        { text: "Sistema de Gestão de Assistência - CREAS Brazlândia\n", bold: true },
-        `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} • Página ${currentPage} de ${pageCount}`
+        { text: REPORT_TEXTS.footer.system, bold: true },
+        `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} • ${REPORT_TEXTS.footer.page} ${currentPage} de ${pageCount}`
       ],
       alignment: "center",
       fontSize: 8,
@@ -118,43 +170,51 @@ const getOfficialFooter = (currentPage: number, pageCount: number) => ({
   margin: [40, 0, 40, 10]
 })
 
-// [CORREÇÃO] Usando ExtendedCaseData no parâmetro
-export const generateCasePDF = (caseDataRaw: CaseDetailData) => {
+const createSectionHeader = (title: string): Content => ({
+  table: { widths: ['*'], body: [[{ text: title.toUpperCase(), style: 'sectionTitle', border: [false, false, false, false], fillColor: BRAND_COLOR }]] },
+  margin: [0, 15, 0, 10],
+  unbreakable: true
+})
+
+// ============================================================================
+// GERADORES
+// ============================================================================
+
+export const generateCasePDF = (caseDataRaw: CaseDetailData, mode: 'open' | 'download' = 'open') => {
   const caseData = caseDataRaw as ExtendedCaseData;
+  registerPdfAudit('PRONTUARIO', `Prontuário gerado para: ${caseData.nomeCompleto}`, caseData.id)
 
   const familyBody: any[] = [
-    [
-      { text: "NOME", style: "tableHeader", alignment: "left" },
-      { text: "PARENTESCO", style: "tableHeader" },
-      { text: "IDADE", style: "tableHeader" },
-      { text: "RENDA", style: "tableHeader" }
-    ]
+    [{ text: "NOME", style: "tableHeader", alignment: "left" }, { text: "PARENTESCO", style: "tableHeader" }, { text: "IDADE", style: "tableHeader" }, { text: "RENDA", style: "tableHeader" }]
   ]
 
   if (caseData.familia && caseData.familia.length > 0) {
-    caseData.familia.forEach((m: FamilyMember) => {
-      // [CORREÇÃO] Usando any para evitar erro de 'fontSize' em objeto literal
-      familyBody.push([
-        { text: m.nome, fontSize: 9 },
-        { text: m.parentesco, fontSize: 9, alignment: "center" },
-        { text: m.idade ? `${m.idade} anos` : "-", fontSize: 9, alignment: "center" },
-        { text: m.renda ? `R$ ${Number(m.renda).toFixed(2)}` : "-", fontSize: 9, alignment: "right" }
-      ] as any)
-    })
+    caseData.familia.forEach(m => familyBody.push([
+      { text: m.nome, fontSize: 9 },
+      { text: m.parentesco, fontSize: 9, alignment: "center" },
+      { text: m.idade ? `${m.idade} anos` : "-", fontSize: 9, alignment: "center" },
+      { text: m.renda ? `R$ ${Number(m.renda).toFixed(2)}` : "-", fontSize: 9, alignment: "right" }
+    ]))
   } else {
-    familyBody.push([{ text: "Nenhum familiar cadastrado.", colSpan: 4, alignment: "center", fontSize: 9, italics: true }, {}, {}, {}] as any)
+    familyBody.push([{ text: "Nenhum familiar cadastrado.", colSpan: 4, alignment: "center", fontSize: 9, italics: true }, {}, {}, {}])
   }
 
-  const beneficiosList = caseData.beneficios?.length ? 
-    { ul: caseData.beneficios, fontSize: 10, margin: [10, 0, 0, 0] } : 
-    { text: "Nenhum benefício ativo registrado.", fontSize: 10, italics: true, color: "#666" }
+  const evolucoesBody: any[] = [[{ text: "DATA/HORA", style: "tableHeader" }, { text: "TÉCNICO", style: "tableHeader" }, { text: "DESCRIÇÃO", style: "tableHeader", alignment: "left" }]];
+  if (caseData.evolucoes && caseData.evolucoes.length > 0) {
+    caseData.evolucoes.forEach(e => evolucoesBody.push([
+      { text: format(new Date(e.createdAt), "dd/MM/yy HH:mm"), fontSize: 8, alignment: 'center' },
+      { text: e.autor?.nome || 'Sistema', fontSize: 8, bold: true },
+      { text: e.conteudo || e.descricao, fontSize: 8, alignment: 'justify' }
+    ]))
+  } else {
+    evolucoesBody.push([{ text: "Sem registros recentes.", colSpan: 3, alignment: "center", fontSize: 9, italics: true }, {}, {}])
+  }
 
-  const docDefinition: any = {
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [40, 40, 40, 60],
     content: [
       getOfficialHeader("Prontuário Técnico Simplificado"),
-
       {
         style: 'tableExample',
         table: {
@@ -162,20 +222,13 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData) => {
           body: [
             [{ text: "NOME:", style: "label" }, { text: caseData.nomeCompleto.toUpperCase(), style: "value", bold: true }],
             [{ text: "CPF:", style: "label" }, { text: formatCPF(caseData.cpf), style: "value" }],
-            // [CORREÇÃO] 'idade' agora é reconhecido via cast
             [{ text: "NASCIMENTO:", style: "label" }, { text: `${formatDateSafe(caseData.nascimento)} (${caseData.idade ?? '?'} anos)`, style: "value" }],
             [{ text: "ENDEREÇO:", style: "label" }, { text: caseData.endereco, style: "value" }],
             [{ text: "CONTATO:", style: "label" }, { text: formatPhone(caseData.telefone), style: "value" }]
           ]
         },
-        layout: {
-          hLineWidth: (i: number) => (i === 0 || i === 5) ? 1 : 0.5,
-          vLineWidth: () => 0,
-          hLineColor: '#ccc',
-          fillColor: (i: number) => (i % 2 === 0) ? HEADER_BG : null
-        }
+        layout: { hLineWidth: (i) => (i === 0 || i === 5) ? 1 : 0.5, vLineWidth: () => 0, hLineColor: '#ccc', fillColor: (i) => (i % 2 === 0) ? HEADER_BG : null }
       },
-
       createSectionHeader("1. Situação do Atendimento"),
       {
         columns: [
@@ -191,45 +244,77 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData) => {
           { width: '*', text: [{ text: "Técnico Referência (PAEFI): ", style: "label" }, { text: caseData.especialistaPAEFI?.nome || "Não definido", style: "value" }] }
         ]
       },
-
       createSectionHeader("2. Composição Familiar"),
+      { table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: familyBody }, layout: 'lightHorizontalLines' },
+      
+      createSectionHeader("3. Benefícios e Rede"),
+      { text: "Benefícios Ativos:", fontSize: 10, bold: true, margin: [0, 5, 0, 2] },
+      caseData.beneficios?.length ? { ul: caseData.beneficios, fontSize: 9, margin: [10, 0, 0, 10] } : { text: "Nenhum benefício ativo.", fontSize: 9, italics: true, color: "#666", margin: [10, 0, 0, 10] },
+      
+      { text: '', pageBreak: 'before' },
+      createSectionHeader("4. Histórico Técnico (Últimos Registros)"),
       {
-        table: {
-          headerRows: 1,
-          widths: ['*', 'auto', 'auto', 'auto'],
-          body: familyBody
-        },
+        table: { headerRows: 1, widths: [70, 80, '*'], body: evolucoesBody },
         layout: 'lightHorizontalLines'
       },
 
-      createSectionHeader("3. Benefícios e Transferência de Renda"),
-      beneficiosList,
-
-      createSectionHeader("4. Plano de Acompanhamento (PAF)"),
+      createSectionHeader("5. Observações do PAF"),
       {
-        text: caseData.status === "EM_ACOMPANHAMENTO_PAEFI" 
-          ? "O caso encontra-se em acompanhamento. Consulte o documento específico do PAF para ver objetivos, metas e prazos detalhados." 
-          : "Não há PAF ativo para o status atual do caso.",
-        fontSize: 10,
-        alignment: "justify"
+        text: caseData.status === CaseStatus.PAEFI ? "Caso em acompanhamento PAEFI. Ver anexo PAF detalhado para metas e prazos." : "Não há PAF ativo para o status atual.",
+        fontSize: 10, alignment: "justify"
       }
     ],
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
 
-  pdfMake.createPdf(docDefinition).open()
+  finalizePdf(docDefinition, "PRONTUARIO", caseData.nomeCompleto, mode)
 }
 
-// ... Resto do arquivo (generateGroupAttendancePDF, generatePafPDF, generateManagementPDF, generateObservatoryPDF) 
-// MANTENHA O RESTANTE IGUAL AO QUE JÁ ESTAVA, AS CORREÇÕES ERAM SÓ NO generateCasePDF
-// Vou incluir o restante simplificado para não cortar nada se você copiar e colar:
+export const generatePafPDF = (caseData: CaseDetailData, paf: PafData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('PAF', `PAF Versão ${paf.versaoAtual} gerado`, caseData.id)
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4",
+    pageMargins: [40, 40, 40, 60],
+    content: [
+      getOfficialHeader("Plano de Acompanhamento Familiar (PAF)"),
+      {
+        table: { widths: ['*'], body: [[{ text: `FAMÍLIA: ${caseData.nomeCompleto.toUpperCase()}`, fontSize: 11, bold: true, fillColor: HEADER_BG, alignment: 'center' }], [{ text: `CPF Resp: ${formatCPF(caseData.cpf)} | Versão: ${paf.versaoAtual}`, fontSize: 10, alignment: 'center' }]] },
+        layout: 'noBorders', margin: [0, 0, 0, 20]
+      },
+      // [CORREÇÃO] textAlign -> alignment
+      createSectionHeader("1. Diagnóstico Sociofamiliar"),
+      { text: paf.diagnostico, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
+      createSectionHeader("2. Objetivos Pactuados"),
+      { text: paf.objetivos, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
+      createSectionHeader("3. Estratégias e Encaminhamentos"),
+      { text: paf.estrategias, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
+      createSectionHeader("4. Prazos"),
+      { text: ["Reavaliação prevista para: ", { text: formatDateSafe(paf.deadline), bold: true }], fontSize: 10, margin: [0, 0, 0, 30] },
+      {
+        columns: [
+          { stack: [{ text: "_______________________", alignment: "center" }, { text: "Usuário(a)", alignment: "center", fontSize: 9 }] },
+          { stack: [{ text: "_______________________", alignment: "center" }, { text: paf.autor.nome, alignment: "center", fontSize: 9, bold: true }, { text: "Técnico(a)", alignment: "center", fontSize: 8 }] }
+        ],
+        margin: [0, 20, 0, 0], unbreakable: true
+      }
+    ],
+    footer: getOfficialFooter,
+    styles: COMMON_STYLES
+  }
+
+  finalizePdf(docDefinition, "PAF", caseData.nomeCompleto, mode)
+}
 
 export const generateGroupAttendancePDF = (
   group: GroupActivity, 
   participants: GroupAttendance[], 
-  type: 'blank' | 'filled' = 'blank'
+  type: 'blank' | 'filled' = 'blank', 
+  mode: 'open' | 'download' = 'open'
 ) => {
+  registerPdfAudit('GRUPO', `Lista de frequência: ${group.tema}`)
+  
   const title = type === 'blank' ? "LISTA DE FREQUÊNCIA" : "RELATÓRIO DE EXECUÇÃO"
   
   const tableHeader = type === 'blank' 
@@ -258,11 +343,10 @@ export const generateGroupAttendancePDF = (
         { text: p.observacoes || "-", fontSize: 9 }
       ]
     }
-  })
+  }) as any[]
 
   if (type === 'blank') {
     for (let i = 0; i < 5; i++) {
-      // @ts-ignore
       tableBody.push([
         { text: "", margin: [0, 12, 0, 12] },
         { text: "", margin: [0, 12, 0, 12] },
@@ -271,7 +355,7 @@ export const generateGroupAttendancePDF = (
     }
   }
 
-  const docDefinition: any = {
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [40, 40, 40, 60],
     content: [
@@ -321,266 +405,155 @@ export const generateGroupAttendancePDF = (
           vLineColor: '#aaa'
         }
       },
-      type === 'blank' ? {
+      // [CORREÇÃO] Cast para 'Content' para evitar erro de tipo na estrutura condicional
+      (type === 'blank' ? {
         stack: [
           { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
           { text: group.facilitador.nome, alignment: "center", fontSize: 10, bold: true },
           { text: "Técnico(a) Responsável", alignment: "center", fontSize: 9 }
-        ]
-      } : {}
+        ],
+        unbreakable: true
+      } : {}) as Content
     ],
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
-
-  pdfMake.createPdf(docDefinition).open()
+  
+  finalizePdf(docDefinition, "GRUPO", group.tema, mode)
 }
 
-export const generatePafPDF = (caseData: CaseDetailData, paf: PafData) => {
-  const docDefinition: any = {
-    pageSize: "A4",
-    pageMargins: [40, 40, 40, 60],
-    content: [
-      getOfficialHeader("Plano de Acompanhamento Familiar (PAF)"),
-      {
-        table: {
-          widths: ['*'],
-          body: [
-            [{ text: `FAMÍLIA DE: ${caseData.nomeCompleto.toUpperCase()}`, fontSize: 11, bold: true, fillColor: HEADER_BG, alignment: 'center' }],
-            [{ text: `CPF Responsável: ${formatCPF(caseData.cpf)}  |  Versão do PAF: ${paf.versaoAtual}`, fontSize: 10, alignment: 'center' }]
-          ]
-        },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 20]
-      },
-      createSectionHeader("1. Diagnóstico Sociofamiliar"),
-      { text: paf.diagnostico, fontSize: 10, textAlign: "justify", margin: [0, 0, 0, 15] },
-      createSectionHeader("2. Objetivos Pactuados"),
-      { text: paf.objetivos, fontSize: 10, textAlign: "justify", margin: [0, 0, 0, 15] },
-      createSectionHeader("3. Estratégias e Encaminhamentos"),
-      { text: paf.estrategias, fontSize: 10, textAlign: "justify", margin: [0, 0, 0, 15] },
-      createSectionHeader("4. Prazos"),
-      { 
-        text: [
-          "A família e a equipe técnica se comprometem com os objetivos acima, com previsão de reavaliação em: ",
-          { text: formatDateSafe(paf.deadline), bold: true }
-        ],
-        fontSize: 10, margin: [0, 0, 0, 30] 
-      },
-      {
-        columns: [
-          {
-            stack: [
-              { text: "__________________________________", alignment: "center" },
-              { text: "Assinatura do(a) Usuário(a)", alignment: "center", fontSize: 9, bold: true }
-            ]
-          },
-          {
-            stack: [
-              { text: "__________________________________", alignment: "center" },
-              { text: paf.autor.nome, alignment: "center", fontSize: 9, bold: true },
-              { text: "Técnico(a) de Referência", alignment: "center", fontSize: 8 }
-            ]
-          }
-        ],
-        margin: [0, 20, 0, 0]
-      }
-    ],
-    footer: getOfficialFooter,
-    styles: COMMON_STYLES
-  }
-  pdfMake.createPdf(docDefinition).open()
-}
+export const generateManagementPDF = (data: ManagementReportData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('RELATORIO_GESTAO', `Relatório gerencial: ${data.periodo}`)
 
-export const generateManagementPDF = (data: ManagementReportData) => {
-  const docDefinition: any = {
-    pageSize: "A4",
-    pageMargins: [40, 60, 40, 60],
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4", pageMargins: [40, 60, 40, 60],
     content: [
       getOfficialHeader("Relatório Gerencial de Monitoramento"),
-      {
-        text: [
-          { text: "PERÍODO DE REFERÊNCIA: ", bold: true, fontSize: 10 },
-          { text: data.periodo.toUpperCase(), fontSize: 10 }
-        ],
-        margin: [0, 0, 0, 20],
-        alignment: "center"
-      },
-      createSectionHeader("1. Indicadores de Volume (Mensal)"),
+      { text: [{ text: "PERÍODO: ", bold: true, fontSize: 10 }, { text: data.periodo.toUpperCase(), fontSize: 10 }], margin: [0, 0, 0, 20], alignment: "center" },
+      createSectionHeader("1. Indicadores de Volume"),
       {
         table: {
           widths: ['*', '*', '*', '*', '*'],
           body: [
-            [
-              { text: "TOTAL ATIVOS", style: "tableHeader" },
-              { text: "EM ACOLHIDA", style: "tableHeader" },
-              { text: "EM PAEFI", style: "tableHeader" },
-              { text: "NOVOS (MÊS)", style: "tableHeader" },
-              { text: "DESLIGADOS", style: "tableHeader" }
-            ],
-            [
-              { text: data.stats.ativos, style: "kpiValue" },
-              { text: data.stats.acolhidas, style: "kpiValue" },
-              { text: data.stats.paefi, style: "kpiValue" },
-              { text: data.stats.novos, style: "kpiValue", color: "#2563eb" },
-              { text: data.stats.desligados, style: "kpiValue", color: "#16a34a" }
-            ]
+            [{ text: "ATIVOS", style: "tableHeader" }, { text: "ACOLHIDA", style: "tableHeader" }, { text: "ACOMPANHAMENTO", style: "tableHeader" }, { text: "NOVOS", style: "tableHeader" }, { text: "DESLIGADOS", style: "tableHeader" }],
+            [{ text: data.stats.ativos, style: "kpiValue" }, { text: data.stats.acolhidas, style: "kpiValue" }, { text: data.stats.paefi, style: "kpiValue" }, { text: data.stats.novos, style: "kpiValue", color: "#2563eb" }, { text: data.stats.desligados, style: "kpiValue", color: "#16a34a" }]
           ]
-        },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 15]
+        }, layout: 'noBorders', margin: [0, 0, 0, 15]
       },
-      createSectionHeader("2. Distribuição da Equipe Técnica"),
+      createSectionHeader("2. Equipe Técnica"),
       {
         columns: [
-          {
-            width: '48%',
-            stack: [
-              { text: "AGENTES SOCIAIS (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" },
-              {
-                table: {
-                  widths: ['*', 40],
-                  body: [
-                    [{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.cargaHoraria.agentes.map(a => [
-                      { text: a.name, fontSize: 9 },
-                      { text: a.value, fontSize: 9, alignment: "center", bold: true }
-                    ])
-                  ]
-                },
-                layout: 'lightHorizontalLines'
-              }
-            ]
-          },
+          { width: '48%', stack: [{ text: "AGENTES (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.agentes.map(a => [{ text: a.name, fontSize: 9 }, { text: a.value, fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] },
           { width: '4%', text: '' },
-          {
-            width: '48%',
-            stack: [
-              { text: "ESPECIALISTAS (PAEFI)", style: "subHeader", fontSize: 9, alignment: "center" },
-              {
-                table: {
-                  widths: ['*', 40],
-                  body: [
-                    [{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.cargaHoraria.especialistas.map(e => [
-                      { text: e.name, fontSize: 9 },
-                      { text: e.value, fontSize: 9, alignment: "center", bold: true }
-                    ])
-                  ]
-                },
-                layout: 'lightHorizontalLines'
-              }
-            ]
-          }
+          { width: '48%', stack: [{ text: "ESPECIALISTAS (PAEFI)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.especialistas.map(e => [{ text: e.name, fontSize: 9 }, { text: e.value, fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] }
         ]
       },
-      ...(data.vigilancia ? [
-        createSectionHeader("3. Vigilância Socioassistencial"),
-        {
-          table: {
-            widths: ['*', 60, 60],
-            body: [
-              [
-                { text: "TIPIFICAÇÃO DA VIOLAÇÃO", style: "tableHeader", alignment: "left" },
-                { text: "CASOS", style: "tableHeader" },
-                { text: "%", style: "tableHeader" }
-              ],
-              ...data.vigilancia.violacoes.map(v => {
-                const total = data.stats.ativos || 1
-                const percent = ((v.value / total) * 100).toFixed(1) + '%'
-                return [
-                  { text: v.name, fontSize: 10 },
-                  { text: v.value, fontSize: 10, alignment: "center" },
-                  { text: percent, fontSize: 10, alignment: "center" }
-                ]
-              })
-            ]
-          },
-          layout: {
-            fillColor: (i: number) => (i === 0 ? '#e0e0e0' : (i % 2 === 0 ? null : '#f9f9f9')),
-            hLineWidth: () => 0.5,
-            vLineWidth: () => 0.5,
-            hLineColor: '#ccc',
-            vLineColor: '#ccc'
-          }
-        },
-        createSectionHeader("4. Perfil Demográfico (Faixa Etária)"),
-        {
-          table: {
-            widths: ['*', '*', '*', '*'],
-            body: [
-              data.vigilancia.demografia.map(d => ({ text: d.name, style: "tableHeader" })),
-              data.vigilancia.demografia.map(d => ({ text: d.value, style: "kpiValue", fontSize: 12 }))
-            ]
-          },
-          layout: 'noBorders'
-        }
-      ] : []),
-      {
-        stack: [
-          { text: "______________________________________________________", alignment: "center", margin: [0, 60, 0, 5] },
-          { text: "Coordenação CREAS Brazlândia", alignment: "center", fontSize: 10, bold: true },
-          { text: "Responsável pelo Relatório", alignment: "center", fontSize: 9 }
-        ]
-      }
+      // [CORREÇÃO] Cast para 'as any' ou 'Content' em blocos complexos para evitar erro TS2322
+      ...(data.vigilancia ? [{ text: '', pageBreak: 'before' }, createSectionHeader("3. Vigilância Socioassistencial"), { table: { widths: ['*', 60, 60], body: [[{ text: "VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }, { text: "%", style: "tableHeader" }], ...data.vigilancia.violacoes.map(v => [{ text: v.name, fontSize: 10 }, { text: v.value, fontSize: 10, alignment: "center" }, { text: ((v.value / (data.stats.ativos || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }])] }, layout: 'lightHorizontalLines' }] : []) as any
     ],
-    footer: getOfficialFooter,
-    styles: COMMON_STYLES
+    footer: getOfficialFooter, styles: COMMON_STYLES
   }
-  pdfMake.createPdf(docDefinition).open()
+  
+  finalizePdf(docDefinition, "GESTAO", data.periodo, mode)
 }
 
-export const generateObservatoryPDF = (data: ObservatoryData) => {
-  const docDefinition: any = {
+export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('OBSERVATORIO', `Observatório Social Detalhado gerado em ${new Date().toLocaleDateString()}`)
+  
+  const totalViolacoes = data.violationData.reduce((acc, v) => acc + v.value, 0) || 1
+  const totalBeneficios = data.benefitsData.reduce((acc, b) => acc + b.value, 0) || 1
+  const totalCasosPerfil = data.sexData.reduce((acc, s) => acc + s.value, 0) || 1
+
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [40, 60, 40, 60],
     content: [
       getOfficialHeader("Relatório do Observatório Social"),
-      {
-        text: `Data de Emissão: ${format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`,
-        alignment: "center", fontSize: 10, margin: [0, 0, 0, 20]
+      { 
+        text: [
+          { text: "EMISSÃO: ", bold: true }, 
+          `${format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }).toUpperCase()}`
+        ], 
+        alignment: "center", 
+        fontSize: 10, 
+        margin: [0, 0, 0, 20] 
       },
-      createSectionHeader("1. Dinâmica de Atendimento (Últimos 6 Meses)"),
+
+      // 1. DINÂMICA DE ATENDIMENTO
+      createSectionHeader("1. Dinâmica de Atendimentos (Fluxo Mensal)"),
       {
         table: {
           widths: ['*', '*', '*', '*'],
           body: [
             [
               { text: "MÊS DE REFERÊNCIA", style: "tableHeader", alignment: "left" },
-              { text: "ENTRADAS (NOVOS)", style: "tableHeader" },
-              { text: "SAÍDAS (DESLIGAMENTOS)", style: "tableHeader" },
-              { text: "SALDO", style: "tableHeader" }
+              { text: "NOVOS CASOS", style: "tableHeader" },
+              { text: "DESLIGAMENTOS", style: "tableHeader" },
+              { text: "SALDO LÍQUIDO", style: "tableHeader" }
             ],
             ...data.evolutionData.map(d => [
               { text: d.name, fontSize: 10 },
-              { text: d.novos, fontSize: 10, alignment: "center", color: "#2563eb" },
-              { text: d.desligados, fontSize: 10, alignment: "center", color: "#16a34a" },
+              { text: d.novos, fontSize: 10, alignment: "center", color: "#2563eb", bold: true },
+              { text: d.desligados, fontSize: 10, alignment: "center", color: "#16a34a", bold: true },
               { text: (d.novos - d.desligados), fontSize: 10, alignment: "center", bold: true }
-            ])
+            ]),
+            [
+              { text: "TOTAL NO PERÍODO", style: "tableHeader", alignment: "right" },
+              { text: data.evolutionData.reduce((acc, d) => acc + d.novos, 0), style: "tableHeader" },
+              { text: data.evolutionData.reduce((acc, d) => acc + d.desligados, 0), style: "tableHeader" },
+              { text: data.evolutionData.reduce((acc, d) => acc + (d.novos - d.desligados), 0), style: "tableHeader" }
+            ]
           ]
         },
-        layout: 'lightHorizontalLines',
+        layout: TABLE_LAYOUTS.lightHorizontalLines as any,
         margin: [0, 0, 0, 15]
       },
-      createSectionHeader("2. Caracterização das Violações e Risco"),
+
+      // 2. DETALHAMENTO DE VIOLAÇÕES
+      createSectionHeader("2. Analítico de Violações de Direitos"),
+      {
+        table: {
+          widths: ['*', 60, 60],
+          body: [
+            [
+              { text: "TIPIFICAÇÃO DA VIOLAÇÃO", style: "tableHeader", alignment: "left" },
+              { text: "OCORRÊNCIAS", style: "tableHeader" },
+              { text: "% DO TOTAL", style: "tableHeader" }
+            ],
+            ...data.violationData
+              .sort((a, b) => b.value - a.value)
+              .map(v => [
+                { text: v.name, fontSize: 10 },
+                { text: v.value, fontSize: 10, alignment: "center" },
+                { text: ((v.value / totalViolacoes) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
+              ])
+          ]
+        },
+        layout: TABLE_LAYOUTS.alternatingRows as any,
+        margin: [0, 0, 0, 15]
+      },
+
+      { text: '', pageBreak: 'before' },
+
+      // 3. PERFIL E RISCO
       {
         columns: [
           {
             width: '48%',
             stack: [
-              { text: "PRINCIPAIS VIOLAÇÕES", style: "subHeader", fontSize: 10, alignment: "center" },
+              createSectionHeader("3. Estratificação de Risco"),
               {
                 table: {
-                  widths: ['*', 40],
+                  widths: ['*', 50],
                   body: [
-                    [{ text: "Tipificação", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.violationData.slice(0, 10).map(v => [
-                      { text: v.name, fontSize: 9 },
-                      { text: v.value, fontSize: 9, alignment: "center", bold: true }
+                    [{ text: "NÍVEL DE URGÊNCIA", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }],
+                    ...data.urgencyData.map(u => [
+                      { text: u.name, fontSize: 10 },
+                      { text: u.value, fontSize: 10, alignment: "center", bold: true }
                     ])
                   ]
                 },
-                layout: 'lightHorizontalLines'
+                layout: TABLE_LAYOUTS.lightHorizontalLines as any
               }
             ]
           },
@@ -588,107 +561,145 @@ export const generateObservatoryPDF = (data: ObservatoryData) => {
           {
             width: '48%',
             stack: [
-              { text: "NÍVEL DE RISCO/URGÊNCIA", style: "subHeader", fontSize: 10, alignment: "center" },
+              createSectionHeader("4. Perfil - Gênero"),
               {
                 table: {
-                  widths: ['*', 40],
+                  widths: ['*', 40, 45],
                   body: [
-                    [{ text: "Classificação", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.urgencyData.map(u => [
-                      { text: u.name, fontSize: 9 },
-                      { text: u.value, fontSize: 9, alignment: "center", bold: true }
+                    [{ text: "GÊNERO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }, { text: "%", style: "tableHeader" }],
+                    ...data.sexData.map(s => [
+                      { text: s.name, fontSize: 10 },
+                      { text: s.value, fontSize: 10, alignment: "center" },
+                      { text: ((s.value / totalCasosPerfil) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
                     ])
                   ]
                 },
-                layout: 'lightHorizontalLines'
+                layout: TABLE_LAYOUTS.lightHorizontalLines as any
               }
             ]
           }
         ]
       },
-      createSectionHeader("3. Eficiência Operacional e Articulação"),
+
+      // 5. PERFIL ETÁRIO
+      createSectionHeader("5. Perfil Demográfico - Faixa Etária"),
       {
         table: {
           widths: ['*', '*', '*', '*'],
           body: [
+            ...Array.from({ length: Math.ceil(data.ageData.length / 4) }).map((_, rowIndex) => {
+              const rowItems = data.ageData.slice(rowIndex * 4, (rowIndex + 1) * 4)
+              while (rowItems.length < 4) rowItems.push({ name: '', value: 0 })
+              return rowItems.map(item => ({
+                stack: [
+                  { text: item.name, fontSize: 9, color: '#666' },
+                  { text: item.name ? item.value : '', fontSize: 12, bold: true, color: '#333' }
+                ],
+                margin: [0, 5, 0, 5],
+                alignment: 'center'
+              }))
+            })
+          ]
+        },
+        layout: 'noBorders'
+      },
+
+      // 6. BENEFÍCIOS
+      createSectionHeader("6. Benefícios Eventuais e Transferência de Renda"),
+      {
+        table: {
+          widths: ['*', 50, 50],
+          body: [
             [
-              { text: "TEMPO MÉDIO ACOMP.", style: "tableHeader" },
-              { text: "TEMPO DE ESPERA", style: "tableHeader" },
-              { text: "GRUPOS REALIZADOS", style: "tableHeader" },
-              { text: "BENEFÍCIOS CONCEDIDOS", style: "tableHeader" }
+              { text: "BENEFÍCIO CONCEDIDO", style: "tableHeader", alignment: "left" },
+              { text: "QTD", style: "tableHeader" },
+              { text: "%", style: "tableHeader" }
             ],
+            ...(data.benefitsData.length > 0 
+              ? data.benefitsData.map(b => [
+                  { text: b.name, fontSize: 10 },
+                  { text: b.value, fontSize: 10, alignment: "center" },
+                  { text: ((b.value / totalBeneficios) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
+                ])
+              : [[{ text: "Nenhum benefício registrado no período.", colSpan: 3, alignment: "center", italics: true, fontSize: 10 }, {}, {}]]
+            ),
             [
-              { text: `${data.efficiencyData.avgPermanence} dias`, style: "kpiValue" },
-              { text: `${data.efficiencyData.avgWaitTime} dias`, style: "kpiValue" },
-              { text: data.collectiveData.totalGroups, style: "kpiValue" },
-              { text: data.benefitsData.reduce((acc, b) => acc + b.value, 0), style: "kpiValue" }
+              { text: "TOTAL GERAL", style: "tableHeader", alignment: "right" },
+              { text: totalBeneficios, style: "tableHeader", alignment: "center" },
+              { text: "100%", style: "tableHeader", alignment: "center" }
             ]
           ]
         },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 15]
+        layout: TABLE_LAYOUTS.alternatingRows as any
       },
+
+      // 7. ARTICULAÇÃO
+      createSectionHeader("7. Articulação em Rede"),
       {
         columns: [
           {
             width: '48%',
             stack: [
-              { text: "PORTA DE ENTRADA (ORIGEM)", style: "subHeader", fontSize: 10 },
+              { text: "PRINCIPAIS ENCAMINHAMENTOS (SAÍDA)", style: "tableHeader", alignment: "center", margin: [0, 0, 0, 5] },
               {
-                ul: data.originData.slice(0, 5).map(o => `${o.name}: ${o.value} casos`),
-                fontSize: 9, margin: [10, 0, 0, 0]
+                ul: data.networkData.slice(0, 8).map(n => ({
+                  text: `${n.name}: ${n.value} ofícios`, fontSize: 10, margin: [0, 2, 0, 2]
+                }))
               }
             ]
           },
           {
             width: '48%',
             stack: [
-              { text: "ENCAMINHAMENTOS (SAÍDA)", style: "subHeader", fontSize: 10 },
+              { text: "PORTA DE ENTRADA (ORIGEM)", style: "tableHeader", alignment: "center", margin: [0, 0, 0, 5] },
               {
-                ul: data.networkData.slice(0, 5).map(n => `${n.name}: ${n.value} ofícios`),
-                fontSize: 9, margin: [10, 0, 0, 0]
+                ul: data.originData.slice(0, 8).map(o => ({
+                  text: `${o.name}: ${o.value} casos`, fontSize: 10, margin: [0, 2, 0, 2]
+                }))
               }
             ]
           }
         ]
       },
-      createSectionHeader("4. Perfil Demográfico do Público Atendido"),
+
+      // 8. EFICIÊNCIA OPERACIONAL
+      createSectionHeader("8. Eficiência Operacional"),
       {
         table: {
           widths: ['*', '*', '*', '*'],
           body: [
             [
-              { text: "FAIXA ETÁRIA", style: "tableHeader", colSpan: 2, alignment: "center" }, {},
-              { text: "GÊNERO", style: "tableHeader", colSpan: 2, alignment: "center" }, {}
+              { text: "TEMPO MÉDIO ACOMP.", style: "tableHeader" },
+              { text: "TEMPO ESPERA", style: "tableHeader" },
+              { text: "TAXA RETENÇÃO", style: "tableHeader" },
+              { text: "GRUPOS REALIZADOS", style: "tableHeader" }
             ],
             [
-              { 
-                stack: data.ageData.map(a => ({ 
-                  columns: [{ text: a.name, fontSize: 9 }, { text: a.value, fontSize: 9, bold: true, alignment: "right" }] 
-                })) 
-              },
-              {},
-              { 
-                stack: data.sexData.map(s => ({ 
-                  columns: [{ text: s.name, fontSize: 9 }, { text: s.value, fontSize: 9, bold: true, alignment: "right" }] 
-                })) 
-              },
-              {}
+              { text: `${data.efficiencyData.avgPermanence} dias`, style: "kpiValue" },
+              { text: `${data.efficiencyData.avgWaitTime} dias`, style: "kpiValue" },
+              { text: `${data.efficiencyData.retentionRate}%`, style: "kpiValue" },
+              { text: data.collectiveData.totalGroups, style: "kpiValue" }
             ]
           ]
         },
-        layout: 'noBorders'
+        layout: 'noBorders',
+        margin: [0, 0, 0, 5]
       },
+      { text: "Dados calculados com base nos atendimentos e encerramentos do período.", fontSize: 8, italics: true, color: "#888", alignment: 'center' },
+
+      // Assinatura do Gerente
       {
         stack: [
           { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
-          { text: "Coordenação de Vigilância Socioassistencial", alignment: "center", fontSize: 10, bold: true },
-          { text: "CREAS Brazlândia", alignment: "center", fontSize: 9 }
-        ]
+          { text: "Gerente", alignment: "center", fontSize: 10, bold: true },
+          { text: REPORT_TEXTS.header.unit, alignment: "center", fontSize: 9 }
+        ],
+        unbreakable: true
       }
-    ],
+    ] as Content[], // Cast final para garantir que o array de conteúdo seja aceito
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
-  pdfMake.createPdf(docDefinition).open()
+  
+  finalizePdf(docDefinition, "OBSERVATORIO_SOCIAL", "DETALHADO", mode)
 }

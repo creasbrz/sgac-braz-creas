@@ -1,0 +1,4244 @@
+CONTEXTO: frontend_03_pages
+
+ESTRUTURA GERAL (Frontend):
+├── .env.local
+├── .gitignore
+├── components.json
+├── eslint.config.js
+├── index.html
+├── package.json
+├── postcss.config.cjs
+├── public
+├── README.md
+├── src
+├── tailwind.config.cjs
+├── tsconfig.app.json
+├── tsconfig.json
+├── tsconfig.node.json
+└── vite.config.ts
+
+ESTRUTURA GERAL (Backend):
+├── .gitignore
+├── package.json
+├── prisma
+├── scripts
+├── src
+└── uploads
+
+
+
+
+==================================================================
+FILE: frontend\src\pages\AdvancedAnalytics.tsx
+==================================================================
+// frontend/src/pages/AdvancedAnalytics.tsx
+import { useState, useRef } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  BarChart,
+  Bar,
+} from "recharts"
+
+import { Loader2, BarChart3, Clock, TrendingUp, Download, AlertTriangle } from "lucide-react"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
+import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
+const COLORS = ["hsl(var(--primary))", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
+
+function PremiumSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[0,1,2].map(i => <div key={i} className="h-24 rounded-xl bg-muted/20" />)}
+      </div>
+      <div className="h-[320px] rounded-xl bg-muted/10" />
+    </div>
+  )
+}
+
+function linearRegressionForecast(xs: number[], ys: number[]) {
+  if (xs.length < 2) return null
+  const n = xs.length
+  const meanX = xs.reduce((a, b) => a + b, 0) / n
+  const meanY = ys.reduce((a, b) => a + b, 0) / n
+  let num = 0
+  let den = 0
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - meanX) * (ys[i] - meanY)
+    den += (xs[i] - meanX) ** 2
+  }
+  if (den === 0) return null
+  const m = num / den
+  const b = meanY - m * meanX
+  const nextX = xs[n - 1] + 1
+  return m * nextX + b
+}
+
+export function AdvancedAnalytics() {
+  const [periodMonths, setPeriodMonths] = useState<number>(12)
+  
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["stats", "advanced", periodMonths],
+    queryFn: async () => {
+      const res = await api.get("/stats/advanced", { params: { months: periodMonths } })
+      return res.data
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
+  // Modo Performance Ativado
+  const { data: productivity } = useQuery({
+    queryKey: ["stats", "productivity", periodMonths],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/stats/productivity", { 
+          params: { mode: 'performance', months: periodMonths } 
+        })
+        return res.data
+      } catch { return [] }
+    }
+  })
+
+  const { data: heatmap } = useQuery({
+    queryKey: ["stats", "heatmap", periodMonths],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/stats/heatmap", { params: { months: periodMonths } })
+        return res.data 
+      } catch { return [] }
+    }
+  })
+
+  const exportRef = useRef<HTMLDivElement | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true)
+      // @ts-ignore
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
+      if (!exportRef.current) return
+      const canvas = await html2canvas(exportRef.current, { scale: 2, useCORS: true })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('landscape', 'pt', 'a4')
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const ratio = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height)
+      pdf.addImage(imgData, 'PNG', 20, 20, canvas.width * ratio - 40, canvas.height * ratio - 40)
+      pdf.save(`analytics_sgac_${new Date().toISOString().slice(0,10)}.pdf`)
+    } catch (e) {
+      console.error('Erro ao exportar', e)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  if (isLoading) return <PremiumSkeleton />
+  
+  if (isError || !data) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Erro</AlertTitle>
+        <AlertDescription>Não foi possível carregar os dados analíticos.</AlertDescription>
+      </Alert>
+    )
+  }
+
+  const trendData = Array.isArray(data.trendData) ? data.trendData : []
+  const pieData = Array.isArray(data.pieData) ? data.pieData : []
+  
+  const xs: number[] = []
+  const ys: number[] = []
+  trendData.forEach((d: any, i: number) => { xs.push(i); ys.push(d.novos) })
+  const forecast = linearRegressionForecast(xs, ys)
+
+  const tooltipStyle = {
+    backgroundColor: 'hsl(var(--popover))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: '8px',
+    color: 'hsl(var(--popover-foreground))',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    fontSize: '12px'
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-700" ref={exportRef}>
+
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           <DashboardStatCard index={0} title="Tempo Médio" value={data.avgHandlingTime} description="Dias" icon={Clock} colorClass="text-blue-500" />
+           <DashboardStatCard index={1} title="Total Ativos" value={data.totalActive} description="Casos hoje" icon={BarChart3} colorClass="text-purple-500" />
+           <DashboardStatCard index={2} title="Novos (Mês)" value={trendData[trendData.length-1]?.novos ?? 0} description="Entradas" icon={TrendingUp} colorClass="text-emerald-500" />
+        </div>
+
+        <div className="flex gap-2 items-center justify-end">
+          <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
+            <SelectTrigger className="w-[140px] bg-background"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="3">3 Meses</SelectItem>
+              <SelectItem value="6">6 Meses</SelectItem>
+              <SelectItem value="12">12 Meses</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={handleExportPdf} disabled={isExporting} variant="outline" size="icon">
+             {isExporting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4"/>}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Fluxo de Casos</CardTitle>
+            <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div style={{ width: '100%', height: 320 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                 <LineChart data={trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
+                  <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={10} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend verticalAlign="top" height={36} />
+                  <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                  <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground text-center">
+               Previsão de novos casos (IA): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="lg:col-span-1">
+          <SmartInsightsCard insights={data.insights ?? []} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader><CardTitle>Violações (Top 5)</CardTitle></CardHeader>
+          <CardContent>
+             <div style={{ width: '100%', height: 340 }}>
+                {pieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie 
+                        data={pieData} 
+                        cx="50%" 
+                        cy="45%" 
+                        innerRadius={50} 
+                        outerRadius={70} 
+                        paddingAngle={5} 
+                        dataKey="value"
+                        stroke="hsl(var(--background))" 
+                        strokeWidth={2}
+                      >
+                        {pieData.map((_: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend 
+                        layout="horizontal" 
+                        verticalAlign="bottom" 
+                        align="center" 
+                        iconType="circle" 
+                        wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de violação.</div>}
+             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Desempenho da Equipe</CardTitle>
+            <CardDescription>Intervenções (logs) realizadas.</CardDescription>
+          </CardHeader>
+          <CardContent>
+             <div style={{ width: '100%', height: 300 }}>
+                {productivity && productivity.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
+                      <XAxis type="number" hide />
+                      <YAxis dataKey="name" type="category" width={70} tickLine={false} axisLine={false} fontSize={11}/>
+                      <Tooltip 
+                        cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
+                        contentStyle={tooltipStyle} 
+                        formatter={(value: any) => [value, 'Intervenções']}
+                      />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de atividade no período.</div>}
+             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle>Intensidade de Atividades</CardTitle></CardHeader>
+          <CardContent>
+             <div className="h-[150px] overflow-y-auto pr-2">
+                {heatmap && heatmap.length > 0 ? (
+                   <div className="grid grid-cols-7 sm:grid-cols-12 md:grid-cols-[repeat(auto-fill,minmax(30px,1fr))] gap-1">
+                      {heatmap.slice(0, 90).map((h: any) => { 
+                          const intensity = Math.min(4, Math.ceil(h.count / 2));
+                          const colors = [
+                            'bg-muted/30 dark:bg-muted/10', 
+                            'bg-emerald-200 dark:bg-emerald-900/40', 
+                            'bg-emerald-300 dark:bg-emerald-800/60', 
+                            'bg-emerald-400 dark:bg-emerald-600/80', 
+                            'bg-emerald-600 dark:bg-emerald-500'
+                          ];
+                          return (
+                            <div key={h.date} title={`${h.date}: ${h.count} logs`} className={`aspect-square rounded-sm ${colors[intensity]} text-[10px] flex items-center justify-center text-transparent hover:text-foreground transition-all cursor-default`}>
+                                {h.count}
+                            </div>
+                          )
+                      })}
+                   </div>
+                ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem histórico recente.</div>}
+             </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\Agenda.tsx
+==================================================================
+import { useState, useEffect, useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { useSearchParams, Link } from 'react-router-dom'
+import { useForm, type SubmitHandler, Controller, type Resolver } from 'react-hook-form'
+import { z } from 'zod'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { toast } from 'sonner'
+import {
+  Loader2, Calendar as CalendarIcon, Plus,
+  ChevronRight, Tag, Users
+} from 'lucide-react'
+
+import { api } from '@/lib/api'
+import { getErrorMessage } from '@/utils/error'
+import { combineDateAndTime } from '@/utils/date'
+import { FullCalendarWidget } from '@/components/agenda/FullCalendarWidget'
+import { ROUTES } from '@/constants/routes'
+
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Badge } from '@/components/ui/badge'
+
+// Cores
+const TYPE_COLORS: Record<string, string> = {
+  'Atendimento': '#2563eb', // Azul
+  'Visita': '#16a34a',      // Verde
+  'Retorno': '#f97316',     // Laranja
+  'Reunião': '#9333ea',     // Roxo
+  'Grupo': '#7c3aed',       // Roxo Escuro
+  'Outro': '#64748b'        // Cinza
+}
+
+// --- SCHEMA DO FORMULÁRIO ---
+const appointmentFormSchema = z.object({
+  titulo: z.string().min(3, 'O título é muito curto.'),
+  data: z.string().min(1, 'Data obrigatória'),
+  time: z.string().regex(/^([0-1]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (HH:MM).'),
+  tipo: z.string().optional().default('Atendimento'),
+  casoId: z.string().uuid('Selecione um caso.'),
+  observacoes: z.string().optional().default(''),
+})
+
+type AppointmentFormData = z.infer<typeof appointmentFormSchema>
+
+// --- MODAL DE NOVO AGENDAMENTO ---
+function NewAppointmentModal({
+  open,
+  onOpenChange,
+  defaultCaseId,
+  defaultDate,
+  defaultTime
+}: {
+  open: boolean
+  onOpenChange: (isOpen: boolean) => void
+  defaultCaseId?: string | null
+  defaultDate?: string
+  defaultTime?: string
+}) {
+  const queryClient = useQueryClient()
+
+  // Busca lista de casos para o select
+  const { data: casesResponse } = useQuery({ 
+    queryKey: ['cases', 'all-select'],
+    queryFn: async () => {
+      const response = await api.get('/cases', { params: { pageSize: 100 } })
+      return response.data
+    },
+    staleTime: 1000 * 60 * 5
+  })
+
+  // [CORREÇÃO CRÍTICA] Verifica se é array direto OU se está dentro de .data/.items
+  const cases: any[] = useMemo(() => {
+    if (!casesResponse) return []
+    if (Array.isArray(casesResponse)) return casesResponse
+    return casesResponse.data || casesResponse.items || []
+  }, [casesResponse])
+
+  const resolver = zodResolver(appointmentFormSchema) as unknown as Resolver<AppointmentFormData>
+
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    reset,
+    setValue,
+  } = useForm<AppointmentFormData>({
+    resolver,
+    defaultValues: {
+      titulo: '',
+      data: defaultDate || '',
+      time: defaultTime || '09:00',
+      tipo: 'Atendimento',
+      casoId: defaultCaseId ?? '',
+      observacoes: '',
+    },
+  })
+
+  useEffect(() => {
+    if (open) {
+      if (defaultCaseId) setValue('casoId', defaultCaseId)
+      if (defaultDate) setValue('data', defaultDate)
+      if (defaultTime) setValue('time', defaultTime)
+    }
+  }, [open, defaultCaseId, defaultDate, defaultTime, setValue])
+
+  const { mutate: createAppointment, isPending: isCreating } = useMutation({
+    mutationFn: async (data: AppointmentFormData) => {
+      const isoDate = combineDateAndTime(data.data, data.time)
+      return await api.post('/appointments', {
+        titulo: data.titulo,
+        casoId: data.casoId,
+        observacoes: data.observacoes || null,
+        data: isoDate,
+        tipo: data.tipo,
+      })
+    },
+    onSuccess: () => {
+      toast.success('Agendamento criado com sucesso!')
+      queryClient.invalidateQueries({ queryKey: ['appointments'] })
+      onOpenChange(false)
+      reset()
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Falha ao criar agendamento.'))
+    },
+  })
+
+  const onSubmit: SubmitHandler<AppointmentFormData> = (data) => createAppointment(data)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Novo Agendamento Individual</DialogTitle>
+          <DialogDescription>Para grupos e oficinas, use a aba "Grupos".</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="titulo">Título</Label>
+            <Controller
+              name="titulo"
+              control={control}
+              render={({ field }) => <Input id="titulo" placeholder="Ex: Visita Domiciliar" {...field} />}
+            />
+            {errors.titulo && <p className="text-xs text-destructive">{errors.titulo.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="data">Data</Label>
+              <Controller
+                name="data"
+                control={control}
+                render={({ field }) => <Input type="date" id="data" {...field} />}
+              />
+              {errors.data && <p className="text-xs text-destructive">{errors.data.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="time">Hora</Label>
+              <Controller
+                name="time"
+                control={control}
+                render={({ field }) => <Input type="time" id="time" {...field} />}
+              />
+              {errors.time && <p className="text-xs text-destructive">{errors.time.message}</p>}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Tipo de Agenda (Visual)</Label>
+            <Controller
+              name="tipo"
+              control={control}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(TYPE_COLORS).filter(t => t !== 'Grupo').map(type => (
+                      <SelectItem key={type} value={type}>
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+                          {type}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Vincular ao Caso</Label>
+            <Controller
+              name="casoId"
+              control={control}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value} disabled={!!defaultCaseId}>
+                  <SelectTrigger>
+                     <SelectValue placeholder={cases.length > 0 ? "Selecione um caso..." : "Nenhum caso disponível"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cases.map((c: any) => (
+                      <SelectItem key={c.id} value={c.id}>{c.nomeCompleto}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.casoId && <p className="text-xs text-destructive">{errors.casoId.message}</p>}
+          </div>
+
+          <div className="space-y-2">
+             <Label>Observações</Label>
+            <Controller
+              name="observacoes"
+              control={control}
+              render={({ field }) => (
+                <Textarea placeholder="Detalhes adicionais..." className="resize-none" {...field} value={field.value} />
+              )}
+            />
+          </div>
+
+          <DialogFooter>
+             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="submit" disabled={isCreating}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Agendar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// --- MODAL DE DETALHES ---
+function EventDetailModal({ event, onClose }: { event: any, onClose: () => void }) {
+  if (!event) return null
+
+  const { resourceId, description, type } = event.extendedProps
+  const isGroup = type === 'GRUPO'
+  const linkTo = isGroup ? ROUTES.GROUPS : ROUTES.CASE_DETAIL(resourceId)
+
+  return (
+    <Dialog open={!!event} onOpenChange={() => onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: event.backgroundColor }}></span>
+            {event.title}
+            {isGroup && <Badge variant="secondary" className="ml-2">COLETIVO</Badge>}
+          </DialogTitle>
+          <DialogDescription>
+            {event.start ? format(event.start, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {isGroup ? (
+             <div className="bg-muted/30 p-3 rounded-md text-sm border border-l-4 border-l-purple-500">
+               <div className="flex items-center gap-2 font-semibold mb-1">
+                 <Users className="h-4 w-4" /> Atividade Coletiva
+               </div>
+               <p className="mb-2">Esta é uma atividade de grupo.</p>
+               <Button asChild size="sm" variant="outline" className="w-full">
+                 <Link to={ROUTES.GROUPS}>Ir para Gestão de Grupos</Link>
+               </Button>
+             </div>
+          ) : (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground uppercase">Link Rápido</Label>
+              <p className="font-medium text-base">
+                {resourceId ? (
+                  <Link to={linkTo} className="hover:underline text-primary flex items-center gap-1">
+                    Ver Detalhes do Caso / Grupo <ChevronRight className="h-3 w-3" />
+                  </Link>
+                ) : 'Sem vínculo'}
+              </p>
+            </div>
+          )}
+
+          {description && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground uppercase">Detalhes/Observações</Label>
+              <p className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">{description}</p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={onClose}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// --- COMPONENTE PRINCIPAL ---
+export function Agenda() {
+  const [dateRange, setDateRange] = useState<{ start: Date, end: Date }>({
+    start: startOfMonth(new Date()),
+    end: endOfMonth(new Date())
+  })
+
+  // [CORREÇÃO] Recebe os dados brutos e trata dentro do componente
+  const { data: appointmentsData, isLoading } = useQuery({
+    queryKey: ['appointments', dateRange.start.toISOString(), dateRange.end.toISOString()],
+    queryFn: async () => {
+      const response = await api.get('/appointments', {
+        params: {
+          start: dateRange.start.toISOString(),
+          end: dateRange.end.toISOString()
+        }
+      })
+      return response.data
+    },
+    placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 60 * 5 
+  })
+
+  // [CORREÇÃO CRÍTICA] Normaliza a lista de agendamentos (Array vs Objeto)
+  const appointments: any[] = useMemo(() => {
+    if (!appointmentsData) return []
+    if (Array.isArray(appointmentsData)) return appointmentsData
+    return appointmentsData.data || appointmentsData.items || []
+  }, [appointmentsData])
+
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<string | undefined>()
+  const [selectedEvent, setSelectedEvent] = useState<any>(null)
+  const [searchParams] = useSearchParams()
+  const defaultCaseId = searchParams.get('caseId')
+
+  useEffect(() => {
+    if (defaultCaseId) {
+      setIsCreateOpen(true)
+    }
+  }, [defaultCaseId])
+
+  const calendarEvents = useMemo(() => {
+    return appointments.map((app: any) => {
+      let color = TYPE_COLORS['Outro']
+      
+      if (app.type === 'GRUPO') {
+        color = TYPE_COLORS['Grupo']
+      } else {
+        const lowerTitle = app.title?.toLowerCase?.() ?? ''
+        if (lowerTitle.includes('visita')) color = TYPE_COLORS['Visita']
+        else if (lowerTitle.includes('atendimento')) color = TYPE_COLORS['Atendimento']
+        else if (lowerTitle.includes('reunião')) color = TYPE_COLORS['Reunião']
+        else if (lowerTitle.includes('retorno')) color = TYPE_COLORS['Retorno']
+      }
+
+      // [CORREÇÃO] Aceita 'start' ou 'data' como propriedade de data
+      const eventStart = app.start || app.data
+
+      return {
+        id: app.id,
+        title: app.title,
+        start: eventStart,
+        backgroundColor: color,
+        borderColor: color,
+        extendedProps: {
+          type: app.type,
+          description: app.description,
+          resourceId: app.resourceId
+        }
+      }
+    })
+  }, [appointments])
+
+  const handleDateClick = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    setSelectedDate(dateStr)
+    setIsCreateOpen(true)
+  }
+
+  const handleEventClick = (info: any) => {
+    setSelectedEvent(info.event)
+  }
+
+  const handleDatesSet = (arg: { start: Date; end: Date }) => {
+    setDateRange({ start: arg.start, end: arg.end })
+  }
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-100px)] gap-6 animate-in fade-in duration-500">
+      <div className="flex-none flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <CalendarIcon className="h-8 w-8 text-primary" /> Agenda Integrada
+          </h1>
+          <p className="text-muted-foreground">Atendimentos individuais e atividades coletivas.</p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Tag className="h-4 w-4" /> Legenda
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-48 p-3">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none text-xs text-muted-foreground uppercase mb-2">Tipos</h4>
+                {Object.entries(TYPE_COLORS).map(([name, color]) => (
+                  <div key={name} className="flex items-center gap-2 text-sm">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                    {name}
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Button size="lg" className="shadow-sm" onClick={() => { setSelectedDate(undefined); setIsCreateOpen(true); }}>
+            <Plus className="mr-2 h-5 w-5" /> Novo Agendamento
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 relative">
+        {isLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          </div>
+        ) : null}
+
+        <FullCalendarWidget
+          events={calendarEvents}
+          onDateClick={handleDateClick}
+          onEventClick={handleEventClick}
+          datesSet={handleDatesSet}
+        />
+      </div>
+
+      <NewAppointmentModal
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        defaultCaseId={defaultCaseId}
+        defaultDate={selectedDate}
+        defaultTime="09:00"
+      />
+
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+      />
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\CaseDetail.tsx
+==================================================================
+import { useState, Suspense, lazy } from "react"
+import { useParams, useNavigate } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  ArrowLeft, Calendar, MapPin, Phone, FileText, Clock, AlertTriangle,
+  Paperclip, Activity, Edit, CheckCircle2, Circle, ShieldCheck, Network, 
+  Loader2, Users, PackageCheck, Printer} from "lucide-react"
+import { clsx } from "clsx"
+
+// Imports para o Formulário Padronizado
+import { useForm, Controller, type SubmitHandler } from "react-hook-form"
+import { z } from "zod"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+import { api } from '@/lib/api'
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { toast } from "sonner"
+
+import { CaseStatusBadge } from "@/components/case/CaseStatusBadge"
+import { getUrgencyColor } from "@/constants/caseConstants"
+import { isValidBrazilianPhone } from "@/utils/phone"
+import { format, parse } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { formatCPF, formatPhone } from '@/utils/formatters'
+
+// Gerador de PDF
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+import { OverviewTab } from '@/components/case/tabs/OverviewTab'
+import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
+import { FamilyTab } from '@/components/case/tabs/FamilyTab'
+import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
+
+const CaseForm = lazy(() => import("@/components/case/CaseForm").then(module => ({ default: module.CaseForm })))
+const CaseHistory = lazy(() => import("@/components/case/CaseHistory").then(module => ({ default: module.CaseHistory })))
+const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").then(module => ({ default: module.CaseEvolutions })))
+// CaseAttachments agora é importado diretamente para evitar erro de lazy loading de componente interno com props
+import { CaseAttachments } from "@/components/case/CaseAttachments"
+const WhatsAppButton = lazy(() => import("@/components/common/WhatsAppButton").then(module => ({ default: module.WhatsAppButton })))
+const CaseActions = lazy(() => import("@/components/case/CaseActions").then(module => ({ default: module.CaseActions })))
+const PafSection = lazy(() => import("@/components/case/PafSection").then(module => ({ default: module.PafSection })))
+
+import type { CaseDetailData } from '@/types/case'
+
+// --- CONSTANTES E UTILITÁRIOS LOCAIS ---
+
+const TYPE_COLORS: Record<string, string> = {
+  'Atendimento': '#2563eb',
+  'Visita': '#16a34a',
+  'Retorno': '#f97316',
+  'Reunião': '#9333ea',
+  'Grupo': '#7c3aed',
+  'Outro': '#64748b'
+}
+
+function combineDateAndTime(dateStr: string, timeStr: string): string {
+  try {
+    const date = parse(dateStr, 'yyyy-MM-dd', new Date())
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    date.setHours(hours, minutes, 0, 0)
+    return date.toISOString()
+  } catch (e) {
+    return new Date().toISOString()
+  }
+}
+
+// [CORREÇÃO] Schema Zod Ajustado para Build
+// Removemos o .optional() e .default() para evitar conflito de tipos com o useForm.
+// Como inicializamos o form com valores padrão, isso é seguro e satisfaz o TypeScript.
+const appointmentFormSchema = z.object({
+  titulo: z.string().min(1, 'O título é obrigatório.'),
+  data: z.string().min(1, 'Data obrigatória'),
+  time: z.string().regex(/^([0-1]\d|2[0-3]):[0-5]\d$/, 'Hora inválida (HH:MM).'),
+  tipo: z.string(), // Tipagem estrita: string
+  observacoes: z.string(), // Tipagem estrita: string
+})
+
+type AppointmentFormData = z.infer<typeof appointmentFormSchema>
+
+// --- FUNÇÕES DE PDF (Mantidas Originais) ---
+const generateCasePDF = (caso: any) => {
+  const doc = new jsPDF()
+  const today = new Date().toLocaleDateString('pt-BR')
+
+  doc.setFillColor(41, 37, 36)
+  doc.rect(0, 0, 210, 30, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(16)
+  doc.setFont('helvetica', 'bold')
+  doc.text('PRONTUÁRIO TÉCNICO - CREAS', 105, 12, { align: 'center' })
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Gerado em: ${today} • Confidencial`, 105, 20, { align: 'center' })
+
+  let y = 45
+  doc.setTextColor(0, 0, 0)
+
+  // 1. IDENTIFICAÇÃO
+  doc.setFontSize(12).setFont('helvetica', 'bold').text('1. IDENTIFICAÇÃO', 14, y)
+  doc.setLineWidth(0.5).line(14, y + 2, 196, y + 2)
+  y += 10
+  
+  doc.setFontSize(10).setFont('helvetica', 'normal')
+  doc.text(`Nome: ${caso.nomeCompleto}`, 14, y)
+  doc.text(`CPF: ${caso.cpf || '-'}`, 120, y)
+  y += 7
+  doc.text(`Data Nasc.: ${caso.nascimento ? new Date(caso.nascimento).toLocaleDateString('pt-BR') : '-'}`, 14, y)
+  doc.text(`Telefone: ${caso.telefone || '-'}`, 120, y)
+  y += 7
+  doc.text(`Endereço: ${caso.endereco}`, 14, y)
+  
+  if (caso.beneficios && caso.beneficios.length > 0) {
+    y += 7
+    doc.text(`Benefícios Ativos: ${caso.beneficios.join(', ')}`, 14, y)
+  }
+  y += 15
+
+  // 2. FAMÍLIA
+  doc.setFontSize(12).setFont('helvetica', 'bold').text('2. COMPOSIÇÃO FAMILIAR', 14, y)
+  doc.line(14, y + 2, 196, y + 2)
+  y += 5
+
+  if (caso.familia && caso.familia.length > 0) {
+    autoTable(doc, {
+      startY: y,
+      head: [['Nome', 'Parentesco', 'Idade', 'Renda']],
+      body: caso.familia.map((m: any) => [
+        m.nome, 
+        m.parentesco, 
+        m.idade ? `${m.idade} anos` : '-',
+        m.renda ? `R$ ${m.renda}` : '-'
+      ]),
+      theme: 'striped',
+      styles: { fontSize: 9 }
+    })
+    // @ts-ignore
+    y = doc.lastAutoTable.finalY + 15
+  } else {
+    doc.setFont('helvetica', 'italic').text('Sem registros familiares.', 14, y + 5)
+    y += 15
+  }
+
+  // 3. BENEFÍCIOS E REDE
+  if (y > 220) { doc.addPage(); y = 20 }
+  
+  doc.setFontSize(12).setFont('helvetica', 'bold').text('3. BENEFÍCIOS EVENTUAIS E REDE', 14, y)
+  doc.line(14, y + 2, 196, y + 2)
+  y += 5
+
+  doc.setFontSize(10).text('Benefícios Eventuais (Entregas):', 14, y + 5)
+  
+  const benData = caso.entregas?.length ? caso.entregas.map((b: any) => [
+      new Date(b.dataSolicitacao).toLocaleDateString('pt-BR'),
+      b.tipo,
+      b.status
+  ]) : [['-', 'Nenhum', '-']]
+
+  autoTable(doc, {
+      startY: y + 8,
+      head: [['Data', 'Item', 'Status']],
+      body: benData,
+      theme: 'plain',
+      tableWidth: 85,
+      margin: { left: 14 },
+      styles: { fontSize: 8 }
+  })
+
+  // @ts-ignore
+  const finalYBen = doc.lastAutoTable.finalY
+  
+  doc.text('Encaminhamentos (Rede):', 110, y + 5)
+  
+  const encData = caso.encaminhamentos?.length ? caso.encaminhamentos.map((e: any) => [
+      new Date(e.dataEnvio).toLocaleDateString('pt-BR'),
+      e.instituicao,
+      e.status
+  ]) : [['-', 'Nenhum', '-']]
+
+  autoTable(doc, {
+      startY: y + 8,
+      head: [['Data', 'Local', 'Status']],
+      body: encData,
+      theme: 'plain',
+      tableWidth: 85,
+      margin: { left: 110 },
+      styles: { fontSize: 8 }
+  })
+
+  // @ts-ignore
+  y = Math.max(finalYBen, doc.lastAutoTable.finalY) + 20
+
+  // 4. EVOLUÇÕES
+  if (y > 250) { doc.addPage(); y = 20 }
+  doc.setFontSize(12).setFont('helvetica', 'bold').text('4. HISTÓRICO TÉCNICO', 14, y)
+  doc.line(14, y + 2, 196, y + 2)
+  y += 5
+
+  if (caso.evolucoes && caso.evolucoes.length > 0) {
+    autoTable(doc, {
+      startY: y,
+      head: [['Data', 'Técnico', 'Descrição']],
+      body: caso.evolucoes.map((e: any) => [
+        new Date(e.createdAt).toLocaleDateString('pt-BR') + ' ' + new Date(e.createdAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}),
+        e.autor?.nome || 'Sistema',
+        e.conteudo
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [50, 50, 50] },
+      columnStyles: { 
+        0: { cellWidth: 30 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 'auto' } 
+      },
+      styles: { fontSize: 9, cellPadding: 3 }
+    })
+  } else {
+    doc.setFont('helvetica', 'italic').text('Sem evoluções registradas.', 14, y + 5)
+  }
+
+  doc.save(`prontuario_${caso.nomeCompleto.replace(/\s/g, '_')}.pdf`)
+}
+
+function TabSkeleton() {
+  return (
+    <div className="p-4 space-y-4">
+      <Skeleton className="h-8 w-1/3" />
+      <div className="grid gap-4">
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-10 w-2/3" />
+      </div>
+    </div>
+  )
+}
+
+function CaseWorkflow({ status }: { status: string }) {
+  const steps = [
+    { id: 'AGUARDANDO_ACOLHIDA', label: 'Triagem' },
+    { id: 'EM_ACOLHIDA', label: 'Acolhida' },
+    { id: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Distribuição' },
+    { id: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Esp.' },
+    { id: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Acompanhamento' },
+    { id: 'EM_MONITORAMENTO', label: 'Monitoramento' },
+    { id: 'DESLIGADO', label: 'Finalizado' }
+  ]
+
+  const currentIndex = steps.findIndex(s => s.id === status)
+  const activeIndex = currentIndex === -1 ? 0 : currentIndex
+
+  return (
+    <div className="w-full overflow-x-auto py-4">
+       <div className="min-w-[800px] flex items-center justify-between relative px-2">
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-muted -z-10 rounded-full" />
+        <div 
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-primary -z-10 transition-all duration-500 rounded-full" 
+          style={{ width: `${(activeIndex / (steps.length - 1)) * 100}%` }}
+        />
+
+        {steps.map((step, index) => {
+          const isCompleted = index <= activeIndex
+          const isCurrent = index === activeIndex
+
+          return (
+            <div key={step.id} className="flex flex-col items-center gap-2 bg-background px-2 z-10">
+               <div 
+                className={clsx(
+                  "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors duration-300",
+                  isCompleted ? "bg-primary border-primary text-primary-foreground" : "bg-muted border-muted-foreground/30 text-muted-foreground",
+                  isCurrent && "ring-4 ring-primary/20 scale-110"
+                )}
+              >
+                {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+              </div>
+               <span className={clsx("text-xs font-medium transition-colors", isCurrent ? "text-primary font-bold" : "text-muted-foreground")}>
+                {step.label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CaseHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: () => void }) {
+  const initial = (caseData.nomeCompleto || "U").charAt(0).toUpperCase()
+  
+  return (
+    <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+      <div className="space-y-2 flex-1">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Button variant="ghost" size="sm" className="-ml-2 h-8" onClick={() => window.history.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+          </Button>
+          <span className="text-xs text-muted-foreground/50">•</span>
+          <Badge variant="secondary" className="text-[10px] tracking-wider font-normal">
+             {caseData.orgaoDemandante}
+          </Badge>
+          {caseData.origem && (
+             <Badge variant="outline" className="text-[10px] tracking-wider font-normal border-primary/20 text-primary">
+                {caseData.origem.replace('_', ' ')}
+             </Badge>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="h-16 w-16 rounded-full bg-primary/10 text-primary text-2xl font-bold flex items-center justify-center border-2 border-background shadow-sm shrink-0">
+            {initial}
+          </div>
+          
+          <div>
+             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{caseData.nomeCompleto}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <CaseStatusBadge status={caseData.status} />
+              <Badge variant="outline" className={`${getUrgencyColor(caseData.urgencia)} border`}>
+                {caseData.urgencia || "Não classificado"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mt-4 pl-1 sm:pl-20">
+          <div className="flex items-center gap-1.5" title="CPF">
+            <FileText className="h-4 w-4" /> {formatCPF(caseData.cpf)}
+          </div>
+          
+          <div className="flex items-center gap-1.5 group cursor-pointer" title="Telefone">
+            <Phone className="h-4 w-4" />
+            <span>{formatPhone(caseData.telefone) || "Sem telefone"}</span>
+            {isValidBrazilianPhone(caseData.telefone) && (
+              <Suspense fallback={null}>
+                <WhatsAppButton 
+                  phone={caseData.telefone!} 
+                  name={caseData.nomeCompleto} 
+                  template="geral" 
+                  size="icon" 
+                  variant="ghost" 
+                  label="" 
+                />
+              </Suspense>
+            )}
+           </div>
+
+          <div className="flex items-center gap-1.5 max-w-md truncate" title={caseData.endereco}>
+            <MapPin className="h-4 w-4" /> {caseData.endereco || "Endereço não informado"}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 pl-1 sm:pl-0 mt-4 md:mt-0 items-start justify-end">
+        <Button variant="outline" onClick={() => generateCasePDF(caseData)} className="shadow-sm">
+          <Printer className="mr-2 h-4 w-4" /> Prontuário
+        </Button>
+
+        <Dialog>
+          <DialogTrigger asChild>
+             <Button variant="outline" onClick={onEdit} className="shadow-sm">
+              <Edit className="mr-2 h-4 w-4" /> Editar
+            </Button>
+          </DialogTrigger>
+        </Dialog>
+
+        <Suspense fallback={<Button disabled variant="outline">...</Button>}>
+          <CaseActions 
+            caseId={caseData.id} 
+            status={caseData.status} 
+            currentSpecialistId={caseData.especialistaPAEFI?.id} 
+          />
+        </Suspense>
+      </div>
+    </div>
+  )
+}
+
+export function CaseDetail() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState("overview")
+  const [isApptOpen, setIsApptOpen] = useState(false)
+
+  // --- FORMULÁRIO PADRONIZADO (HOOK FORM + ZOD) ---
+  const { 
+    control, 
+    handleSubmit, 
+    reset, 
+    formState: { errors } 
+  } = useForm<AppointmentFormData>({
+    resolver: zodResolver(appointmentFormSchema),
+    defaultValues: {
+      titulo: '',
+      data: format(new Date(), 'yyyy-MM-dd'),
+      time: '09:00',
+      tipo: 'Atendimento',
+      observacoes: ''
+    }
+  })
+
+  // Queries e Mutations
+  const { data: caseData, isLoading, isError, refetch } = useQuery<CaseDetailData>({
+    queryKey: ["case", id],
+    queryFn: async () => (await api.get(`/cases/${id}`)).data,
+    enabled: !!id,
+    staleTime: 1000 * 60,
+  })
+
+  const appointmentsQuery = useQuery({
+    queryKey: ["appointments", id],
+    queryFn: async () => {
+      try { return (await api.get(`/appointments`, { params: { caseId: id } })).data }
+      catch { return [] }
+    },
+    enabled: !!id && activeTab === "appointments",
+    staleTime: 1000 * 30,
+  })
+
+  const appointmentsList = Array.isArray(appointmentsQuery.data) ? appointmentsQuery.data : []
+
+  const { mutate: createAppointment, isPending: isCreatingAppt } = useMutation({
+    mutationFn: async (data: AppointmentFormData) => {
+      const isoDate = combineDateAndTime(data.data, data.time)
+      await api.post("/appointments", {
+        titulo: data.titulo,
+        data: isoDate,
+        tipo: data.tipo,
+        observacoes: data.observacoes,
+        casoId: id
+      })
+    },
+    onSuccess: () => {
+      toast.success("Agendamento criado com sucesso!")
+      setIsApptOpen(false)
+      reset() // Limpa o form
+      queryClient.invalidateQueries({ queryKey: ["appointments", id] })
+      queryClient.invalidateQueries({ queryKey: ["case-logs", id] })
+    },
+    onError: () => toast.error("Erro ao criar agendamento.")
+  })
+
+  // [CORREÇÃO] Tipagem explícita do handler
+  const onSubmitAppt: SubmitHandler<AppointmentFormData> = (data) => createAppointment(data)
+
+  if (isLoading) {
+    return (
+      <div className="p-8 space-y-8 container mx-auto max-w-6xl">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-16 w-16 rounded-full" />
+          <div className="space-y-2 w-full max-w-md">
+            <Skeleton className="h-8 w-3/4" />
+             <Skeleton className="h-4 w-1/2" />
+          </div>
+        </div>
+        <Skeleton className="h-[200px] w-full rounded-xl" />
+      </div>
+    )
+  }
+
+  if (isError || !caseData) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground animate-in zoom-in-95">
+        <div className="bg-destructive/10 p-4 rounded-full mb-4">
+          <AlertTriangle className="h-10 w-10 text-destructive" />
+         </div>
+        <h2 className="text-xl font-semibold text-foreground">Caso não encontrado</h2>
+        <div className="flex gap-2 mt-4">
+          <Button variant="outline" onClick={() => navigate("/cases")}>Voltar para Lista</Button>
+          <Button onClick={() => refetch()}>Tentar Novamente</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const handleOpenEdit = () => setIsEditOpen(true)
+
+  return (
+    <div className="container mx-auto max-w-6xl py-6 space-y-8 animate-in fade-in duration-500">
+      
+      <CaseHeader caseData={caseData} onEdit={handleOpenEdit} />
+
+      <Separator />
+
+      <CaseWorkflow status={caseData.status} />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full justify-start h-auto p-1 bg-muted/40 border border-border/50 overflow-x-auto flex-wrap gap-1">
+          <TabsTrigger value="overview" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <Activity className="h-4 w-4" /> Visão Geral
+          </TabsTrigger>
+          
+          <TabsTrigger value="family" className="gap-2 data-[state=active]:bg-background">
+             <Users className="h-4 w-4" /> Família
+          </TabsTrigger>
+
+          <TabsTrigger value="deliverables" className="gap-2 data-[state=active]:bg-background">
+            <PackageCheck className="h-4 w-4" /> Benefícios
+          </TabsTrigger>
+
+          {['EM_ACOLHIDA_ESPECIALIZADA', 'EM_ACOMPANHAMENTO_PAEFI', 'DESLIGADO'].includes(caseData.status) && (
+            <TabsTrigger value="paf" className="gap-2 data-[state=active]:bg-background">
+              <FileText className="h-4 w-4" /> PAF
+            </TabsTrigger>
+          )}
+
+          <TabsTrigger value="evolutions" className="gap-2 data-[state=active]:bg-background">
+            <FileText className="h-4 w-4" /> Evoluções
+          </TabsTrigger>
+          
+          <TabsTrigger value="referrals" className="gap-2 data-[state=active]:bg-background">
+            <Network className="h-4 w-4" /> Rede
+          </TabsTrigger>
+
+          <TabsTrigger value="appointments" className="gap-2 data-[state=active]:bg-background">
+            <Calendar className="h-4 w-4" /> Agendamentos
+           </TabsTrigger>
+          <TabsTrigger value="attachments" className="gap-2 data-[state=active]:bg-background">
+            <Paperclip className="h-4 w-4" /> Anexos
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-2 data-[state=active]:bg-background">
+            <ShieldCheck className="h-4 w-4" /> Auditoria
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-6 focus-visible:outline-none">
+           <OverviewTab caseData={caseData} />
+        </TabsContent>
+
+        <TabsContent value="family" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <FamilyTab caseId={id!} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="deliverables" className="mt-6">
+           <Suspense fallback={<TabSkeleton />}>
+              <DeliverablesTab caseId={id!} />
+           </Suspense>
+        </TabsContent>
+
+        <TabsContent value="paf" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <PafSection caseData={caseData} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="evolutions" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <CaseEvolutions caseId={id!} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="referrals" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <ReferralsTab caseId={id!} />
+           </Suspense>
+        </TabsContent>
+
+        <TabsContent value="appointments" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div>
+                  <CardTitle>Agendamentos</CardTitle>
+                  <CardDescription>Gestão de comparecimentos</CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setIsApptOpen(true)}>
+                  <Calendar className="mr-2 h-4 w-4"/> Novo
+                </Button>
+              </CardHeader>
+              <CardContent>
+                 {appointmentsQuery.isLoading ? <TabSkeleton /> : (appointmentsList.length === 0 ? <div className="text-center py-10 text-muted-foreground">Nenhum agendamento.</div> : (
+                   <div className="space-y-3">
+                      {appointmentsList.map((app: any) => {
+                        const safeDate = app.start || app.data;
+                        const safeTitle = app.title || app.titulo;
+                        
+                        return (
+                         <div key={app.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/5 transition-all">
+                            <div className="flex gap-4">
+                              <div className="bg-primary/10 p-2.5 rounded-lg h-fit text-primary"><Clock className="h-5 w-5"/></div>
+                              <div>
+                                <h4 className="font-semibold text-sm">{safeTitle}</h4>
+                                <p className="text-sm text-muted-foreground capitalize">
+                                  {safeDate ? format(new Date(safeDate), "eeee, dd 'de' MMMM 'às' HH:mm", { locale: ptBR }) : "Data a definir"}
+                                </p>
+                              </div>
+                            </div>
+                            <Suspense fallback={null}>
+                              {isValidBrazilianPhone(caseData.telefone) && safeDate && (
+                                <WhatsAppButton 
+                                  phone={caseData.telefone!} 
+                                  name={caseData.nomeCompleto} 
+                                  template="agendamento" 
+                                  data={{ date: safeDate }} 
+                                  label="Confirmar" 
+                                  size="sm" 
+                                />
+                              )}
+                            </Suspense>
+                         </div>
+                        )
+                      })}
+                   </div>
+                ))}
+              </CardContent>
+            </Card>
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="attachments" className="mt-6">
+           <Suspense fallback={<TabSkeleton />}>
+             {/* [CORREÇÃO] Passando a prop caseId corretamente agora */}
+             <CaseAttachments caseId={id!} onError={() => toast.error("Erro ao carregar anexos.")} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-6">
+          <Suspense fallback={<TabSkeleton />}>
+            <CaseHistory caseId={id!} showOnlyLogs />
+          </Suspense>
+        </TabsContent>
+      </Tabs>
+
+       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Editar Prontuário</DialogTitle></DialogHeader>
+          <Suspense fallback={<div className="h-64 flex items-center justify-center"><Skeleton className="h-10 w-10 rounded-full animate-spin" /></div>}>
+            <CaseForm initialData={caseData} caseId={caseData.id} onCaseCreated={() => { setIsEditOpen(false); refetch(); }} />
+          </Suspense>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL PADRONIZADO IGUAL AGENDA */}
+      <Dialog open={isApptOpen} onOpenChange={setIsApptOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+           <DialogHeader>
+            <DialogTitle>Novo Agendamento</DialogTitle>
+            <DialogDescription>Agendamento vinculado a {caseData.nomeCompleto}</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit(onSubmitAppt)} className="space-y-4 py-2">
+            
+            {/* TÍTULO */}
+            <div className="space-y-2">
+              <Label htmlFor="titulo">Título</Label>
+              <Controller
+                name="titulo"
+                control={control}
+                render={({ field }) => <Input id="titulo" placeholder="Ex: Visita Domiciliar" {...field} />}
+              />
+              {errors.titulo && <p className="text-xs text-destructive">{errors.titulo.message}</p>}
+            </div>
+
+            {/* DATA E HORA */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="data">Data</Label>
+                <Controller
+                  name="data"
+                  control={control}
+                  render={({ field }) => <Input type="date" id="data" {...field} />}
+                />
+                {errors.data && <p className="text-xs text-destructive">{errors.data.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="time">Hora</Label>
+                <Controller
+                  name="time"
+                  control={control}
+                  render={({ field }) => <Input type="time" id="time" {...field} />}
+                />
+                {errors.time && <p className="text-xs text-destructive">{errors.time.message}</p>}
+              </div>
+            </div>
+
+            {/* TIPO (COLORIDO) */}
+            <div className="space-y-2">
+              <Label>Tipo de Agenda</Label>
+              <Controller
+                name="tipo"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(TYPE_COLORS).filter(t => t !== 'Grupo').map(type => (
+                        <SelectItem key={type} value={type}>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+                            {type}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+
+            {/* OBSERVAÇÕES */}
+            <div className="space-y-2">
+              <Label htmlFor="obs">Observações</Label>
+              <Controller
+                name="observacoes"
+                control={control}
+                render={({ field }) => (
+                  <Textarea id="obs" placeholder="Detalhes adicionais..." className="resize-none" {...field} value={field.value || ''} />
+                )}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setIsApptOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={isCreatingAppt}>
+                {isCreatingAppt && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Agendar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\Cases.tsx
+==================================================================
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { Loader2, LayoutList, Kanban as KanbanIcon, Users, User, FilterX } from 'lucide-react'
+import { CaseTable } from '@/components/case/CaseTable'
+import { CaseKanban } from '@/components/case/CaseKanban'
+import { CaseFilters } from '@/components/case/CaseFilters'
+import { Button } from '@/components/ui/button'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
+type ViewMode = 'table' | 'kanban'
+type FilterView = 'my' | 'all'
+
+export function Cases() {
+  const { user, isSessionLoading } = useAuth()
+  
+  const [viewMode, setViewMode] = useState<ViewMode>('table')
+  const [filterView, setFilterView] = useState<FilterView>('my')
+
+  const [filters, setFilters] = useState({
+    search: '',
+    status: '',
+    urgencia: ''
+  })
+
+  // [CORREÇÃO] Lógica de Visualização Padrão solicitada
+  useEffect(() => {
+    if (viewMode === 'kanban') {
+      setFilterView('all') // Kanban vê o todo
+    } else {
+      setFilterView('my')  // Tabela vê o individual
+    }
+  }, [viewMode])
+
+  // Query para o Kanban
+  const { data: kanbanCases, isLoading: isLoadingKanban } = useQuery({
+    queryKey: ['cases', 'kanban', filterView, filters],
+    queryFn: async () => {
+      const res = await api.get('/cases', { 
+        params: { 
+          pageSize: 100, 
+          view: filterView,
+          ...filters 
+        } 
+      })
+      return res.data.data || res.data.items || [] 
+    },
+    enabled: viewMode === 'kanban', 
+    staleTime: 1000 * 60
+  })
+
+  if (isSessionLoading) {
+    return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+  }
+
+  const getTitle = () => {
+    if (filterView === 'all') return 'Visão Geral da Unidade'
+    
+    const roleTitles: Record<string, string> = {
+      Gerente: 'Distribuição e Pendências',
+      'Agente_Social': 'Minha Caixa de Acolhida',
+      Especialista: 'Meus Acompanhamentos (PAEFI)',
+    }
+    return roleTitles[user?.cargo || ''] ?? 'Meus Casos'
+  }
+
+  const clearFilters = () => setFilters({ search: '', status: '', urgencia: '' })
+  const hasActiveFilters = filters.search || filters.status || filters.urgencia
+
+  return (
+    <div className="space-y-6 h-full flex flex-col p-2 sm:p-0 animate-in fade-in duration-500">
+      
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">{getTitle()}</h2>
+          <p className="text-muted-foreground">
+            {filterView === 'all' 
+              ? 'Visualizando fluxo completo da unidade.' 
+              : 'Focando apenas nos casos sob sua responsabilidade direta.'}
+          </p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          {/* Seletor de Escopo (Manual) */}
+          <Tabs value={filterView} onValueChange={(v) => setFilterView(v as FilterView)} className="w-full sm:w-[240px]">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="my" className="gap-2">
+                <User className="h-3.5 w-3.5" /> Meus
+              </TabsTrigger>
+              <TabsTrigger value="all" className="gap-2">
+                <Users className="h-3.5 w-3.5" /> Todos
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Alternador de Visualização */}
+          <div className="flex items-center bg-muted p-1 rounded-lg">
+            <Button 
+              variant={viewMode === 'table' ? 'default' : 'ghost'} 
+              size="sm" 
+              className="h-8"
+              onClick={() => setViewMode('table')}
+            >
+              <LayoutList className="h-4 w-4 mr-2" /> Lista
+            </Button>
+            <Button 
+              variant={viewMode === 'kanban' ? 'default' : 'ghost'} 
+              size="sm" 
+              className="h-8"
+              onClick={() => setViewMode('kanban')}
+            >
+              <KanbanIcon className="h-4 w-4 mr-2" /> Quadro
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Barra de Filtros */}
+      <div className="bg-background/50 backdrop-blur-sm sticky top-0 z-10 py-2 border-b flex items-center gap-2">
+        <div className="flex-1">
+          <CaseFilters filters={filters} setFilters={setFilters} />
+        </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground hover:text-destructive">
+            <FilterX className="h-4 w-4 mr-2" /> Limpar
+          </Button>
+        )}
+      </div>
+
+      {/* Conteúdo */}
+      <div className="flex-1 overflow-hidden min-h-[400px]">
+        {viewMode === 'table' ? (
+          <CaseTable
+            title="" 
+            description=""
+            endpoint="/cases"
+            defaultView={filterView}
+            filters={filters} 
+          />
+        ) : (
+          <CaseKanban 
+            cases={kanbanCases || []} 
+            isLoading={isLoadingKanban} 
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\ClosedCases.tsx
+==================================================================
+// frontend/src/pages/ClosedCases.tsx
+import { CaseTable } from '@/components/case/CaseTable'
+import { useAuth } from '@/hooks/useAuth'
+import { Loader2 } from 'lucide-react'
+
+export function ClosedCases() {
+  const { user, isSessionLoading } = useAuth()
+
+  if (isSessionLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">
+          Sessão expirada. Faça login novamente.
+        </p>
+      </div>
+    )
+  }
+
+  // [CORREÇÃO] Usando chaves com underline
+  const titlesByRole: Record<string, string> = {
+    Gerente: 'Arquivo Morto (Todos)',
+    'Agente_Social': 'Meus Casos Finalizados',
+    Especialista: 'Histórico de Acompanhamentos',
+  }
+
+  const title = titlesByRole[user.cargo] ?? 'Casos Finalizados'
+
+  const description =
+    user.cargo === 'Gerente'
+      ? 'Consulta completa ao histórico de casos desligados da unidade.'
+      : 'Consulte os casos que você atendeu e já foram desligados.'
+
+  return (
+    <CaseTable
+      title={title}
+      description={description}
+      endpoint="/cases/closed"
+    />
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\Dashboard.tsx
+==================================================================
+// frontend/src/pages/Dashboard.tsx
+import React from 'react' // [CORREÇÃO] Import necessário para tipagem
+import { useAuth } from '@/hooks/useAuth'
+import { Loader2 } from 'lucide-react'
+import { ManagerDashboard } from './ManagerDashboard'
+import { TechnicianDashboard } from './TechnicianDashboard'
+import { SocialAgentDashboard } from './SocialAgentDashboard'
+
+type Cargo = 'Gerente' | 'Agente_Social' | 'Especialista' | string
+
+// [CORREÇÃO] Tipo React.ReactNode em vez de JSX.Element
+const DASHBOARD_BY_ROLE: Record<Cargo, React.ReactNode> = {
+  Gerente: <ManagerDashboard />,
+  'Agente_Social': <SocialAgentDashboard />,
+  Especialista: <TechnicianDashboard />,
+}
+
+export function Dashboard() {
+  const { user, isSessionLoading } = useAuth()
+
+  if (isSessionLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-muted-foreground text-sm">
+          Sessão expirada. Faça login novamente.
+        </p>
+      </div>
+    )
+  }
+
+  const dashboard = DASHBOARD_BY_ROLE[user.cargo] ?? (
+    <div className="text-center p-6 border rounded-md">
+      Cargo "{user.cargo}" não possui dashboard configurado.
+    </div>
+  )
+
+  const subtitle =
+    user.cargo === 'Agente_Social'
+      ? 'Painel de Acolhida e Triagem.'
+      : user.cargo === 'Gerente'
+      ? 'Resumo geral da unidade.'
+      : 'Seus alertas e atividades recentes.'
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold">Bem-vindo, {user.nome}!</h1>
+        <p className="text-muted-foreground">{subtitle}</p>
+      </header>
+
+      {dashboard}
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\GlobalAudit.tsx
+==================================================================
+// frontend/src/pages/GlobalAudit.tsx
+import { useState } from "react"
+import { useQuery, keepPreviousData } from "@tanstack/react-query" // [CORREÇÃO] Importando keepPreviousData se for v5
+import { api } from "@/lib/api"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { ShieldCheck, Filter, Search } from "lucide-react" // [CORREÇÃO] Loader2 está sendo usado no loading
+
+import {
+  Table, TableBody, TableCell, TableHead,
+  TableHeader, TableRow
+} from "@/components/ui/table"
+import {
+  Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue
+} from "@/components/ui/select"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Pagination } from "@/components/common/Pagination"
+import { Input } from "@/components/ui/input"
+import { useAuth } from "@/hooks/useAuth"
+
+const ACOES = [
+  { value: "CRIACAO", label: "Criação de Caso" },
+  { value: "MUDANCA_STATUS", label: "Mudança de Status" },
+  { value: "ATRIBUICAO", label: "Atribuição Técnica" },
+  { value: "DESLIGAMENTO", label: "Desligamento" },
+  { value: "PAF_CRIADO", label: "Criação de PAF" },
+  { value: "PAF_ATUALIZADO", label: "Edição de PAF" },
+]
+
+// [CORREÇÃO] Interface para a resposta da API
+interface AuditResponse {
+  data: any[]
+  meta: {
+    total: number
+    totalPages: number
+    page: number
+  }
+}
+
+export function GlobalAudit() {
+  const { user } = useAuth()
+  const [page, setPage] = useState(1)
+
+  const [filters, setFilters] = useState({
+    periodo: "7dias",
+    acao: "all",
+    search: "",
+  })
+
+  // [CORREÇÃO] Tipagem do useQuery
+  const { data: responseData, isLoading } = useQuery<AuditResponse>({
+    queryKey: ["audit-logs", page, filters],
+    queryFn: async () => {
+      const res = await api.get("/audit", {
+        params: {
+          page,
+          pageSize: 15,
+          periodo: filters.periodo,
+          acao: filters.acao === "all" ? undefined : filters.acao,
+          search: filters.search || undefined,
+        },
+      })
+      return res.data
+    },
+    // [CORREÇÃO] Ajuste para TanStack Query v5 (placeholderData)
+    placeholderData: keepPreviousData 
+  })
+
+  const logs = responseData?.data || []
+  const meta = responseData?.meta || { total: 0, totalPages: 1, page: 1 }
+
+  const actionBadge = (acao: string) => {
+    const map: Record<string, string> = {
+      DESLIGAMENTO: "bg-red-100 text-red-700 border-red-200",
+      CRIACAO: "bg-blue-100 text-blue-700 border-blue-200",
+      ATRIBUICAO: "bg-purple-100 text-purple-700 border-purple-200",
+      PAF_CRIADO: "bg-emerald-100 text-emerald-700 border-emerald-200",
+      PAF_ATUALIZADO: "bg-amber-100 text-amber-700 border-amber-200",
+    }
+    return map[acao] ?? "bg-gray-100 text-gray-700 border-gray-200"
+  }
+
+  if (user?.cargo !== "Gerente") {
+    return <div className="p-10 text-center text-destructive">Acesso negado.</div>
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex items-center gap-3">
+        <div className="p-3 bg-primary/10 rounded-full">
+          <ShieldCheck className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">Auditoria Global</h1>
+          <p className="text-muted-foreground">
+            Rastreamento completo de ações no sistema.
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-4 border-b bg-muted/20">
+          <div className="flex flex-col sm:flex-row justify-between gap-4">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Filter className="h-4 w-4" /> Filtros
+            </CardTitle>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Select
+                value={filters.acao}
+                onValueChange={(v) => { setFilters(prev => ({ ...prev, acao: v })); setPage(1); }}
+              >
+                <SelectTrigger className="w-[200px]"><SelectValue placeholder="Ação" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as ações</SelectItem>
+                  {ACOES.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filters.periodo}
+                onValueChange={(v) => { setFilters(prev => ({ ...prev, periodo: v })); setPage(1); }}
+              >
+                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Período" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hoje">Hoje</SelectItem>
+                  <SelectItem value="7dias">Últimos 7 dias</SelectItem>
+                  <SelectItem value="30dias">Últimos 30 dias</SelectItem>
+                  <SelectItem value="tudo">Todo o histórico</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative w-full sm:w-[240px]">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar..."
+                  className="pl-8"
+                  value={filters.search}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFilters(prev => ({ ...prev, search: e.target.value })); setPage(1); }}
+                />
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="w-[160px]">Data</TableHead>
+                <TableHead className="w-[200px]">Responsável</TableHead>
+                <TableHead className="w-[150px]">Ação</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead className="w-[220px]">Caso</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {isLoading && [...Array(8)].map((_, i) => (
+                  <TableRow key={i}><TableCell colSpan={5}><div className="h-8 w-full animate-pulse bg-muted/20 rounded" /></TableCell></TableRow>
+              ))}
+              {!isLoading && logs.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Nenhum registro encontrado.</TableCell></TableRow>
+              )}
+              {logs.map((log: any) => (
+                <TableRow key={log.id} className="hover:bg-muted/10">
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col leading-tight">
+                      <span className="font-medium text-sm">{log.autor?.nome || 'Sistema'}</span>
+                      <span className="text-[10px] uppercase text-muted-foreground">{log.autor?.cargo || '-'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`${actionBadge(log.acao)} text-[10px]`}>{log.acao}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">{log.descricao}</TableCell>
+                  <TableCell className="text-sm font-medium text-primary">{log.caso?.nome || "--"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+
+        <div className="p-4 border-t">
+          <Pagination
+            currentPage={page}
+            totalPages={meta.totalPages}
+            totalItems={meta.total}
+            pageSize={15}
+            onPageChange={setPage}
+          />
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\GroupManagement.tsx
+==================================================================
+// frontend/src/pages/GroupManagement.tsx
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { format, isFuture, isToday, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+
+import { generateGroupAttendancePDF } from '@/utils/pdfGenerator'
+import type { GroupActivity } from '@/types/group'
+
+const ORGAOS_LIST = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT', 'Polícia Civil']
+
+export function GroupManagement() {
+  const queryClient = useQueryClient()
+  
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState<GroupActivity | null>(null)
+  
+  const [newTheme, setNewTheme] = useState('')
+  const [newType, setNewType] = useState('OFICINA')
+  const [selectedDates, setSelectedDates] = useState<string[]>([])
+  const [tempDate, setTempDate] = useState('')
+  
+  const [newLocal, setNewLocal] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [newOrgaos, setNewOrgaos] = useState<string[]>([])
+
+  const [participantToAdd, setParticipantToAdd] = useState('')
+
+  const { data: groups = [], isLoading } = useQuery<GroupActivity[]>({
+    queryKey: ['groups'],
+    queryFn: async () => (await api.get('/groups')).data
+  })
+
+  const { data: groupDetails, isLoading: isLoadingDetails } = useQuery<GroupActivity>({
+    queryKey: ['group', selectedGroup?.id],
+    queryFn: async () => (await api.get(`/groups/${selectedGroup?.id}`)).data,
+    enabled: !!selectedGroup
+  })
+
+  const { data: activeCasesData } = useQuery({
+    queryKey: ['cases', 'active-select'],
+    queryFn: async () => {
+      const res = await api.get('/cases', { params: { pageSize: 100, view: 'all' } })
+      return res.data.items
+    },
+    enabled: !!selectedGroup,
+    staleTime: 1000 * 60 * 5
+  })
+
+  const { mutate: createGroup, isPending: isCreating } = useMutation({
+    mutationFn: async () => {
+      await api.post('/groups', {
+        tema: newTheme,
+        tipo: newType,
+        datas: selectedDates,
+        local: newLocal,
+        descricao: newDesc,
+        orgaosEnvolvidos: newOrgaos
+      })
+    },
+    onSuccess: () => {
+      toast.success('Atividade(s) criada(s)!')
+      setIsCreateOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      setNewTheme(''); setSelectedDates([]); setTempDate(''); setNewLocal(''); setNewDesc(''); setNewOrgaos([])
+    },
+    onError: () => toast.error('Erro ao criar grupo.')
+  })
+
+  const { mutate: updateAttendance } = useMutation({
+    mutationFn: async ({ caseId, presente }: { caseId: string, presente: boolean }) => {
+      if (!selectedGroup) return
+      await api.patch(`/groups/${selectedGroup.id}/attendance/${caseId}`, { presente })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', selectedGroup?.id] })
+      toast.success('Presença registrada.')
+    }
+  })
+
+  const { mutate: addParticipant, isPending: isAddingParticipant } = useMutation({
+    mutationFn: async () => {
+      if (!selectedGroup || !participantToAdd) return
+      await api.post(`/groups/${selectedGroup.id}/participants`, {
+        caseIds: [participantToAdd]
+      })
+    },
+    onSuccess: () => {
+      toast.success('Participante incluído!')
+      setParticipantToAdd('')
+      queryClient.invalidateQueries({ queryKey: ['group', selectedGroup?.id] })
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+    }
+  })
+
+  const toggleOrgao = (orgao: string) => {
+    setNewOrgaos(prev => prev.includes(orgao) ? prev.filter(o => o !== orgao) : [...prev, orgao])
+  }
+
+  const handleAddDate = () => {
+    if (tempDate && !selectedDates.includes(tempDate)) {
+      setSelectedDates(prev => [...prev, tempDate].sort()) 
+      setTempDate('')
+    }
+  }
+
+  const handleRemoveDate = (dateToRemove: string) => {
+    setSelectedDates(prev => prev.filter(d => d !== dateToRemove))
+  }
+
+  const handlePrint = (type: 'blank' | 'filled') => {
+    if (selectedGroup && groupDetails?.participantes) {
+      generateGroupAttendancePDF(selectedGroup, groupDetails.participantes, type)
+    }
+  }
+
+  // [CORREÇÃO DARK MODE] Cores adaptadas para não ficarem cinzas/feias
+  const getGroupStatusColor = (group: GroupActivity) => {
+    const date = new Date(group.dataRealizacao)
+    const isFutureDate = isFuture(date) || isToday(date)
+    
+    if (isFutureDate) {
+      return { 
+        border: 'bg-blue-500', 
+        // Light: Azul claro | Dark: Azul escuro transparente (sem cinza)
+        bg: 'hover:border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900/50', 
+        badge: 'text-blue-700 bg-blue-50 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800',
+        label: 'Agendado'
+      }
+    }
+    
+    if (group.attendanceConfirmed) {
+      return { 
+        border: 'bg-emerald-500', 
+        // Light: Verde claro | Dark: Verde escuro transparente
+        bg: 'hover:border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50', 
+        badge: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
+        label: 'Realizado'
+      }
+    }
+
+    return { 
+      border: 'bg-amber-500', 
+      // Light: Laranja claro | Dark: Laranja escuro transparente
+      bg: 'hover:border-amber-300 border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50', 
+      badge: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+      label: 'Pendente Chamada'
+    }
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Grupos e Oficinas</h1>
+          <p className="text-muted-foreground">Gestão de atividades coletivas e lista de presença.</p>
+        </div>
+        <Button onClick={() => setIsCreateOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Nova Atividade
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {isLoading && <div className="col-span-3 text-center py-10"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary"/></div>}
+        
+        {groups.map((group) => {
+          const statusStyle = getGroupStatusColor(group)
+
+          return (
+            <Card key={group.id} className={`cursor-pointer transition-all group overflow-hidden border ${statusStyle.bg}`} onClick={() => setSelectedGroup(group)}>
+              
+              <div className={`h-2 ${statusStyle.border} w-full`} />
+              
+              <CardHeader className="pb-3 pt-4">
+                <div className="flex justify-between items-start mb-2">
+                  <Badge variant="outline" className="bg-background text-[10px] font-normal uppercase tracking-wider">
+                    {group.tipo.replace(/_/g, ' ')}
+                  </Badge>
+                  
+                  <Badge variant="outline" className={`text-[10px] font-medium border ${statusStyle.badge}`}>
+                      {statusStyle.label}
+                  </Badge>
+                </div>
+                
+                <CardTitle className="text-lg leading-tight line-clamp-2 min-h-[3rem] text-foreground/90">
+                 {group.tema}
+                </CardTitle>
+                
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                   <CalendarDays className="h-3.5 w-3.5" />
+                   {format(new Date(group.dataRealizacao), "dd 'de' MMMM, HH:mm", { locale: ptBR })}
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/40 dark:bg-muted/10 p-2 rounded-md">
+                  <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-primary/70" /> 
+                  <span className="truncate leading-tight">{group.local || 'Local não definido'}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t dark:border-white/10">
+                  <span className="truncate max-w-[140px] font-medium text-foreground/80">
+                    Facilitador: {group.facilitador.nome.split(' ')[0]}
+                  </span>
+                  <div className="flex items-center gap-1.5 bg-primary/10 dark:bg-primary/20 px-2 py-0.5 rounded-full text-primary font-medium">
+                    <Users className="h-3.5 w-3.5"/> 
+                    <span>{group._count?.participantes || 0}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Nova Atividade Coletiva</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Tema / Nome da Atividade</Label>
+              <Input value={newTheme} onChange={e => setNewTheme(e.target.value)} placeholder="Ex: Oficina de Artes e Vínculos" />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={newType} onValueChange={setNewType}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OFICINA">Oficina</SelectItem>
+                    <SelectItem value="GRUPO_PAEFI">Grupo PAEFI</SelectItem>
+                    <SelectItem value="ACOLHIDA_COLETIVA">Acolhida Coletiva</SelectItem>
+                    <SelectItem value="REUNIAO_REDE">Reunião de Rede</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Local</Label>
+                <Input value={newLocal} onChange={e => setNewLocal(e.target.value)} placeholder="Ex: Sala 02" />
+              </div>
+            </div>
+
+            {/* SELEÇÃO DE MÚLTIPLAS DATAS */}
+            <div className="space-y-2 border p-3 rounded-md bg-muted/20">
+              <Label className="text-primary">Datas de Realização</Label>
+              <div className="flex gap-2">
+                <Input 
+                  type="datetime-local" 
+                  value={tempDate} 
+                  onChange={e => setTempDate(e.target.value)} 
+                  className="flex-1"
+                />
+                <Button variant="secondary" onClick={handleAddDate} disabled={!tempDate}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              {selectedDates.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedDates.map((date) => (
+                    <Badge key={date} variant="outline" className="pl-2 pr-1 py-1 gap-1 bg-background">
+                      {format(parseISO(date), "dd/MM HH:mm")}
+                      <button onClick={() => handleRemoveDate(date)} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">Nenhuma data selecionada.</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição / Metodologia</Label>
+              <Textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Objetivos e metodologia..." className="h-20"/>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Órgãos Parceiros Envolvidos</Label>
+              <div className="grid grid-cols-2 gap-2 border p-3 rounded-md">
+                {ORGAOS_LIST.map(org => (
+                  <div key={org} className="flex items-center space-x-2">
+                    <Checkbox id={org} checked={newOrgaos.includes(org)} onCheckedChange={() => toggleOrgao(org)} />
+                    <label htmlFor={org} className="text-sm cursor-pointer">{org}</label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={() => createGroup()} disabled={isCreating || !newTheme || selectedDates.length === 0}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} 
+              Criar {selectedDates.length > 1 ? `(${selectedDates.length} Sessões)` : 'Agendamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedGroup} onOpenChange={(open) => !open && setSelectedGroup(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedGroup?.tema} 
+              <Badge variant="secondary" className="ml-2 font-normal text-xs">{selectedGroup?.tipo.replace('_', ' ')}</Badge>
+            </DialogTitle>
+            <DialogDescription className="flex items-center gap-2">
+              {selectedGroup?.orgaosEnvolvidos && selectedGroup.orgaosEnvolvidos.length > 0 ? (
+                 <span className="flex gap-1 text-xs">Parceiros: {selectedGroup.orgaosEnvolvidos.join(', ')}</span>
+              ) : <span>Detalhes da atividade e participantes</span>}
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingDetails ? (
+            <div className="py-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground"/></div>
+          ) : (
+            <div className="flex-1 overflow-hidden flex flex-col gap-4">
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs border rounded-lg p-2 bg-muted/20">
+                <div className="p-2">
+                  <span className="block text-muted-foreground">Data</span>
+                  <span className="font-medium">{selectedGroup?.dataRealizacao ? format(new Date(selectedGroup.dataRealizacao), "dd/MM/yyyy HH:mm") : '-'}</span>
+                </div>
+                <div className="p-2 border-l border-border/50">
+                  <span className="block text-muted-foreground">Total Inscritos</span>
+                  <span className="font-bold text-lg">{groupDetails?.participantes?.length || 0}</span>
+                </div>
+                <div className="p-2 border-l border-border/50">
+                  <span className="block text-muted-foreground">Presentes</span>
+                  <span className="font-bold text-lg text-green-600 dark:text-green-400">{groupDetails?.participantes?.filter(p => p.presente).length || 0}</span>
+                </div>
+                <div className="p-2 border-l border-border/50">
+                  <span className="block text-muted-foreground">Ausentes</span>
+                  <span className="font-bold text-lg text-muted-foreground">{groupDetails?.participantes?.filter(p => !p.presente).length || 0}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePrint('blank')}>
+                   <Printer className="mr-2 h-4 w-4 text-muted-foreground" />
+                   Lista para Assinatura (Vazia)
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePrint('filled')}>
+                   <FileText className="mr-2 h-4 w-4 text-primary" />
+                   Relatório de Presença (Final)
+                </Button>
+              </div>
+
+              <div className="flex items-end gap-2 p-3 bg-muted/40 rounded-lg border border-dashed">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Adicionar Família/Usuário ao Grupo</Label>
+                  <Select value={participantToAdd} onValueChange={setParticipantToAdd}>
+                    <SelectTrigger className="h-9 bg-background">
+                      <SelectValue placeholder="Pesquisar caso ativo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeCasesData && activeCasesData.length > 0 ? (
+                        activeCasesData.map((c: any) => {
+                          const isAlreadyInGroup = groupDetails?.participantes?.some(p => p.casoId === c.id)
+                          if (isAlreadyInGroup) return null
+                          return <SelectItem key={c.id} value={c.id}>{c.nomeCompleto}</SelectItem>
+                        })
+                      ) : (
+                        <div className="p-2 text-xs text-muted-foreground text-center">Nenhum caso disponível...</div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" onClick={() => addParticipant()} disabled={!participantToAdd || isAddingParticipant}>
+                  {isAddingParticipant ? <Loader2 className="h-4 w-4 animate-spin"/> : <UserPlus className="h-4 w-4 mr-2"/>}
+                  Incluir
+                </Button>
+              </div>
+              
+              <div className="flex-1 overflow-hidden border rounded-md flex flex-col">
+                <div className="bg-muted/50 p-2 text-xs font-semibold text-muted-foreground uppercase border-b">
+                  Lista de Chamada
+                </div>
+                <ScrollArea className="flex-1">
+                  {groupDetails?.participantes?.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                      <Users className="h-8 w-8 opacity-20" />
+                      <p>Nenhum participante vinculado ainda.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y dark:divide-white/10">
+                      {groupDetails?.participantes?.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between p-3 hover:bg-muted/10 transition-colors">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">{p.caso.nomeCompleto}</span>
+                            <span className="text-[10px] text-muted-foreground">ID: {p.caso.id.slice(0, 8)}...</span>
+                          </div>
+                          
+                          <button 
+                            onClick={() => updateAttendance({ caseId: p.casoId, presente: !p.presente })}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border 
+                              ${p.presente 
+                                ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/50' 
+                                : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 dark:bg-slate-900/30 dark:text-slate-400 dark:border-slate-800'}`}
+                          >
+                            {p.presente ? <CheckCircle2 className="h-3.5 w-3.5"/> : <X className="h-3.5 w-3.5"/>}
+                            {p.presente ? 'PRESENTE' : 'AUSENTE'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\Login.tsx
+==================================================================
+// frontend/src/pages/Login.tsx
+import { useForm, type SubmitHandler } from 'react-hook-form'
+import { z } from 'zod'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Loader2, ArrowRight, ShieldCheck } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { GdfLogo } from '@/components/layout/GdfLogo' // Certifica-te que este componente existe
+
+const loginFormSchema = z.object({
+  email: z.string().email('Insira um e-mail válido.'),
+  senha: z.string().min(6, 'A senha deve ter no mínimo 6 caracteres.'),
+})
+
+type LoginFormData = z.infer<typeof loginFormSchema>
+
+export function Login() {
+  const { login, isLoginLoading } = useAuth()
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginFormSchema),
+  })
+
+  const onSubmit: SubmitHandler<LoginFormData> = async (data) => {
+    try {
+      await login(data)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  return (
+    <div className="w-full min-h-screen flex items-stretch overflow-hidden">
+      
+      {/* LADO ESQUERDO: Institucional / Visual */}
+      <div className="hidden lg:flex w-1/2 relative bg-primary flex-col justify-between p-12 text-primary-foreground overflow-hidden">
+        {/* Padrão de fundo sutil (opcional) */}
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+        
+        {/* Logo Superior */}
+        <div className="relative z-10 flex items-center gap-3 text-lg font-medium">
+          <GdfLogo className="h-8 w-8" />
+          <span>SEDES/DF</span>
+        </div>
+
+        {/* Mensagem Central */}
+        <div className="relative z-10 space-y-4 max-w-lg">
+          <h1 className="text-4xl font-bold tracking-tight">
+            Gestão Integrada do CREAS Brazlândia
+          </h1>
+          <p className="text-lg opacity-90 leading-relaxed">
+            Sistema de Prontuário Eletrônico e Acompanhamento Familiar. 
+            Facilitando o trabalho técnico para fortalecer vínculos e garantir direitos.
+          </p>
+        </div>
+
+        {/* Footer Esquerdo */}
+        <div className="relative z-10 text-sm opacity-70">
+          © {new Date().getFullYear()} GDF • Secretaria de Desenvolvimento Social
+        </div>
+      </div>
+
+      {/* LADO DIREITO: Formulário */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-background">
+        <div className="w-full max-w-[400px] space-y-8 animate-in fade-in slide-in-from-right-8 duration-700">
+          
+          <div className="flex flex-col space-y-2 text-center">
+            {/* Ícone Mobile (aparece só se a esquerda estiver oculta) */}
+            <div className="lg:hidden flex justify-center mb-4">
+              <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-bold tracking-tight">Acesse sua conta</h2>
+            <p className="text-sm text-muted-foreground">
+              Entre com suas credenciais institucionais
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail Institucional</Label>
+                <Input
+                  id="email"
+                  placeholder="nome@sedes.df.gov.br"
+                  type="email"
+                  disabled={isLoginLoading}
+                  {...register('email')}
+                  className={errors.email ? 'border-destructive' : ''}
+                />
+                {errors.email && (
+                  <p className="text-xs text-destructive">{errors.email.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="senha">Senha</Label>
+                </div>
+                <Input
+                  id="senha"
+                  type="password"
+                  disabled={isLoginLoading}
+                  {...register('senha')}
+                  className={errors.senha ? 'border-destructive' : ''}
+                />
+                {errors.senha && (
+                  <p className="text-xs text-destructive">{errors.senha.message}</p>
+                )}
+              </div>
+            </div>
+
+            <Button className="w-full h-11" type="submit" disabled={isLoginLoading}>
+              {isLoginLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Entrar no Sistema <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </form>
+
+          <p className="px-8 text-center text-sm text-muted-foreground">
+            Problemas de acesso? Contate a <span className="underline underline-offset-4 cursor-pointer hover:text-primary">Gerência</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\ManagerDashboard.tsx
+==================================================================
+import { useState } from 'react' // [ADD]
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { toast } from 'sonner' // [ADD]
+
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+
+import { Users, UserPlus, FolderOpen, FolderCheck, RefreshCw, FileText, Loader2 } from 'lucide-react' // [ADD FileText, Loader2]
+import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
+
+import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
+import { UpcomingPafDeadlines } from '@/components/dashboard/UpcomingPafDeadlines'
+import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
+import { AdvancedAnalytics } from './AdvancedAnalytics'
+import { RecentActivityFeed } from '@/components/dashboard/RecentActivityFeed'
+
+// Import da nova função
+import { generateManagementPDF } from '@/utils/pdfGenerator'
+
+interface StatData {
+  name: string
+  value: number
+}
+
+interface ManagerStats {
+  newCasesThisMonth: number
+  closedCasesThisMonth: number
+  acolhidasCount: number
+  acompanhamentosCount: number
+  workloadByAgent: StatData[]
+  workloadBySpecialist: StatData[]
+  lastUpdated?: string
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (<Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {[...Array(2)].map((_, i) => (<Skeleton key={i} className="h-64 w-full rounded-lg" />))}
+      </div>
+    </div>
+  )
+}
+
+export function ManagerDashboard() {
+  const queryClient = useQueryClient()
+  const [isExporting, setIsExporting] = useState(false) // [NOVO STATE]
+
+  const {
+    data: stats,
+    isLoading,
+    isError,
+    refetch,
+    isRefetching
+  } = useQuery<ManagerStats>({
+    queryKey: ['stats', 'manager'],
+    queryFn: async () => (await api.get('/stats')).data,
+    staleTime: 1000 * 60 * 2,
+  })
+
+  // [NOVA FUNÇÃO] Gera o relatório completo buscando dados extras se necessário
+  const handleExportFullReport = async () => {
+    if (!stats) return
+    setIsExporting(true)
+
+    try {
+      // Busca dados de vigilância (que podem não estar carregados se o usuário não abriu a aba Analytics)
+      const vigilanciaRes = await api.get('/stats/vigilancia')
+      const vigData = vigilanciaRes.data
+
+      generateManagementPDF({
+        periodo: format(new Date(), "MMMM 'de' yyyy", { locale: ptBR }),
+        stats: {
+          ativos: stats.acolhidasCount + stats.acompanhamentosCount, // Aproximação
+          acolhidas: stats.acolhidasCount,
+          paefi: stats.acompanhamentosCount,
+          novos: stats.newCasesThisMonth,
+          desligados: stats.closedCasesThisMonth
+        },
+        cargaHoraria: {
+          agentes: stats.workloadByAgent,
+          especialistas: stats.workloadBySpecialist
+        },
+        vigilancia: {
+          violacoes: vigData.violationData.slice(0, 8), // Top 8 violações
+          demografia: vigData.ageData,
+          territorio: []
+        }
+      })
+      
+      toast.success("Relatório gerado com sucesso!")
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao gerar dados para o relatório.")
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleForceRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['stats', 'manager'] })
+    refetch()
+  }
+
+  const renderOverview = () => {
+    if (isLoading) return <DashboardSkeleton />
+
+    if (isError) return (
+      <div className="p-4 bg-destructive/10 text-destructive rounded-md">Erro ao carregar dados.</div>
+    )
+
+    if (!stats) return null
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        
+        {/* Barra de Ferramentas */}
+        <div className="flex flex-col sm:flex-row justify-end items-center gap-3">
+          {stats.lastUpdated && (
+            <Badge variant="outline" className="text-xs font-normal text-muted-foreground bg-background px-2 py-1">
+              Dados de: {format(new Date(stats.lastUpdated), "dd/MM 'às' HH:mm", { locale: ptBR })}
+            </Badge>
+          )}
+          
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleExportFullReport} 
+              disabled={isExporting}
+              className="h-8 gap-2 w-full sm:w-auto"
+            >
+              {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <FileText className="h-3.5 w-3.5 text-red-600"/>}
+              {isExporting ? "Gerando..." : "Relatório PDF"}
+            </Button>
+
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleForceRefresh}
+              disabled={isRefetching}
+              className="h-8 gap-2 text-muted-foreground w-full sm:w-auto"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
+        </div>
+
+        {/* CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <DashboardStatCard index={0} title="Novos Casos (Mês)" value={stats.newCasesThisMonth} icon={UserPlus} colorClass="text-blue-500" />
+          <DashboardStatCard index={1} title="Acolhidas Ativas" value={stats.acolhidasCount} icon={Users} colorClass="text-amber-500" />
+          <DashboardStatCard index={2} title="Acompanhamentos PAEFI" value={stats.acompanhamentosCount} icon={FolderOpen} colorClass="text-purple-500" />
+          <DashboardStatCard index={3} title="Desligados (Mês)" value={stats.closedCasesThisMonth} icon={FolderCheck} colorClass="text-emerald-500" />
+        </div>
+
+        {/* GRÁFICOS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader><CardTitle>Carga — Acolhida</CardTitle><CardDescription>Casos por agente.</CardDescription></CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={stats.workloadByAgent} layout="vertical" margin={{ left: 0, right: 30 }}>
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={100} tickLine={false} axisLine={false} style={{ fontSize: '12px' }} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px' }} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Carga — PAEFI</CardTitle><CardDescription>Casos por especialista.</CardDescription></CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={stats.workloadBySpecialist} layout="vertical" margin={{ left: 0, right: 30 }}>
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={100} tickLine={false} axisLine={false} style={{ fontSize: '12px' }} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px' }} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* LISTAS E FEED */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1 min-h-[300px]"><UpcomingAppointments /></div>
+          <div className="lg:col-span-1 min-h-[300px]"><UpcomingPafDeadlines /></div>
+          <div className="lg:col-span-1 min-h-[300px]"><RecentActivityFeed /></div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Tabs defaultValue="overview" className="w-full space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <TabsList className="grid w-full sm:w-[400px] grid-cols-2">
+          <TabsTrigger value="overview">Visão Operacional</TabsTrigger>
+          <TabsTrigger value="analytics">Indicadores & IA</TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsContent value="overview" className="mt-0 focus-visible:outline-none">
+        {renderOverview()}
+      </TabsContent>
+
+      <TabsContent value="analytics" className="mt-0 focus-visible:outline-none">
+        <AdvancedAnalytics />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\NotFound.tsx
+==================================================================
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, Home } from "lucide-react";
+
+export function NotFound() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 text-center">
+      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-orange-100">
+        <AlertTriangle className="h-10 w-10 text-orange-600" />
+      </div>
+      
+      <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
+        404 - Página não encontrada
+      </h1>
+      
+      <p className="mt-4 max-w-lg text-lg text-gray-500">
+        Desculpe, a página que você está procurando não existe ou foi movida.
+      </p>
+
+      <div className="mt-8">
+        {/* CORREÇÃO DO ERRO: 
+           Ao usar 'asChild', o Button deve envolver EXATAMENTE um filho.
+           O Link passa a ser o elemento raiz renderizado.
+        */}
+        <Button asChild className="gap-2">
+          <Link to="/dashboard">
+            <Home className="h-4 w-4" />
+            Voltar ao Dashboard
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+==================================================================
+FILE: frontend\src\pages\Reports.tsx
+==================================================================
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+  PieChart, Pie, Cell
+} from 'recharts'
+import {
+  Download, Map as MapIcon, Activity, PieChart as PieIcon, Users, 
+  Share2, Gift, Clock, TrendingUp, AlertTriangle, ArrowRightLeft, UserCircle, Filter
+} from 'lucide-react'
+
+// [ATUALIZAÇÃO] Removido jsPDF manual, importado o gerador oficial
+import { generateObservatoryPDF, type ObservatoryData } from '@/utils/pdfGenerator'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { TerritoryMap } from '@/components/analytics/TerritoryMap'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+const COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#f97316', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1']
+
+export function Reports() {
+  const [mapViolation, setMapViolation] = useState<string>('all')
+  const [mapCategory, setMapCategory] = useState<string>('all')
+
+  // [ATUALIZAÇÃO] Tipagem explícita para o useQuery
+  const { data, isLoading, isError } = useQuery<ObservatoryData & { mapData: any[] }>({
+    queryKey: ['vigilancia'],
+    queryFn: async () => {
+      const res = await api.get('/stats/vigilancia')
+      return res.data
+    },
+    staleTime: 1000 * 60 * 5,
+    retry: 1
+  })
+
+  const filteredMapData = useMemo(() => {
+    if (!data?.mapData) return []
+    return data.mapData.filter((item: any) => {
+      const matchViolation = mapViolation === 'all' || item.violacao === mapViolation
+      const matchCategory = mapCategory === 'all' || item.categoria === mapCategory
+      return matchViolation && matchCategory
+    })
+  }, [data, mapViolation, mapCategory])
+
+  const uniqueViolations = useMemo(() => {
+    if (!data?.mapData) return []
+    const set = new Set(data.mapData.map((d: any) => d.violacao))
+    return Array.from(set) as string[]
+  }, [data])
+
+  const uniqueCategories = useMemo(() => {
+    if (!data?.mapData) return []
+    const set = new Set(data.mapData.map((d: any) => d.categoria))
+    return Array.from(set) as string[]
+  }, [data])
+
+  // [ATUALIZAÇÃO] Função de PDF conectada ao gerador robusto
+  const handleDownloadPDF = () => {
+    if (!data) return
+    generateObservatoryPDF(data)
+  }
+
+  if (isLoading) return <div className="p-8 space-y-6"><Skeleton className="h-12 w-full"/><div className="grid grid-cols-2 gap-4"><Skeleton className="h-64"/><Skeleton className="h-64"/></div></div>
+  if (isError || !data) return <div className="p-8 text-center text-red-500">Erro ao carregar dados.</div>
+
+  const getUrgencyColor = (weight: number) => {
+    if (weight >= 4) return '#ef4444'; 
+    if (weight === 3) return '#f97316'; 
+    if (weight === 2) return '#eab308'; 
+    return '#22c55e'; 
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3 text-slate-900 dark:text-slate-100">
+            <Activity className="h-8 w-8 text-primary" /> Observatório Social
+          </h1>
+          <p className="text-muted-foreground mt-1">Análise integral de vulnerabilidades, rede e território.</p>
+        </div>
+        
+        {/* [ATUALIZAÇÃO] Botão conectado */}
+        <Button size="lg" onClick={handleDownloadPDF} className="shadow-sm bg-slate-900 text-white hover:bg-slate-800">
+          <Download className="mr-2 h-5 w-5" /> Relatório Completo PDF
+        </Button>
+      </div>
+
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5 bg-muted/50 p-1">
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="network">Rede</TabsTrigger>
+          <TabsTrigger value="performance">Atendimentos</TabsTrigger>
+          <TabsTrigger value="social">Perfil Social</TabsTrigger>
+          <TabsTrigger value="territory">Território</TabsTrigger>
+        </TabsList>
+
+        {/* ... (O restante do conteúdo JSX permanece exatamente igual ao seu arquivo original) ... */}
+        {/* ... Mantenha o conteúdo das TabsContent igual ... */}
+        
+        {/* Para economizar espaço na resposta, vou resumir:
+            Copie todo o conteúdo dentro das TabsContent do seu arquivo original Reports.tsx
+            pois a única mudança lógica foi no handleDownloadPDF e imports. 
+        */}
+        
+        {/* Exemplo do início do TabOverview para referência */}
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+             {/* ... Cards ... */}
+             <Card className="bg-primary/5 border-primary/20">
+                <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                   <span className="text-sm text-muted-foreground font-medium">Novos (6 meses)</span>
+                   <span className="text-3xl font-bold text-primary">{data.evolutionData.reduce((acc, c)=>acc+c.novos,0)}</span>
+                </CardContent>
+             </Card>
+             {/* ... Outros Cards ... */}
+             <Card className="bg-red-50 border-red-200">
+                <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                   <span className="text-sm text-red-600 font-medium">Risco Alto/Extremo</span>
+                   <span className="text-3xl font-bold text-red-700">
+                     {data.urgencyData.filter((u) => u.weight >= 3).reduce((acc, c) => acc + c.value, 0)}
+                   </span>
+                </CardContent>
+             </Card>
+             <Card className="bg-emerald-50 border-emerald-200">
+                <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                   <span className="text-sm text-emerald-600 font-medium">Desligados (6 meses)</span>
+                   <span className="text-3xl font-bold text-emerald-700">{data.efficiencyData.totalClosed}</span>
+                </CardContent>
+             </Card>
+             <Card>
+                <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                   <span className="text-sm text-muted-foreground font-medium">Demanda Principal</span>
+                   <span className="text-lg font-bold truncate w-full">{data.violationData[0]?.name || '-'}</span>
+                </CardContent>
+             </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-5 w-5 text-primary"/> Fluxo de Atendimento</CardTitle>
+                <CardDescription>Entradas vs Saídas nos últimos 6 meses.</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.evolutionData}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false}/>
+                    <XAxis dataKey="name" fontSize={12}/>
+                    <YAxis allowDecimals={false} fontSize={12}/>
+                    <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius:'8px'}}/>
+                    <Legend />
+                    <Bar dataKey="novos" name="Entradas" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="desligados" name="Desligamentos" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="h-5 w-5 text-red-500"/> Matriz de Risco</CardTitle>
+                <CardDescription>Classificação de gravidade dos casos ativos.</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.urgencyData} layout="vertical" margin={{left:40}}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} horizontal={false}/>
+                    <XAxis type="number" hide/>
+                    <YAxis dataKey="name" type="category" width={140} fontSize={11}/>
+                    <Tooltip cursor={{fill: 'transparent'}}/>
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20} name="Casos">
+                      {data.urgencyData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={getUrgencyColor(entry.weight)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base"><PieIcon className="h-5 w-5 text-primary"/> Tipificação das Violações</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={data.violationData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value">
+                      {data.violationData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip />
+                    <Legend layout="vertical" align="right" verticalAlign="middle"/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="network" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><ArrowRightLeft className="h-5 w-5 text-orange-500"/> Porta de Entrada (Origem)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[400px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.originData} layout="vertical" margin={{left: 20}}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2}/>
+                    <XAxis type="number" hide/>
+                    <YAxis dataKey="name" type="category" width={130} fontSize={11}/>
+                    <Tooltip cursor={{fill: 'transparent'}}/>
+                    <Bar dataKey="value" fill="#f97316" radius={[0, 4, 4, 0]} barSize={18} name="Casos Enviados" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Share2 className="h-5 w-5 text-indigo-500"/> Porta de Saída (Encaminhamentos)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[400px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.networkData} layout="vertical" margin={{left: 20}}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2}/>
+                    <XAxis type="number" hide/>
+                    <YAxis dataKey="name" type="category" width={130} fontSize={11}/>
+                    <Tooltip cursor={{fill: 'transparent'}}/>
+                    <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={18} name="Ofícios Enviados" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="performance" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+             <Card className="bg-pink-50 border-pink-200 col-span-1">
+                <CardHeader className="pb-2">
+                   <CardTitle className="text-lg flex items-center gap-2 text-pink-700"><Users className="h-5 w-5"/> Grupos e Oficinas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                   <div className="flex justify-between items-end mb-2">
+                      <span className="text-sm text-muted-foreground">Participantes (6 meses)</span>
+                      <span className="text-2xl font-bold text-pink-600">{data.collectiveData.totalParticipants}</span>
+                   </div>
+                   <div className="flex justify-between items-end">
+                      <span className="text-sm text-muted-foreground">Média por Grupo</span>
+                      <span className="text-xl font-bold text-pink-600">{data.collectiveData.avgAttendance}</span>
+                   </div>
+                </CardContent>
+             </Card>
+
+             <Card className="col-span-2">
+                <CardHeader className="pb-2">
+                   <CardTitle className="text-lg flex items-center gap-2"><Gift className="h-5 w-5 text-emerald-600"/> Concessão de Benefícios</CardTitle>
+                </CardHeader>
+                <CardContent className="h-[150px]">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.benefitsData}>
+                         <XAxis dataKey="name" fontSize={10} interval={0} />
+                         <Tooltip cursor={{fill: 'transparent'}}/>
+                         <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} name="Qtd" />
+                      </BarChart>
+                   </ResponsiveContainer>
+                </CardContent>
+             </Card>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="border-t-4 border-t-blue-500">
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Clock className="h-5 w-5"/> Tempo Acompanhamento</CardTitle></CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold text-blue-600 mb-1">{data.efficiencyData.avgPermanence}</div>
+                <span className="text-xs text-muted-foreground">dias em média</span>
+              </CardContent>
+            </Card>
+            <Card className="border-t-4 border-t-amber-500">
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5"/> Tempo de Espera</CardTitle></CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold text-amber-600 mb-1">{data.efficiencyData.avgWaitTime}</div>
+                <span className="text-xs text-muted-foreground">dias até PAEFI</span>
+              </CardContent>
+            </Card>
+            <Card className="border-t-4 border-t-slate-500">
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5"/> Desligamentos</CardTitle></CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold text-slate-600 mb-1">{data.efficiencyData.totalClosed}</div>
+                <span className="text-xs text-muted-foreground">casos encerrados</span>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="social" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="shadow-sm">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><UserCircle className="h-5 w-5 text-primary"/> Faixa Etária</CardTitle></CardHeader>
+              <CardContent className="h-[350px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.ageData} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} horizontal={false}/>
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" width={110} fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px' }} />
+                    <Bar dataKey="value" name="Total" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm">
+              <CardHeader><CardTitle className="text-base">Distribuição por Sexo</CardTitle></CardHeader>
+              <CardContent className="h-[350px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={data.sexData} outerRadius={90} dataKey="value" label>
+                      <Cell fill="#3b82f6" /> <Cell fill="#ec4899" /> <Cell fill="#94a3b8" />
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '8px' }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="territory">
+          <Card className="shadow-md border-2 border-muted/30">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="space-y-1">
+                <CardTitle className="flex items-center gap-2"><MapIcon className="h-5 w-5 text-primary"/> Mapa de Calor Territorial</CardTitle>
+                <CardDescription>Distribuição geoespacial das vulnerabilidades.</CardDescription>
+              </div>
+              
+              <div className="flex gap-2">
+                <Select value={mapViolation} onValueChange={setMapViolation}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs">
+                    <Filter className="w-3 h-3 mr-2" />
+                    <SelectValue placeholder="Filtrar Violação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Violações</SelectItem>
+                    {uniqueViolations.map((v) => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={mapCategory} onValueChange={setMapCategory}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs">
+                    <UserCircle className="w-3 h-3 mr-2" />
+                    <SelectValue placeholder="Filtrar Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as Categorias</SelectItem>
+                    {uniqueCategories.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            
+            <CardContent className="p-0 sm:p-1">
+              <div className="rounded-b-xl overflow-hidden h-[750px] w-full border-t">
+                {filteredMapData.length > 0 ? (
+                  <TerritoryMap data={filteredMapData} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Nenhum caso encontrado com estes filtros.
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\SocialAgentDashboard.tsx
+==================================================================
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { Users, UserCheck, FolderInput, ArrowRight, AlertCircle, Clock } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
+import { Link } from 'react-router-dom'
+import { ROUTES } from '@/constants/routes'
+import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
+import { motion } from 'framer-motion'
+import { Badge } from '@/components/ui/badge'
+import { formatDistanceToNow } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+
+function AgentSkeleton() {
+  return (
+    <div className="space-y-8 animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Skeleton className="h-64 rounded-xl bg-muted/10 col-span-2" />
+        <Skeleton className="h-64 rounded-xl bg-muted/10" />
+      </div>
+    </div>
+  )
+}
+
+export function SocialAgentDashboard() {
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['stats', 'agent'],
+    queryFn: async () => (await api.get('/stats')).data,
+  })
+
+  // Busca a fila de espera real
+  const { data: waitingList } = useQuery({
+    queryKey: ['cases', 'waiting-triage'],
+    queryFn: async () => {
+      const res = await api.get('/cases', { 
+        params: { status: 'AGUARDANDO_ACOLHIDA', pageSize: 5 } 
+      })
+      return res.data.data || res.data.items || []
+    }
+  })
+
+  if (isLoading) return <AgentSkeleton />
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      
+      {/* 1. KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <DashboardStatCard
+          index={0}
+          title="Em Acolhida (Comigo)"
+          value={stats?.myActiveCases}
+          icon={Users}
+          colorClass="text-blue-600"
+          description="Casos em processo de escuta"
+        />
+        <DashboardStatCard
+          index={1}
+          title="Novos (Mês)"
+          value={stats?.myNewCasesMonth}
+          icon={FolderInput}
+          colorClass="text-amber-600"
+          description="Triagens iniciadas este mês"
+        />
+        <DashboardStatCard
+          index={2}
+          title="Finalizados (Mês)"
+          value={stats?.myClosedMonth}
+          icon={UserCheck}
+          colorClass="text-emerald-600"
+          description="Encaminhados ou arquivados"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* 2. Agenda (2 colunas) */}
+        <div className="lg:col-span-2">
+          <UpcomingAppointments />
+        </div>
+
+        {/* 3. Fila de Espera (Ação Imediata) */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="h-full border-l-4 border-l-primary shadow-sm flex flex-col">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-primary" />
+                Fila de Espera
+              </CardTitle>
+              <CardDescription>
+                Cidadãos aguardando primeira escuta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 flex-1">
+              {waitingList && waitingList.length > 0 ? (
+                waitingList.map((c: any) => (
+                  <div key={c.id} className="p-3 border rounded-lg bg-card hover:bg-muted/50 transition-colors flex justify-between items-center group">
+                    <div className="overflow-hidden">
+                      <p className="font-medium truncate">{c.nomeCompleto}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <Badge variant="outline" className="h-5 text-[10px] px-1">{c.urgencia || 'Normal'}</Badge>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDistanceToNow(new Date(c.dataEntrada), { locale: ptBR, addSuffix: true })}
+                        </span>
+                      </div>
+                    </div>
+                    <Link to={ROUTES.CASE_DETAIL(c.id)}>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10 text-muted-foreground bg-muted/10 rounded-lg border border-dashed">
+                  <p>Nenhum caso na fila de espera.</p>
+                </div>
+              )}
+            </CardContent>
+            
+            <div className="p-4 pt-0 mt-auto">
+              {/* [CORREÇÃO] Link aponta para a página principal de casos (Meus Casos) */}
+              <Link to={ROUTES.CASES}>
+                <Button className="w-full" variant="secondary">
+                  Ver Lista Completa
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\TeamOverview.tsx
+==================================================================
+// frontend/src/pages/TeamOverview.tsx
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { 
+  Eye, BarChart3, ArrowLeft, Briefcase, User 
+} from 'lucide-react'
+
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { CaseTable } from '@/components/case/CaseTable'
+
+interface TeamMemberStats {
+  id: string
+  name: string
+  role: 'Especialista' | 'Agente_Social' | 'Gerente'
+  active: number // PAEFI + Acolhida Esp
+  monitoring: number // Monitoramento
+}
+
+export function TeamOverview() {
+  const [selectedUser, setSelectedUser] = useState<TeamMemberStats | null>(null)
+
+  const { data: teamStats, isLoading } = useQuery<TeamMemberStats[]>({
+    queryKey: ['team-stats'],
+    queryFn: async () => {
+      const res = await api.get('/stats/productivity')
+      return res.data
+    },
+    staleTime: 1000 * 60 
+  })
+
+  // Se um usuário for selecionado, mostramos a lista detalhada
+  if (selectedUser) {
+    const filterParams = selectedUser.role === 'Agente_Social' 
+      ? { agenteId: selectedUser.id }
+      : { specialistId: selectedUser.id }
+
+    return (
+      <div className="space-y-4 animate-in fade-in slide-in-from-right-4 h-full flex flex-col">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => setSelectedUser(null)} className="h-8">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar para Equipe
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                  {selectedUser.name.substring(0,2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              {selectedUser.name}
+            </h2>
+            <div className="flex gap-3 text-xs text-muted-foreground items-center mt-1">
+              <Badge variant="secondary" className="font-normal">
+                {selectedUser.role.replace('_', ' ')}
+              </Badge>
+              <span className="flex items-center gap-1">
+                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                Ativos: <strong>{selectedUser.active}</strong>
+              </span>
+              {selectedUser.role === 'Especialista' && (
+                <span className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-cyan-500" />
+                  Monitoramento: <strong>{selectedUser.monitoring}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 border rounded-xl bg-card overflow-hidden">
+          <CaseTable 
+            endpoint="/cases"
+            title=""
+            description=""
+            defaultView="all"
+            extraParams={filterParams}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const specialists = teamStats?.filter(t => t.role === 'Especialista') || []
+  const agents = teamStats?.filter(t => t.role === 'Agente_Social') || []
+
+  // Componente de Linha da Tabela (Reutilizável)
+  const TeamRow = ({ member, maxLoad }: { member: TeamMemberStats, maxLoad: number }) => {
+    // Calculo de carga com peso reduzido para monitoramento (apenas visual)
+    const weightedLoad = member.active + (member.monitoring * 0.2)
+    const loadPercentage = Math.min((weightedLoad / maxLoad) * 100, 100)
+    
+    let progressColor = "bg-primary"
+    if (loadPercentage >= 80) progressColor = "bg-amber-500" // Amarelo aos 20 casos (se max=25)
+    if (loadPercentage >= 100) progressColor = "bg-destructive" // Vermelho aos 25 casos
+
+    return (
+      <TableRow key={member.id} className="group">
+        <TableCell className="font-medium flex items-center gap-3">
+          <Avatar className="h-8 w-8 border border-border">
+            <AvatarFallback className="text-xs text-muted-foreground bg-muted">
+              {member.name.substring(0,2).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="font-semibold text-sm">{member.name}</div>
+            <div className="text-[10px] text-muted-foreground">{member.role.replace('_', ' ')}</div>
+          </div>
+        </TableCell>
+        
+        <TableCell>
+          <div className="w-full max-w-[140px] space-y-1">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>Carga</span>
+              <span>{Math.round(loadPercentage)}%</span>
+            </div>
+            <Progress value={loadPercentage} className="h-1.5" indicatorClassName={progressColor} />
+          </div>
+        </TableCell>
+
+        <TableCell className="text-center">
+          <Badge variant="outline" className="font-bold text-sm h-7 min-w-[2.5rem] justify-center border-primary/20 bg-primary/5 text-foreground">
+            {member.active}
+          </Badge>
+        </TableCell>
+        
+        <TableCell className="text-center">
+          {member.role === 'Especialista' ? (
+            <span className="text-sm font-medium text-muted-foreground">{member.monitoring}</span>
+          ) : (
+            <span className="text-muted-foreground/30">-</span>
+          )}
+        </TableCell>
+
+        <TableCell className="text-right">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setSelectedUser(member)}
+            className="hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            <Eye className="h-4 w-4 mr-2" /> Detalhes
+          </Button>
+        </TableCell>
+      </TableRow>
+    )
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Gestão da Equipe</h1>
+          <p className="text-muted-foreground">Monitoramento de produtividade e distribuição de carga.</p>
+        </div>
+        <div className="flex gap-2">
+           <Card className="px-4 py-2 flex flex-col items-center justify-center border-dashed bg-muted/30">
+             <span className="text-[10px] uppercase text-muted-foreground font-bold">Total Ativos</span>
+             <span className="text-xl font-bold text-primary">{teamStats?.reduce((a,b) => a + b.active, 0) || 0}</span>
+           </Card>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : (
+        <Tabs defaultValue="agents" className="w-full">
+          <TabsList className="grid w-full max-w-[400px] grid-cols-2">
+            <TabsTrigger value="agents" className="gap-2">
+              <User className="h-4 w-4" /> Acolhida
+            </TabsTrigger>
+            <TabsTrigger value="specialists" className="gap-2">
+              <Briefcase className="h-4 w-4" /> Acompanhamento
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ABA ACOLHIDA (Agentes) */}
+          <TabsContent value="agents" className="mt-6 space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="h-5 w-5 text-primary" /> Agentes Sociais
+                </CardTitle>
+                <CardDescription>Casos em Triagem e Acolhida Inicial.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead>Servidor</TableHead>
+                      <TableHead>Volume Atual</TableHead>
+                      <TableHead className="text-center">Triagem / Acolhida</TableHead>
+                      <TableHead className="text-center">-</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agents.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8">Nenhum agente encontrado.</TableCell></TableRow>}
+                    {/* Agentes não têm limite fixo de PAEFI, definimos 50 como referência visual */}
+                    {agents.map(member => <TeamRow key={member.id} member={member} maxLoad={50} />)}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ABA ACOMPANHAMENTO (Especialistas) */}
+          <TabsContent value="specialists" className="mt-6 space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-primary" /> Especialistas
+                </CardTitle>
+                <CardDescription>Acompanhamento de casos PAEFI e Monitoramento.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead>Servidor</TableHead>
+                      <TableHead>Capacidade (Ref. 25)</TableHead>
+                      <TableHead className="text-center">Ativos (PAEFI)</TableHead>
+                      <TableHead className="text-center">Monitoramento</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {specialists.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8">Nenhum especialista encontrado.</TableCell></TableRow>}
+                    {/* Carga máxima definida como 25 */}
+                    {specialists.map(member => <TeamRow key={member.id} member={member} maxLoad={25} />)}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\TechnicianDashboard.tsx
+==================================================================
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { Activity, CheckCircle, Clock, AlertTriangle, ArrowRight, FileWarning } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
+import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
+import { motion } from 'framer-motion'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Link } from 'react-router-dom'
+import { Badge } from '@/components/ui/badge'
+
+interface SpecialistStats {
+  role: 'Especialista'
+  myActiveCases: number
+  myClosedMonth: number
+  myNewCasesMonth: number
+}
+
+// Interface baseada na rota /alerts do backend
+interface Alert {
+  id: string
+  title: string
+  description: string
+  link: string
+  type: 'critical' | 'warning' | 'info'
+}
+
+function TechnicianSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-2xl bg-muted/20" />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Skeleton className="h-64 rounded-xl bg-muted/10 col-span-2" />
+        <Skeleton className="h-64 rounded-xl bg-muted/10" />
+      </div>
+    </div>
+  )
+}
+
+export function TechnicianDashboard() {
+  const { data: stats, isLoading: statsLoading } = useQuery<SpecialistStats>({
+    queryKey: ['stats', 'specialist'],
+    queryFn: async () => (await api.get('/stats')).data,
+  })
+
+  // [NOVO] Integração com rota de Alertas Inteligentes
+  const { data: alerts, isLoading: alertsLoading } = useQuery<Alert[]>({
+    queryKey: ['alerts'],
+    queryFn: async () => (await api.get('/alerts')).data,
+  })
+
+  const isLoading = statsLoading || alertsLoading
+
+  if (isLoading) return <TechnicianSkeleton />
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      
+      {/* 1. KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <DashboardStatCard
+          index={0}
+          title="Casos em Acompanhamento"
+          value={stats?.myActiveCases}
+          icon={Activity}
+          colorClass="text-blue-600"
+          description="Famílias ativas no PAEFI"
+        />
+        <DashboardStatCard
+          index={1}
+          title="Novos (Mês Atual)"
+          value={stats?.myNewCasesMonth}
+          icon={Clock}
+          colorClass="text-amber-600"
+          description="Casos atribuídos recentemente"
+        />
+        <DashboardStatCard
+          index={2}
+          title="Desligamentos (Mês)"
+          value={stats?.myClosedMonth}
+          icon={CheckCircle}
+          colorClass="text-emerald-600"
+          description="Casos finalizados com sucesso"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* 2. Agenda (Ocupa 2 colunas) */}
+        <motion.div 
+          className="lg:col-span-2"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <UpcomingAppointments />
+        </motion.div>
+
+        {/* 3. Central de Alertas (NOVO) */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="h-full border-l-4 border-l-amber-500 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Atenção Necessária
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-2">
+              {alerts && alerts.length > 0 ? (
+                alerts.filter(a => a.type !== 'info').slice(0, 5).map((alert) => (
+                  <div key={alert.id} className="bg-muted/30 p-3 rounded-lg border text-sm hover:bg-muted/50 transition-colors">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`font-semibold ${alert.type === 'critical' ? 'text-red-600' : 'text-amber-600'}`}>
+                        {alert.title}
+                      </span>
+                      {alert.type === 'critical' && <Badge variant="destructive" className="h-5 text-[10px]">Urgente</Badge>}
+                    </div>
+                    <p className="text-muted-foreground mb-2 line-clamp-2">{alert.description}</p>
+                    <Link to={alert.link}>
+                      <Button variant="link" size="sm" className="h-auto p-0 text-primary">
+                        Resolver <ArrowRight className="ml-1 h-3 w-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckCircle className="h-10 w-10 mx-auto text-emerald-500/20 mb-2" />
+                  <p>Tudo em dia! Nenhuma pendência crítica.</p>
+                </div>
+              )}
+              
+              <Link to="/dashboard/cases">
+                <Button variant="outline" className="w-full mt-2">
+                  <FileWarning className="mr-2 h-4 w-4" /> Ver Todos os Casos
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\UserManagement.tsx
+==================================================================
+// frontend/src/pages/UserManagement.tsx
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useForm, Controller, type SubmitHandler } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { api } from '@/lib/api'
+import { Loader2, Trash2, Edit } from 'lucide-react'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { toast } from 'sonner'
+import { getErrorMessage } from '@/utils/error'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { editUserFormSchema } from '@/schemas/userSchemas'
+import type { User } from '@/types/user'
+
+// [NOVO] Importando o componente de criação
+import { NewUserDialog } from '@/components/settings/NewUserDialog'
+
+type EditUserFormData = z.infer<typeof editUserFormSchema>
+
+function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open: boolean) => void }) {
+  const queryClient = useQueryClient()
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<EditUserFormData>({
+    resolver: zodResolver(editUserFormSchema),
+    defaultValues: user,
+  })
+
+  const { mutate: updateUser, isPending } = useMutation({
+    mutationFn: async (data: EditUserFormData) => {
+      return api.put(`/users/${user.id}`, data)
+    },
+    onSuccess: () => {
+      toast.success('Utilizador atualizado com sucesso!')
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      onOpenChange(false)
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+
+  const onSubmit: SubmitHandler<EditUserFormData> = (data) => {
+    updateUser(data)
+  }
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Editar Utilizador</DialogTitle>
+      </DialogHeader>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="nome">Nome Completo</Label>
+          <Controller name="nome" control={control} render={({ field }) => <Input id="nome" {...field} />} />
+          {errors.nome && <p className="text-sm text-destructive">{errors.nome.message}</p>}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Controller name="email" control={control} render={({ field }) => <Input id="email" type="email" {...field} />} />
+          {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="cargo">Cargo</Label>
+          <Controller
+            name="cargo"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Agente_Social">Agente Social</SelectItem>
+                  <SelectItem value="Especialista">Especialista</SelectItem>
+                  <SelectItem value="Gerente">Gerente</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.cargo && <p className="text-sm text-destructive">{errors.cargo.message}</p>}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">Cancelar</Button>
+          </DialogClose>
+          <Button type="submit" disabled={isPending}>
+            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Salvar Alterações
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  )
+}
+
+export function UserManagement() {
+  const queryClient = useQueryClient()
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+
+  const { data: users, isLoading, isError } = useQuery<User[]>({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const response = await api.get('/users')
+      return response.data
+    },
+  })
+
+  const { mutate: deleteUser, isPending: isDeleting } = useMutation({
+    mutationFn: async (userId: string) => {
+      return api.delete(`/users/${userId}`)
+    },
+    onSuccess: () => {
+      toast.success('Utilizador desativado com sucesso!')
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Falha ao desativar o utilizador.'))
+    },
+  })
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      
+      {/* [ATUALIZADO] Cabeçalho com Botão de Novo Usuário */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gestão de Equipe</h1>
+          <p className="text-muted-foreground mt-1">
+            Gerencie os acessos e permissões dos profissionais do CREAS.
+          </p>
+        </div>
+        <NewUserDialog />
+      </div>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Profissionais Ativos</CardTitle>
+          <CardDescription>Lista de todos os agentes e especialistas.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Matrícula</TableHead>
+                  <TableHead>Cargo</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading && ( <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" /></TableCell></TableRow> )}
+                {isError && ( <TableRow><TableCell colSpan={5} className="py-10 text-center text-destructive">Falha ao carregar os utilizadores.</TableCell></TableRow> )}
+                
+                {users?.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">{user.nome}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>{user.matricula || '-'}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
+                        user.cargo === 'Gerente' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                        user.cargo === 'Especialista' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                        'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        {user.cargo.replace('_', ' ')}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Dialog open={editingUser?.id === user.id} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)}>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setEditingUser(user)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          {editingUser?.id === user.id && <EditUserModal user={editingUser} onOpenChange={(isOpen) => !isOpen && setEditingUser(null)} />}
+                        </Dialog>
+                        
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Desativar Acesso?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                O servidor <strong>{user.nome}</strong> perderá o acesso ao sistema imediatamente. O histórico de ações será mantido.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteUser(user.id)} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Desativar"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\pages\WaitingList.tsx
+==================================================================
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { differenceInDays } from 'date-fns'
+import { Loader2, AlertTriangle, UserPlus, CalendarClock } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+import { Pagination } from '@/components/common/Pagination' // Usa o componente que você enviou
+
+import { ROUTES } from '@/constants/routes'
+import { getUrgencyColor } from '@/constants/caseConstants'
+
+export function WaitingList() {
+  const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const currentPage = Number(searchParams.get('page') ?? '1') // Captura página da URL
+  
+  const [isAssignOpen, setIsAssignOpen] = useState(false)
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
+  const [selectedSpecialist, setSelectedSpecialist] = useState("")
+
+  // [PAGINAÇÃO] Query otimizada
+  const { data: result, isLoading } = useQuery({
+    queryKey: ['cases', 'waiting-list', currentPage],
+    queryFn: async () => {
+      const res = await api.get('/cases', { 
+        params: { 
+          status: 'AGUARDANDO_DISTRIBUICAO_PAEFI', 
+          pageSize: 10, // Limite seguro
+          page: currentPage,
+          view: 'all',
+          sortBy: 'pesoUrgencia', 
+          sortOrder: 'desc'
+        } 
+      })
+      // Garante estrutura { items, meta }
+      const items = res.data.data || res.data.items || []
+      const meta = res.data.meta || { total: items.length, page: currentPage, pageSize: 10, totalPages: 1 }
+      return { items, meta }
+    },
+    // keepPreviousData: true // (Opcional: melhora UX na troca de página)
+  })
+
+  // ... (Query de especialistas e mutation mantidos iguais)
+  const { data: specialists = [] } = useQuery({
+    queryKey: ['users', 'specialists'],
+    queryFn: async () => {
+      const res = await api.get('/users', { params: { cargo: 'Especialista', active: true }})
+      return res.data
+    },
+    enabled: isAssignOpen
+  })
+
+  const { mutate: assignSpecialist, isPending: isAssigning } = useMutation({
+    mutationFn: async () => {
+      if (!selectedCaseId) return
+      await api.patch(`/cases/${selectedCaseId}/assign`, { specialistId: selectedSpecialist })
+    },
+    onSuccess: () => {
+      toast.success("Técnico atribuído com sucesso.")
+      setIsAssignOpen(false)
+      setSelectedCaseId(null)
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+    },
+    onError: () => toast.error("Erro ao atribuir técnico.")
+  })
+
+  const handlePageChange = (page: number) => {
+    setSearchParams(prev => { prev.set('page', String(page)); return prev })
+  }
+
+  const cases = result?.items || []
+  const meta = result?.meta
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-500 flex items-center gap-2">
+          <AlertTriangle className="h-6 w-6" /> Fila de Espera PAEFI
+        </h1>
+        <p className="text-muted-foreground">Monitoramento de casos aguardando vinculação técnica.</p>
+      </div>
+
+      <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/10 dark:border-amber-900/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+            Demanda Reprimida
+          </CardTitle>
+          <CardDescription>
+            {meta?.total || 0} famílias aguardam atendimento.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="rounded-md border bg-background">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[300px]">Nome / CPF</TableHead>
+                    <TableHead>Prioridade</TableHead>
+                    <TableHead>Tempo de Espera</TableHead>
+                    <TableHead>Violação</TableHead>
+                    <TableHead className="text-right">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading && <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin mx-auto text-amber-600"/></TableCell></TableRow>}
+                  {!isLoading && cases.length === 0 && <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">Fila zerada!</TableCell></TableRow>}
+                  
+                  {cases.map((c: any) => {
+                    const daysWaiting = differenceInDays(new Date(), new Date(c.dataEntrada))
+                    const isCriticalDelay = daysWaiting > 30
+                    return (
+                      <TableRow key={c.id}>
+                        <TableCell>
+                          <Link to={ROUTES.CASE_DETAIL(c.id)} className="font-medium hover:underline text-primary block">{c.nomeCompleto}</Link>
+                          <span className="text-xs text-muted-foreground font-mono">{c.cpf}</span>
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className={`${getUrgencyColor(c.urgencia)} border`}>{c.urgencia}</Badge></TableCell>
+                        <TableCell>
+                          <div className={`font-mono font-bold ${isCriticalDelay ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{daysWaiting} dias</div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate" title={c.violacao}>{c.violacao}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" onClick={() => { setSelectedCaseId(c.id); setIsAssignOpen(true); }}><UserPlus className="h-4 w-4 mr-1" /> Atribuir</Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Paginação da Fila de Espera */}
+            {meta && meta.totalPages > 1 && (
+              <Pagination 
+                currentPage={meta.page}
+                totalPages={meta.totalPages}
+                totalItems={meta.total}
+                pageSize={meta.pageSize}
+                onPageChange={handlePageChange}
+              />
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Modal de Atribuição (Mantido) */}
+      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Distribuir Caso</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <Label>Selecione o Especialista Responsável</Label>
+            <Select value={selectedSpecialist} onValueChange={setSelectedSpecialist}>
+              <SelectTrigger><SelectValue placeholder="Selecione um técnico..." /></SelectTrigger>
+              <SelectContent>
+                {specialists.map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">
+              O caso será movido para "Acolhida Especializada" automaticamente.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancelar</Button>
+            <Button onClick={() => assignSpecialist()} disabled={!selectedSpecialist || isAssigning}>
+              {isAssigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

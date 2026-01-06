@@ -33,7 +33,7 @@ var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/stats.ts
-var import_date_fns = require("date-fns");
+var import_date_fns2 = require("date-fns");
 var import_locale = require("date-fns/locale");
 var import_client2 = require("@prisma/client");
 var import_zod = require("zod");
@@ -91,6 +91,103 @@ var CacheService = class _CacheService {
 };
 var cache = CacheService.getInstance();
 
+// src/services/AnalyticsAI.ts
+var import_date_fns = require("date-fns");
+var AnalyticsAI = class {
+  /**
+   * Gera insights baseados em análise estatística dos dados reais do CREAS
+   */
+  static async generateInsights(monthsToCheck = 3) {
+    const insights = [];
+    const today = /* @__PURE__ */ new Date();
+    const currentMonthStart = (0, import_date_fns.startOfMonth)(today);
+    const lastMonthStart = (0, import_date_fns.startOfMonth)((0, import_date_fns.subMonths)(today, 1));
+    const [currentMonthCases, lastMonthCases] = await Promise.all([
+      prisma.case.count({ where: { dataEntrada: { gte: currentMonthStart } } }),
+      prisma.case.count({ where: { dataEntrada: { gte: lastMonthStart, lt: currentMonthStart } } })
+    ]);
+    if (lastMonthCases > 0) {
+      const growth = (currentMonthCases - lastMonthCases) / lastMonthCases * 100;
+      if (growth > 20) {
+        insights.push({
+          type: "warning",
+          title: "Alerta de Demanda",
+          description: `Aumento s\xFAbito de ${growth.toFixed(0)}% na entrada de novos casos em rela\xE7\xE3o ao m\xEAs anterior.`
+        });
+      } else if (growth < -20) {
+        insights.push({
+          type: "info",
+          title: "Queda na Demanda",
+          description: `Houve uma redu\xE7\xE3o de ${Math.abs(growth).toFixed(0)}% nos atendimentos iniciados este m\xEAs.`
+        });
+      }
+    }
+    const stalledCases = await prisma.case.count({
+      where: {
+        status: { not: "DESLIGADO" },
+        evolucoes: {
+          none: {
+            createdAt: { gte: (0, import_date_fns.subDays)(today, 30) }
+          }
+        }
+      }
+    });
+    if (stalledCases > 0) {
+      insights.push({
+        type: "warning",
+        title: "Risco de Neglig\xEAncia",
+        description: `Detectados ${stalledCases} casos ativos sem nenhuma evolu\xE7\xE3o t\xE9cnica registrada h\xE1 mais de 30 dias.`
+      });
+    } else {
+      insights.push({
+        type: "success",
+        title: "Cobertura Total",
+        description: "Todos os casos ativos receberam atendimento t\xE9cnico nos \xFAltimos 30 dias."
+      });
+    }
+    const topViolations = await prisma.case.groupBy({
+      by: ["violacao"],
+      where: {
+        dataEntrada: { gte: (0, import_date_fns.subMonths)(today, monthsToCheck) }
+      },
+      _count: { violacao: true },
+      orderBy: { _count: { violacao: "desc" } },
+      take: 1
+    });
+    if (topViolations.length > 0) {
+      const top = topViolations[0];
+      insights.push({
+        type: "info",
+        title: "Padr\xE3o de Viola\xE7\xE3o",
+        description: `A viola\xE7\xE3o "${top.violacao}" representa a maior incid\xEAncia do per\xEDodo (${top._count.violacao} casos).`
+      });
+    }
+    const visitsCount = await prisma.agendamento.count({
+      where: {
+        data: { gte: (0, import_date_fns.subMonths)(today, 1) },
+        // Procura por termos comuns de visita no título ou observação
+        OR: [
+          { titulo: { contains: "Visita", mode: "insensitive" } },
+          { titulo: { contains: "Busca", mode: "insensitive" } },
+          { tipo: { contains: "Visita", mode: "insensitive" } }
+          // Se houver campo tipo string
+        ]
+      }
+    });
+    if (visitsCount > 5) {
+      insights.push({
+        type: "success",
+        title: "Territ\xF3rio Ativo",
+        description: `Equipe realizou ${visitsCount} visitas/buscas ativas no \xFAltimo m\xEAs.`
+      });
+    }
+    return insights.sort((a, b) => {
+      const priority = { warning: 0, success: 1, info: 2 };
+      return priority[a.type] - priority[b.type];
+    }).slice(0, 3);
+  }
+};
+
 // src/routes/stats.ts
 var calculateUrgencyWeight = (urgencia) => {
   const term = urgencia ? urgencia.trim() : "";
@@ -117,8 +214,8 @@ async function statsRoutes(app) {
         return reply.send(cachedData);
       }
       const today2 = /* @__PURE__ */ new Date();
-      const firstDayOfMonth2 = (0, import_date_fns.startOfMonth)(today2);
-      const lastDayOfMonth2 = (0, import_date_fns.endOfMonth)(today2);
+      const firstDayOfMonth2 = (0, import_date_fns2.startOfMonth)(today2);
+      const lastDayOfMonth2 = (0, import_date_fns2.endOfMonth)(today2);
       try {
         const [
           totalCases,
@@ -183,8 +280,8 @@ async function statsRoutes(app) {
       }
     }
     const today = /* @__PURE__ */ new Date();
-    const firstDayOfMonth = (0, import_date_fns.startOfMonth)(today);
-    const lastDayOfMonth = (0, import_date_fns.endOfMonth)(today);
+    const firstDayOfMonth = (0, import_date_fns2.startOfMonth)(today);
+    const lastDayOfMonth = (0, import_date_fns2.endOfMonth)(today);
     try {
       if (cargo === import_client2.Cargo.Agente_Social) {
         const [myActive, myClosed, myNew] = await Promise.all([
@@ -219,29 +316,42 @@ async function statsRoutes(app) {
         select: { id: true, nome: true, cargo: true }
       });
       if (mode === "performance") {
-        const startDate = (0, import_date_fns.subMonths)(/* @__PURE__ */ new Date(), months);
-        const safeActions = [
-          import_client2.LogAction.CRIACAO,
+        const startDate = (0, import_date_fns2.subMonths)(/* @__PURE__ */ new Date(), months);
+        const flowActions = [
           import_client2.LogAction.MUDANCA_STATUS,
+          // Moveu o caso para frente
           import_client2.LogAction.DESLIGAMENTO,
-          import_client2.LogAction.EVOLUCAO,
-          import_client2.LogAction.OUTRO,
-          // @ts-ignore - Ignora erro de TS se ATRIBUICAO não existir no types ainda
+          // Resolveu o caso
           import_client2.LogAction.ATRIBUICAO
-        ].filter(Boolean);
-        const activityCounts = await prisma.caseLog.groupBy({
-          by: ["autorId"],
+          // Distribuiu o caso
+          // Removemos: CRIACAO, EVOLUCAO, ANEXO (são operacionais, não de fluxo/vazão)
+        ];
+        const rawActivity = await prisma.caseLog.findMany({
           where: {
             createdAt: { gte: startDate },
-            acao: { in: safeActions }
+            acao: { in: flowActions }
           },
-          _count: { _all: true }
+          select: {
+            autorId: true,
+            casoId: true
+            // Precisamos do ID do caso para contar distintos
+          }
+        });
+        const statsMap = /* @__PURE__ */ new Map();
+        rawActivity.forEach((log) => {
+          var _a;
+          if (!statsMap.has(log.autorId)) {
+            statsMap.set(log.autorId, /* @__PURE__ */ new Set());
+          }
+          (_a = statsMap.get(log.autorId)) == null ? void 0 : _a.add(log.casoId);
         });
         const data2 = users.map((u) => {
-          const stats = activityCounts.find((a) => a.autorId === u.id);
+          var _a;
+          const uniqueCasesHandled = ((_a = statsMap.get(u.id)) == null ? void 0 : _a.size) || 0;
           return {
             name: u.nome.split(" ")[0],
-            value: stats ? stats._count._all : 0,
+            value: uniqueCasesHandled,
+            // Agora representa CASOS ÚNICOS movimentados
             role: u.cargo
           };
         }).sort((a, b) => b.value - a.value);
@@ -294,21 +404,21 @@ async function statsRoutes(app) {
     if (!["Gerente", "Especialista"].includes(cargo)) return reply.status(403).send({ message: "Acesso restrito." });
     try {
       const today = /* @__PURE__ */ new Date();
-      const sixMonthsAgo = (0, import_date_fns.subMonths)(today, 6);
+      const sixMonthsAgo = (0, import_date_fns2.subMonths)(today, 6);
       const allCases = await prisma.case.findMany({
         where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
-        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
+        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true, violacao: true, categoria: true, sexo: true, nascimento: true }
       });
       const monthsMap = /* @__PURE__ */ new Map();
       for (let i = 5; i >= 0; i--) {
-        const d = (0, import_date_fns.subMonths)(today, i);
-        const key = (0, import_date_fns.format)(d, "yyyy-MM");
-        const label = (0, import_date_fns.format)(d, "MMM/yy", { locale: import_locale.ptBR });
+        const d = (0, import_date_fns2.subMonths)(today, i);
+        const key = (0, import_date_fns2.format)(d, "yyyy-MM");
+        const label = (0, import_date_fns2.format)(d, "MMM/yy", { locale: import_locale.ptBR });
         monthsMap.set(key, { name: label.charAt(0).toUpperCase() + label.slice(1), novos: 0, desligados: 0 });
       }
       allCases.forEach((c) => {
-        const entryKey = (0, import_date_fns.format)(c.dataEntrada, "yyyy-MM");
-        const exitKey = c.dataDesligamento ? (0, import_date_fns.format)(c.dataDesligamento, "yyyy-MM") : null;
+        const entryKey = (0, import_date_fns2.format)(c.dataEntrada, "yyyy-MM");
+        const exitKey = c.dataDesligamento ? (0, import_date_fns2.format)(c.dataDesligamento, "yyyy-MM") : null;
         if (monthsMap.has(entryKey)) monthsMap.get(entryKey).novos++;
         if (exitKey && monthsMap.has(exitKey)) monthsMap.get(exitKey).desligados++;
       });
@@ -371,27 +481,25 @@ async function statsRoutes(app) {
         totalClosed: closedCases.length,
         retentionRate: Math.round((1 - closedCases.length / (allCases.length || 1)) * 100)
       };
-      const demographicsRaw = await prisma.case.findMany({
-        where: { status: { not: import_client2.CaseStatus.DESLIGADO } },
-        select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
-      });
       const demographics = {
         sexo: { Masculino: 0, Feminino: 0, Outro: 0 },
         etaria: { "0-11 (Crian\xE7a)": 0, "12-17 (Adolescente)": 0, "18-59 (Adulto)": 0, "60+ (Idoso)": 0 }
       };
-      demographicsRaw.forEach((c) => {
-        if (c.sexo === "Masculino") demographics.sexo.Masculino++;
-        else if (c.sexo === "Feminino") demographics.sexo.Feminino++;
-        else demographics.sexo.Outro++;
-        const age = (/* @__PURE__ */ new Date()).getFullYear() - c.nascimento.getFullYear();
-        if (age < 12) demographics.etaria["0-11 (Crian\xE7a)"]++;
-        else if (age < 18) demographics.etaria["12-17 (Adolescente)"]++;
-        else if (age < 60) demographics.etaria["18-59 (Adulto)"]++;
-        else demographics.etaria["60+ (Idoso)"]++;
+      allCases.forEach((c) => {
+        if (c.status !== import_client2.CaseStatus.DESLIGADO) {
+          if (c.sexo === "Masculino") demographics.sexo.Masculino++;
+          else if (c.sexo === "Feminino") demographics.sexo.Feminino++;
+          else demographics.sexo.Outro++;
+          const age = (/* @__PURE__ */ new Date()).getFullYear() - c.nascimento.getFullYear();
+          if (age < 12) demographics.etaria["0-11 (Crian\xE7a)"]++;
+          else if (age < 18) demographics.etaria["12-17 (Adolescente)"]++;
+          else if (age < 60) demographics.etaria["18-59 (Adulto)"]++;
+          else demographics.etaria["60+ (Idoso)"]++;
+        }
       });
       const ageData = Object.entries(demographics.etaria).map(([name, value]) => ({ name, value }));
       const sexData = Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }));
-      const mapData = demographicsRaw.map((c) => {
+      const mapData = allCases.filter((c) => c.status !== import_client2.CaseStatus.DESLIGADO).map((c) => {
         const pseudoRandom = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
         const latOffset = (pseudoRandom % 100 - 50) / 4e3;
         const lngOffset = (pseudoRandom % 100 - 50) / 4e3;
@@ -418,7 +526,7 @@ async function statsRoutes(app) {
     if (cargo !== import_client2.Cargo.Gerente) return reply.status(403).send({ message: "Acesso restrito." });
     try {
       const today = /* @__PURE__ */ new Date();
-      const startDate = (0, import_date_fns.startOfMonth)((0, import_date_fns.subMonths)(today, months - 1));
+      const startDate = (0, import_date_fns2.startOfMonth)((0, import_date_fns2.subMonths)(today, months - 1));
       const whereClause = { OR: [{ dataEntrada: { gte: startDate } }, { dataDesligamento: { gte: startDate } }] };
       if (violacao && violacao !== "all") {
         whereClause.violacao = violacao;
@@ -429,7 +537,7 @@ async function statsRoutes(app) {
       });
       const monthlyStats = /* @__PURE__ */ new Map();
       for (let i = 0; i < months; i++) {
-        const d = (0, import_date_fns.subMonths)(today, months - 1 - i);
+        const d = (0, import_date_fns2.subMonths)(today, months - 1 - i);
         const key = `${d.getFullYear()}-${d.getMonth()}`;
         monthlyStats.set(key, { name: d.toLocaleDateString("pt-BR", { month: "short" }).toUpperCase(), novos: 0, fechados: 0 });
       }
@@ -451,17 +559,8 @@ async function statsRoutes(app) {
       }, 0);
       const avgHandlingTime = closedCases.length > 0 ? Math.round(totalDays / closedCases.length) : 0;
       const activeTotal = await prisma.case.count({ where: { status: { not: import_client2.CaseStatus.DESLIGADO } } });
-      const insights = [];
       const trendData = Array.from(monthlyStats.values());
-      const last = trendData[trendData.length - 1];
-      const prev = trendData[trendData.length - 2];
-      if (last && prev && prev.novos > 0) {
-        const diff = (last.novos - prev.novos) / prev.novos * 100;
-        if (diff > 15) insights.push(`\u{1F4C8} Aumento s\xFAbito de ${Math.round(diff)}% na demanda este m\xEAs.`);
-        else if (diff < -15) insights.push(`\u{1F4C9} Queda de ${Math.abs(Math.round(diff))}% na demanda este m\xEAs.`);
-      }
-      if (avgHandlingTime > 120) insights.push(`\u26A0\uFE0F Tempo m\xE9dio de acompanhamento alto (${avgHandlingTime} dias).`);
-      if (pieData.length > 0) insights.push(`\u{1F50D} Principal demanda local: ${pieData[0].name} (${pieData[0].value} casos).`);
+      const insights = await AnalyticsAI.generateInsights(months);
       return reply.send({ trendData, avgHandlingTime, totalActive: activeTotal, insights, pieData });
     } catch (error) {
       return reply.status(500).send({ message: "Erro interno ao processar analytics." });
@@ -471,11 +570,11 @@ async function statsRoutes(app) {
     const querySchema = import_zod.z.object({ months: import_zod.z.coerce.number().default(12) });
     const { months } = querySchema.parse(request.query);
     try {
-      const startDate = (0, import_date_fns.subMonths)(/* @__PURE__ */ new Date(), months);
+      const startDate = (0, import_date_fns2.subMonths)(/* @__PURE__ */ new Date(), months);
       const logs = await prisma.caseLog.findMany({ where: { createdAt: { gte: startDate } }, select: { createdAt: true } });
       const map = /* @__PURE__ */ new Map();
       logs.forEach((l) => {
-        const day = (0, import_date_fns.format)(l.createdAt, "yyyy-MM-dd");
+        const day = (0, import_date_fns2.format)(l.createdAt, "yyyy-MM-dd");
         map.set(day, (map.get(day) || 0) + 1);
       });
       const result = Array.from(map.entries()).map(([date, count]) => ({ date, count }));
@@ -487,7 +586,7 @@ async function statsRoutes(app) {
   app.get("/stats/my-agenda", async (request, reply) => {
     const { sub: userId } = request.user;
     try {
-      const start = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
+      const start = (0, import_date_fns2.startOfDay)(/* @__PURE__ */ new Date());
       const appointments = await prisma.agendamento.findMany({
         where: { responsavelId: userId, data: { gte: start } },
         orderBy: { data: "asc" },
@@ -513,7 +612,6 @@ async function statsRoutes(app) {
       const logs = await prisma.caseLog.findMany({
         where: whereScope,
         take: 10,
-        // Últimas 10 ações
         orderBy: { createdAt: "desc" },
         include: {
           autor: { select: { nome: true, cargo: true } },

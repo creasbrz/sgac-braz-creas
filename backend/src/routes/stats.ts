@@ -1,3 +1,4 @@
+// ARQUIVO: backend/src/routes/stats.ts
 import { type FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, subMonths, format } from "date-fns";
@@ -5,8 +6,9 @@ import { ptBR } from "date-fns/locale";
 import { Cargo, CaseStatus, LogAction } from "@prisma/client"; 
 import { z } from "zod";
 import { cache } from "../lib/cache";
+import { AnalyticsAI } from "../services/AnalyticsAI"; // [NOVO] Importação do Serviço
 
-// Função auxiliar de peso para urgência (Usada no Mapa de Calor)
+// Função auxiliar de peso para urgência (Usada no Mapa de Calor e Vigilância)
 const calculateUrgencyWeight = (urgencia: string): number => {
   const term = urgencia ? urgencia.trim() : '';
   if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
@@ -144,7 +146,6 @@ export async function statsRoutes(app: FastifyInstance) {
   });
 
   // 2. PRODUTIVIDADE E PERFORMANCE (/stats/productivity)
-  // Aceita ?mode=performance (conta logs/ações) ou ?mode=workload (conta casos ativos)
   app.get("/stats/productivity", async (request, reply) => {
     const querySchema = z.object({
       mode: z.enum(['workload', 'performance']).default('workload'),
@@ -160,34 +161,47 @@ export async function statsRoutes(app: FastifyInstance) {
       });
 
       // --- MODO PERFORMANCE (Gráfico do Dashboard) ---
+      // AGORA FOCADO EM "CASOS MOVIMENTADOS" (FLUXO)
       if (mode === 'performance') {
         const startDate = subMonths(new Date(), months);
 
-        // Lista de ações segura (Filtra para evitar erro se o Enum estiver desatualizado)
-        const safeActions = [
-          LogAction.CRIACAO,
-          LogAction.MUDANCA_STATUS,
-          LogAction.DESLIGAMENTO,
-          LogAction.EVOLUCAO,
-          LogAction.OUTRO,
-          // @ts-ignore - Ignora erro de TS se ATRIBUICAO não existir no types ainda
-          LogAction.ATRIBUICAO 
-        ].filter(Boolean); 
+        // Definimos quais ações contam como "Trabalho de Fluxo"
+        const flowActions = [
+          LogAction.MUDANCA_STATUS, // Moveu o caso para frente
+          LogAction.DESLIGAMENTO,   // Resolveu o caso
+          LogAction.ATRIBUICAO,     // Distribuiu o caso
+          // Removemos: CRIACAO, EVOLUCAO, ANEXO (são operacionais, não de fluxo/vazão)
+        ];
 
-        const activityCounts = await prisma.caseLog.groupBy({
-          by: ['autorId'],
+        // Busca logs brutos para fazer a contagem de casos DISTINTOS
+        // (Isso evita que mexer 2x no mesmo caso conte como 2 atendimentos)
+        const rawActivity = await prisma.caseLog.findMany({
           where: {
             createdAt: { gte: startDate },
-            acao: { in: safeActions as LogAction[] }
+            acao: { in: flowActions }
           },
-          _count: { _all: true }
+          select: {
+            autorId: true,
+            casoId: true // Precisamos do ID do caso para contar distintos
+          }
+        });
+
+        // Agrupamento manual para contar Casos Únicos por Técnico
+        const statsMap = new Map<string, Set<string>>(); // Map<UserId, Set<CaseId>>
+
+        rawActivity.forEach(log => {
+          if (!statsMap.has(log.autorId)) {
+            statsMap.set(log.autorId, new Set());
+          }
+          statsMap.get(log.autorId)?.add(log.casoId);
         });
 
         const data = users.map(u => {
-          const stats = activityCounts.find(a => a.autorId === u.id);
+          const uniqueCasesHandled = statsMap.get(u.id)?.size || 0;
+          
           return {
             name: u.nome.split(' ')[0], 
-            value: stats ? stats._count._all : 0, 
+            value: uniqueCasesHandled, // Agora representa CASOS ÚNICOS movimentados
             role: u.cargo
           };
         }).sort((a, b) => b.value - a.value);
@@ -195,7 +209,7 @@ export async function statsRoutes(app: FastifyInstance) {
         return reply.send(data);
       }
 
-      // --- MODO WORKLOAD (Tabela da Equipe) ---
+      // --- MODO WORKLOAD (Tabela da Equipe - MANTIDO IGUAL) ---
       const specialistStats = await prisma.case.groupBy({
         by: ['especialistaPAEFIId', 'status'],
         where: {
@@ -260,10 +274,9 @@ export async function statsRoutes(app: FastifyInstance) {
       const sixMonthsAgo = subMonths(today, 6);
 
       // --- 3.1 Busca Dados Brutos ---
-      // Selecionamos campos extras (violacao, categoria) para o filtro do mapa
       const allCases = await prisma.case.findMany({
         where: { OR: [{ dataEntrada: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }] },
-        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true }
+        select: { dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true, status: true, id: true, urgencia: true, violacao: true, categoria: true, sexo: true, nascimento: true }
       });
 
       // --- 3.2 Evolução Mensal ---
@@ -337,48 +350,46 @@ export async function statsRoutes(app: FastifyInstance) {
         retentionRate: Math.round((1 - (closedCases.length / (allCases.length || 1))) * 100) 
       };
 
-      // --- 3.7 Demografia e Mapa (Com Filtros) ---
-      // AQUI ADICIONAMOS VIOLACAO E CATEGORIA NO SELECT PARA O MAPA
-      const demographicsRaw = await prisma.case.findMany({
-        where: { status: { not: CaseStatus.DESLIGADO } },
-        select: { nascimento: true, sexo: true, id: true, urgencia: true, violacao: true, categoria: true }
-      });
-
+      // --- 3.7 Demografia e Mapa ---
       const demographics = {
-        sexo: { Masculino: 0, Feminino: 0, Outro: 0 },
-        etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 }
+        sexo: { Masculino: 0, Feminino: 0, Outro: 0 } as Record<string, number>,
+        etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 } as Record<string, number>
       };
 
-      demographicsRaw.forEach(c => {
-        if (c.sexo === 'Masculino') demographics.sexo.Masculino++; else if (c.sexo === 'Feminino') demographics.sexo.Feminino++; else demographics.sexo.Outro++;
-        const age = new Date().getFullYear() - c.nascimento.getFullYear();
-        if (age < 12) demographics.etaria['0-11 (Criança)']++; else if (age < 18) demographics.etaria['12-17 (Adolescente)']++; else if (age < 60) demographics.etaria['18-59 (Adulto)']++; else demographics.etaria['60+ (Idoso)']++;
+      allCases.forEach(c => {
+        if (c.status !== CaseStatus.DESLIGADO) {
+          if (c.sexo === 'Masculino') demographics.sexo.Masculino++; else if (c.sexo === 'Feminino') demographics.sexo.Feminino++; else demographics.sexo.Outro++;
+          const age = new Date().getFullYear() - c.nascimento.getFullYear();
+          if (age < 12) demographics.etaria['0-11 (Criança)']++; else if (age < 18) demographics.etaria['12-17 (Adolescente)']++; else if (age < 60) demographics.etaria['18-59 (Adulto)']++; else demographics.etaria['60+ (Idoso)']++;
+        }
       });
 
       const ageData = Object.entries(demographics.etaria).map(([name, value]) => ({ name, value }));
       const sexData = Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }));
 
-      // Dados para o Mapa com campos de filtro
-      const mapData = demographicsRaw.map(c => {
-        const pseudoRandom = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
-        const latOffset = (pseudoRandom % 100 - 50) / 4000; const lngOffset = (pseudoRandom % 100 - 50) / 4000;
-        return { 
-          id: c.id, 
-          lat: -15.668 + latOffset, 
-          lng: -48.201 + lngOffset, 
-          intensity: calculateUrgencyWeight(c.urgencia), 
-          label: c.urgencia,
-          violacao: c.violacao || 'Não Informado',
-          categoria: c.categoria || 'Não Informado'
-        };
-      });
+      const mapData = allCases
+        .filter(c => c.status !== CaseStatus.DESLIGADO)
+        .map(c => {
+          const pseudoRandom = c.id.charCodeAt(0) + c.id.charCodeAt(c.id.length - 1);
+          const latOffset = (pseudoRandom % 100 - 50) / 4000; const lngOffset = (pseudoRandom % 100 - 50) / 4000;
+          return { 
+            id: c.id, 
+            lat: -15.668 + latOffset, 
+            lng: -48.201 + lngOffset, 
+            intensity: calculateUrgencyWeight(c.urgencia), 
+            label: c.urgencia,
+            violacao: c.violacao || 'Não Informado',
+            categoria: c.categoria || 'Não Informado'
+          };
+        });
 
       return reply.send({ evolutionData, violationData, urgencyData, originData, collectiveData, ageData, sexData, mapData, networkData, benefitsData, efficiencyData });
 
     } catch (error) { console.error("Erro vigilância:", error); return reply.status(500).send({ message: "Erro de vigilância." }); }
   });
 
-  // 4. INDICADORES E IA (/stats/advanced)
+  // 4. INDICADORES E IA AVANÇADA (/stats/advanced)
+  // [MODIFICADO] Agora usa o AnalyticsAI para gerar insights reais
   app.get("/stats/advanced", async (request, reply) => {
     const { cargo } = request.user as { cargo: string };
     const querySchema = z.object({ months: z.coerce.number().default(12), violacao: z.string().optional() });
@@ -433,18 +444,10 @@ export async function statsRoutes(app: FastifyInstance) {
       
       const activeTotal = await prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } });
       
-      const insights: string[] = [];
       const trendData = Array.from(monthlyStats.values());
-      const last = trendData[trendData.length - 1];
-      const prev = trendData[trendData.length - 2];
-      
-      if (last && prev && prev.novos > 0) {
-        const diff = ((last.novos - prev.novos) / prev.novos) * 100;
-        if (diff > 15) insights.push(`📈 Aumento súbito de ${Math.round(diff)}% na demanda este mês.`);
-        else if (diff < -15) insights.push(`📉 Queda de ${Math.abs(Math.round(diff))}% na demanda este mês.`);
-      }
-      if (avgHandlingTime > 120) insights.push(`⚠️ Tempo médio de acompanhamento alto (${avgHandlingTime} dias).`);
-      if (pieData.length > 0) insights.push(`🔍 Principal demanda local: ${pieData[0].name} (${pieData[0].value} casos).`);
+
+      // [NOVO] Integração com IA para gerar Insights REAIS
+      const insights = await AnalyticsAI.generateInsights(months);
       
       return reply.send({ trendData, avgHandlingTime, totalActive: activeTotal, insights, pieData });
     } catch (error) { 
@@ -452,7 +455,7 @@ export async function statsRoutes(app: FastifyInstance) {
     }
   });
 
-  // 5. HELPERS
+  // 5. MAPA DE CALOR (HEATMAP)
   app.get("/stats/heatmap", async (request, reply) => {
     const querySchema = z.object({ months: z.coerce.number().default(12) });
     const { months } = querySchema.parse(request.query);
@@ -466,6 +469,7 @@ export async function statsRoutes(app: FastifyInstance) {
     } catch { return reply.status(500).send([]); }
   });
 
+  // 6. AGENDA DO USUÁRIO
   app.get("/stats/my-agenda", async (request, reply) => {
     const { sub: userId } = request.user as { sub: string };
     try {
@@ -477,12 +481,11 @@ export async function statsRoutes(app: FastifyInstance) {
     } catch { return reply.status(500).send({ message: "Erro agenda." }); }
   });
   
-// 6. FEED DE ATIVIDADES RECENTES (Real-time)
+  // 7. FEED DE ATIVIDADES RECENTES (Real-time)
   app.get("/stats/activity", async (request, reply) => {
     const { sub: userId, cargo } = request.user as { sub: string, cargo: string };
     
     try {
-      // Se for gerente, vê tudo. Se for técnico, vê apenas dos casos vinculados.
       const whereScope = cargo === 'Gerente' ? {} : {
         caso: {
           OR: [
@@ -494,7 +497,7 @@ export async function statsRoutes(app: FastifyInstance) {
 
       const logs = await prisma.caseLog.findMany({
         where: whereScope,
-        take: 10, // Últimas 10 ações
+        take: 10, 
         orderBy: { createdAt: 'desc' },
         include: {
           autor: { select: { nome: true, cargo: true } },

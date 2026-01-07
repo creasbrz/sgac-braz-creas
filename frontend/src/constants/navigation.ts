@@ -1,7 +1,6 @@
-// frontend/src/constants/navigation.ts
 import {
   PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
-  UserCog, ShieldCheck, Projector, AlertTriangle
+  UserCog, Projector, AlertTriangle, Briefcase, ShieldAlert
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ROUTES } from './routes'
@@ -12,78 +11,90 @@ interface NavLink {
   icon: LucideIcon
   label: string
   allowedRoles: UserRole[]
-  section: 'Acompanhamento' | 'Administração'
+  section: 'Meu Trabalho' | 'Gestão de Casos' | 'Administração'
 }
 
 export const navLinks: NavLink[] = [
+  // --- SEÇÃO: MEU TRABALHO ---
   {
-    to: ROUTES.DASHBOARD,
-    icon: LayoutDashboard,
-    label: 'Painel',
+    to: ROUTES.WORKSPACE,
+    icon: Briefcase,
+    label: 'Minha Mesa',
     allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
-  },
-  {
-    to: ROUTES.CASES,
-    icon: FolderKanban,
-    label: 'Meus Casos Ativos',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
+    section: 'Meu Trabalho',
   },
   {
     to: ROUTES.WAITING_LIST,
     icon: AlertTriangle,
     label: 'Fila de Espera',
-    allowedRoles: ['Gerente'],
-    section: 'Acompanhamento',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'], 
+    section: 'Meu Trabalho',
+  },
+  {
+    to: ROUTES.AGENDA,
+    icon: Calendar,
+    label: 'Minha Agenda',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
+    section: 'Meu Trabalho',
+  },
+
+  // --- SEÇÃO: GESTÃO DE CASOS ---
+  {
+    to: ROUTES.DASHBOARD,
+    icon: LayoutDashboard,
+    label: 'Painel Geral',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Gestão de Casos',
+  },
+  {
+    to: ROUTES.CASES,
+    icon: FolderKanban,
+    label: 'Todos os Casos',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Gestão de Casos',
+  },
+  // [MOVIDO] Trazido de volta para cá para facilitar acesso
+  {
+    to: ROUTES.TEAM_OVERVIEW,
+    icon: Users,
+    label: 'Gestão da Equipe',
+    allowedRoles: ['Gerente', 'Auditor'], // Apenas Gerente/Auditor veem
+    section: 'Gestão de Casos',
   },
   {
     to: ROUTES.GROUPS,
     icon: Projector,
     label: 'Grupos e Oficinas',
-    // [NOVO] Todos os cargos
-    allowedRoles: ['Gerente', 'Especialista', 'Agente_Social'],
-    section: 'Acompanhamento',
-  },
-  {
-    to: ROUTES.TEAM_OVERVIEW,
-    icon: Users,
-    label: 'Casos Ativos (Equipe)',
-    allowedRoles: ['Gerente'],
-    section: 'Acompanhamento',
+    allowedRoles: ['Gerente', 'Especialista', 'Agente_Social', 'Auditor'],
+    section: 'Gestão de Casos',
   },
   {
     to: ROUTES.CLOSED_CASES,
     icon: Archive,
-    label: 'Casos Finalizados',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
+    label: 'Arquivo Morto',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Gestão de Casos',
+  },
+
+  // --- SEÇÃO: ADMINISTRAÇÃO ---
+  {
+    to: ROUTES.REPORTS,
+    icon: PieChart,
+    label: 'Relatórios & RMA',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Administração',
   },
   {
-    to: ROUTES.AGENDA,
-    icon: Calendar,
-    label: 'Agenda',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
+    to: ROUTES.AUDIT,
+    icon: ShieldAlert,
+    label: 'Auditoria de Logs',
+    allowedRoles: ['Gerente', 'Auditor'],
+    section: 'Administração',
   },
   {
     to: ROUTES.USERS,
     icon: UserCog,
-    label: 'Utilizadores',
-    allowedRoles: ['Gerente'],
-    section: 'Administração',
-  },
-  {
-    to: ROUTES.REPORTS,
-    icon: PieChart,
-    label: 'Relatórios',
-    allowedRoles: ['Gerente'],
-    section: 'Administração',
-  },
-  {
-    to: '/dashboard/audit',
-    icon: ShieldCheck,
-    label: 'Auditoria Global',
+    label: 'Gestão de Usuários',
     allowedRoles: ['Gerente'],
     section: 'Administração',
   },

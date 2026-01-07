@@ -1,4 +1,3 @@
-// frontend/src/components/layout/MobileSidebar.tsx
 import { useState, useMemo } from "react"
 import { NavLink } from "react-router-dom"
 import { Menu, Plus } from "lucide-react"
@@ -40,16 +39,19 @@ interface MobileLinkProps extends NavItem {
 
 // --- COMPONENTS ---
 
-const MobileGroup = ({ title, links, close }: MobileGroupProps) => (
-  <div className="grid gap-1">
-    <h4 className="px-2 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-      {title}
-    </h4>
-    {links.map((link) => (
-      <MobileLink key={link.to} {...link} onClick={close} />
-    ))}
-  </div>
-)
+const MobileGroup = ({ title, links, close }: MobileGroupProps) => {
+  if (links.length === 0) return null
+  return (
+    <div className="grid gap-1">
+      <h4 className="px-2 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        {title}
+      </h4>
+      {links.map((link) => (
+        <MobileLink key={link.to} {...link} onClick={close} />
+      ))}
+    </div>
+  )
+}
 
 const MobileLink = ({ to, icon: Icon, label, onClick }: MobileLinkProps) => (
   <NavLink
@@ -79,14 +81,14 @@ export function MobileSidebar() {
 
   const closeMenu = () => setOpen(false)
 
-  // [PERFORMANCE] Memoização dos links
   const accessibleLinks = useMemo(() => {
     return user ? navLinks.filter((link) => link.allowedRoles.includes(user.cargo)) : []
   }, [user])
 
   const groupedLinks = useMemo(() => ({
-    Acompanhamento: accessibleLinks.filter(l => l.section === "Acompanhamento"),
-    Administração: accessibleLinks.filter(l => l.section === "Administração"),
+    MeuTrabalho: accessibleLinks.filter(l => l.section === "Meu Trabalho"),
+    GestaoCasos: accessibleLinks.filter(l => l.section === "Gestão de Casos"),
+    Administracao: accessibleLinks.filter(l => l.section === "Administração"),
   }), [accessibleLinks])
 
   return (
@@ -99,7 +101,7 @@ export function MobileSidebar() {
 
       <SheetContent side="left" className="flex flex-col w-[280px] sm:w-[300px] p-0 border-r shadow-xl"> 
         
-        {/* HEADER DO MENU */}
+        {/* HEADER */}
         <SheetHeader className="p-6 border-b text-left bg-muted/10">
             <div className="flex items-center gap-3">
                 <GdfLogo className="h-9 w-9 text-primary" />
@@ -110,10 +112,9 @@ export function MobileSidebar() {
             </div>
         </SheetHeader>
 
-        {/* CONTEÚDO SCROLLÁVEL */}
+        {/* CONTEÚDO */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
             
-            {/* Botão Novo Caso (Destaque) */}
             <Button
               onClick={() => {
                   closeMenu()
@@ -126,16 +127,13 @@ export function MobileSidebar() {
             </Button>
 
             <nav className="grid gap-6">
-                {groupedLinks.Acompanhamento.length > 0 && (
-                  <MobileGroup title="Gestão" links={groupedLinks.Acompanhamento} close={closeMenu} />
-                )}
-                {groupedLinks.Administração.length > 0 && (
-                  <MobileGroup title="Sistema" links={groupedLinks.Administração} close={closeMenu} />
-                )}
+                <MobileGroup title="Meu Trabalho" links={groupedLinks.MeuTrabalho} close={closeMenu} />
+                <MobileGroup title="Gestão de Casos" links={groupedLinks.GestaoCasos} close={closeMenu} />
+                <MobileGroup title="Administração" links={groupedLinks.Administracao} close={closeMenu} />
             </nav>
         </div>
 
-        {/* RODAPÉ DO USUÁRIO */}
+        {/* RODAPÉ */}
         <div className="border-t p-4 bg-muted/20">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20">

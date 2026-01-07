@@ -46,7 +46,6 @@ async function referralRoutes(app) {
     const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(req.params);
     const referrals = await prisma.encaminhamento.findMany({
       where: { casoId: caseId },
-      // Nome correto do campo no banco
       orderBy: { dataEnvio: "desc" },
       include: {
         autor: { select: { nome: true } }
@@ -66,34 +65,51 @@ async function referralRoutes(app) {
     const userId = req.user.sub;
     const caso = await prisma.case.findUnique({ where: { id: caseId } });
     if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado" });
-    const referral = await prisma.encaminhamento.create({
-      data: {
-        instituicao,
-        tipo,
-        motivo,
-        status: "PENDENTE",
-        casoId: caseId,
-        autorId: userId,
-        dataEnvio: /* @__PURE__ */ new Date()
-      }
-    });
-    await prisma.caseLog.create({
-      data: {
-        casoId: caseId,
-        autorId: userId,
-        acao: "OUTRO",
-        // Ou crie um enum ENCAMINHAMENTO_CRIADO se puder alterar o schema
-        descricao: `Encaminhou para: ${instituicao} (${tipo})`
-      }
-    });
-    return reply.status(201).send(referral);
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const referral = await tx.encaminhamento.create({
+          data: {
+            instituicao,
+            tipo,
+            motivo,
+            status: "PENDENTE",
+            casoId: caseId,
+            // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            dataEnvio: /* @__PURE__ */ new Date()
+          }
+        });
+        await tx.evolucao.create({
+          data: {
+            casoId: caseId,
+            // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            sigilo: false,
+            conteudo: `[SISTEMA] Encaminhamento realizado para: ${instituicao} (${tipo}). Motivo: ${motivo}.`
+          }
+        });
+        await tx.caseLog.create({
+          data: {
+            casoId: caseId,
+            // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            acao: "OUTRO",
+            descricao: `Encaminhou para: ${instituicao} (${tipo})`
+          }
+        });
+        return referral;
+      });
+      return reply.status(201).send(result);
+    } catch (error) {
+      console.error("\u274C Erro ao criar encaminhamento:", error);
+      return reply.status(500).send({ message: "Erro ao processar encaminhamento." });
+    }
   });
   app.patch("/referrals/:id", async (req, reply) => {
     const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
     const bodySchema = import_zod.z.object({
       status: import_zod.z.enum(["PENDENTE", "CONCLUIDO", "CANCELADO"]),
       retorno: import_zod.z.string().optional()
-      // Texto com a resposta da instituição
     });
     const { id } = paramsSchema.parse(req.params);
     const { status, retorno } = bodySchema.parse(req.body);
@@ -102,7 +118,6 @@ async function referralRoutes(app) {
       data: {
         status,
         retorno,
-        // Salva o feedback (Ex: "Vaga concedida")
         updatedAt: /* @__PURE__ */ new Date()
       }
     });

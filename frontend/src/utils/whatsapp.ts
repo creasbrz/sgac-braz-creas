@@ -1,4 +1,3 @@
-// frontend/src/utils/whatsapp.ts
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
@@ -6,9 +5,10 @@ export type MessageTemplate = 'geral' | 'agendamento' | 'documentos'
 
 export function getWhatsAppLink(phone: string, template: MessageTemplate, data?: any) {
   // 1. Limpar o telefone (deixar apenas números)
+  if (!phone) return null
   const cleanPhone = phone.replace(/\D/g, '')
   
-  // Validação básica
+  // Validação básica (mínimo DDD + número)
   if (cleanPhone.length < 10) return null
 
   // Adicionar DDI do Brasil (55) se não tiver
@@ -32,6 +32,6 @@ export function getWhatsAppLink(phone: string, template: MessageTemplate, data?:
       break
   }
 
-  // 3. Gerar Link Encode (para caracteres especiais funcionarem na URL)
+  // 3. Retornar link formatado
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`
 }

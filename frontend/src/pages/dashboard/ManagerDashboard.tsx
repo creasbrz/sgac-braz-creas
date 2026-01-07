@@ -17,7 +17,7 @@ import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recha
 import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
 import { UpcomingPafDeadlines } from '@/components/dashboard/UpcomingPafDeadlines'
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
-import { AdvancedAnalytics } from './AdvancedAnalytics'
+import { AdvancedAnalytics } from '../AdvancedAnalytics'
 import { RecentActivityFeed } from '@/components/dashboard/RecentActivityFeed'
 
 // Import da nova função

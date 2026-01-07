@@ -4,40 +4,53 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import listPlugin from '@fullcalendar/list'
 import ptBrLocale from '@fullcalendar/core/locales/pt-br'
+import { DatesSetArg } from '@fullcalendar/core'
 import { useRef } from 'react'
 import './calendar-custom.css'
 
-interface Event {
+// [TIPAGEM] Definindo as props extendidas para evitar 'any'
+interface CalendarExtendedProps {
+  nomeCompleto?: string
+  telefone?: string
+  urgencia?: string
+  [key: string]: any // Flexibilidade para outros campos futuros
+}
+
+export interface CalendarEvent {
   id: string
   title: string
   start: string
   backgroundColor?: string
   borderColor?: string
-  extendedProps?: any
+  extendedProps?: CalendarExtendedProps
 }
 
-// [CORREÇÃO] Adicionada a propriedade 'datesSet' na interface
 interface FullCalendarWidgetProps {
-  events: Event[]
+  events: CalendarEvent[]
   onDateClick: (date: Date) => void
   onEventClick: (info: any) => void
-  datesSet?: (arg: { start: Date; end: Date; startStr: string; endStr: string }) => void
+  datesSet?: (arg: DatesSetArg) => void
 }
 
-// [CORREÇÃO] Recebendo e repassando 'datesSet'
 export function FullCalendarWidget({ events, onDateClick, onEventClick, datesSet }: FullCalendarWidgetProps) {
   const calendarRef = useRef<FullCalendar>(null)
 
-  // Função que desenha o conteúdo de cada evento
+  // Função que desenha o conteúdo de cada evento (Card Compacto)
   const renderEventContent = (eventInfo: any) => {
     const { title, extendedProps, backgroundColor } = eventInfo.event
     
+    // Fallback de cor caso venha vazio
+    const safeColor = backgroundColor || 'hsl(var(--primary))'
+
     return (
-      <div className="flex w-full overflow-hidden rounded-sm bg-card border shadow-sm text-xs leading-tight">
+      <div 
+        className="flex w-full overflow-hidden rounded-sm bg-card border shadow-sm text-xs leading-tight transition-colors hover:border-primary/40 hover:bg-accent/10 cursor-pointer"
+        title={`${title} - ${extendedProps.nomeCompleto || 'Sem nome'}`} // [UX] Tooltip nativo
+      >
         {/* Faixa colorida lateral */}
         <div 
           className="w-1 shrink-0" 
-          style={{ backgroundColor: backgroundColor }} 
+          style={{ backgroundColor: safeColor }} 
         />
         
         {/* Conteúdo de Texto */}
@@ -85,17 +98,18 @@ export function FullCalendarWidget({ events, onDateClick, onEventClick, datesSet
         events={events}
         dateClick={(info) => onDateClick(info.date)}
         eventClick={(info) => onEventClick(info)}
-        datesSet={datesSet} // [CORREÇÃO] Conectando a prop ao componente
+        datesSet={datesSet} // Hook essencial para lazy loading ou filtros
         eventContent={renderEventContent}
         height="100%"
-        dayMaxEvents={3} // Limita a 3 para não esticar demais a célula
+        dayMaxEvents={3} // Limite de eventos visíveis
+        dayMaxEventRows={3} // Garante consistência vertical
         editable={false}
         selectable={true}
         selectMirror={true}
         allDaySlot={false}
         slotMinTime="07:00:00"
         slotMaxTime="19:00:00"
-        nowIndicator={true}
+        nowIndicator={true} // Linha vermelha no horário atual
         eventTimeFormat={{
           hour: '2-digit',
           minute: '2-digit',

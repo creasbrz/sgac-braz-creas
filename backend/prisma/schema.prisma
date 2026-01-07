@@ -1,5 +1,3 @@
-// backend/prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,11 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// --- ENUMS ---
+
 enum Cargo {
   Gerente
   Agente_Social
   Especialista
+  Auditor
 }
 
 enum CaseStatus {
@@ -58,7 +58,8 @@ enum GroupType {
   REUNIAO_REDE
 }
 
-// Tabelas
+// --- MODELS ---
+
 model User {
   id        String   @id @default(uuid())
   nome      String
@@ -70,19 +71,19 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  casosCriados        Case[]               @relation("Criador")
-  casosAcolhida       Case[]               @relation("AgenteAcolhida")
-  casosPAEFI          Case[]               @relation("EspecialistaPAEFI")
-  evolucoes           Evolucao[]
-  pafs                Paf[]
-  pafVersions         PafVersion[]
-  agendamentos        Agendamento[]
-  logs                CaseLog[]
-  anexos              Anexo[]
-  filtrosSalvos       SavedFilter[]
-  encaminhamentos     Encaminhamento[]
-  entregas            ServiceDeliverable[]
-  gruposFacilitados   GroupActivity[]
+  casosCriados      Case[]             @relation("Criador")
+  casosAcolhida     Case[]             @relation("AgenteAcolhida")
+  casosPAEFI        Case[]             @relation("EspecialistaPAEFI")
+  evolucoes         Evolucao[]
+  pafs              Paf[]
+  pafVersions       PafVersion[]
+  agendamentos      Agendamento[]
+  logs              CaseLog[]
+  anexos            Anexo[]
+  filtrosSalvos     SavedFilter[]
+  encaminhamentos   Encaminhamento[]
+  entregas          ServiceDeliverable[]
+  gruposFacilitados GroupActivity[]
 }
 
 model Case {
@@ -133,9 +134,13 @@ model Case {
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
 
+  // Índices para performance do Workspace
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
+  @@index([agenteAcolhidaId]) // Novo: Filtro rápido para Agente
+  @@index([especialistaPAEFIId]) // Novo: Filtro rápido para Especialista
+  @@index([violacao]) // Novo: Gráfico de violações do Gerente
 }
 
 model Evolucao {
@@ -148,6 +153,9 @@ model Evolucao {
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
+
+  // Índice composto para buscar "última evolução" instantaneamente
+  @@index([casoId, createdAt(sort: Desc)])
 }
 
 model Paf {
@@ -191,6 +199,9 @@ model Agendamento {
   responsavel   User     @relation(fields: [responsavelId], references: [id])
   casoId        String
   caso          Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  // Índice para carregar a Agenda do Dia rapidamente
+  @@index([responsavelId, data])
 }
 
 model CaseLog {
@@ -245,7 +256,7 @@ model Encaminhamento {
 }
 
 model MembroFamilia {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   nome        String
   parentesco  String
   idade       Int?
@@ -253,12 +264,12 @@ model MembroFamilia {
   nascimento  DateTime?
   telefone    String?
   ocupacao    String?
-  renda       Decimal?  @db.Decimal(10, 2)
+  renda       Decimal? @db.Decimal(10, 2)
   observacoes String?
   casoId      String
-  caso        Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model ServiceDeliverable {
@@ -284,6 +295,10 @@ model GroupActivity {
   local            String?
   descricao        String?
   orgaosEnvolvidos String[]          @default([])
+  
+  // Novo campo para controle visual (Verde/Amarelo no frontend)
+  attendanceConfirmed Boolean        @default(false)
+
   facilitadorId    String
   facilitador      User              @relation(fields: [facilitadorId], references: [id])
   participantes    GroupAttendance[]

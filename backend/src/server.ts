@@ -1,4 +1,3 @@
-// backend/src/server.ts
 import fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
@@ -24,7 +23,10 @@ import { filterRoutes } from './routes/filters'
 import { referralRoutes } from './routes/referrals'
 import { familyRoutes } from './routes/family'
 import { deliverablesRoutes } from './routes/deliverables'
-import { groupRoutes } from './routes/groups' // [NOVO]
+import { groupRoutes } from './routes/groups'
+import { workspaceRoutes } from './routes/workspace'
+// [NOVO] Importação da rota de Fila de Espera
+import { waitingListRoutes } from './routes/waitingList'
 
 const app = fastify({
   logger: { transport: { target: 'pino-pretty' } },
@@ -44,7 +46,7 @@ app.decorate('authenticate', async (request, reply) => {
 app.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/', decorateReply: false })
 app.register(fastifyStatic, { root: path.join(__dirname, '../../frontend/dist'), prefix: '/', constraints: {} })
 
-// Rotas
+// Registro de Rotas
 app.register(authRoutes)
 app.register(caseRoutes)
 app.register(userRoutes)
@@ -61,7 +63,9 @@ app.register(filterRoutes)
 app.register(referralRoutes)
 app.register(familyRoutes)
 app.register(deliverablesRoutes)
-app.register(groupRoutes) // [NOVO]
+app.register(groupRoutes)
+app.register(workspaceRoutes)   // Mesa de Trabalho
+app.register(waitingListRoutes) // [NOVO] Fila de Espera e Distribuição
 
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && (req.raw.url.startsWith('/api') || req.raw.url.startsWith('/uploads'))) {

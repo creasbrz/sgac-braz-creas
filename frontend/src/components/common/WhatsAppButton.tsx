@@ -1,4 +1,4 @@
-// frontend/src/components/common/WhatsAppButton.tsx
+import React from "react"
 import { MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -7,18 +7,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { getWhatsAppLink, type MessageTemplate } from "@/utils/whatsapp"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils" // Importante para mesclar classes
+
+// Importa a lógica e o tipo do arquivo que você criou
+import { getWhatsAppLink, type MessageTemplate } from "@/utils/whatsapp"
 
 interface WhatsAppButtonProps {
   phone: string
   name?: string
   template?: MessageTemplate
   data?: any
-  // [CORREÇÃO] Removido "icon" daqui, pois não é uma variante válida de botão
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
   size?: "default" | "sm" | "lg" | "icon"
   label?: string
+  className?: string // [CORREÇÃO] Adicionada prop className para evitar erro de build TS2322
 }
 
 export function WhatsAppButton({ 
@@ -28,7 +31,8 @@ export function WhatsAppButton({
   data, 
   variant = "outline", 
   size = "sm",
-  label
+  label,
+  className
 }: WhatsAppButtonProps) {
 
   const handleClick = (e: React.MouseEvent) => {
@@ -39,10 +43,11 @@ export function WhatsAppButton({
       return
     }
 
+    // Usa a função do utilitário
     const link = getWhatsAppLink(phone, template, { nome: name, ...data })
     
     if (!link) {
-      toast.error("Número de telefone inválido para WhatsApp.")
+      toast.error("Número de telefone inválido.")
       return
     }
 
@@ -51,6 +56,11 @@ export function WhatsAppButton({
 
   if (!phone) return null
 
+  // Estilos base padrão
+  const defaultStyles = variant === 'default' 
+    ? "bg-green-600 hover:bg-green-700 text-white border-transparent" 
+    : "text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -58,10 +68,11 @@ export function WhatsAppButton({
           <Button 
             variant={variant} 
             size={size} 
-            className={variant === 'default' ? "bg-green-600 hover:bg-green-700 text-white" : "text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"}
+            // Mescla os estilos padrão com o className recebido via prop
+            className={cn(defaultStyles, className)}
             onClick={handleClick}
           >
-            <MessageCircle className={`h-4 w-4 ${label ? 'mr-2' : ''}`} />
+            <MessageCircle className={cn("h-4 w-4", label && "mr-2")} />
             {label}
           </Button>
         </TooltipTrigger>

@@ -8,24 +8,26 @@ import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
 import { ThemeProvider } from "./components/common/theme-provider";
 
-// Importação do Error Boundary (criado no passo anterior)
 import ErrorBoundary from "./components/ui/error-boundary";
 
 import { ROUTE_PATHS } from "./constants/routes";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { MainLayout } from "./components/layout/MainLayout";
 import { Login } from "./pages/Login";
-import { Dashboard } from "./pages/Dashboard";
+
+// Orquestradores
+import { Dashboard } from "./pages/dashboard/Dashboard"; // Estratégico
+import { Workspace } from "./pages/workspace/Workspace"; // Operacional
+
 import { Cases } from "./pages/Cases";
 import { ClosedCases } from "./pages/ClosedCases";
 import { CaseDetail } from "./pages/CaseDetail";
 import { Agenda } from "./pages/Agenda";
-import { Reports } from "./pages/Reports";
+import { Reports } from "./pages/reports/Reports";
 import { UserManagement } from "./pages/UserManagement";
 import { TeamOverview } from "./pages/TeamOverview";
 import { GlobalAudit } from "./pages/GlobalAudit";
 import { NotFound } from "./pages/NotFound";
-import { AdvancedAnalytics } from "./pages/AdvancedAnalytics";
 import { GroupManagement } from "./pages/GroupManagement";
 import { WaitingList } from "./pages/WaitingList";
 
@@ -33,7 +35,6 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-        {/* ErrorBoundary protege a aplicação de telas brancas em caso de falha */}
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
@@ -42,40 +43,64 @@ export function App() {
                   <Routes>
                     <Route path={ROUTE_PATHS.LOGIN} element={<Login />} />
 
-                    <Route path={ROUTE_PATHS.DASHBOARD} element={<MainLayout />}>
-                      <Route
-                        index
+                    {/* REDIRECIONAMENTOS DE RAIZ */}
+                    {/* Acessar '/' vai para '/app/workspace' */}
+                    <Route path="/" element={<Navigate to={ROUTE_PATHS.WORKSPACE} replace />} />
+
+                    {/* Layout Principal em '/app' */}
+                    <Route path={ROUTE_PATHS.APP} element={<MainLayout />}>
+                      
+                      {/* '/app' também vai para '/app/workspace' */}
+                      <Route index element={<Navigate to={ROUTE_PATHS.WORKSPACE} replace />} />
+
+                      {/* 1. WORKSPACE (Mesa Operacional - Home Real) */}
+                      <Route 
+                        path={ROUTE_PATHS.WORKSPACE} 
                         element={
                           <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]}>
-                            <Dashboard />
+                            <Workspace />
                           </ProtectedRoute>
-                        }
+                        } 
                       />
 
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
+                      {/* 2. DASHBOARD (Visão Estratégica) */}
+                      <Route 
+                        path={ROUTE_PATHS.DASHBOARD} 
+                        element={
+                          <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]}>
+                            <Dashboard />
+                          </ProtectedRoute>
+                        } 
+                      />
+
+                      {/* --- ROTAS OPERACIONAIS --- */}
+                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]} />}>
                         <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
+                        <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
+                        <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} />
                         <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
                         <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
-                        {/* [NOVO] Grupos liberados para todos */}
                         <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
-                      </Route>
-
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
-                        <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
-                      </Route>
-
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
                         <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
-                        <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
-                        <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
-                        <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} />
-                        <Route path="audit" element={<GlobalAudit />} />
-                        <Route path="analytics" element={<AdvancedAnalytics />} />
                       </Route>
+
+                      {/* --- ROTAS DE GESTÃO E AUDITORIA --- */}
+                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Auditor"]} />}>
+                        <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
+                        <Route path="audit" element={<GlobalAudit />} />
+                        {/* Se Analytics for acessado diretamente via URL antiga */}
+                        <Route path="analytics" element={<Navigate to={ROUTE_PATHS.DASHBOARD} replace />} />
+                      </Route>
+
+                      {/* --- ROTAS ADMINISTRATIVAS --- */}
+                      <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
+                        <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
+                      </Route>
+
                     </Route>
 
                     <Route path={ROUTE_PATHS.NOT_FOUND} element={<NotFound />} />
-                    <Route path="*" element={<Navigate to={ROUTE_PATHS.DASHBOARD} replace />} />
+                    <Route path="*" element={<Navigate to={ROUTE_PATHS.WORKSPACE} replace />} />
                   </Routes>
                 </SidebarProvider>
               </ModalProvider>

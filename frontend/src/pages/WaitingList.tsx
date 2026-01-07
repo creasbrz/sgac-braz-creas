@@ -1,186 +1,309 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { differenceInDays } from 'date-fns'
-import { Loader2, AlertTriangle, UserPlus, CalendarClock } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { format, differenceInDays, isValid } from 'date-fns'
+import { useNavigate } from 'react-router-dom'
+import { 
+  Loader2, Users, AlertCircle, CalendarClock,
+  ArrowUpRight, Eye, UserX
+} from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { 
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+} from "@/components/ui/table"
+import { 
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter 
+} from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select"
 import { Label } from '@/components/ui/label'
-import { Pagination } from '@/components/common/Pagination' // Usa o componente que você enviou
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-import { ROUTES } from '@/constants/routes'
+import { useAuth } from '@/hooks/useAuth'
 import { getUrgencyColor } from '@/constants/caseConstants'
 
+// --- 1. DEFINIÇÃO DE TIPOS ---
+interface WaitingCase {
+  id: string
+  nomeCompleto: string
+  dataEntrada: string
+  urgencia: 'ALTA' | 'MEDIA' | 'BAIXA' | null
+  violacao: string | null
+  status: string
+}
+
+interface Specialist {
+  id: string
+  nome: string
+}
+
+// --- 2. HELPERS ---
+const formatStatus = (status: string) => {
+  if (!status) return '-'
+  return status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
+}
+
+const getSafeDaysWaiting = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return isValid(date) ? differenceInDays(new Date(), date) : 0
+}
+
 export function WaitingList() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const currentPage = Number(searchParams.get('page') ?? '1') // Captura página da URL
   
-  const [isAssignOpen, setIsAssignOpen] = useState(false)
+  // Estado para modal de distribuição
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
-  const [selectedSpecialist, setSelectedSpecialist] = useState("")
+  const [selectedSpecialist, setSelectedSpecialist] = useState<string>('')
+  const [isDistributeOpen, setIsDistributeOpen] = useState(false)
+  
+  // Estado para Lock Visual
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null)
 
-  // [PAGINAÇÃO] Query otimizada
-  const { data: result, isLoading } = useQuery({
-    queryKey: ['cases', 'waiting-list', currentPage],
-    queryFn: async () => {
-      const res = await api.get('/cases', { 
-        params: { 
-          status: 'AGUARDANDO_DISTRIBUICAO_PAEFI', 
-          pageSize: 10, // Limite seguro
-          page: currentPage,
-          view: 'all',
-          sortBy: 'pesoUrgencia', 
-          sortOrder: 'desc'
-        } 
-      })
-      // Garante estrutura { items, meta }
-      const items = res.data.data || res.data.items || []
-      const meta = res.data.meta || { total: items.length, page: currentPage, pageSize: 10, totalPages: 1 }
-      return { items, meta }
-    },
-    // keepPreviousData: true // (Opcional: melhora UX na troca de página)
+  // Busca Tipada
+  const { data: cases = [], isLoading } = useQuery<WaitingCase[]>({
+    queryKey: ['waiting-list'],
+    queryFn: async () => (await api.get('/cases/waiting')).data,
+    enabled: !!user // Só busca se logado
   })
 
-  // ... (Query de especialistas e mutation mantidos iguais)
-  const { data: specialists = [] } = useQuery({
+  const { data: specialists = [] } = useQuery<Specialist[]>({
     queryKey: ['users', 'specialists'],
-    queryFn: async () => {
-      const res = await api.get('/users', { params: { cargo: 'Especialista', active: true }})
-      return res.data
-    },
-    enabled: isAssignOpen
+    queryFn: async () => (await api.get('/users?cargo=Especialista')).data,
+    enabled: user?.cargo === 'Gerente' && isDistributeOpen
   })
 
-  const { mutate: assignSpecialist, isPending: isAssigning } = useMutation({
-    mutationFn: async () => {
-      if (!selectedCaseId) return
-      await api.patch(`/cases/${selectedCaseId}/assign`, { specialistId: selectedSpecialist })
+  const { mutate: handleAction } = useMutation({
+    mutationFn: async (data: { caseId: string, targetUserId?: string }) => {
+      await api.patch(`/cases/waiting/${data.caseId}/assign`, {
+        targetUserId: data.targetUserId
+      })
+    },
+    onMutate: (variables) => {
+      setPendingActionId(variables.caseId)
     },
     onSuccess: () => {
-      toast.success("Técnico atribuído com sucesso.")
-      setIsAssignOpen(false)
+      toast.success('Ação realizada com sucesso!')
+      queryClient.invalidateQueries({ queryKey: ['waiting-list'] })
+      queryClient.invalidateQueries({ queryKey: ['workspace-summary'] })
+      setIsDistributeOpen(false)
       setSelectedCaseId(null)
-      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      setSelectedSpecialist('')
     },
-    onError: () => toast.error("Erro ao atribuir técnico.")
+    onError: () => toast.error('Erro ao processar ação.'),
+    onSettled: () => {
+      setPendingActionId(null)
+    }
   })
 
-  const handlePageChange = (page: number) => {
-    setSearchParams(prev => { prev.set('page', String(page)); return prev })
+  // [SEGURANÇA] Guard de Sessão
+  if (!user) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center text-muted-foreground animate-in fade-in">
+        <UserX className="h-10 w-10 mb-2 opacity-50" />
+        <p>Sessão inválida ou expirada.</p>
+      </div>
+    )
   }
 
-  const cases = result?.items || []
-  const meta = result?.meta
+  const getPageConfig = () => {
+    switch (user.cargo) {
+      case 'Agente_Social':
+        return {
+          title: 'Fila de Acolhida',
+          description: 'Cidadãos aguardando primeira escuta qualificada.',
+          actionLabel: 'Acolher',
+          emptyMessage: 'Nenhum caso aguardando na porta de entrada.'
+        }
+      case 'Gerente':
+        return {
+          title: 'Fila para Distribuição',
+          description: 'Casos triados aguardando designação de técnico de referência (PAEFI).',
+          actionLabel: 'Distribuir',
+          emptyMessage: 'Nenhum caso aguardando distribuição técnica.'
+        }
+      case 'Especialista':
+        return {
+          title: 'Aguardando Acolhida Especializada',
+          description: 'Casos atribuídos aguardando início do acompanhamento técnico.',
+          actionLabel: 'Iniciar',
+          emptyMessage: 'Sua caixa de entrada está vazia.'
+        }
+      case 'Auditor':
+        return {
+          title: 'Auditoria de Filas',
+          description: 'Visão geral de gargalos no fluxo de atendimento.',
+          actionLabel: 'Auditar',
+          emptyMessage: 'Fluxo fluindo sem gargalos aparentes.'
+        }
+      default:
+        return { title: 'Fila de Espera', description: '', actionLabel: 'Ação', emptyMessage: 'Lista vazia' }
+    }
+  }
+
+  const config = getPageConfig()
+
+  const onActionButtonClick = (c: WaitingCase) => {
+    if (user.cargo === 'Gerente') {
+      setSelectedCaseId(c.id)
+      setIsDistributeOpen(true)
+    } else if (user.cargo === 'Auditor') {
+      navigate(`/cases/${c.id}`)
+    } else {
+      handleAction({ caseId: c.id })
+    }
+  }
+
+  if (isLoading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin h-8 w-8 text-primary"/></div>
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-500 flex items-center gap-2">
-          <AlertTriangle className="h-6 w-6" /> Fila de Espera PAEFI
-        </h1>
-        <p className="text-muted-foreground">Monitoramento de casos aguardando vinculação técnica.</p>
+      <div className="flex justify-between items-end border-b pb-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{config.title}</h1>
+          <p className="text-muted-foreground mt-1">{config.description}</p>
+        </div>
+        <div className="bg-muted/50 px-4 py-2 rounded-lg flex items-center gap-2 border shadow-sm">
+            <Users className="h-4 w-4 text-muted-foreground"/>
+            <span className="font-bold text-lg tabular-nums">{cases.length}</span>
+            <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Casos na Fila</span>
+        </div>
       </div>
 
-      <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/10 dark:border-amber-900/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarClock className="h-5 w-5 text-amber-600 dark:text-amber-500" />
-            Demanda Reprimida
-          </CardTitle>
-          <CardDescription>
-            {meta?.total || 0} famílias aguardam atendimento.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="rounded-md border bg-background">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[300px]">Nome / CPF</TableHead>
-                    <TableHead>Prioridade</TableHead>
-                    <TableHead>Tempo de Espera</TableHead>
-                    <TableHead>Violação</TableHead>
-                    <TableHead className="text-right">Ação</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading && <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin mx-auto text-amber-600"/></TableCell></TableRow>}
-                  {!isLoading && cases.length === 0 && <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">Fila zerada!</TableCell></TableRow>}
-                  
-                  {cases.map((c: any) => {
-                    const daysWaiting = differenceInDays(new Date(), new Date(c.dataEntrada))
-                    const isCriticalDelay = daysWaiting > 30
-                    return (
-                      <TableRow key={c.id}>
-                        <TableCell>
-                          <Link to={ROUTES.CASE_DETAIL(c.id)} className="font-medium hover:underline text-primary block">{c.nomeCompleto}</Link>
-                          <span className="text-xs text-muted-foreground font-mono">{c.cpf}</span>
-                        </TableCell>
-                        <TableCell><Badge variant="outline" className={`${getUrgencyColor(c.urgencia)} border`}>{c.urgencia}</Badge></TableCell>
-                        <TableCell>
-                          <div className={`font-mono font-bold ${isCriticalDelay ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{daysWaiting} dias</div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate" title={c.violacao}>{c.violacao}</TableCell>
-                        <TableCell className="text-right">
-                          <Button size="sm" onClick={() => { setSelectedCaseId(c.id); setIsAssignOpen(true); }}><UserPlus className="h-4 w-4 mr-1" /> Atribuir</Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+      <Card className="overflow-hidden border shadow-sm">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-muted/40">
+              <TableRow>
+                <TableHead className="w-[35%]">Nome do Caso / Violação</TableHead>
+                <TableHead className="w-[15%]">Urgência</TableHead>
+                <TableHead className="w-[25%]">Tempo de Espera</TableHead>
+                {user.cargo === 'Auditor' && <TableHead>Status Atual</TableHead>}
+                <TableHead className="text-right w-[15%]">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cases.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={user.cargo === 'Auditor' ? 5 : 4} className="h-32 text-center text-muted-foreground">
+                    {config.emptyMessage}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                cases.map((c) => {
+                  const daysWaiting = getSafeDaysWaiting(c.dataEntrada)
+                  const violacaoText = c.violacao || 'Não classificado'
+                  const isPending = pendingActionId === c.id
 
-            {/* Paginação da Fila de Espera */}
-            {meta && meta.totalPages > 1 && (
-              <Pagination 
-                currentPage={meta.page}
-                totalPages={meta.totalPages}
-                totalItems={meta.total}
-                pageSize={meta.pageSize}
-                onPageChange={handlePageChange}
-              />
-            )}
-          </div>
+                  return (
+                    <TableRow key={c.id} className="group hover:bg-muted/5 transition-colors">
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-semibold text-sm text-foreground">{c.nomeCompleto}</span>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                             <AlertCircle className="h-3 w-3 opacity-70"/>
+                             {violacaoText.length > 30 ? (
+                               <TooltipProvider>
+                                 <Tooltip>
+                                   <TooltipTrigger asChild><span className="cursor-help truncate max-w-[200px] border-b border-dotted border-muted-foreground/50">{violacaoText}</span></TooltipTrigger>
+                                   <TooltipContent>{violacaoText}</TooltipContent>
+                                 </Tooltip>
+                               </TooltipProvider>
+                             ) : (
+                               <span>{violacaoText}</span>
+                             )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      
+                      <TableCell>
+                        <Badge 
+                          variant="outline" 
+                          className={`px-2.5 py-0.5 text-xs shadow-sm font-medium ${getUrgencyColor(c.urgencia)}`}
+                        >
+                          {c.urgencia === 'ALTA' && <AlertCircle className="w-3 h-3 mr-1" />}
+                          {c.urgencia || 'Normal'}
+                        </Badge>
+                      </TableCell>
+                      
+                      <TableCell>
+                        <div className="flex flex-col">
+                           <span className={`text-sm font-medium flex items-center gap-1 ${daysWaiting > 15 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
+                             <CalendarClock className="h-3.5 w-3.5 text-muted-foreground"/>
+                             {daysWaiting === 0 ? 'Hoje' : `${daysWaiting} dias`}
+                           </span>
+                           <span className="text-xs text-muted-foreground pl-5">
+                             Desde {isValid(new Date(c.dataEntrada)) ? format(new Date(c.dataEntrada), 'dd/MM/yyyy') : '-'}
+                           </span>
+                        </div>
+                      </TableCell>
+
+                      {user.cargo === 'Auditor' && (
+                        <TableCell>
+                           <Badge variant="secondary" className="text-[10px] font-normal border-border bg-background">{formatStatus(c.status)}</Badge>
+                        </TableCell>
+                      )}
+
+                      <TableCell className="text-right">
+                        <Button 
+                          size="sm" 
+                          variant={user.cargo === 'Gerente' ? "default" : "secondary"}
+                          className="font-medium shadow-sm transition-all active:scale-95"
+                          disabled={!!pendingActionId} 
+                          onClick={() => onActionButtonClick(c)}
+                        >
+                          {isPending ? <Loader2 className="h-3 w-3 animate-spin mr-2"/> : 
+                           user.cargo === 'Auditor' ? <Eye className="h-3.5 w-3.5 mr-2"/> :
+                           <ArrowUpRight className="h-3.5 w-3.5 mr-2"/>
+                          }
+                          {isPending ? 'Processando...' : config.actionLabel}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
-      
-      {/* Modal de Atribuição (Mantido) */}
-      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
-        <DialogContent>
+
+      {/* MODAL DISTRIBUIÇÃO (GERENTE) */}
+      <Dialog open={isDistributeOpen} onOpenChange={setIsDistributeOpen}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Distribuir Caso</DialogTitle>
+            <DialogDescription>
+              Selecione o técnico de referência responsável pelo acompanhamento PAEFI.
+            </DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-2">
-            <Label>Selecione o Especialista Responsável</Label>
+          <div className="py-4 space-y-3">
+            <Label>Especialista de Referência</Label>
             <Select value={selectedSpecialist} onValueChange={setSelectedSpecialist}>
-              <SelectTrigger><SelectValue placeholder="Selecione um técnico..." /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione na lista..." />
+              </SelectTrigger>
               <SelectContent>
-                {specialists.map((s: any) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.nome}
-                  </SelectItem>
+                {specialists.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[10px] text-muted-foreground">
-              O caso será movido para "Acolhida Especializada" automaticamente.
-            </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancelar</Button>
-            <Button onClick={() => assignSpecialist()} disabled={!selectedSpecialist || isAssigning}>
-              {isAssigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirmar
+            <Button variant="outline" onClick={() => setIsDistributeOpen(false)}>Cancelar</Button>
+            <Button 
+              onClick={() => selectedCaseId && handleAction({ caseId: selectedCaseId, targetUserId: selectedSpecialist })}
+              disabled={!selectedSpecialist || !!pendingActionId}
+            >
+              {pendingActionId ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : null}
+              Confirmar Distribuição
             </Button>
           </DialogFooter>
         </DialogContent>

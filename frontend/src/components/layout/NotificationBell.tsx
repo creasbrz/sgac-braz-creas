@@ -1,11 +1,8 @@
-// frontend/src/components/layout/NotificationBell.tsx
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, Info, AlertTriangle, CheckCircle2, Check } from 'lucide-react'
+import { Bell, Info, AlertTriangle, CheckCircle2, Check, Clock, Activity, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import {
   Popover,
   PopoverContent,
@@ -15,21 +12,76 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ROUTES } from '@/constants/routes'
 
-interface NotificationItem {
+// Interface que espelha o retorno do Backend
+interface AlertRaw {
   id: string
-  title: string
-  description: string
-  link: string
-  type: 'critical' | 'info'
-  date?: string
+  nomeCompleto: string
+  type: 'PAF_NOT_STARTED' | 'PAF_REVIEW_OVERDUE' | 'RECEPTION_DELAY' | 'NOT_STARTED_YET' | 'PAF_STALLED'
+  days: number
+  urgencia?: string
+}
+
+// Configuração visual (Cores, Ícones e Textos)
+const getNotificationConfig = (type: string, days: number) => {
+  switch (type) {
+    case 'PAF_NOT_STARTED':
+      return { 
+        title: 'Plano não iniciado', 
+        description: 'Caso sem PAF cadastrado.',
+        icon: AlertCircle, 
+        bg: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+        critical: true
+      }
+    case 'PAF_REVIEW_OVERDUE':
+      return { 
+        title: 'Revisão Vencida', 
+        description: `PAF sem revisão há ${days} dias.`,
+        icon: AlertTriangle, 
+        bg: 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
+        critical: true
+      }
+    case 'RECEPTION_DELAY':
+      return { 
+        title: 'Acolhida Atrasada', 
+        description: `Aguardando há ${days} dias.`,
+        icon: Clock, 
+        bg: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+        critical: true
+      }
+    case 'NOT_STARTED_YET':
+      return { 
+        title: 'Não Iniciado', 
+        description: `Atribuído há ${days} dias sem ação.`,
+        icon: Clock, 
+        bg: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
+        critical: false
+      }
+    case 'PAF_STALLED':
+      return { 
+        title: 'Sem Evolução', 
+        description: `Nenhum registro há ${days} dias.`,
+        icon: Activity, 
+        bg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+        critical: false
+      }
+    default:
+      return { 
+        title: 'Atenção Necessária', 
+        description: 'Verifique o status do caso.',
+        icon: Info, 
+        bg: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+        critical: false
+      }
+  }
 }
 
 export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false)
   const [readIds, setReadIds] = useState<string[]>([])
 
-  // 1. Carregar notificações lidas do LocalStorage ao iniciar
+  // 1. Carregar lidas do LocalStorage
   useEffect(() => {
     const stored = localStorage.getItem('sgac_read_notifications')
     if (stored) {
@@ -37,23 +89,29 @@ export function NotificationBell() {
     }
   }, [])
 
-  const { data: rawNotifications = [] } = useQuery<NotificationItem[]>({
+  // 2. Buscar dados do Backend
+  const { data: rawNotifications = [] } = useQuery<AlertRaw[]>({
     queryKey: ['notifications-bell'],
     queryFn: async () => {
       const res = await api.get('/alerts')
       return res.data
     },
-    refetchInterval: 1000 * 60 * 2,
+    refetchInterval: 1000 * 60 * 2, // 2 minutos
     retry: false
   })
 
-  // 2. Filtrar notificações que JÁ foram clicadas (lidas)
-  const notifications = rawNotifications.filter(n => !readIds.includes(n.id))
+  // 3. Processar e Filtrar
+  const notifications = rawNotifications
+    .filter(n => !readIds.includes(n.id))
+    .map(n => ({
+      ...n,
+      config: getNotificationConfig(n.type, n.days)
+    }))
 
-  const criticalCount = notifications.filter(n => n.type === 'critical').length
+  const criticalCount = notifications.filter(n => n.config.critical).length
   const hasNotifications = notifications.length > 0
 
-  // 3. Função para marcar como lida ao clicar
+  // 4. Ações
   const handleRead = (id: string) => {
     const newReadIds = [...readIds, id]
     setReadIds(newReadIds)
@@ -61,10 +119,9 @@ export function NotificationBell() {
     setIsOpen(false)
   }
 
-  // 4. Função para limpar tudo
   const markAllAsRead = () => {
     const allIds = rawNotifications.map(n => n.id)
-    const newReadIds = [...new Set([...readIds, ...allIds])] // Merge unique IDs
+    const newReadIds = [...new Set([...readIds, ...allIds])]
     setReadIds(newReadIds)
     localStorage.setItem('sgac_read_notifications', JSON.stringify(newReadIds))
   }
@@ -115,34 +172,39 @@ export function NotificationBell() {
                 </div>
             ) : (
                 <div className="divide-y">
-                    {notifications.map((item) => (
-                        <Link 
+                    {notifications.map((item) => {
+                        const Icon = item.config.icon
+                        return (
+                          <Link 
                             key={item.id} 
-                            to={item.link}
-                            onClick={() => handleRead(item.id)} // [AQUI] Marca como lido ao clicar
-                            className="flex gap-3 px-4 py-3 hover:bg-muted/40 transition-colors items-start group"
-                        >
-                            <div className={`mt-1 p-1.5 rounded-full shrink-0 ${item.type === 'critical' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                                {item.type === 'critical' 
-                                  ? <AlertTriangle className="h-4 w-4" />
-                                  : <Info className="h-4 w-4" />
-                                }
+                            to={`${ROUTES.CASES}/${item.id}`} // [LINK CORRETO]
+                            onClick={() => handleRead(item.id)}
+                            className="flex gap-3 px-4 py-3 hover:bg-muted/40 transition-colors items-start group relative"
+                          >
+                            {/* Ícone Colorido */}
+                            <div className={`mt-1 p-1.5 rounded-full shrink-0 ${item.config.bg}`}>
+                                <Icon className="h-4 w-4" />
                             </div>
-                            <div className="flex-1 space-y-1">
-                                <p className="text-sm font-medium leading-none group-hover:text-primary transition-colors">
-                                    {item.title}
+                            
+                            <div className="flex-1 space-y-1 overflow-hidden">
+                                <p className="text-sm font-medium leading-none group-hover:text-primary transition-colors flex justify-between">
+                                    {item.config.title}
+                                </p>
+                                <p className="text-sm text-foreground/90 font-medium truncate">
+                                    {item.nomeCompleto}
                                 </p>
                                 <p className="text-xs text-muted-foreground line-clamp-2">
-                                    {item.description}
+                                    {item.config.description}
                                 </p>
-                                {item.date && (
-                                    <p className="text-[10px] text-muted-foreground/60 pt-1">
-                                        {formatDistanceToNow(new Date(item.date), { addSuffix: true, locale: ptBR })}
-                                    </p>
-                                )}
                             </div>
-                        </Link>
-                    ))}
+
+                            {/* Indicador de Urgência Alta (Bolinha Vermelha no canto) */}
+                            {item.urgencia === 'ALTA' && (
+                                <span className="absolute top-3 right-3 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-950" title="Urgência Alta" />
+                            )}
+                          </Link>
+                        )
+                    })}
                 </div>
             )}
         </ScrollArea>

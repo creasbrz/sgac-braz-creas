@@ -1,11 +1,16 @@
-// frontend/src/pages/GroupManagement.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { format, isFuture, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, Printer, FileText, CalendarDays } from 'lucide-react'
+import { 
+  Users, Plus, MapPin, CheckCircle2, Loader2, UserPlus, X, 
+  Printer, FileText, CalendarDays, Check, ChevronsUpDown, Info,
+  AlertCircle,
+  Calendar
+} from 'lucide-react'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +22,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList 
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { generateGroupAttendancePDF } from '@/utils/pdfGenerator'
 import type { GroupActivity } from '@/types/group'
@@ -29,6 +48,9 @@ export function GroupManagement() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<GroupActivity | null>(null)
   
+  const [openCombobox, setOpenCombobox] = useState(false)
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
+
   const [newTheme, setNewTheme] = useState('')
   const [newType, setNewType] = useState('OFICINA')
   const [selectedDates, setSelectedDates] = useState<string[]>([])
@@ -37,8 +59,6 @@ export function GroupManagement() {
   const [newLocal, setNewLocal] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newOrgaos, setNewOrgaos] = useState<string[]>([])
-
-  const [participantToAdd, setParticipantToAdd] = useState('')
 
   const { data: groups = [], isLoading } = useQuery<GroupActivity[]>({
     queryKey: ['groups'],
@@ -51,14 +71,14 @@ export function GroupManagement() {
     enabled: !!selectedGroup
   })
 
-  const { data: activeCasesData } = useQuery({
-    queryKey: ['cases', 'active-select'],
+  const { data: activeCasesData, isLoading: isLoadingCandidates } = useQuery({
+    queryKey: ['group-candidates', selectedGroup?.id],
     queryFn: async () => {
-      const res = await api.get('/cases', { params: { pageSize: 100, view: 'all' } })
-      return res.data.items
+      if (!selectedGroup) return []
+      const res = await api.get(`/groups/${selectedGroup.id}/candidates`)
+      return res.data
     },
     enabled: !!selectedGroup,
-    staleTime: 1000 * 60 * 5
   })
 
   const { mutate: createGroup, isPending: isCreating } = useMutation({
@@ -86,25 +106,29 @@ export function GroupManagement() {
       if (!selectedGroup) return
       await api.patch(`/groups/${selectedGroup.id}/attendance/${caseId}`, { presente })
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['group', selectedGroup?.id] })
-      toast.success('Presença registrada.')
+      // [UX] Feedback específico da ação
+      toast.success(variables.presente ? 'Presença confirmada.' : 'Presença removida.')
     }
   })
 
-  const { mutate: addParticipant, isPending: isAddingParticipant } = useMutation({
+  const { mutate: addParticipants, isPending: isAddingParticipant } = useMutation({
     mutationFn: async () => {
-      if (!selectedGroup || !participantToAdd) return
+      if (!selectedGroup || selectedCandidates.length === 0) return
       await api.post(`/groups/${selectedGroup.id}/participants`, {
-        caseIds: [participantToAdd]
+        caseIds: selectedCandidates
       })
     },
-    onSuccess: () => {
-      toast.success('Participante incluído!')
-      setParticipantToAdd('')
+    onSuccess: (data: any) => {
+      toast.success(data?.data?.message || 'Participantes incluídos!')
+      setSelectedCandidates([]) 
+      setOpenCombobox(false)
       queryClient.invalidateQueries({ queryKey: ['group', selectedGroup?.id] })
       queryClient.invalidateQueries({ queryKey: ['groups'] })
-    }
+      queryClient.invalidateQueries({ queryKey: ['group-candidates', selectedGroup?.id] })
+    },
+    onError: () => toast.error('Erro ao adicionar participantes.')
   })
 
   const toggleOrgao = (orgao: string) => {
@@ -128,7 +152,14 @@ export function GroupManagement() {
     }
   }
 
-  // [CORREÇÃO DARK MODE] Cores adaptadas para não ficarem cinzas/feias
+  const toggleCandidate = (caseId: string) => {
+    setSelectedCandidates(prev => 
+      prev.includes(caseId) 
+        ? prev.filter(id => id !== caseId) 
+        : [...prev, caseId]
+    )
+  }
+
   const getGroupStatusColor = (group: GroupActivity) => {
     const date = new Date(group.dataRealizacao)
     const isFutureDate = isFuture(date) || isToday(date)
@@ -136,7 +167,6 @@ export function GroupManagement() {
     if (isFutureDate) {
       return { 
         border: 'bg-blue-500', 
-        // Light: Azul claro | Dark: Azul escuro transparente (sem cinza)
         bg: 'hover:border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900/50', 
         badge: 'text-blue-700 bg-blue-50 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800',
         label: 'Agendado'
@@ -146,7 +176,6 @@ export function GroupManagement() {
     if (group.attendanceConfirmed) {
       return { 
         border: 'bg-emerald-500', 
-        // Light: Verde claro | Dark: Verde escuro transparente
         bg: 'hover:border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50', 
         badge: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
         label: 'Realizado'
@@ -155,7 +184,6 @@ export function GroupManagement() {
 
     return { 
       border: 'bg-amber-500', 
-      // Light: Laranja claro | Dark: Laranja escuro transparente
       bg: 'hover:border-amber-300 border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50', 
       badge: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
       label: 'Pendente Chamada'
@@ -163,13 +191,13 @@ export function GroupManagement() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in">
+    <div className="space-y-6 animate-in fade-in pb-10">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Grupos e Oficinas</h1>
           <p className="text-muted-foreground">Gestão de atividades coletivas e lista de presença.</p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
+        <Button onClick={() => setIsCreateOpen(true)} className="shadow-sm">
           <Plus className="mr-2 h-4 w-4" /> Nova Atividade
         </Button>
       </div>
@@ -201,16 +229,26 @@ export function GroupManagement() {
                 </CardTitle>
                 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                   <CalendarDays className="h-3.5 w-3.5" />
-                   {format(new Date(group.dataRealizacao), "dd 'de' MMMM, HH:mm", { locale: ptBR })}
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {format(new Date(group.dataRealizacao), "dd 'de' MMMM, HH:mm", { locale: ptBR })}
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/40 dark:bg-muted/10 p-2 rounded-md">
-                  <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-primary/70" /> 
-                  <span className="truncate leading-tight">{group.local || 'Local não definido'}</span>
-                </div>
+                {/* Tooltip para Local extenso */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/40 dark:bg-muted/10 p-2 rounded-md">
+                        <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-primary/70" /> 
+                        <span className="truncate leading-tight">{group.local || 'Local não definido'}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{group.local}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t dark:border-white/10">
                   <span className="truncate max-w-[140px] font-medium text-foreground/80">
@@ -227,9 +265,10 @@ export function GroupManagement() {
         })}
       </div>
 
+      {/* DIALOG DE CRIAÇÃO */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Nova Atividade Coletiva</DialogTitle></DialogHeader>
+           <DialogHeader><DialogTitle>Nova Atividade Coletiva</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Tema / Nome da Atividade</Label>
@@ -255,34 +294,24 @@ export function GroupManagement() {
               </div>
             </div>
 
-            {/* SELEÇÃO DE MÚLTIPLAS DATAS */}
             <div className="space-y-2 border p-3 rounded-md bg-muted/20">
-              <Label className="text-primary">Datas de Realização</Label>
+              <Label className="text-primary flex items-center gap-2">
+                Datas de Realização 
+                <span className="text-[10px] text-muted-foreground font-normal ml-auto">(Múltiplas datas = atividades recorrentes)</span>
+              </Label>
               <div className="flex gap-2">
-                <Input 
-                  type="datetime-local" 
-                  value={tempDate} 
-                  onChange={e => setTempDate(e.target.value)} 
-                  className="flex-1"
-                />
-                <Button variant="secondary" onClick={handleAddDate} disabled={!tempDate}>
-                  <Plus className="h-4 w-4" />
-                </Button>
+                <Input type="datetime-local" value={tempDate} onChange={e => setTempDate(e.target.value)} className="flex-1"/>
+                <Button variant="secondary" onClick={handleAddDate} disabled={!tempDate}><Plus className="h-4 w-4" /></Button>
               </div>
-              
-              {selectedDates.length > 0 ? (
+              {selectedDates.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {selectedDates.map((date) => (
                     <Badge key={date} variant="outline" className="pl-2 pr-1 py-1 gap-1 bg-background">
                       {format(parseISO(date), "dd/MM HH:mm")}
-                      <button onClick={() => handleRemoveDate(date)} className="hover:text-destructive">
-                        <X className="h-3 w-3" />
-                      </button>
+                      <button onClick={() => handleRemoveDate(date)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
                     </Badge>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-1">Nenhuma data selecionada.</p>
               )}
             </div>
 
@@ -302,29 +331,28 @@ export function GroupManagement() {
                 ))}
               </div>
             </div>
-
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
             <Button onClick={() => createGroup()} disabled={isCreating || !newTheme || selectedDates.length === 0}>
-              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} 
-              Criar {selectedDates.length > 1 ? `(${selectedDates.length} Sessões)` : 'Agendamento'}
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Criar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* DIALOG DE DETALHES */}
       <Dialog open={!!selectedGroup} onOpenChange={(open) => !open && setSelectedGroup(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-xl">
               {selectedGroup?.tema} 
               <Badge variant="secondary" className="ml-2 font-normal text-xs">{selectedGroup?.tipo.replace('_', ' ')}</Badge>
             </DialogTitle>
             <DialogDescription className="flex items-center gap-2">
               {selectedGroup?.orgaosEnvolvidos && selectedGroup.orgaosEnvolvidos.length > 0 ? (
-                 <span className="flex gap-1 text-xs">Parceiros: {selectedGroup.orgaosEnvolvidos.join(', ')}</span>
-              ) : <span>Detalhes da atividade e participantes</span>}
+                 <span className="flex gap-1 text-xs items-center"><Users className="h-3 w-3 mr-1"/> Parceiros: {selectedGroup.orgaosEnvolvidos.join(', ')}</span>
+              ) : <span>Detalhes da atividade e gestão de participantes</span>}
             </DialogDescription>
           </DialogHeader>
 
@@ -333,65 +361,136 @@ export function GroupManagement() {
           ) : (
             <div className="flex-1 overflow-hidden flex flex-col gap-4">
               
+              {/* MÉTRICAS DE TOPO - COM ÍCONES */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs border rounded-lg p-2 bg-muted/20">
-                <div className="p-2">
-                  <span className="block text-muted-foreground">Data</span>
-                  <span className="font-medium">{selectedGroup?.dataRealizacao ? format(new Date(selectedGroup.dataRealizacao), "dd/MM/yyyy HH:mm") : '-'}</span>
+                <div className="p-2 flex flex-col items-center justify-center">
+                  <span className="text-muted-foreground flex items-center gap-1 mb-1"><Calendar className="h-3 w-3"/> Data</span>
+                  <span className="font-medium">{selectedGroup?.dataRealizacao ? format(new Date(selectedGroup.dataRealizacao), "dd/MM/yy HH:mm") : '-'}</span>
                 </div>
-                <div className="p-2 border-l border-border/50">
-                  <span className="block text-muted-foreground">Total Inscritos</span>
+                <div className="p-2 border-l border-border/50 flex flex-col items-center justify-center">
+                  <span className="text-muted-foreground flex items-center gap-1 mb-1"><Users className="h-3 w-3"/> Inscritos</span>
                   <span className="font-bold text-lg">{groupDetails?.participantes?.length || 0}</span>
                 </div>
-                <div className="p-2 border-l border-border/50">
-                  <span className="block text-muted-foreground">Presentes</span>
-                  <span className="font-bold text-lg text-green-600 dark:text-green-400">{groupDetails?.participantes?.filter(p => p.presente).length || 0}</span>
+                <div className="p-2 border-l border-border/50 flex flex-col items-center justify-center">
+                  <span className="text-muted-foreground flex items-center gap-1 mb-1"><CheckCircle2 className="h-3 w-3 text-emerald-500"/> Presentes</span>
+                  <span className="font-bold text-lg text-emerald-600 dark:text-emerald-400">{groupDetails?.participantes?.filter(p => p.presente).length || 0}</span>
                 </div>
-                <div className="p-2 border-l border-border/50">
-                  <span className="block text-muted-foreground">Ausentes</span>
+                <div className="p-2 border-l border-border/50 flex flex-col items-center justify-center">
+                  <span className="text-muted-foreground flex items-center gap-1 mb-1"><AlertCircle className="h-3 w-3"/> Ausentes</span>
                   <span className="font-bold text-lg text-muted-foreground">{groupDetails?.participantes?.filter(p => !p.presente).length || 0}</span>
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePrint('blank')}>
-                   <Printer className="mr-2 h-4 w-4 text-muted-foreground" />
-                   Lista para Assinatura (Vazia)
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePrint('filled')}>
-                   <FileText className="mr-2 h-4 w-4 text-primary" />
-                   Relatório de Presença (Final)
-                </Button>
+              {/* AÇÕES DE DOCUMENTAÇÃO */}
+              <div className="bg-muted/10 p-3 rounded-lg border border-dashed space-y-2">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePrint('blank')}>
+                     <Printer className="mr-2 h-4 w-4 text-muted-foreground" /> Lista de Assinatura
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => handlePrint('filled')}>
+                     <FileText className="mr-2 h-4 w-4 text-primary" /> Relatório Consolidado
+                  </Button>
+                </div>
+                <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
+                  <Info className="h-3 w-3"/> Documentos válidos para prestação de contas e arquivo físico.
+                </p>
               </div>
 
-              <div className="flex items-end gap-2 p-3 bg-muted/40 rounded-lg border border-dashed">
-                <div className="flex-1 space-y-1">
-                  <Label className="text-xs">Adicionar Família/Usuário ao Grupo</Label>
-                  <Select value={participantToAdd} onValueChange={setParticipantToAdd}>
-                    <SelectTrigger className="h-9 bg-background">
-                      <SelectValue placeholder="Pesquisar caso ativo..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeCasesData && activeCasesData.length > 0 ? (
-                        activeCasesData.map((c: any) => {
-                          const isAlreadyInGroup = groupDetails?.participantes?.some(p => p.casoId === c.id)
-                          if (isAlreadyInGroup) return null
-                          return <SelectItem key={c.id} value={c.id}>{c.nomeCompleto}</SelectItem>
-                        })
-                      ) : (
-                        <div className="p-2 text-xs text-muted-foreground text-center">Nenhum caso disponível...</div>
-                      )}
-                    </SelectContent>
-                  </Select>
+              {/* MULTI-SELECT DE PARTICIPANTES */}
+              <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
+                <div className="flex justify-between items-end">
+                   <Label className="text-xs font-semibold uppercase text-muted-foreground">Adicionar Participantes</Label>
+                   {selectedCandidates.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px]">{selectedCandidates.length} selecionados</Badge>
+                   )}
                 </div>
-                <Button size="sm" onClick={() => addParticipant()} disabled={!participantToAdd || isAddingParticipant}>
-                  {isAddingParticipant ? <Loader2 className="h-4 w-4 animate-spin"/> : <UserPlus className="h-4 w-4 mr-2"/>}
-                  Incluir
-                </Button>
+
+                <div className="flex flex-col gap-2">
+                  <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openCombobox}
+                        className="w-full justify-between h-auto min-h-[42px] py-2 px-3 text-left"
+                        disabled={isLoadingCandidates}
+                      >
+                        <div className="flex flex-wrap gap-1">
+                          {selectedCandidates.length > 0 ? (
+                            selectedCandidates.map(id => {
+                              const person = activeCasesData?.find((c: any) => c.id === id)
+                              return (
+                                <Badge key={id} variant="secondary" className="mr-1 mb-1">
+                                  {person?.nomeCompleto.split(' ')[0]}
+                                  <div
+                                    className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      toggleCandidate(id)
+                                    }}
+                                  >
+                                    <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                  </div>
+                                </Badge>
+                              )
+                            })
+                          ) : (
+                             <span className="text-muted-foreground text-sm font-normal">
+                                {isLoadingCandidates ? "Carregando candidatos..." : "Pesquisar e selecionar usuários..."}
+                             </span>
+                          )}
+                        </div>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Digite o nome..." />
+                        <CommandList>
+                          <CommandEmpty>Nenhum caso elegível encontrado.</CommandEmpty>
+                          <CommandGroup className="max-h-[200px] overflow-auto">
+                            {activeCasesData && activeCasesData.map((c: any) => (
+                              <CommandItem
+                                key={c.id}
+                                value={c.nomeCompleto}
+                                onSelect={() => toggleCandidate(c.id)}
+                              >
+                                <div
+                                  className={cn(
+                                    "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                                    selectedCandidates.includes(c.id)
+                                      ? "bg-primary text-primary-foreground"
+                                      : "opacity-50 [&_svg]:invisible"
+                                  )}
+                                >
+                                  <Check className={cn("h-4 w-4")} />
+                                </div>
+                                {c.nomeCompleto}
+                                <span className="ml-2 text-[10px] text-muted-foreground">({c.status})</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  <Button 
+                    size="sm" 
+                    className="w-full sm:w-auto self-end"
+                    onClick={() => addParticipants()} 
+                    disabled={selectedCandidates.length === 0 || isAddingParticipant}
+                  >
+                    {isAddingParticipant ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <UserPlus className="h-4 w-4 mr-2"/>}
+                    {selectedCandidates.length > 0 ? `Incluir ${selectedCandidates.length} Participantes` : 'Incluir Selecionados'}
+                  </Button>
+                </div>
               </div>
               
-              <div className="flex-1 overflow-hidden border rounded-md flex flex-col">
-                <div className="bg-muted/50 p-2 text-xs font-semibold text-muted-foreground uppercase border-b">
-                  Lista de Chamada
+              <div className="flex-1 overflow-hidden border rounded-md flex flex-col bg-background">
+                <div className="bg-muted/50 p-2 text-xs font-semibold text-muted-foreground uppercase border-b flex justify-between items-center">
+                  <span>Lista de Chamada</span>
+                  <span className="text-[10px] font-normal">{groupDetails?.participantes?.length} nomes</span>
                 </div>
                 <ScrollArea className="flex-1">
                   {groupDetails?.participantes?.length === 0 ? (
@@ -402,7 +501,7 @@ export function GroupManagement() {
                   ) : (
                     <div className="divide-y dark:divide-white/10">
                       {groupDetails?.participantes?.map((p) => (
-                        <div key={p.id} className="flex items-center justify-between p-3 hover:bg-muted/10 transition-colors">
+                        <div key={p.id} className="flex items-center justify-between p-3 hover:bg-muted/5 transition-colors">
                           <div className="flex flex-col">
                             <span className="font-medium text-sm">{p.caso.nomeCompleto}</span>
                             <span className="text-[10px] text-muted-foreground">ID: {p.caso.id.slice(0, 8)}...</span>

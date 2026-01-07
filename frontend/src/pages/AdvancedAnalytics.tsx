@@ -19,17 +19,21 @@ import {
   Legend,
   BarChart,
   Bar,
+  LabelList,
+  Label
 } from "recharts"
 
 // Ícones e UI
-import { Loader2, BarChart3, Clock, TrendingUp, Download, AlertTriangle } from "lucide-react"
+import { 
+  Loader2, BarChart3, Clock, TrendingUp, Download, AlertTriangle, 
+  CheckCircle2, Info} from "lucide-react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
-import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 // Bibliotecas de PDF
 import html2canvas from "html2canvas"
@@ -58,7 +62,7 @@ function PremiumSkeleton() {
   return (
     <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Carregando dados">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[0,1,2].map(i => <div key={i} className="h-24 rounded-xl bg-muted/20" />)}
+        {[0,1,2].map(i => <div key={i} className="h-28 rounded-xl bg-muted/20" />)}
       </div>
       <div className="h-[320px] rounded-xl bg-muted/10" />
     </div>
@@ -88,7 +92,7 @@ export function AdvancedAnalytics() {
   const exportRef = useRef<HTMLDivElement | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   
-  // 1. Query Principal (Dados Gerais + Insights)
+  // 1. Query Principal
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["stats", "advanced", periodMonths],
     queryFn: async () => {
@@ -97,7 +101,6 @@ export function AdvancedAnalytics() {
         return res.data
       } catch (error) {
         console.warn("Usando dados mockados para Analytics (API Offline)")
-        // [CORREÇÃO] Adicionado MOCK COMPLETO, incluindo insights
         return {
           avgHandlingTime: 45,
           totalActive: 128,
@@ -113,7 +116,6 @@ export function AdvancedAnalytics() {
             { name: 'Negligência', value: 20 },
             { name: 'Outros', value: 10 },
           ],
-          // [IMPORTANTE] Mock dos insights para não sumirem da tela
           insights: [
             { type: 'warning', title: 'Tendência de Alta', description: 'Aumento de 15% nos casos de negligência em idosos.' },
             { type: 'success', title: 'Meta Atingida', description: '95% das visitas domiciliares realizadas no prazo.' },
@@ -125,7 +127,7 @@ export function AdvancedAnalytics() {
     staleTime: 1000 * 60 * 5,
   })
 
-  // 2. Sanitização dos Dados
+  // 2. Sanitização
   const data = useMemo(() => ({
     avgHandlingTime: dataRaw?.avgHandlingTime || 0,
     totalActive: dataRaw?.totalActive || 0,
@@ -134,7 +136,7 @@ export function AdvancedAnalytics() {
     insights: (Array.isArray(dataRaw?.insights) ? dataRaw.insights : []) as Insight[]
   }), [dataRaw])
 
-  // 3. Query de Produtividade
+  // 3. Produtividade
   const { data: productivityRaw } = useQuery<ProductivityItem[]>({
     queryKey: ["stats", "productivity", periodMonths],
     queryFn: async () => {
@@ -154,13 +156,15 @@ export function AdvancedAnalytics() {
   })
   const productivity = useMemo(() => Array.isArray(productivityRaw) ? productivityRaw : [], [productivityRaw])
 
-  // 4. Cálculos Memoizados
+  // 4. Cálculos
   const forecast = useMemo(() => {
     const xs: number[] = []
     const ys: number[] = []
     data.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
     return linearRegressionForecast(xs, ys)
   }, [data.trendData])
+
+  const totalViolations = useMemo(() => data.pieData.reduce((acc, curr) => acc + curr.value, 0), [data.pieData])
 
   const tooltipStyle = useMemo(() => ({
     backgroundColor: 'hsl(var(--popover))',
@@ -171,7 +175,7 @@ export function AdvancedAnalytics() {
     fontSize: '12px'
   }), [])
 
-  // 5. Função de Exportação PDF
+  // 5. Exportação PDF (Com Rodapé)
   const handleExportPdf = async () => {
     if (!exportRef.current) return
 
@@ -192,7 +196,7 @@ export function AdvancedAnalytics() {
       const docDefinition: TDocumentDefinitions = {
         pageSize: 'A4',
         pageOrientation: 'landscape',
-        pageMargins: [20, 20, 20, 20],
+        pageMargins: [20, 20, 20, 40], // Margem inferior maior para rodapé
         content: [
           {
             text: 'Relatório Analítico Avançado - CREAS',
@@ -212,9 +216,18 @@ export function AdvancedAnalytics() {
             alignment: 'center'
           }
         ],
+        footer: (currentPage, pageCount) => {
+          return {
+            text: `Documento Gerado Automaticamente - CREAS | Página ${currentPage} de ${pageCount}`,
+            alignment: 'center',
+            style: 'footer',
+            margin: [0, 10, 0, 0]
+          }
+        },
         styles: {
           header: { fontSize: 18, bold: true, color: '#2e4a7d' },
-          subheader: { fontSize: 10, color: '#666' }
+          subheader: { fontSize: 10, color: '#666' },
+          footer: { fontSize: 8, color: '#aaa' }
         }
       }
 
@@ -249,10 +262,11 @@ export function AdvancedAnalytics() {
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
 
+      {/* Cabeçalho Executivo */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Análise Estratégica</h2>
-          <p className="text-muted-foreground">Monitoramento de KPIs e indicadores de performance.</p>
+          <h2 className="text-2xl font-bold tracking-tight leading-tight text-foreground">Análise Estratégica</h2>
+          <p className="text-muted-foreground text-sm mt-1">Monitoramento de KPIs e inteligência de dados.</p>
         </div>
 
         <div className="flex gap-2 items-center">
@@ -271,77 +285,113 @@ export function AdvancedAnalytics() {
         </div>
       </div>
 
-      <div ref={exportRef} className="space-y-6 bg-background p-2 rounded-lg">
+      <div ref={exportRef} className="space-y-6 bg-background/50 p-2 rounded-lg">
         
-        {/* KPI Cards */}
+        {/* KPI Cards - Uniformizados */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-label="Indicadores Chave">
-            <DashboardStatCard 
-              index={0} 
-              title="Tempo Médio" 
-              value={data.avgHandlingTime} 
-              description="Dias para resolução" 
-              icon={Clock} 
-              colorClass="text-blue-500"
-            />
-            <DashboardStatCard 
-              index={1} 
-              title="Total Ativos" 
-              value={data.totalActive} 
-              description="Casos em andamento" 
-              icon={BarChart3} 
-              colorClass="text-purple-500" 
-            />
-            <DashboardStatCard 
-              index={2} 
-              title="Novos (Mês)" 
-              value={data.trendData[data.trendData.length-1]?.novos ?? 0} 
-              description="Entradas recentes" 
-              icon={TrendingUp} 
-              colorClass="text-emerald-500" 
-            />
+            <div className="h-full min-h-[110px]">
+              <DashboardStatCard 
+                index={0} 
+                title="Tempo Médio" 
+                value={data.avgHandlingTime} 
+                description="Dias para resolução" 
+                icon={Clock} 
+                colorClass="text-blue-500"
+              />
+            </div>
+            <div className="h-full min-h-[110px]">
+              <DashboardStatCard 
+                index={1} 
+                title="Total Ativos" 
+                value={data.totalActive} 
+                description="Casos em andamento" 
+                icon={BarChart3} 
+                colorClass="text-purple-500" 
+              />
+            </div>
+            <div className="h-full min-h-[110px]">
+              <DashboardStatCard 
+                index={2} 
+                title="Novos (Mês)" 
+                value={data.trendData[data.trendData.length-1]?.novos ?? 0} 
+                description="Entradas recentes" 
+                icon={TrendingUp} 
+                colorClass="text-emerald-500" 
+              />
+            </div>
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2" aria-label="Gráfico de Tendência de Casos">
-            <CardHeader>
-              <CardTitle>Fluxo de Casos</CardTitle>
+          {/* Gráfico de Linha - Refinado */}
+          <Card className="lg:col-span-2 shadow-sm" aria-label="Gráfico de Tendência de Casos">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Fluxo de Casos</CardTitle>
               <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
             </CardHeader>
             <CardContent>
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                   <LineChart data={data.trendData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
-                    <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis fontSize={10} tickLine={false} axisLine={false} />
+                   <LineChart data={data.trendData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'hsl(var(--muted-foreground))'}} />
+                    <YAxis fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'hsl(var(--muted-foreground))'}} />
                     <Tooltip contentStyle={tooltipStyle} />
-                    <Legend verticalAlign="top" height={36} />
-                    <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
-                    <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                    <Legend verticalAlign="top" height={36} iconType="circle"/>
+                    <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 3}} activeDot={{r: 5}} />
+                    {/* Linha tracejada para diferenciar saída */}
+                    <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={2} strokeDasharray="5 5" dot={{r: 3}} activeDot={{r: 5}} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground text-center flex items-center justify-center gap-2">
+              <div className="mt-2 text-xs text-muted-foreground text-center flex items-center justify-center gap-2 bg-muted/20 py-1 rounded">
                  <TrendingUp className="h-3 w-3" />
-                 Previsão de novos casos (Regressão Linear): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
+                 Previsão de novos casos (Regressão): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
               </div>
             </CardContent>
           </Card>
 
+          {/* Insights Inteligentes (Nativo) */}
           <div className="lg:col-span-1">
-            {/* [CORREÇÃO] Passando apenas strings + Ícones para simular o "Smart" visualmente */}
-            <SmartInsightsCard 
-              insights={data.insights.map(i => {
-                const icon = i.type === 'warning' ? '⚠️' : i.type === 'success' ? '✅' : 'ℹ️';
-                return `${icon} ${i.title}: ${i.description}`;
-              })} 
-            />
+            <Card className="h-full shadow-sm flex flex-col">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary"/> Insights IA
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 space-y-3">
+                {data.insights.map((insight, idx) => {
+                  const styles = {
+                    success: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 text-emerald-800 dark:text-emerald-300",
+                    warning: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 text-amber-800 dark:text-amber-300",
+                    info: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 text-blue-800 dark:text-blue-300"
+                  }
+                  const icons = {
+                    success: CheckCircle2,
+                    warning: AlertTriangle,
+                    info: Info
+                  }
+                  const Icon = icons[insight.type] || Info
+
+                  return (
+                    <div key={idx} className={cn("p-3 rounded-lg border text-sm flex gap-3 items-start", styles[insight.type] || styles.info)}>
+                      <Icon className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block text-xs uppercase tracking-wide mb-0.5">{insight.title}</span>
+                        <span className="opacity-90 leading-snug block">{insight.description}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {data.insights.length === 0 && <div className="text-center text-muted-foreground text-sm py-4">Nenhum insight gerado.</div>}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card aria-label="Gráfico de Violações">
-            <CardHeader><CardTitle>Top 5 Violações</CardTitle></CardHeader>
+          {/* Gráfico de Pizza - Centralizado */}
+          <Card aria-label="Gráfico de Violações" className="shadow-sm">
+            <CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Top 5 Violações</CardTitle></CardHeader>
             <CardContent>
                <div style={{ width: '100%', height: 340 }}>
                   {data.pieData.length > 0 ? (
@@ -350,17 +400,22 @@ export function AdvancedAnalytics() {
                         <Pie 
                           data={data.pieData as any[]} 
                           cx="50%" 
-                          cy="45%" 
-                          innerRadius={50} 
-                          outerRadius={70} 
+                          cy="50%" 
+                          innerRadius={60} // Donut
+                          outerRadius={80} 
                           paddingAngle={5} 
                           dataKey="value"
-                          stroke="hsl(var(--background))" 
+                          stroke="hsl(var(--card))" 
                           strokeWidth={2}
                         >
                           {data.pieData.map((_: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
+                          <Label 
+                            value={totalViolations} 
+                            position="center" 
+                            className="text-2xl font-bold fill-foreground"
+                          />
                         </Pie>
                         <Tooltip contentStyle={tooltipStyle} />
                         <Legend 
@@ -368,7 +423,7 @@ export function AdvancedAnalytics() {
                           verticalAlign="bottom" 
                           align="center" 
                           iconType="circle" 
-                          wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }}
+                          wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
@@ -377,24 +432,31 @@ export function AdvancedAnalytics() {
             </CardContent>
           </Card>
 
-          <Card aria-label="Gráfico de Desempenho da Equipe">
-            <CardHeader>
-              <CardTitle>Desempenho da Equipe</CardTitle>
+          {/* Gráfico de Barras - Produtividade */}
+          <Card aria-label="Gráfico de Desempenho da Equipe" className="shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Desempenho da Equipe</CardTitle>
               <CardDescription>Intervenções registradas.</CardDescription>
             </CardHeader>
             <CardContent>
-               <div style={{ width: '100%', height: 300 }}>
+               <div style={{ width: '100%', height: 340 }}>
                   {productivity.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={productivity} layout="vertical" margin={{left: 0}}>
+                      <BarChart data={productivity} layout="vertical" margin={{left: 0, right: 30}}>
                         <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} fontSize={11}/>
+                        <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} fontSize={12} tick={{fill: 'hsl(var(--foreground))'}}/>
                         <Tooltip 
                           cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
                           contentStyle={tooltipStyle} 
                           formatter={(value: any) => [value, 'Intervenções']}
                         />
-                        <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={20} />
+                        <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={24}>
+                          {/* LabelList para leitura direta */}
+                          <LabelList dataKey="value" position="right" style={{ fontSize: '11px', fill: 'hsl(var(--muted-foreground))' }} />
+                          {productivity.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de atividade.</div>}

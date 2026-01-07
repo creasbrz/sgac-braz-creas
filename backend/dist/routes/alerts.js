@@ -33,132 +33,83 @@ var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/alerts.ts
-var import_client2 = require("@prisma/client");
 var import_date_fns = require("date-fns");
 async function alertRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  app.addHook("onRequest", async (req, reply) => {
     try {
-      await request.jwtVerify();
+      await req.jwtVerify();
     } catch {
-      return reply.status(401).send({ message: "N\xE3o autorizado." });
+      return reply.status(401).send();
     }
   });
-  app.get("/alerts", async (request, reply) => {
-    const { sub: userId, cargo } = request.user;
-    const notifications = [];
-    const today = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
-    const tomorrowEnd = (0, import_date_fns.addDays)(today, 2);
-    const thirtyDaysAgo = (0, import_date_fns.subDays)(today, 30);
-    const tasks = [];
-    tasks.push(
-      prisma.agendamento.findMany({
-        where: {
-          responsavelId: userId,
-          data: { gte: today, lt: tomorrowEnd }
+  app.get("/alerts", async (req, reply) => {
+    const { sub: userId, cargo } = req.user;
+    try {
+      let whereCondition = { status: { not: "DESLIGADO" } };
+      if (cargo === "Especialista") {
+        whereCondition.especialistaPAEFIId = userId;
+      } else if (cargo === "Agente_Social") {
+        whereCondition.agenteAcolhidaId = userId;
+        whereCondition.status = { in: ["EM_ACOLHIDA", "AGUARDANDO_ACOLHIDA"] };
+      } else if (cargo === "Gerente" || cargo === "Auditor") {
+        whereCondition.OR = [
+          { especialistaPAEFIId: { not: null } },
+          { agenteAcolhidaId: { not: null } }
+        ];
+      }
+      const cases = await prisma.case.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          nomeCompleto: true,
+          status: true,
+          dataEntrada: true,
+          urgencia: true,
+          evolucoes: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { createdAt: true }
+          }
         },
-        include: { caso: { select: { nomeCompleto: true } } }
-      }).then((agenda) => {
-        agenda.forEach((ag) => {
-          var _a;
-          notifications.push({
-            id: `agenda-${ag.id}`,
-            title: "Compromisso Pr\xF3ximo",
-            description: `${ag.tipo} - ${((_a = ag.caso) == null ? void 0 : _a.nomeCompleto) || "Sem caso vinculado"} \xE0s ${new Date(ag.data).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`,
-            link: "/dashboard/agenda",
-            type: "info"
-          });
-        });
-      })
-    );
-    if (cargo === import_client2.Cargo.Coordenador) {
-      tasks.push(
-        prisma.case.count({
-          where: { status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA }
-        }).then((waitingCount) => {
-          if (waitingCount > 0) {
-            notifications.push({
-              id: "waiting-cases",
-              title: "Triagem Pendente",
-              description: `Existem ${waitingCount} fam\xEDlias aguardando acolhida para triagem inicial.`,
-              link: "/dashboard/cases?status=AGUARDANDO_ACOLHIDA",
-              type: "critical"
-            });
-          }
-        })
-      );
-    }
-    if (cargo === import_client2.Cargo.Especialista) {
-      tasks.push(
-        prisma.case.count({
-          where: {
-            especialistaPAEFIId: userId,
-            status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-            paf: { is: null }
-          }
-        }).then((casesWithoutPaf) => {
-          if (casesWithoutPaf > 0) {
-            notifications.push({
-              id: "missing-paf",
-              title: "Casos sem PAF",
-              description: `${casesWithoutPaf} casos precisam do plano inicial.`,
-              link: "/dashboard/cases",
-              type: "critical"
-            });
-          }
-        })
-      );
-      const pafDeadline = (0, import_date_fns.addDays)(/* @__PURE__ */ new Date(), 15);
-      tasks.push(
-        prisma.paf.findMany({
-          where: {
-            caso: {
-              especialistaPAEFIId: userId,
-              status: { not: import_client2.CaseStatus.DESLIGADO }
-            },
-            deadline: { gte: today, lte: pafDeadline }
-          },
-          include: { caso: { select: { nomeCompleto: true, id: true } } }
-        }).then((pafsExpiring) => {
-          pafsExpiring.forEach((p) => {
-            notifications.push({
-              id: `paf-exp-${p.id}`,
-              title: "Revis\xE3o de PAF",
-              description: `O plano de ${p.caso.nomeCompleto} vence em ${new Date(p.deadline).toLocaleDateString("pt-BR")}.`,
-              link: `/dashboard/cases/${p.caso.id}/paf`,
-              type: "warning"
-            });
-          });
-        })
-      );
-      tasks.push(
-        prisma.case.findMany({
-          select: { id: true, nomeCompleto: true },
-          where: {
-            especialistaPAEFIId: userId,
-            status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-            // Logica: Não tem NENHUMA evolução com data >= 30 dias atrás
-            // Ou seja, a última foi antes disso ou nunca houve.
-            evolucao: {
-              none: {
-                data: { gte: thirtyDaysAgo }
-              }
+        take: 100
+        // Limite de segurança
+      });
+      const alerts = cases.map((c) => {
+        var _a;
+        try {
+          const lastEvolucao = (_a = c.evolucoes[0]) == null ? void 0 : _a.createdAt;
+          const lastDate = lastEvolucao ? new Date(lastEvolucao) : null;
+          const dataEntrada = c.dataEntrada ? new Date(c.dataEntrada) : /* @__PURE__ */ new Date();
+          const today = /* @__PURE__ */ new Date();
+          if (cargo === "Especialista" || cargo === "Gerente" && c.status.includes("PAEFI")) {
+            if (!lastDate) {
+              return { id: c.id, nomeCompleto: c.nomeCompleto, type: "PAF_NOT_STARTED", days: 0, urgencia: c.urgencia };
+            }
+            if ((0, import_date_fns.isValid)(lastDate)) {
+              const daysSince = (0, import_date_fns.differenceInDays)(today, lastDate);
+              if (daysSince >= 90) return { id: c.id, nomeCompleto: c.nomeCompleto, type: "PAF_REVIEW_OVERDUE", days: daysSince, urgencia: c.urgencia };
+              if (daysSince >= 30) return { id: c.id, nomeCompleto: c.nomeCompleto, type: "PAF_STALLED", days: daysSince, urgencia: c.urgencia };
             }
           }
-        }).then((stagnantCases) => {
-          stagnantCases.forEach((c) => {
-            notifications.push({
-              id: `stagnant-${c.id}`,
-              title: "Caso Sem Evolu\xE7\xE3o",
-              description: `${c.nomeCompleto} n\xE3o possui registros nos \xFAltimos 30 dias.`,
-              link: `/dashboard/cases/${c.id}`,
-              type: "warning"
-            });
-          });
-        })
-      );
+          if (cargo === "Agente_Social" || cargo === "Gerente" && c.status.includes("ACOLHIDA")) {
+            const daysWaiting = (0, import_date_fns.differenceInDays)(today, dataEntrada);
+            if (c.status === "AGUARDANDO_ACOLHIDA" && daysWaiting > 2) {
+              return { id: c.id, nomeCompleto: c.nomeCompleto, type: "NOT_STARTED_YET", days: daysWaiting, urgencia: c.urgencia };
+            }
+            if (c.status === "EM_ACOLHIDA" && !lastDate && daysWaiting > 5) {
+              return { id: c.id, nomeCompleto: c.nomeCompleto, type: "RECEPTION_DELAY", days: daysWaiting, urgencia: c.urgencia };
+            }
+          }
+        } catch (err) {
+          return null;
+        }
+        return null;
+      }).filter(Boolean);
+      return reply.send(alerts);
+    } catch (error) {
+      console.error("[ALERTS_ERROR]", error);
+      return reply.status(500).send({ message: "Erro ao processar alertas." });
     }
-    await Promise.all(tasks);
-    return notifications;
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

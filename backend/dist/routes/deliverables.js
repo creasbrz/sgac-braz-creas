@@ -34,85 +34,135 @@ var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/deliverables.ts
+var import_client2 = require("@prisma/client");
 async function deliverablesRoutes(app) {
-  app.addHook("onRequest", async (request) => {
+  app.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
-    } catch (err) {
+    } catch {
+      return reply.status(401).send();
     }
   });
-  const paramsSchema = import_zod.z.object({
-    caseId: import_zod.z.string().uuid()
-  });
-  const createDeliverableBodySchema = import_zod.z.object({
-    tipo: import_zod.z.string().min(3, "Selecione um tipo de benef\xEDcio"),
+  const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
+  const updateParamsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+  const createBodySchema = import_zod.z.object({
+    tipo: import_zod.z.string().min(3),
     observacoes: import_zod.z.string().optional()
   });
   const updateStatusSchema = import_zod.z.object({
     status: import_zod.z.enum(["SOLICITADO", "CONCEDIDO", "ENTREGUE", "NEGADO"]),
     dataEntrega: import_zod.z.string().datetime().optional()
   });
-  const updateParamsSchema = import_zod.z.object({
-    id: import_zod.z.string().uuid()
-  });
   app.post("/cases/:caseId/deliverables", async (request, reply) => {
-    var _a;
     const { caseId } = paramsSchema.parse(request.params);
-    const { tipo, observacoes } = createDeliverableBodySchema.parse(request.body);
+    const { tipo, observacoes } = createBodySchema.parse(request.body);
+    const userId = request.user.sub;
     const caso = await prisma.case.findUnique({ where: { id: caseId } });
     if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado" });
-    let responsavelId = (_a = request.user) == null ? void 0 : _a.sub;
-    if (!responsavelId) {
-      const fallbackUser = await prisma.user.findFirst();
-      responsavelId = (fallbackUser == null ? void 0 : fallbackUser.id) || "id-nao-encontrado";
+    const usuario = await prisma.user.findUnique({ where: { id: userId } });
+    if (!usuario) return reply.status(401).send({ message: "Usu\xE1rio inv\xE1lido." });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const deliverable = await tx.serviceDeliverable.create({
+          data: {
+            tipo,
+            status: "SOLICITADO",
+            observacoes,
+            casoId: caseId,
+            // [CORREÇÃO] Mapeamento explícito: coluna 'casoId' recebe variável 'caseId'
+            responsavelId: userId
+          }
+        });
+        await tx.evolucao.create({
+          data: {
+            casoId: caseId,
+            // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            sigilo: false,
+            conteudo: `[SISTEMA] Solicita\xE7\xE3o de Benef\xEDcio: ${tipo}. Obs: ${observacoes || "-"}`
+          }
+        });
+        await tx.caseLog.create({
+          data: {
+            casoId: caseId,
+            // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            acao: import_client2.LogAction.ENTREGA_BENEFICIO_CRIADA,
+            descricao: `Solicitou benef\xEDcio: ${tipo}`
+          }
+        });
+        return deliverable;
+      });
+      return reply.status(201).send(result);
+    } catch (err) {
+      console.error("\u274C Erro ao criar benef\xEDcio:", err);
+      return reply.status(500).send({ message: "Erro ao processar solicita\xE7\xE3o." });
     }
-    const deliverable = await prisma.serviceDeliverable.create({
-      data: {
-        tipo,
-        status: "SOLICITADO",
-        observacoes,
-        casoId: caseId,
-        // <--- CORREÇÃO AQUI: O campo no banco é 'casoId'
-        responsavelId
-      }
-    });
-    return reply.status(201).send(deliverable);
   });
   app.get("/cases/:caseId/deliverables", async (request, reply) => {
     const { caseId } = paramsSchema.parse(request.params);
-    const deliverables = await prisma.serviceDeliverable.findMany({
-      where: {
-        casoId: caseId
-        // <--- CORREÇÃO AQUI: O campo no banco é 'casoId'
-      },
-      orderBy: { createdAt: "desc" },
-      include: {
-        responsavel: {
-          select: { nome: true }
+    try {
+      const deliverables = await prisma.serviceDeliverable.findMany({
+        where: {
+          casoId: caseId
+          // [CORREÇÃO] Mapeamento explícito
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          responsavel: { select: { nome: true } }
         }
-      }
-    });
-    const response = deliverables.map((d) => ({
-      id: d.id,
-      tipo: d.tipo,
-      status: d.status,
-      dataSolicitacao: d.dataSolicitacao,
-      dataEntrega: d.dataEntrega,
-      responsavel: { nome: d.responsavel.nome }
-    }));
-    return reply.send(response);
+      });
+      const response = deliverables.map((d) => ({
+        id: d.id,
+        tipo: d.tipo,
+        status: d.status,
+        dataSolicitacao: d.dataSolicitacao,
+        dataEntrega: d.dataEntrega,
+        responsavel: { nome: d.responsavel.nome }
+      }));
+      return reply.send(response);
+    } catch (err) {
+      console.error("\u274C Erro ao listar benef\xEDcios:", err);
+      return reply.status(500).send({ message: "Erro ao buscar benef\xEDcios." });
+    }
   });
   app.patch("/deliverables/:id", async (request, reply) => {
     const { id } = updateParamsSchema.parse(request.params);
     const { status, dataEntrega } = updateStatusSchema.parse(request.body);
-    const updated = await prisma.serviceDeliverable.update({
-      where: { id },
-      data: {
-        status,
-        dataEntrega: dataEntrega ? new Date(dataEntrega) : void 0
-      }
-    });
-    return reply.send(updated);
+    const userId = request.user.sub;
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const updated = await tx.serviceDeliverable.update({
+          where: { id },
+          data: {
+            status,
+            dataEntrega: dataEntrega ? new Date(dataEntrega) : void 0
+          }
+        });
+        await tx.evolucao.create({
+          data: {
+            casoId: updated.casoId,
+            // Aqui usamos o retorno do update, então 'casoId' existe no objeto
+            autorId: userId,
+            sigilo: false,
+            conteudo: `[SISTEMA] Atualiza\xE7\xE3o de Benef\xEDcio (${updated.tipo}): Status alterado para ${status}.`
+          }
+        });
+        await tx.caseLog.create({
+          data: {
+            casoId: updated.casoId,
+            autorId: userId,
+            acao: import_client2.LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
+            descricao: `Alterou status do benef\xEDcio ${updated.tipo} para ${status}`
+          }
+        });
+        return updated;
+      });
+      return reply.send(result);
+    } catch (err) {
+      console.error("\u274C Erro ao atualizar benef\xEDcio:", err);
+      return reply.status(500).send({ message: "Erro ao atualizar benef\xEDcio." });
+    }
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

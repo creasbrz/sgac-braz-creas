@@ -1,162 +1,98 @@
-// backend/src/routes/alerts.ts
-import { type FastifyInstance, FastifyRequest } from 'fastify'
+import { type FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
-import { Cargo, CaseStatus } from '@prisma/client'
-import { addDays, startOfDay, subDays } from 'date-fns'
+import { subDays, differenceInDays, isValid } from 'date-fns'
 
-// Definição de Tipos para clareza e manutenção
-interface Notification {
-  id: string
-  title: string
-  description: string
-  link: string
-  type: 'critical' | 'warning' | 'info'
+interface AuthUser {
+  sub: string
+  cargo: 'Agente_Social' | 'Especialista' | 'Gerente' | 'Auditor'
 }
 
 export async function alertRoutes(app: FastifyInstance) {
   
-  // Hook de Autenticação
-  app.addHook('onRequest', async (request, reply) => {
-    try {
-      await request.jwtVerify()
-    } catch {
-      return reply.status(401).send({ message: 'Não autorizado.' })
-    }
+  app.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send() }
   })
 
-  // [GET] /alerts - Central de Notificações Inteligente
-  app.get('/alerts', async (request: FastifyRequest, reply) => {
-    const { sub: userId, cargo } = request.user as { sub: string, cargo: Cargo }
-    const notifications: Notification[] = []
+  app.get('/alerts', async (req, reply) => {
+    const { sub: userId, cargo } = req.user as AuthUser
+    
+    try {
+      // 1. Define filtro
+      let whereCondition: any = { status: { not: 'DESLIGADO' } }
 
-    const today = startOfDay(new Date())
-    const tomorrowEnd = addDays(today, 2) // Hoje e amanhã
-    const thirtyDaysAgo = subDays(today, 30)
+      if (cargo === 'Especialista') {
+        whereCondition.especialistaPAEFIId = userId
+      } else if (cargo === 'Agente_Social') {
+        whereCondition.agenteAcolhidaId = userId
+        whereCondition.status = { in: ['EM_ACOLHIDA', 'AGUARDANDO_ACOLHIDA'] }
+      } else if (cargo === 'Gerente' || cargo === 'Auditor') {
+        // Limita para evitar travamento em bancos grandes
+        whereCondition.OR = [
+            { especialistaPAEFIId: { not: null } },
+            { agenteAcolhidaId: { not: null } }
+        ]
+      }
 
-    // Array de Promises para execução paralela (Performance)
-    const tasks = []
-
-    // 1. TAREFA: Buscar Agendamentos (Comum a todos)
-    tasks.push(
-      prisma.agendamento.findMany({
-        where: {
-          responsavelId: userId,
-          data: { gte: today, lt: tomorrowEnd }
+      // 2. Busca dados mínimos
+      const cases = await prisma.case.findMany({
+        where: whereCondition,
+        select: {
+          id: true,
+          nomeCompleto: true,
+          status: true,
+          dataEntrada: true,
+          urgencia: true,
+          evolucoes: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { createdAt: true }
+          }
         },
-        include: { caso: { select: { nomeCompleto: true } } }
-      }).then(agenda => {
-        agenda.forEach(ag => {
-          notifications.push({
-            id: `agenda-${ag.id}`,
-            title: 'Compromisso Próximo',
-            description: `${ag.tipo} - ${ag.caso?.nomeCompleto || 'Sem caso vinculado'} às ${new Date(ag.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
-            link: '/dashboard/agenda',
-            type: 'info'
-          })
-        })
+        take: 100 // Limite de segurança
       })
-    )
 
-    // 2. TAREFA: Coordenador - Triagem
-    if (cargo === Cargo.Coordenador) {
-      tasks.push(
-        prisma.case.count({
-          where: { status: CaseStatus.AGUARDANDO_ACOLHIDA }
-        }).then(waitingCount => {
-          if (waitingCount > 0) {
-            notifications.push({
-              id: 'waiting-cases',
-              title: 'Triagem Pendente',
-              description: `Existem ${waitingCount} famílias aguardando acolhida para triagem inicial.`,
-              link: '/dashboard/cases?status=AGUARDANDO_ACOLHIDA',
-              type: 'critical'
-            })
-          }
-        })
-      )
-    }
-
-    // 3. TAREFA: Especialista - Gestão de Casos (PAEFI)
-    if (cargo === Cargo.Especialista) {
-      // 3.1 Casos sem PAF
-      tasks.push(
-        prisma.case.count({
-          where: {
-            especialistaPAEFIId: userId,
-            status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-            paf: { is: null }
-          }
-        }).then(casesWithoutPaf => {
-          if (casesWithoutPaf > 0) {
-            notifications.push({
-              id: 'missing-paf',
-              title: 'Casos sem PAF',
-              description: `${casesWithoutPaf} casos precisam do plano inicial.`,
-              link: '/dashboard/cases',
-              type: 'critical'
-            })
-          }
-        })
-      )
-
-      // 3.2 PAFs vencendo em breve (Próximos 15 dias)
-      const pafDeadline = addDays(new Date(), 15)
-      tasks.push(
-        prisma.paf.findMany({
-          where: {
-            caso: {
-              especialistaPAEFIId: userId,
-              status: { not: CaseStatus.DESLIGADO }
-            },
-            deadline: { gte: today, lte: pafDeadline },
-          },
-          include: { caso: { select: { nomeCompleto: true, id: true } } }
-        }).then(pafsExpiring => {
-          pafsExpiring.forEach(p => {
-            notifications.push({
-              id: `paf-exp-${p.id}`,
-              title: 'Revisão de PAF',
-              description: `O plano de ${p.caso.nomeCompleto} vence em ${new Date(p.deadline).toLocaleDateString('pt-BR')}.`,
-              link: `/dashboard/cases/${p.caso.id}/paf`,
-              type: 'warning'
-            })
-          })
-        })
-      )
-
-      // 3.3 Estagnação (Casos sem evolução há +30 dias)
-      // OTIMIZAÇÃO: Usando filtro reverso do Prisma ao invés de loop no Node.js
-      tasks.push(
-        prisma.case.findMany({
-          select: { id: true, nomeCompleto: true },
-          where: {
-            especialistaPAEFIId: userId,
-            status: CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
-            // Logica: Não tem NENHUMA evolução com data >= 30 dias atrás
-            // Ou seja, a última foi antes disso ou nunca houve.
-            evolucao: {
-              none: {
-                data: { gte: thirtyDaysAgo }
+      // 3. Processamento Seguro
+      const alerts = cases.map(c => {
+        try {
+            const lastEvolucao = c.evolucoes[0]?.createdAt
+            const lastDate = lastEvolucao ? new Date(lastEvolucao) : null
+            const dataEntrada = c.dataEntrada ? new Date(c.dataEntrada) : new Date()
+            const today = new Date()
+            
+            // Regras PAEFI (Especialista)
+            if (cargo === 'Especialista' || (cargo === 'Gerente' && c.status.includes('PAEFI'))) {
+              if (!lastDate) {
+                 return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'PAF_NOT_STARTED', days: 0, urgencia: c.urgencia }
+              }
+              if (isValid(lastDate)) {
+                 const daysSince = differenceInDays(today, lastDate)
+                 if (daysSince >= 90) return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'PAF_REVIEW_OVERDUE', days: daysSince, urgencia: c.urgencia }
+                 if (daysSince >= 30) return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'PAF_STALLED', days: daysSince, urgencia: c.urgencia }
               }
             }
-          }
-        }).then(stagnantCases => {
-          stagnantCases.forEach(c => {
-            notifications.push({
-              id: `stagnant-${c.id}`,
-              title: 'Caso Sem Evolução',
-              description: `${c.nomeCompleto} não possui registros nos últimos 30 dias.`,
-              link: `/dashboard/cases/${c.id}`,
-              type: 'warning'
-            })
-          })
-        })
-      )
+
+            // Regras Acolhida (Agente)
+            if (cargo === 'Agente_Social' || (cargo === 'Gerente' && c.status.includes('ACOLHIDA'))) {
+               const daysWaiting = differenceInDays(today, dataEntrada)
+               
+               if (c.status === 'AGUARDANDO_ACOLHIDA' && daysWaiting > 2) {
+                  return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'NOT_STARTED_YET', days: daysWaiting, urgencia: c.urgencia }
+               }
+               if (c.status === 'EM_ACOLHIDA' && !lastDate && daysWaiting > 5) {
+                  return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'RECEPTION_DELAY', days: daysWaiting, urgencia: c.urgencia }
+               }
+            }
+        } catch (err) {
+            return null // Ignora caso com erro de data
+        }
+        return null
+      }).filter(Boolean)
+
+      return reply.send(alerts)
+
+    } catch (error) {
+      console.error('[ALERTS_ERROR]', error)
+      return reply.status(500).send({ message: 'Erro ao processar alertas.' })
     }
-
-    // Executa todas as queries em paralelo e espera terminarem
-    await Promise.all(tasks)
-
-    return notifications
   })
 }

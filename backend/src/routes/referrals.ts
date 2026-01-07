@@ -14,7 +14,7 @@ export async function referralRoutes(app: FastifyInstance) {
     const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
 
     const referrals = await prisma.encaminhamento.findMany({
-      where: { casoId: caseId }, // Nome correto do campo no banco
+      where: { casoId: caseId },
       orderBy: { dataEnvio: 'desc' },
       include: {
         autor: { select: { nome: true } }
@@ -24,7 +24,7 @@ export async function referralRoutes(app: FastifyInstance) {
     return reply.send(referrals)
   })
 
-  // [POST] Criar Novo Encaminhamento
+  // [POST] Criar Novo Encaminhamento (+ Evolução Automática)
   app.post('/cases/:caseId/referrals', async (req, reply) => {
     const paramsSchema = z.object({ caseId: z.string().uuid() })
     
@@ -38,33 +38,53 @@ export async function referralRoutes(app: FastifyInstance) {
     const { instituicao, tipo, motivo } = bodySchema.parse(req.body)
     const userId = (req.user as any).sub
 
-    // Verifica se o caso existe
     const caso = await prisma.case.findUnique({ where: { id: caseId } })
     if (!caso) return reply.status(404).send({ message: 'Caso não encontrado' })
 
-    const referral = await prisma.encaminhamento.create({
-      data: {
-        instituicao,
-        tipo,
-        motivo,
-        status: 'PENDENTE',
-        casoId: caseId,
-        autorId: userId,
-        dataEnvio: new Date()
-      }
-    })
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Cria o Encaminhamento
+        const referral = await tx.encaminhamento.create({
+          data: {
+            instituicao,
+            tipo,
+            motivo,
+            status: 'PENDENTE',
+            casoId: caseId, // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            dataEnvio: new Date()
+          }
+        })
 
-    // Auditoria
-    await prisma.caseLog.create({
-      data: {
-        casoId: caseId,
-        autorId: userId,
-        acao: 'OUTRO', // Ou crie um enum ENCAMINHAMENTO_CRIADO se puder alterar o schema
-        descricao: `Encaminhou para: ${instituicao} (${tipo})`
-      }
-    })
+        // 2. Gera Evolução Automática
+        await tx.evolucao.create({
+          data: {
+            casoId: caseId, // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            sigilo: false,
+            conteudo: `[SISTEMA] Encaminhamento realizado para: ${instituicao} (${tipo}). Motivo: ${motivo}.`
+          }
+        })
 
-    return reply.status(201).send(referral)
+        // 3. Log de Auditoria
+        await tx.caseLog.create({
+          data: {
+            casoId: caseId, // [CORREÇÃO] Mapeamento explícito
+            autorId: userId,
+            acao: 'OUTRO', 
+            descricao: `Encaminhou para: ${instituicao} (${tipo})`
+          }
+        })
+
+        return referral
+      })
+
+      return reply.status(201).send(result)
+
+    } catch (error) {
+      console.error("❌ Erro ao criar encaminhamento:", error)
+      return reply.status(500).send({ message: 'Erro ao processar encaminhamento.' })
+    }
   })
 
   // [PATCH] Atualizar Status (Feedback da Rede)
@@ -72,7 +92,7 @@ export async function referralRoutes(app: FastifyInstance) {
     const paramsSchema = z.object({ id: z.string().uuid() })
     const bodySchema = z.object({
       status: z.enum(['PENDENTE', 'CONCLUIDO', 'CANCELADO']),
-      retorno: z.string().optional() // Texto com a resposta da instituição
+      retorno: z.string().optional()
     })
 
     const { id } = paramsSchema.parse(req.params)
@@ -82,7 +102,7 @@ export async function referralRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         status,
-        retorno, // Salva o feedback (Ex: "Vaga concedida")
+        retorno,
         updatedAt: new Date()
       }
     })
@@ -98,7 +118,6 @@ export async function referralRoutes(app: FastifyInstance) {
     const existing = await prisma.encaminhamento.findUnique({ where: { id } })
     if (!existing) return reply.status(404).send()
 
-    // Trava: Apenas autor deleta
     if (existing.autorId !== userId) {
       return reply.status(403).send({ message: 'Apenas o autor pode excluir.' })
     }

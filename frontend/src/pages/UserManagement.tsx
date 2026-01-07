@@ -27,11 +27,10 @@ import {
 import { editUserFormSchema } from '@/schemas/userSchemas'
 import type { User } from '@/types/user'
 import { useAuth } from '@/hooks/useAuth'
-
-// Importação do Dialog de Criação
 import { NewUserDialog } from '@/components/settings/NewUserDialog'
+import { usePrivacy } from '@/contexts/PrivacyContext' // [NOVO]
+import { cn } from '@/lib/utils' // [NOVO]
 
-// --- COMPONENTE AUXILIAR: ROLE BADGE ---
 const RoleBadge = ({ role }: { role: string }) => {
   const styles = {
     'Gerente': 'bg-purple-100 text-purple-700 border-purple-200',
@@ -58,7 +57,6 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
     formState: { errors },
   } = useForm<EditUserFormData>({
     resolver: zodResolver(editUserFormSchema),
-    // [SEGURANÇA] Passando apenas campos editáveis explicitamente
     defaultValues: {
       nome: user.nome,
       email: user.email,
@@ -135,6 +133,8 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
 export function UserManagement() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { isPrivacyMode } = usePrivacy() // [NOVO]
+
   const [editingUser, setEditingUser] = useState<User | null>(null)
 
   const { data: users, isLoading, isError } = useQuery<User[]>({
@@ -143,7 +143,7 @@ export function UserManagement() {
       const response = await api.get('/users')
       return response.data
     },
-    enabled: !!user // Só busca se logado
+    enabled: !!user
   })
 
   const { mutate: deleteUser, isPending: isDeleting } = useMutation({
@@ -159,7 +159,6 @@ export function UserManagement() {
     },
   })
 
-  // [SEGURANÇA] Bloqueio Institucional no Frontend
   if (user?.cargo !== 'Gerente') {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center space-y-4 text-center animate-in fade-in zoom-in-95">
@@ -212,8 +211,16 @@ export function UserManagement() {
                 
                 {users?.map((userData) => (
                   <TableRow key={userData.id} className="hover:bg-muted/5">
-                    <TableCell className="font-medium">{userData.nome}</TableCell>
-                    <TableCell className="text-muted-foreground">{userData.email}</TableCell>
+                    {/* [CORREÇÃO] Nome Ofuscado */}
+                    <TableCell className={cn("font-medium transition-all duration-300", isPrivacyMode && "blur-[5px] select-none")}>
+                      {userData.nome}
+                    </TableCell>
+                    
+                    {/* [CORREÇÃO] Email Ofuscado */}
+                    <TableCell className={cn("text-muted-foreground transition-all duration-300", isPrivacyMode && "blur-[5px] select-none")}>
+                      {userData.email}
+                    </TableCell>
+                    
                     <TableCell className="font-mono text-xs">{userData.matricula || '-'}</TableCell>
                     <TableCell>
                       <RoleBadge role={userData.cargo} />
@@ -239,7 +246,7 @@ export function UserManagement() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Desativar Acesso?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                O servidor <strong>{userData.nome}</strong> perderá o acesso ao sistema imediatamente. <br/>
+                                O servidor <strong className={cn(isPrivacyMode && "blur-[4px] select-none")}>{userData.nome}</strong> perderá o acesso ao sistema imediatamente. <br/>
                                 <span className="font-medium text-foreground block mt-2">O histórico de ações e auditoria será preservado.</span>
                               </AlertDialogDescription>
                             </AlertDialogHeader>

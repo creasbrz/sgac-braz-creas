@@ -22,39 +22,53 @@ import {
 } from '@/components/ui/table'
 import { CaseTable } from '@/components/case/CaseTable'
 import { useAuth } from '@/hooks/useAuth'
+import { usePrivacy } from '@/contexts/PrivacyContext' // [NOVO]
+import { cn } from '@/lib/utils' // [NOVO]
 
 interface TeamMemberStats {
   id: string
   name: string
   role: 'Especialista' | 'Agente_Social' | 'Gerente'
-  active: number // PAEFI + Acolhida Esp
-  monitoring: number // Monitoramento
+  active: number 
+  monitoring: number 
 }
 
 // --- SUBCOMPONENTE: LINHA DA TABELA ---
 const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxLoad: number, onDetails: (m: TeamMemberStats) => void }) => {
-  // Cálculo de carga ponderada (Monitoramento pesa menos)
+  const { isPrivacyMode } = usePrivacy() // [NOVO]
+
   const weightedLoad = member.active + (member.monitoring * 0.2)
   const loadPercentage = Math.min((weightedLoad / maxLoad) * 100, 100)
   
   let progressColor = "bg-primary"
-  if (loadPercentage >= 80) progressColor = "bg-amber-500" // Alerta
-  if (loadPercentage >= 100) progressColor = "bg-destructive" // Crítico
+  if (loadPercentage >= 80) progressColor = "bg-amber-500" 
+  if (loadPercentage >= 100) progressColor = "bg-destructive" 
 
   return (
     <TableRow className="group hover:bg-muted/5 transition-colors">
       <TableCell className="font-medium flex items-center gap-3">
         <Avatar className="h-8 w-8 border border-border">
-          <AvatarFallback className="text-xs text-muted-foreground bg-muted font-semibold">
+          {/* [CORREÇÃO] Avatar Ofuscado */}
+          <AvatarFallback className={cn(
+            "text-xs text-muted-foreground bg-muted font-semibold transition-all duration-300",
+            isPrivacyMode && "blur-[4px]"
+          )}>
             {member.name.substring(0,2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <div>
-          <div className="font-semibold text-sm text-foreground">{member.name}</div>
+          {/* [CORREÇÃO] Nome Ofuscado */}
+          <div className={cn(
+            "font-semibold text-sm text-foreground transition-all duration-300",
+            isPrivacyMode && "blur-[5px] select-none opacity-80"
+          )}>
+            {member.name}
+          </div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{member.role.replace('_', ' ')}</div>
         </div>
       </TableCell>
       
+      {/* Dados numéricos (ocupação) NÃO SÃO ofuscados */}
       <TableCell>
         <div className="w-full max-w-[140px] space-y-1.5">
           <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
@@ -93,8 +107,9 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
   )
 }
 
-// --- SUBCOMPONENTE: VISÃO DETALHADA ---
 const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: () => void }) => {
+  const { isPrivacyMode } = usePrivacy()
+  
   const filterParams = member.role === 'Agente_Social' 
     ? { agenteId: member.id }
     : { specialistId: member.id }
@@ -108,11 +123,14 @@ const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: (
         <div>
           <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <Avatar className="h-8 w-8 border border-primary/20">
-              <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+              <AvatarFallback className={cn("bg-primary/10 text-primary text-xs font-bold", isPrivacyMode && "blur-[3px]")}>
                 {member.name.substring(0,2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            {member.name}
+            {/* Nome com blur na view detalhada também */}
+            <span className={cn(isPrivacyMode && "blur-[5px] select-none")}>
+              {member.name}
+            </span>
           </h2>
           <div className="flex gap-4 text-xs text-muted-foreground items-center mt-1.5 pl-1">
             <Badge variant="secondary" className="font-normal border-border bg-muted">
@@ -145,7 +163,6 @@ const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: (
   )
 }
 
-// --- COMPONENTE PRINCIPAL ---
 export function TeamOverview() {
   const { user } = useAuth()
   const [selectedUser, setSelectedUser] = useState<TeamMemberStats | null>(null)
@@ -156,11 +173,10 @@ export function TeamOverview() {
       const res = await api.get('/stats/productivity')
       return res.data
     },
-    enabled: !!user, // Só busca se houver usuário
+    enabled: !!user,
     staleTime: 1000 * 60 
   })
 
-  // Bloqueio de Acesso Institucional
   if (user?.cargo !== 'Gerente') {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center space-y-4 text-center animate-in fade-in zoom-in-95">
@@ -177,7 +193,6 @@ export function TeamOverview() {
     )
   }
 
-  // Visão Detalhada (Drill-down)
   if (selectedUser) {
     return <TeamDetailView member={selectedUser} onBack={() => setSelectedUser(null)} />
   }
@@ -188,14 +203,12 @@ export function TeamOverview() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Gestão da Equipe</h1>
           <p className="text-muted-foreground text-sm mt-1">Monitoramento de carga de trabalho e distribuição de casos.</p>
         </div>
         
-        {/* KPI Rápido */}
         <div className="flex items-center gap-3 bg-muted/40 p-2 pr-4 rounded-lg border shadow-sm">
            <div className="p-2 bg-primary/10 rounded-md text-primary">
              <Briefcase className="h-5 w-5" />
@@ -228,7 +241,6 @@ export function TeamOverview() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ABA ACOLHIDA (Agentes) */}
           <TabsContent value="agents" className="mt-6 space-y-4 focus-visible:outline-none">
             <Card className="shadow-sm border-border">
               <CardHeader className="pb-3 border-b bg-muted/10 pt-4">
@@ -272,7 +284,6 @@ export function TeamOverview() {
             </Card>
           </TabsContent>
 
-          {/* ABA ACOMPANHAMENTO (Especialistas) */}
           <TabsContent value="specialists" className="mt-6 space-y-4 focus-visible:outline-none">
             <Card className="shadow-sm border-border">
               <CardHeader className="pb-3 border-b bg-muted/10 pt-4">

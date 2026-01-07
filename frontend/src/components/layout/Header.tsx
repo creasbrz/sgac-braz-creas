@@ -1,7 +1,5 @@
-// frontend/src/components/layout/Header.tsx
-import { useState, useEffect } from "react"
 import { useLocation } from "react-router-dom"
-import { LogOut, Slash, Eye, EyeOff, ChevronDown, Lock } from "lucide-react" // Adicionei Lock/Shield para ícones decorativos se necessário
+import { LogOut, Slash, Eye, EyeOff, ChevronDown, Lock } from "lucide-react" 
 
 import { useAuth } from "@/hooks/useAuth"
 import { ThemeToggle } from "@/components/common/ThemeToggle"
@@ -9,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { MobileSidebar } from "./MobileSidebar"
 import { NotificationBell } from "./NotificationBell"
 import { ChangePasswordDialog } from "@/components/settings/ChangePasswordDialog"
+import { usePrivacy } from "@/contexts/PrivacyContext" // [NOVO]
 
 import {
   DropdownMenu,
@@ -20,7 +19,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
-// Mapa de nomes amigáveis para as rotas
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Painel Principal',
   '/dashboard/cases': 'Gestão de Casos',
@@ -38,17 +36,9 @@ export function Header() {
   const location = useLocation()
   const pathname = location.pathname
   
-  const [privacyMode, setPrivacyMode] = useState(false)
+  // [NOVO] Consumindo o contexto
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy()
 
-  useEffect(() => {
-    if (privacyMode) {
-      document.body.classList.add('privacy-mode')
-    } else {
-      document.body.classList.remove('privacy-mode')
-    }
-  }, [privacyMode])
-
-  // Lógica para determinar o título da página
   let pageTitle = PAGE_TITLES[pathname]
 
   if (!pageTitle) {
@@ -61,19 +51,16 @@ export function Header() {
     }
   }
 
-  // Iniciais para o Avatar
   const initials = user?.nome
     ? user.nome.split(' ').map((n:string) => n[0]).join('').substring(0, 2).toUpperCase()
     : 'U'
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/95 px-6 backdrop-blur transition-all">
-      {/* MOBILE MENU */}
       <div className="md:hidden">
         <MobileSidebar />
       </div>
 
-      {/* BREADCRUMB & TÍTULO (Hierarquia Visual Melhorada) */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
          <div className="flex items-center text-xs font-medium tracking-wide text-muted-foreground/60">
             <span>SGAC</span>
@@ -84,28 +71,24 @@ export function Header() {
          </span>
       </div>
 
-      {/* ÁREA DIREITA */}
       <div className="ml-auto flex items-center gap-4">
         
-        {/* FERRAMENTAS (Agrupamento Visual) */}
         <div className="hidden sm:flex items-center gap-1 rounded-full border bg-muted/40 p-1 pr-2">
           
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setPrivacyMode(!privacyMode)}
-            aria-pressed={privacyMode}
-            aria-label={privacyMode ? "Desativar Modo Privacidade" : "Ativar Modo Privacidade"}
+            onClick={togglePrivacyMode} // [NOVO] Toggle direto
             className={`
               h-8 w-8 rounded-full transition-all duration-300
-              ${privacyMode 
+              ${isPrivacyMode 
                 ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" 
                 : "text-muted-foreground hover:bg-background hover:text-foreground"
               }
             `}
-            title={privacyMode ? "Modo Privacidade Ativo" : "Ativar Modo Privacidade"}
+            title={isPrivacyMode ? "Modo Privacidade Ativo" : "Ativar Modo Privacidade"}
           >
-            {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {isPrivacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
 
           <div className="h-4 w-[1px] bg-border mx-1" />
@@ -114,7 +97,6 @@ export function Header() {
           <ThemeToggle />
         </div>
 
-        {/* ÁREA DO USUÁRIO (DROPDOWN) */}
         <div className="border-l pl-4 ml-0 privacy-exempt">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -124,7 +106,6 @@ export function Header() {
                 className="relative h-10 w-full md:w-auto justify-start md:justify-center px-2 rounded-full md:rounded-lg hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-primary/20 transition-all"
               >
                 <div className="flex items-center gap-3">
-                  {/* Avatar mais 'flat' e moderno */}
                   <Avatar className="h-9 w-9 border ring-1 ring-border/50 shadow-none">
                     <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">
                       {initials}
@@ -144,7 +125,6 @@ export function Header() {
               </Button>
             </DropdownMenuTrigger>
             
-            {/* Menu mais largo para comportar e-mails longos */}
             <DropdownMenuContent className="w-60" align="end" forceMount>
               <DropdownMenuLabel className="font-normal pb-2">
                 <div className="flex flex-col space-y-1">
@@ -156,17 +136,11 @@ export function Header() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               
-              {/* Item de Senha Integrado Visualmente */}
               <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()} className="p-0 focus:bg-transparent">
                  <div className="w-full">
-                    {/* ChangePasswordDialog deve renderizar um Trigger que ocupa 100% ou ser estilizado aqui.
-                        Assumindo que o componente é um wrapper, aplicamos classes de menu item nele. */}
-                    <div className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full">
+                    <div className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground w-full">
                         <Lock className="mr-2 h-4 w-4 text-muted-foreground" />
                         <ChangePasswordDialog /> 
-                        {/* Nota: Idealmente ChangePasswordDialog renderiza apenas o texto "Alterar Senha" 
-                            ou recebe um 'customTrigger'. Se ele renderizar um botão próprio, 
-                            precisamos garantir que ele herde os estilos acima. */}
                     </div>
                  </div>
               </DropdownMenuItem>

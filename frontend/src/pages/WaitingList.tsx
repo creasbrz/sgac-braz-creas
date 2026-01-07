@@ -26,8 +26,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 import { useAuth } from '@/hooks/useAuth'
 import { getUrgencyColor } from '@/constants/caseConstants'
+import { usePrivacy } from '@/contexts/PrivacyContext' // [NOVO]
+import { cn } from '@/lib/utils' // [NOVO]
 
-// --- 1. DEFINIÇÃO DE TIPOS ---
 interface WaitingCase {
   id: string
   nomeCompleto: string
@@ -42,7 +43,6 @@ interface Specialist {
   nome: string
 }
 
-// --- 2. HELPERS ---
 const formatStatus = (status: string) => {
   if (!status) return '-'
   return status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
@@ -57,20 +57,17 @@ export function WaitingList() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  
-  // Estado para modal de distribuição
+  const { isPrivacyMode } = usePrivacy() // [NOVO]
+
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [selectedSpecialist, setSelectedSpecialist] = useState<string>('')
   const [isDistributeOpen, setIsDistributeOpen] = useState(false)
-  
-  // Estado para Lock Visual
   const [pendingActionId, setPendingActionId] = useState<string | null>(null)
 
-  // Busca Tipada
   const { data: cases = [], isLoading } = useQuery<WaitingCase[]>({
     queryKey: ['waiting-list'],
     queryFn: async () => (await api.get('/cases/waiting')).data,
-    enabled: !!user // Só busca se logado
+    enabled: !!user
   })
 
   const { data: specialists = [] } = useQuery<Specialist[]>({
@@ -102,7 +99,6 @@ export function WaitingList() {
     }
   })
 
-  // [SEGURANÇA] Guard de Sessão
   if (!user) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground animate-in fade-in">
@@ -205,18 +201,38 @@ export function WaitingList() {
                     <TableRow key={c.id} className="group hover:bg-muted/5 transition-colors">
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-sm text-foreground">{c.nomeCompleto}</span>
+                          {/* [CORREÇÃO] Blur aplicado apenas ao Nome */}
+                          <span className={cn(
+                            "font-semibold text-sm text-foreground transition-all duration-300",
+                            isPrivacyMode && "blur-[6px] select-none opacity-80"
+                          )}>
+                            {c.nomeCompleto}
+                          </span>
+                          
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                              <AlertCircle className="h-3 w-3 opacity-70"/>
+                             {/* [CORREÇÃO] Blur aplicado apenas à Violação */}
                              {violacaoText.length > 30 ? (
                                <TooltipProvider>
                                  <Tooltip>
-                                   <TooltipTrigger asChild><span className="cursor-help truncate max-w-[200px] border-b border-dotted border-muted-foreground/50">{violacaoText}</span></TooltipTrigger>
+                                   <TooltipTrigger asChild>
+                                      <span className={cn(
+                                        "cursor-help truncate max-w-[200px] border-b border-dotted border-muted-foreground/50 transition-all duration-300",
+                                        isPrivacyMode && "blur-[4px] select-none opacity-80"
+                                      )}>
+                                        {violacaoText}
+                                      </span>
+                                   </TooltipTrigger>
                                    <TooltipContent>{violacaoText}</TooltipContent>
                                  </Tooltip>
                                </TooltipProvider>
                              ) : (
-                               <span>{violacaoText}</span>
+                               <span className={cn(
+                                 "transition-all duration-300",
+                                 isPrivacyMode && "blur-[4px] select-none opacity-80"
+                               )}>
+                                 {violacaoText}
+                               </span>
                              )}
                           </div>
                         </div>
@@ -274,7 +290,6 @@ export function WaitingList() {
         </CardContent>
       </Card>
 
-      {/* MODAL DISTRIBUIÇÃO (GERENTE) */}
       <Dialog open={isDistributeOpen} onOpenChange={setIsDistributeOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

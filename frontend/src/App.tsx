@@ -1,4 +1,3 @@
-// [CORREÇÃO] Adicionado import do React para corrigir erros de tipagem
 import React from 'react' 
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -8,6 +7,7 @@ import { queryClient } from "./lib/react-query";
 import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
+import { PrivacyProvider } from "./contexts/PrivacyContext"; // [NOVO]
 import { ThemeProvider } from "./components/common/theme-provider";
 import ErrorBoundary from "./components/ui/error-boundary";
 
@@ -33,7 +33,6 @@ import { AdvancedAnalytics } from "./pages/AdvancedAnalytics";
 import { GroupManagement } from "./pages/GroupManagement";
 import { WaitingList } from "./pages/WaitingList";
 
-// [CORREÇÃO] Tipo alterado de JSX.Element para React.ReactNode
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isSessionLoading } = useAuthContext()
 
@@ -41,7 +40,6 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   if (isAuthenticated) {
     return <Navigate to={ROUTES.WORKSPACE} replace />
   }
-  // ReactNode cobre JSX.Element, null, strings, etc.
   return <>{children}</>
 }
 
@@ -52,77 +50,72 @@ export function App() {
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
-              <ModalProvider>
-                <SidebarProvider>
-                  <Routes>
-                    
-                    {/* 1. Rota Raiz: Redireciona EXPLICITAMENTE para /login */}
-                    <Route path="/" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
-
-                    {/* 2. Rota de Login (Protegida contra usuários já logados) */}
-                    <Route 
-                      path={ROUTE_PATHS.LOGIN} 
-                      element={
-                        <PublicOnlyRoute>
-                          <Login />
-                        </PublicOnlyRoute>
-                      } 
-                    />
-
-                    {/* 3. Área Logada */}
-                    <Route path={ROUTE_PATHS.APP} element={<MainLayout />}>
+              {/* [NOVO] Provider de Privacidade envolvendo a aplicação */}
+              <PrivacyProvider>
+                <ModalProvider>
+                  <SidebarProvider>
+                    <Routes>
                       
-                      {/* Se acessar /app direto, joga pro Workspace */}
-                      <Route index element={<Navigate to={ROUTES.WORKSPACE} replace />} />
+                      <Route path="/" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
 
-                      {/* WORKSPACE (Mesa Operacional) */}
                       <Route 
-                        path={ROUTE_PATHS.WORKSPACE} 
+                        path={ROUTE_PATHS.LOGIN} 
                         element={
-                          <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]}>
-                            <Workspace />
-                          </ProtectedRoute>
+                          <PublicOnlyRoute>
+                            <Login />
+                          </PublicOnlyRoute>
                         } 
                       />
 
-                      {/* DASHBOARD (Estratégico) */}
-                      <Route 
-                        path={ROUTE_PATHS.DASHBOARD} 
-                        element={
-                          <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]}>
-                            <Dashboard />
-                          </ProtectedRoute>
-                        } 
-                      />
+                      <Route path={ROUTE_PATHS.APP} element={<MainLayout />}>
+                        <Route index element={<Navigate to={ROUTES.WORKSPACE} replace />} />
 
-                      {/* ... Demais Rotas Protegidas ... */}
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]} />}>
-                        <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
-                        <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
-                        <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} />
-                        <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
-                        <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
-                        <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
-                        <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
+                        <Route 
+                          path={ROUTE_PATHS.WORKSPACE} 
+                          element={
+                            <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]}>
+                              <Workspace />
+                            </ProtectedRoute>
+                          } 
+                        />
+
+                        <Route 
+                          path={ROUTE_PATHS.DASHBOARD} 
+                          element={
+                            <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]}>
+                              <Dashboard />
+                            </ProtectedRoute>
+                          } 
+                        />
+
+                        <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]} />}>
+                          <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
+                          <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
+                          <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} />
+                          <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
+                          <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
+                          <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
+                          <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
+                        </Route>
+
+                        <Route element={<ProtectedRoute allowedRoles={["Gerente", "Auditor"]} />}>
+                          <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
+                          <Route path="audit" element={<GlobalAudit />} />
+                          <Route path="analytics" element={<AdvancedAnalytics />} />
+                        </Route>
+
+                        <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
+                          <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
+                        </Route>
+
                       </Route>
 
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Auditor"]} />}>
-                        <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
-                        <Route path="audit" element={<GlobalAudit />} />
-                        <Route path="analytics" element={<AdvancedAnalytics />} />
-                      </Route>
-
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
-                        <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
-                      </Route>
-
-                    </Route>
-
-                    <Route path={ROUTE_PATHS.NOT_FOUND} element={<NotFound />} />
-                    <Route path="*" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
-                  </Routes>
-                </SidebarProvider>
-              </ModalProvider>
+                      <Route path={ROUTE_PATHS.NOT_FOUND} element={<NotFound />} />
+                      <Route path="*" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
+                    </Routes>
+                  </SidebarProvider>
+                </ModalProvider>
+              </PrivacyProvider>
             </AuthProvider>
           </BrowserRouter>
         </ErrorBoundary>

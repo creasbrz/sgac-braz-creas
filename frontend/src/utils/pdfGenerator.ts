@@ -10,7 +10,8 @@ import type { CaseDetailData, FamilyMember, PafData } from "@/types/case"
 import type { GroupActivity, GroupAttendance } from "@/types/group"
 import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
 
-// --- ENUMS E TIPOS AUXILIARES ---
+// --- INTERFACES DE DADOS ---
+
 export enum CaseStatus {
   TRIAGEM = "AGUARDANDO_ACOLHIDA",
   ACOLHIDA = "EM_ACOLHIDA",
@@ -19,7 +20,6 @@ export enum CaseStatus {
   DESLIGADO = "DESLIGADO"
 }
 
-// [CORREÇÃO] Omitimos 'beneficios' da base para redefinir sem conflito
 interface ExtendedCaseData extends Omit<CaseDetailData, 'beneficios'> {
   familia?: FamilyMember[]
   idade?: number
@@ -29,25 +29,31 @@ interface ExtendedCaseData extends Omit<CaseDetailData, 'beneficios'> {
   beneficios?: string[]
 }
 
+export interface RmaReportData {
+  periodo: string
+  bloco1: {
+    familiasAcompPaefi: number
+    novosCasos: number
+    desligamentos: number
+  }
+  bloco2: {
+    totalAtendimentos: number
+    visitasDomiciliares: number
+    abordagensRua: number
+  }
+  bloco3: {
+    violenciaFisica: number
+    violenciaPsicologica: number
+    negligencia: number
+    abusoSexual: number
+  }
+}
+
 export interface ManagementReportData {
   periodo: string
-  stats: { 
-    ativos: number; 
-    acolhidas: number; 
-    paefi: number; 
-    novos: number; 
-    desligados: number 
-  }
-  cargaHoraria: { 
-    agentes: { name: string; value: number }[]; 
-    especialistas: { name: string; value: number }[] 
-  }
-  vigilancia?: { 
-    violacoes: { name: string; value: number }[]; 
-    demografia: { name: string; value: number }[];
-    // [CORREÇÃO] Adicionado para evitar erro no ManagerDashboard
-    territorio?: { name: string; value: number }[]
-  }
+  stats: { ativos: number; acolhidas: number; paefi: number; novos: number; desligados: number }
+  cargaHoraria: { agentes: { name: string; value: number }[]; especialistas: { name: string; value: number }[] }
+  vigilancia?: { violacoes: { name: string; value: number }[]; demografia: { name: string; value: number }[]; territorio?: { name: string; value: number }[] }
 }
 
 export interface ObservatoryData {
@@ -61,6 +67,15 @@ export interface ObservatoryData {
   efficiencyData: { avgPermanence: number; avgWaitTime: number; totalClosed: number; retentionRate: number }
   ageData: { name: string; value: number }[]
   sexData: { name: string; value: number }[]
+}
+
+export interface DismissalReportData {
+  periodo: string
+  total: number
+  successRate: number
+  evasionRate: number
+  byReason: { name: string; value: number }[]
+  monthlyTrend: { name: string; value: number }[]
 }
 
 // --- CONFIGURAÇÃO VFS ---
@@ -283,7 +298,6 @@ export const generatePafPDF = (caseData: CaseDetailData, paf: PafData, mode: 'op
         table: { widths: ['*'], body: [[{ text: `FAMÍLIA: ${caseData.nomeCompleto.toUpperCase()}`, fontSize: 11, bold: true, fillColor: HEADER_BG, alignment: 'center' }], [{ text: `CPF Resp: ${formatCPF(caseData.cpf)} | Versão: ${paf.versaoAtual}`, fontSize: 10, alignment: 'center' }]] },
         layout: 'noBorders', margin: [0, 0, 0, 20]
       },
-      // [CORREÇÃO] textAlign -> alignment
       createSectionHeader("1. Diagnóstico Sociofamiliar"),
       { text: paf.diagnostico, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
       createSectionHeader("2. Objetivos Pactuados"),
@@ -405,7 +419,6 @@ export const generateGroupAttendancePDF = (
           vLineColor: '#aaa'
         }
       },
-      // [CORREÇÃO] Cast para 'Content' para evitar erro de tipo na estrutura condicional
       (type === 'blank' ? {
         stack: [
           { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
@@ -422,6 +435,76 @@ export const generateGroupAttendancePDF = (
   finalizePdf(docDefinition, "GRUPO", group.tema, mode)
 }
 
+// ----------------------------------------------------------------------------
+// [NOVO] GERADOR DE RMA (Modelo Oficial SUAS)
+// ----------------------------------------------------------------------------
+export const generateRmaPDF = (data: RmaReportData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('RMA', `RMA gerado: ${data.periodo}`)
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4",
+    pageMargins: [40, 60, 40, 60],
+    content: [
+      getOfficialHeader("REGISTRO MENSAL DE ATENDIMENTOS (RMA)"),
+      { text: [{ text: "MÊS DE REFERÊNCIA: ", bold: true }, data.periodo], alignment: "center", margin: [0, 0, 0, 20] },
+
+      createSectionHeader("BLOCO I - Famílias e Indivíduos em Acompanhamento"),
+      {
+        table: {
+          widths: ['*', 80],
+          body: [
+            [{ text: "INDICADOR", style: "tableHeader", alignment: "left" }, { text: "TOTAL", style: "tableHeader" }],
+            [{ text: "A.1. Famílias em acompanhamento PAEFI", fontSize: 10 }, { text: String(data.bloco1.familiasAcompPaefi), alignment: "center" }],
+            [{ text: "A.2. Novos casos inseridos no mês", fontSize: 10 }, { text: String(data.bloco1.novosCasos), alignment: "center" }],
+            [{ text: "A.3. Casos desligados no mês", fontSize: 10 }, { text: String(data.bloco1.desligamentos), alignment: "center" }]
+          ]
+        }, layout: 'lightHorizontalLines'
+      },
+
+      createSectionHeader("BLOCO II - Atendimentos Realizados"),
+      {
+        table: {
+          widths: ['*', 80],
+          body: [
+            [{ text: "TIPO DE ATENDIMENTO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }],
+            [{ text: "B.1. Total de atendimentos particularizados", fontSize: 10 }, { text: String(data.bloco2.totalAtendimentos), alignment: "center" }],
+            [{ text: "B.2. Visitas domiciliares realizadas", fontSize: 10 }, { text: String(data.bloco2.visitasDomiciliares), alignment: "center" }],
+            [{ text: "B.3. Abordagens sociais (Rua)", fontSize: 10 }, { text: String(data.bloco2.abordagensRua), alignment: "center" }]
+          ]
+        }, layout: 'lightHorizontalLines'
+      },
+
+      createSectionHeader("BLOCO III - Violações Identificadas"),
+      {
+        table: {
+          widths: ['*', 80],
+          body: [
+            [{ text: "NATUREZA DA VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }],
+            [{ text: "C.1. Violência Física", fontSize: 10 }, { text: String(data.bloco3.violenciaFisica), alignment: "center" }],
+            [{ text: "C.2. Violência Psicológica", fontSize: 10 }, { text: String(data.bloco3.violenciaPsicologica), alignment: "center" }],
+            [{ text: "C.3. Negligência / Abandono", fontSize: 10 }, { text: String(data.bloco3.negligencia), alignment: "center" }],
+            [{ text: "C.4. Abuso / Exploração Sexual", fontSize: 10 }, { text: String(data.bloco3.abusoSexual), alignment: "center" }]
+          ]
+        }, layout: 'lightHorizontalLines'
+      },
+      
+      { text: "\nDeclaro que as informações acima são verdadeiras e baseadas nos registros técnicos da unidade.", fontSize: 9, italics: true, alignment: "center", margin: [0, 30, 0, 0] },
+      
+      {
+        stack: [
+          { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
+          { text: "Coordenador(a) do CREAS", alignment: "center", fontSize: 10, bold: true }
+        ],
+        unbreakable: true
+      }
+    ],
+    footer: getOfficialFooter,
+    styles: COMMON_STYLES
+  }
+
+  finalizePdf(docDefinition, "RMA_SUAS", data.periodo, mode)
+}
+
 export const generateManagementPDF = (data: ManagementReportData, mode: 'open' | 'download' = 'open') => {
   registerPdfAudit('RELATORIO_GESTAO', `Relatório gerencial: ${data.periodo}`)
 
@@ -436,20 +519,19 @@ export const generateManagementPDF = (data: ManagementReportData, mode: 'open' |
           widths: ['*', '*', '*', '*', '*'],
           body: [
             [{ text: "ATIVOS", style: "tableHeader" }, { text: "ACOLHIDA", style: "tableHeader" }, { text: "ACOMPANHAMENTO", style: "tableHeader" }, { text: "NOVOS", style: "tableHeader" }, { text: "DESLIGADOS", style: "tableHeader" }],
-            [{ text: data.stats.ativos, style: "kpiValue" }, { text: data.stats.acolhidas, style: "kpiValue" }, { text: data.stats.paefi, style: "kpiValue" }, { text: data.stats.novos, style: "kpiValue", color: "#2563eb" }, { text: data.stats.desligados, style: "kpiValue", color: "#16a34a" }]
+            [{ text: String(data.stats.ativos), style: "kpiValue" }, { text: String(data.stats.acolhidas), style: "kpiValue" }, { text: String(data.stats.paefi), style: "kpiValue" }, { text: String(data.stats.novos), style: "kpiValue", color: "#2563eb" }, { text: String(data.stats.desligados), style: "kpiValue", color: "#16a34a" }]
           ]
         }, layout: 'noBorders', margin: [0, 0, 0, 15]
       },
       createSectionHeader("2. Equipe Técnica"),
       {
         columns: [
-          { width: '48%', stack: [{ text: "AGENTES (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.agentes.map(a => [{ text: a.name, fontSize: 9 }, { text: a.value, fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] },
+          { width: '48%', stack: [{ text: "AGENTES (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.agentes.map(a => [{ text: a.name, fontSize: 9 }, { text: String(a.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] },
           { width: '4%', text: '' },
-          { width: '48%', stack: [{ text: "ESPECIALISTAS (PAEFI)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.especialistas.map(e => [{ text: e.name, fontSize: 9 }, { text: e.value, fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] }
+          { width: '48%', stack: [{ text: "ESPECIALISTAS (PAEFI)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.especialistas.map(e => [{ text: e.name, fontSize: 9 }, { text: String(e.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] }
         ]
       },
-      // [CORREÇÃO] Cast para 'as any' ou 'Content' em blocos complexos para evitar erro TS2322
-      ...(data.vigilancia ? [{ text: '', pageBreak: 'before' }, createSectionHeader("3. Vigilância Socioassistencial"), { table: { widths: ['*', 60, 60], body: [[{ text: "VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }, { text: "%", style: "tableHeader" }], ...data.vigilancia.violacoes.map(v => [{ text: v.name, fontSize: 10 }, { text: v.value, fontSize: 10, alignment: "center" }, { text: ((v.value / (data.stats.ativos || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }])] }, layout: 'lightHorizontalLines' }] : []) as any
+      ...(data.vigilancia ? [{ text: '', pageBreak: 'before' }, createSectionHeader("3. Vigilância Socioassistencial"), { table: { widths: ['*', 60, 60], body: [[{ text: "VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }, { text: "%", style: "tableHeader" }], ...data.vigilancia.violacoes.map(v => [{ text: v.name, fontSize: 10 }, { text: String(v.value), fontSize: 10, alignment: "center" }, { text: ((v.value / (data.stats.ativos || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }])] }, layout: 'lightHorizontalLines' }] : []) as any
     ],
     footer: getOfficialFooter, styles: COMMON_STYLES
   }
@@ -493,15 +575,15 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
             ],
             ...data.evolutionData.map(d => [
               { text: d.name, fontSize: 10 },
-              { text: d.novos, fontSize: 10, alignment: "center", color: "#2563eb", bold: true },
-              { text: d.desligados, fontSize: 10, alignment: "center", color: "#16a34a", bold: true },
-              { text: (d.novos - d.desligados), fontSize: 10, alignment: "center", bold: true }
+              { text: String(d.novos), fontSize: 10, alignment: "center", color: "#2563eb", bold: true },
+              { text: String(d.desligados), fontSize: 10, alignment: "center", color: "#16a34a", bold: true },
+              { text: String(d.novos - d.desligados), fontSize: 10, alignment: "center", bold: true }
             ]),
             [
               { text: "TOTAL NO PERÍODO", style: "tableHeader", alignment: "right" },
-              { text: data.evolutionData.reduce((acc, d) => acc + d.novos, 0), style: "tableHeader" },
-              { text: data.evolutionData.reduce((acc, d) => acc + d.desligados, 0), style: "tableHeader" },
-              { text: data.evolutionData.reduce((acc, d) => acc + (d.novos - d.desligados), 0), style: "tableHeader" }
+              { text: String(data.evolutionData.reduce((acc, d) => acc + d.novos, 0)), style: "tableHeader" },
+              { text: String(data.evolutionData.reduce((acc, d) => acc + d.desligados, 0)), style: "tableHeader" },
+              { text: String(data.evolutionData.reduce((acc, d) => acc + (d.novos - d.desligados), 0)), style: "tableHeader" }
             ]
           ]
         },
@@ -524,7 +606,7 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
               .sort((a, b) => b.value - a.value)
               .map(v => [
                 { text: v.name, fontSize: 10 },
-                { text: v.value, fontSize: 10, alignment: "center" },
+                { text: String(v.value), fontSize: 10, alignment: "center" },
                 { text: ((v.value / totalViolacoes) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
               ])
           ]
@@ -549,7 +631,7 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
                     [{ text: "NÍVEL DE URGÊNCIA", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }],
                     ...data.urgencyData.map(u => [
                       { text: u.name, fontSize: 10 },
-                      { text: u.value, fontSize: 10, alignment: "center", bold: true }
+                      { text: String(u.value), fontSize: 10, alignment: "center", bold: true }
                     ])
                   ]
                 },
@@ -569,7 +651,7 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
                     [{ text: "GÊNERO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }, { text: "%", style: "tableHeader" }],
                     ...data.sexData.map(s => [
                       { text: s.name, fontSize: 10 },
-                      { text: s.value, fontSize: 10, alignment: "center" },
+                      { text: String(s.value), fontSize: 10, alignment: "center" },
                       { text: ((s.value / totalCasosPerfil) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
                     ])
                   ]
@@ -593,10 +675,10 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
               return rowItems.map(item => ({
                 stack: [
                   { text: item.name, fontSize: 9, color: '#666' },
-                  { text: item.name ? item.value : '', fontSize: 12, bold: true, color: '#333' }
+                  { text: item.name ? String(item.value) : '', fontSize: 12, bold: true, color: '#333' }
                 ],
                 margin: [0, 5, 0, 5],
-                alignment: 'center'
+                alignment: 'center' as const
               }))
             })
           ]
@@ -618,14 +700,14 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
             ...(data.benefitsData.length > 0 
               ? data.benefitsData.map(b => [
                   { text: b.name, fontSize: 10 },
-                  { text: b.value, fontSize: 10, alignment: "center" },
+                  { text: String(b.value), fontSize: 10, alignment: "center" },
                   { text: ((b.value / totalBeneficios) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
                 ])
               : [[{ text: "Nenhum benefício registrado no período.", colSpan: 3, alignment: "center", italics: true, fontSize: 10 }, {}, {}]]
             ),
             [
               { text: "TOTAL GERAL", style: "tableHeader", alignment: "right" },
-              { text: totalBeneficios, style: "tableHeader", alignment: "center" },
+              { text: String(totalBeneficios), style: "tableHeader", alignment: "center" },
               { text: "100%", style: "tableHeader", alignment: "center" }
             ]
           ]
@@ -678,7 +760,7 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
               { text: `${data.efficiencyData.avgPermanence} dias`, style: "kpiValue" },
               { text: `${data.efficiencyData.avgWaitTime} dias`, style: "kpiValue" },
               { text: `${data.efficiencyData.retentionRate}%`, style: "kpiValue" },
-              { text: data.collectiveData.totalGroups, style: "kpiValue" }
+              { text: String(data.collectiveData.totalGroups), style: "kpiValue" }
             ]
           ]
         },
@@ -696,10 +778,77 @@ export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'do
         ],
         unbreakable: true
       }
-    ] as Content[], // Cast final para garantir que o array de conteúdo seja aceito
+    ] as Content[], 
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
   
   finalizePdf(docDefinition, "OBSERVATORIO_SOCIAL", "DETALHADO", mode)
+}
+
+export const generateDismissalPDF = (data: DismissalReportData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('RELATORIO_DESLIGAMENTOS', `Relatório de desligamentos: ${data.periodo}`)
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4",
+    pageMargins: [40, 60, 40, 60],
+    content: [
+      getOfficialHeader("Relatório Analítico de Desligamentos"),
+      {
+        text: [{ text: "PERÍODO: ", bold: true, fontSize: 10 }, { text: data.periodo.toUpperCase(), fontSize: 10 }],
+        margin: [0, 0, 0, 20], alignment: "center"
+      },
+      
+      createSectionHeader("1. Visão Geral"),
+      {
+        table: {
+          widths: ['*', '*', '*'],
+          body: [
+            [{ text: "TOTAL DE DESLIGAMENTOS", style: "tableHeader" }, { text: "TAXA DE SUCESSO", style: "tableHeader" }, { text: "ÍNDICE DE EVASÃO", style: "tableHeader" }],
+            [
+              { text: String(data.total), style: "kpiValue" },
+              { text: `${data.successRate}%`, style: "kpiValue", color: "#16a34a" },
+              { text: `${data.evasionRate}%`, style: "kpiValue", color: "#dc2626" }
+            ]
+          ]
+        },
+        layout: 'noBorders', margin: [0, 0, 0, 15]
+      },
+
+      createSectionHeader("2. Motivos de Desligamento"),
+      {
+        table: {
+          widths: ['*', 60, 60],
+          body: [
+            [{ text: "MOTIVO REGISTRADO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }, { text: "%", style: "tableHeader" }],
+            ...data.byReason.sort((a, b) => b.value - a.value).map(r => [
+              { text: r.name, fontSize: 10 },
+              { text: String(r.value), fontSize: 10, alignment: "center" as const },
+              { text: ((r.value / (data.total || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" as const }
+            ])
+          ]
+        },
+        layout: TABLE_LAYOUTS.alternatingRows as any
+      },
+
+      createSectionHeader("3. Evolução Temporal"),
+      {
+        table: {
+          widths: ['*', 60],
+          body: [
+            [{ text: "MÊS", style: "tableHeader", alignment: "left" }, { text: "DESLIGAMENTOS", style: "tableHeader" }],
+            ...data.monthlyTrend.map(m => [
+              { text: m.name, fontSize: 10 },
+              { text: String(m.value), fontSize: 10, alignment: "center" as const, bold: true }
+            ])
+          ]
+        },
+        layout: TABLE_LAYOUTS.lightHorizontalLines as any
+      }
+    ],
+    footer: getOfficialFooter,
+    styles: COMMON_STYLES
+  }
+
+  finalizePdf(docDefinition, "DESLIGAMENTOS", data.periodo, mode)
 }

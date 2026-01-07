@@ -15,6 +15,9 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 
+// [NOVO] Importação do gerador de PDF e tipagem
+import { generateRmaPDF, type RmaReportData } from '@/utils/pdfGenerator'
+
 interface RmaData {
   initialCount: number
   newEntries: number
@@ -22,6 +25,7 @@ interface RmaData {
   finalCount: number
   profileBySex: { masculino: number; feminino: number; outro: number }
   profileByAgeGroup: Record<string, number>
+  // Sugestão: Adicione bloco2 e bloco3 na API futuramente
 }
 
 export function RmaTab() {
@@ -36,20 +40,55 @@ export function RmaTab() {
     enabled: false,
   })
 
+  // Formatação de data para exibição
+  const [year, month] = selectedMonth.split('-').map(Number)
+  const monthDate = new Date(year, (month ?? 1) - 1, 1)
+  const monthName = format(monthDate, 'MMMM \'de\' yyyy', { locale: ptBR })
+
   const handleGenerateReport = async () => {
     if (!selectedMonth) {
       toast.warning("Selecione um mês válido.")
       return
     }
     const result = await refetch()
-    if (result.isError) toast.error("Falha ao gerar relatório.")
-    if (result.isSuccess) toast.success("Dados do RMA carregados.")
+    if (result.isError) toast.error("Falha ao buscar dados.")
+    if (result.isSuccess) toast.success("Dados carregados com sucesso.")
   }
 
-  // Formatação de data para exibição
-  const [year, month] = selectedMonth.split('-').map(Number)
-  const monthDate = new Date(year, (month ?? 1) - 1, 1)
-  const monthName = format(monthDate, 'MMMM \'de\' yyyy', { locale: ptBR })
+  // [NOVO] Função para estruturar e baixar o PDF
+  const handleExportPdf = () => {
+    if (!rmaData) return
+
+    // Mapeamento: Transforma os dados da tela no formato exigido pelo PDF Oficial
+    const pdfData: RmaReportData = {
+      periodo: monthName,
+      bloco1: {
+        familiasAcompPaefi: rmaData.initialCount, // Aproximação: Saldo inicial
+        novosCasos: rmaData.newEntries,
+        desligamentos: rmaData.closedCases
+      },
+      // TODO: Conectar estes campos com a API quando o backend estiver pronto
+      bloco2: {
+        totalAtendimentos: 0, 
+        visitasDomiciliares: 0,
+        abordagensRua: 0
+      },
+      bloco3: {
+        violenciaFisica: 0,
+        violenciaPsicologica: 0,
+        negligencia: 0,
+        abusoSexual: 0
+      }
+    }
+
+    try {
+      generateRmaPDF(pdfData)
+      toast.success("PDF do RMA gerado!")
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao gerar PDF.")
+    }
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -74,7 +113,7 @@ export function RmaTab() {
           className="w-full sm:w-auto min-w-[180px] shadow-sm"
         >
           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-          Gerar Relatório RMA
+          Carregar Dados
         </Button>
       </div>
 
@@ -82,7 +121,7 @@ export function RmaTab() {
       {isLoading && (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary/50" />
-          <p className="text-sm text-muted-foreground animate-pulse">Consolidando dados do prontuário...</p>
+          <p className="text-sm text-muted-foreground animate-pulse">Consolidando indicadores do SUAS...</p>
         </div>
       )}
       
@@ -92,9 +131,9 @@ export function RmaTab() {
            <div className="p-4 rounded-full bg-muted/20 mb-3">
              <FileText className="h-8 w-8 text-muted-foreground/50" />
            </div>
-           <h3 className="font-semibold text-lg">Nenhum relatório gerado</h3>
+           <h3 className="font-semibold text-lg">Nenhum relatório carregado</h3>
            <p className="text-sm text-muted-foreground max-w-sm mt-1">
-             Selecione o mês e ano acima para processar os indicadores oficiais do RMA (Blocos B e C).
+             Selecione o mês acima e clique em "Carregar Dados" para visualizar os indicadores.
            </p>
         </div>
       )}
@@ -112,8 +151,9 @@ export function RmaTab() {
                <p className="text-sm text-muted-foreground mt-1">Dados oficiais para preenchimento do sistema SUASWeb.</p>
              </div>
              
-             <Button variant="outline" className="gap-2" onClick={() => toast.info("Exportação PDF em breve.")}>
-                <Download className="h-4 w-4"/> Baixar PDF
+             {/* [NOVO] Botão de Exportação conectado */}
+             <Button variant="outline" className="gap-2" onClick={handleExportPdf}>
+                <Download className="h-4 w-4"/> Baixar PDF Oficial
              </Button>
           </div>
 
@@ -156,7 +196,7 @@ export function RmaTab() {
              <CardHeader className="bg-muted/30 border-b pb-3">
                <CardTitle className="text-base font-bold flex items-center gap-2">
                  <Activity className="h-5 w-5 text-primary"/> 
-                 BLOCO B: Movimentação de Usuários
+                 BLOCO I: Movimentação de Usuários
                </CardTitle>
                <CardDescription>Volume de fluxo de famílias no serviço.</CardDescription>
              </CardHeader>
@@ -202,7 +242,7 @@ export function RmaTab() {
             <Card className="border shadow-sm overflow-hidden h-full">
               <CardHeader className="bg-muted/30 border-b pb-3">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary"/> C.1 Perfil por Sexo
+                  <Users className="h-5 w-5 text-primary"/> Perfil por Sexo
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -235,7 +275,7 @@ export function RmaTab() {
             <Card className="border shadow-sm overflow-hidden h-full">
               <CardHeader className="bg-muted/30 border-b pb-3">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary"/> C.2 Faixa Etária
+                  <Calendar className="h-5 w-5 text-primary"/> Faixa Etária
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">

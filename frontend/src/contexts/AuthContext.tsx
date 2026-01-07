@@ -1,4 +1,5 @@
-import { createContext, useState, useEffect, type ReactNode } from 'react'
+// [CORREÇÃO] Adicionado useContext no import
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { jwtDecode } from 'jwt-decode'
@@ -32,6 +33,10 @@ interface AuthContextType {
 }
 
 export const AuthContext = createContext({} as AuthContextType)
+
+// [NOVO] Hook personalizado para facilitar o uso do contexto
+// Isso é obrigatório para o PublicOnlyRoute no App.tsx funcionar
+export const useAuthContext = () => useContext(AuthContext)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -86,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       toast.success('Login bem-sucedido!')
 
-      // [CORREÇÃO] Redireciona para a Mesa de Trabalho (Workspace)
+      // Redireciona para a Mesa de Trabalho (Workspace)
       navigate(ROUTES.WORKSPACE) 
       
       return true

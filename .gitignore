@@ -1,0 +1,18 @@
+# Dependências
+node_modules
+*/node_modules
+
+# Builds de produção
+dist
+*/dist
+build
+*/build
+
+# Logs e arquivos de sistema
+*.log
+.DS_Store
+
+# Variáveis de Ambiente (CRÍTICO: SENSÍVEL)
+.env
+*/.env
+.env.*

@@ -56,7 +56,8 @@ export class ErrorBoundary extends Component<Props, State> {
               </p>
               
               {/* Área de Debug (Apenas em Desenvolvimento) */}
-              {import.meta.env.DEV && this.state.error && (
+              {/* [FIX] Verificação segura de ambiente */}
+              {import.meta.env.MODE === 'development' && this.state.error && (
                 <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-md text-left overflow-auto max-h-40 border text-xs font-mono">
                   <p className="text-destructive font-bold mb-1">Stack Trace:</p>
                   <span className="text-slate-600 dark:text-slate-400">

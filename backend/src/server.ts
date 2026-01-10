@@ -4,7 +4,6 @@ import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'node:path'
-import fs from 'node:fs'
 import { 
   serializerCompiler, 
   validatorCompiler, 
@@ -33,18 +32,20 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
-
-// AQUI ESTÁ A CORREÇÃO:
-// O dashboard usa a mesma lógica das estatísticas, então importamos apenas statsRoutes
 import { statsRoutes } from './routes/stats'
 
 // Inicialização
 const app = fastify({
+  // FORÇANDO LOGS BONITOS MESMO EM PRODUÇÃO PARA DEBUG
   logger: {
-    transport: process.env.NODE_ENV === 'development' ? {
+    transport: {
       target: 'pino-pretty',
-      options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
-    } : undefined,
+      options: {
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname',
+        colorize: true,
+      },
+    },
   },
 }).withTypeProvider<ZodTypeProvider>()
 
@@ -54,7 +55,7 @@ app.setSerializerCompiler(serializerCompiler)
 
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS API', description: 'Sistema de Gestão SGAC', version: '7.1.3' },
+    info: { title: 'CREAS API', description: 'Sistema de Gestão SGAC', version: '7.1.4' },
     components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
   },
   transform: jsonSchemaTransform,
@@ -62,44 +63,61 @@ app.register(fastifySwagger, {
 
 app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
-// --- PLUGINS ---
+// --- PLUGINS GLOBAIS ---
 app.register(cors, { origin: true })
 app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret-key' })
 app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
+// DECORATOR DE AUTH
 app.decorate('authenticate', async (request: any, reply: any) => {
   try { await request.jwtVerify() } catch (err) { reply.send(err) }
 })
 
-// --- ROTAS DA API (PREFIXO /api) ---
-app.register(async (api) => {
-  api.register(authRoutes)
-  api.register(caseRoutes, { prefix: '/cases' })
-  api.register(userRoutes, { prefix: '/users' })
-  api.register(evolutionRoutes, { prefix: '/evolutions' })
-  api.register(pafRoutes, { prefix: '/paf' })
-  api.register(appointmentRoutes, { prefix: '/appointments' })
-  api.register(reportRoutes, { prefix: '/reports' })
-  api.register(alertRoutes, { prefix: '/alerts' })
-  api.register(auditRoutes, { prefix: '/audit' })
-  api.register(attachmentRoutes, { prefix: '/attachments' })
-  api.register(importRoutes, { prefix: '/import' })
-  api.register(filterRoutes, { prefix: '/filters' })
-  api.register(referralRoutes, { prefix: '/referrals' })
-  api.register(familyRoutes, { prefix: '/family' })
-  api.register(deliverablesRoutes, { prefix: '/deliverables' })
-  api.register(groupRoutes, { prefix: '/groups' })
-  api.register(workspaceRoutes, { prefix: '/workspace' })
-  api.register(waitingListRoutes, { prefix: '/waiting-list' })
+// --- REGISTRO DE ROTAS (CAMINHO COMPLETO) ---
+// Removemos o aninhamento para garantir que todas funcionem
+app.register(authRoutes, { prefix: '/api' }) // Login fica em /api/login
+
+app.register(caseRoutes, { prefix: '/api/cases' })
+app.register(userRoutes, { prefix: '/api/users' })
+app.register(evolutionRoutes, { prefix: '/api/evolutions' })
+app.register(pafRoutes, { prefix: '/api/paf' })
+app.register(statsRoutes, { prefix: '/api/stats' })
+app.register(appointmentRoutes, { prefix: '/api/appointments' })
+app.register(reportRoutes, { prefix: '/api/reports' })
+app.register(alertRoutes, { prefix: '/api/alerts' })
+app.register(auditRoutes, { prefix: '/api/audit' })
+app.register(attachmentRoutes, { prefix: '/api/attachments' })
+app.register(importRoutes, { prefix: '/api/import' })
+app.register(filterRoutes, { prefix: '/api/filters' })
+app.register(referralRoutes, { prefix: '/api/referrals' })
+app.register(familyRoutes, { prefix: '/api/family' })
+app.register(deliverablesRoutes, { prefix: '/api/deliverables' })
+app.register(groupRoutes, { prefix: '/api/groups' })
+app.register(workspaceRoutes, { prefix: '/api/workspace' })
+app.register(waitingListRoutes, { prefix: '/api/waiting-list' })
+
+// ALIAS PARA DASHBOARD
+app.register(statsRoutes, { prefix: '/api/dashboard' })
+
+
+// --- TRATAMENTO DE ERROS GLOBAL ---
+app.setErrorHandler((error, request, reply) => {
+  app.log.error(error) // Loga o erro real no console do Render
   
-  // CORREÇÃO AQUI:
-  // Registramos statsRoutes tanto em /stats quanto em /dashboard (alias)
-  // Isso garante compatibilidade se o frontend chamar qualquer um dos dois
-  api.register(statsRoutes, { prefix: '/stats' })
-  api.register(statsRoutes, { prefix: '/dashboard' }) 
+  if (error.statusCode === 401) {
+    return reply.status(401).send({ message: 'Não autorizado' })
+  }
+  
+  // Se for erro de validação do Zod
+  if (error.validation) {
+    return reply.status(400).send({ message: 'Erro de validação', errors: error.validation })
+  }
 
-}, { prefix: '/api' })
-
+  return reply.status(500).send({ 
+    message: 'Erro interno do servidor',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined 
+  })
+})
 
 // --- SERVIR FRONTEND (SPA) ---
 const frontendDist = path.join(__dirname, '../../frontend/dist')
@@ -112,7 +130,7 @@ app.register(fastifyStatic, {
 
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && req.raw.url.startsWith('/api')) {
-    return reply.status(404).send({ error: 'Not Found', message: `Route ${req.raw.url} not found` })
+    return reply.status(404).send({ error: 'Not Found', message: `Rota API '${req.raw.url}' não existe.` })
   }
   return reply.sendFile('index.html')
 })
@@ -124,6 +142,7 @@ const start = async () => {
     const host = '0.0.0.0'
     await app.listen({ port, host })
     console.log(`🚀 HTTP Server running on http://${host}:${port}`)
+    console.log(`📋 Rotas disponíveis: /api/cases, /api/users, etc...`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)

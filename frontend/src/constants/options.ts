@@ -55,9 +55,9 @@ export const OPTIONS = {
   status: [
     { value: 'AGUARDANDO_ACOLHIDA', label: 'Aguardando Acolhida' },
     { value: 'EM_ACOLHIDA', label: 'Em Acolhida' },
-    { value: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Aguardando Distribuição' },
+    { value: 'AGUARDANDO_DISTRIBUICAO', label: 'Aguardando Distribuição' },
     { value: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Especializada' },
-    { value: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Em Acompanhamento' },
+    { value: 'EM_ACOMPANHAMENTO', label: 'Em Acompanhamento' },
     { value: 'EM_MONITORAMENTO', label: 'Em Monitoramento' },
     { value: 'DESLIGADO', label: 'Desligado' },
   ]

@@ -1,10 +1,12 @@
+// schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url  	    = env("DATABASE_URL")
 }
 
 // --- ENUMS ---
@@ -19,9 +21,9 @@ enum Cargo {
 enum CaseStatus {
   AGUARDANDO_ACOLHIDA
   EM_ACOLHIDA
-  AGUARDANDO_DISTRIBUICAO_PAEFI
+  AGUARDANDO_DISTRIBUICAO
   EM_ACOLHIDA_ESPECIALIZADA
-  EM_ACOMPANHAMENTO_PAEFI
+  EM_ACOMPANHAMENTO
   EM_MONITORAMENTO
   DESLIGADO
 }
@@ -192,6 +194,10 @@ model Agendamento {
   id            String   @id @default(uuid())
   titulo        String
   data          DateTime
+  
+  // [NOVO CAMPO] Necessário para diferenciar Visita, Atendimento, etc.
+  tipo          String   @default("Atendimento") 
+  
   observacoes   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

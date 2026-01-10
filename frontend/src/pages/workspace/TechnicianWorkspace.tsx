@@ -29,7 +29,7 @@ export function TechnicianWorkspace({ data }: { data: OperationalWorkspaceData }
   const navigate = useNavigate()
   
   const awaitingCases = data.myCases.filter(c => c.status === 'EM_ACOLHIDA_ESPECIALIZADA')
-  const activeCases = data.myCases.filter(c => c.status === 'EM_ACOMPANHAMENTO_PAEFI')
+  const activeCases = data.myCases.filter(c => c.status === 'EM_ACOMPANHAMENTO')
   const monitoringCases = data.myCases.filter(c => c.status === 'EM_MONITORAMENTO')
 
   return (

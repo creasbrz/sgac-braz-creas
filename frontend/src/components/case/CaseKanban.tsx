@@ -20,9 +20,9 @@ interface CaseKanbanProps {
 const COLUMNS = [
   { id: 'AGUARDANDO_ACOLHIDA', title: 'Triagem', color: 'border-t-blue-500', bg: 'bg-blue-50/50 dark:bg-blue-900/10' },
   { id: 'EM_ACOLHIDA', title: 'Em Acolhida', color: 'border-t-indigo-500', bg: 'bg-indigo-50/50 dark:bg-indigo-900/10' },
-  { id: 'AGUARDANDO_DISTRIBUICAO_PAEFI', title: 'Aguardando Dist.', color: 'border-t-amber-500', bg: 'bg-amber-50/50 dark:bg-amber-900/10' },
+  { id: 'AGUARDANDO_DISTRIBUICAO', title: 'Aguardando Dist.', color: 'border-t-amber-500', bg: 'bg-amber-50/50 dark:bg-amber-900/10' },
   { id: 'EM_ACOLHIDA_ESPECIALIZADA', title: 'Acolhida Esp.', color: 'border-t-purple-500', bg: 'bg-purple-50/50 dark:bg-purple-900/10' },
-  { id: 'EM_ACOMPANHAMENTO_PAEFI', title: 'Acompanhamento', color: 'border-t-emerald-500', bg: 'bg-emerald-50/50 dark:bg-emerald-900/10' },
+  { id: 'EM_ACOMPANHAMENTO', title: 'Acompanhamento', color: 'border-t-emerald-500', bg: 'bg-emerald-50/50 dark:bg-emerald-900/10' },
   { id: 'EM_MONITORAMENTO', title: 'Monitoramento', color: 'border-t-cyan-500', bg: 'bg-cyan-50/50 dark:bg-cyan-900/10' },
 ]
 

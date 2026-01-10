@@ -1,7 +1,7 @@
-import { PrismaClient, CaseStatus, Cargo, LogAction, CaseOrigin, GroupType } from '@prisma/client'
+import { PrismaClient, CaseStatus, Cargo, LogAction, CaseOrigin, GroupType, Prisma } from '@prisma/client'
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
-import { addDays, subDays, differenceInDays } from 'date-fns'
+import { subDays, addDays } from 'date-fns'
 
 const prisma = new PrismaClient()
 
@@ -17,7 +17,7 @@ const TEAM_DATA = [
   { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
 ]
 
-// --- LISTAS DE NEGÓCIO (ORIGINAIS MANTIDAS) ---
+// --- LISTAS DE NEGÓCIO ---
 const LISTA_URGENCIAS = [
   'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
   'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
@@ -61,7 +61,7 @@ const EVOLUCAO_TEMPLATES = [
   "Realizada visita domiciliar. Família apresenta vulnerabilidade habitacional. Orientado sobre documentação necessária para inclusão no Cadastro Único.",
   "Atendimento presencial na unidade. Usuário relata melhora na convivência familiar após encaminhamento para o CAPS.",
   "Contato telefônico com a rede de saúde (UBS) para verificar agendamento de consulta psiquiátrica. Confirmado para a próxima semana.",
-  "Escuta qualificada realizada. Identificada demanda de violação de direitos (negligência). Inserido no PAEFI para acompanhamento sistemático.",
+  "Escuta qualificada realizada. Identificada demanda de violação de direitos (negligência). Inserido em acompanhamento sistemático.",
   "Usuário compareceu para solicitar benefícios eventuais (Cesta de Alimentos). Benefício concedido mediante parecer técnico favorável.",
   "Realizada articulação com o Conselho Tutelar para discussão de caso complexo envolvendo evasão escolar e trabalho infantil.",
   "Genitora compareceu solicitando orientações jurídicas. Encaminhada para a Defensoria Pública."
@@ -79,11 +79,19 @@ const PAF_OBJETIVOS = [
 const randInt = (min: number, max: number) => faker.number.int({ min, max })
 const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 
-async function main() {
-  console.log('🌱 [SEED V7.0 - ADAPTADO] Iniciando povoamento...')
+const calculateUrgencyWeight = (u: string) => {
+  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(u)) return 4;
+  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
+  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(u)) return 2;
+  return 1;
+}
 
-  // 1. Limpeza
+async function main() {
+  console.log('🌱 [SEED V7.1 - OTIMIZADO] Iniciando povoamento...')
+
+  // 1. Limpeza Segura (Ordem Reversa de Dependência)
   try {
+    console.log('🧹 Limpando banco de dados...')
     await prisma.groupAttendance.deleteMany()
     await prisma.groupActivity.deleteMany()
     await prisma.serviceDeliverable.deleteMany()
@@ -98,9 +106,8 @@ async function main() {
     await prisma.case.deleteMany()
     await prisma.savedFilter.deleteMany()
     await prisma.user.deleteMany()
-    console.log('🧹 Banco limpo.')
   } catch (e) {
-    console.warn("⚠️  Aviso: Banco já estava limpo ou erro na limpeza.")
+    console.warn("⚠️  Aviso: O banco já estava limpo ou ocorreu um erro não-crítico na limpeza.")
   }
 
   // 2. Usuários
@@ -124,25 +131,32 @@ async function main() {
 
   // 3. Casos
   const NUM_CASES = 150
-  console.log(`📂 Gerando ${NUM_CASES} casos...`)
+  console.log(`📂 Gerando ${NUM_CASES} casos simulados...`)
 
   for (let i = 0; i < NUM_CASES; i++) {
     const dataEntrada = faker.date.past({ years: 1 })
     const origem = faker.helpers.arrayElement(Object.values(CaseOrigin))
     
-    // Status Logic
+    // Lógica de Status (Funil de Atendimento)
     const statusRoll = Math.random()
     let status = CaseStatus.AGUARDANDO_ACOLHIDA
     if (statusRoll > 0.10) status = CaseStatus.EM_ACOLHIDA 
-    if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI 
+    if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO 
     if (statusRoll > 0.35) status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA 
-    if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO_PAEFI 
+    if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO 
     if (statusRoll > 0.75) status = CaseStatus.EM_MONITORAMENTO 
     if (statusRoll > 0.90) status = CaseStatus.DESLIGADO 
 
     const criador = faker.helpers.arrayElement([...gerentes, ...agentes])
     const agenteResp = faker.helpers.arrayElement(agentes)
-    const needsSpecialist = [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO, CaseStatus.DESLIGADO].includes(status)
+    
+    const needsSpecialist = [
+      CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
+      CaseStatus.EM_ACOMPANHAMENTO, 
+      CaseStatus.EM_MONITORAMENTO, 
+      CaseStatus.DESLIGADO
+    ].includes(status)
+    
     const especialistaResp = needsSpecialist ? faker.helpers.arrayElement(especialistas) : null
 
     // Lógica de Desligamento
@@ -152,24 +166,16 @@ async function main() {
             dataDesligamento: addDays(dataEntrada, randInt(60, 300)),
             motivoDesligamento: faker.helpers.arrayElement(MOTIVOS_DESLIGAMENTO),
             destinoDesligamento: faker.helpers.arrayElement(LISTA_DESTINOS),
-            parecerFinal: "Superação de vulnerabilidade identificada após intervenção."
+            parecerFinal: "Superação de vulnerabilidade identificada após intervenção técnica."
         }
     }
 
-    // Urgência
     const urgencia = faker.helpers.arrayElement(LISTA_URGENCIAS)
-    const calculateUrgencyWeight = (u: string) => {
-        if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(u)) return 4;
-        if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
-        if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(u)) return 2;
-        return 1;
-    }
 
     // CRIAÇÃO DO CASO
     const newCase = await prisma.case.create({
       data: {
         nomeCompleto: faker.person.fullName(),
-        // [CORREÇÃO] CPF Obrigatório no schema atual
         cpf: generateCPF(), 
         nascimento: faker.date.birthdate({ min: 14, max: 85, mode: 'age' }),
         sexo: faker.helpers.arrayElement(['Masculino', 'Feminino']),
@@ -189,20 +195,19 @@ async function main() {
         
         status,
         
-        // [CORREÇÃO] Relações com connect
+        // Conexões de Relacionamento
         criadoPor: { connect: { id: criador.id } },
         agenteAcolhida: agenteResp ? { connect: { id: agenteResp.id } } : undefined,
         especialistaPAEFI: especialistaResp ? { connect: { id: especialistaResp.id } } : undefined,
         
         dataInicioPAEFI: especialistaResp ? addDays(dataEntrada, randInt(10, 30)) : null,
         
-        // Dados de desligamento se aplicável
         ...desligamentoData
       }
     })
     createdCases.push(newCase)
 
-    // Log Criação
+    // Log Inicial
     await prisma.caseLog.create({
         data: { casoId: newCase.id, autorId: criador.id, acao: LogAction.CRIACAO, descricao: 'Caso criado via Seed.', createdAt: dataEntrada }
     })
@@ -218,14 +223,15 @@ async function main() {
                     casoId: newCase.id,
                     autorId: autorEvolucao.id,
                     conteudo: `[ATENDIMENTO] ` + faker.helpers.arrayElement(EVOLUCAO_TEMPLATES), 
-                    sigilo: Math.random() > 0.9, createdAt: dataEvolucao
+                    sigilo: Math.random() > 0.9, 
+                    createdAt: dataEvolucao
                 }
             });
         }
     }
 
-    // PAF
-    if ([CaseStatus.EM_ACOMPANHAMENTO_PAEFI, CaseStatus.EM_MONITORAMENTO].includes(status) && especialistaResp) {
+    // PAF (Plano de Acompanhamento)
+    if ([CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO].includes(status) && especialistaResp) {
         await prisma.paf.create({
             data: {
                 casoId: newCase.id,
@@ -239,10 +245,9 @@ async function main() {
         });
     }
 
-    // Agendamentos (Futuro e Passado)
+    // Agendamentos (Histórico e Futuro)
     const responsavelAgendamento = especialistaResp || agenteResp || criador;
 
-    // 1. Passado
     if (Math.random() > 0.3) {
        await prisma.agendamento.create({
          data: {
@@ -255,7 +260,6 @@ async function main() {
        })
     }
 
-    // 2. Futuro
     if (status !== CaseStatus.DESLIGADO && Math.random() > 0.4) {
        await prisma.agendamento.create({
          data: {
@@ -268,7 +272,7 @@ async function main() {
        })
     }
 
-    // Benefícios
+    // Benefícios Eventuais
     if (status !== CaseStatus.AGUARDANDO_ACOLHIDA && Math.random() > 0.2) {
         const numEventuais = randInt(1, 3)
         for (let j = 0; j < numEventuais; j++) {
@@ -306,7 +310,7 @@ async function main() {
       }
     }
 
-    // Família
+    // Composição Familiar
     const numMembros = randInt(1, 4)
     for (let m = 0; m < numMembros; m++) {
       await prisma.membroFamilia.create({
@@ -315,17 +319,19 @@ async function main() {
           nome: faker.person.fullName(),
           parentesco: faker.helpers.arrayElement(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)']),
           idade: randInt(2, 90),
-          cpf: Math.random() > 0.3 ? generateCPF() : null, // Aqui pode ser null, é MembroFamilia, não Case
-          renda: randInt(0, 1412) 
+          cpf: Math.random() > 0.3 ? generateCPF() : null,
+          // [CORREÇÃO] Uso de Prisma.Decimal para tipagem estrita
+          renda: new Prisma.Decimal(randInt(0, 1412)) 
         }
       })
     }
 
-    process.stdout.write('.')
+    // Barra de progresso simples
+    if (i % 10 === 0) process.stdout.write('.')
   }
 
-  // 4. Logs Adicionais
-  console.log('\n📈 Gerando histórico de ações...')
+  // 4. Logs de Sistema Adicionais
+  console.log('\n📈 Gerando volume de histórico (logs)...')
   const allWorkers = [...especialistas, ...agentes]
   const safeActions = [LogAction.MUDANCA_STATUS, LogAction.OUTRO, LogAction.ATRIBUICAO]
 
@@ -346,8 +352,8 @@ async function main() {
     }
   }
 
-  // 5. Grupos
-  console.log('\n👥 Criando Grupos e Presenças...')
+  // 5. Grupos e Oficinas
+  console.log('\n👥 Criando Grupos e Listas de Presença...')
   const NUM_GROUPS = 15
   for (let i = 0; i < NUM_GROUPS; i++) {
     const facilitator = faker.helpers.arrayElement(especialistas)
@@ -361,7 +367,6 @@ async function main() {
         dataRealizacao: groupDate,
         local: 'Sala de Grupos',
         descricao: 'Atividade de fortalecimento de vínculos.',
-        // [CORREÇÃO] Connect no facilitador e AttendanceConfirmed
         facilitador: { connect: { id: facilitator.id } },
         attendanceConfirmed: !isFuture 
       }
@@ -373,13 +378,20 @@ async function main() {
         data: {
           grupoId: grupo.id,
           casoId: p.id,
-          presente: !isFuture // Se já passou, assume presença
+          presente: !isFuture // Se já passou, assume presença aleatória
         }
       })
     }
   }
 
-  console.log('\n✅ Seed V7.0 COMPLETO! Agendamentos Individuais e Grupos gerados.')
+  console.log('\n✅ Seed V7.1 COMPLETO! Banco de dados povoado com sucesso.')
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect())
+main()
+  .catch((e) => {
+    console.error(e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })

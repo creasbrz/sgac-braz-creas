@@ -9,7 +9,6 @@ ESTRUTURA GERAL (Frontend):
 ├── package.json
 ├── postcss.config.cjs
 ├── public
-├── README.md
 ├── src
 ├── tailwind.config.cjs
 ├── tsconfig.app.json
@@ -23,7 +22,6 @@ ESTRUTURA GERAL (Backend):
 ├── prisma
 ├── scripts
 ├── src
-└── uploads
 
 
 
@@ -33,7 +31,7 @@ FILE: frontend\package.json
 ==================================================================
 {
   "name": "frontend",
-  "version": "6.0.4",
+  "version": "7.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -73,8 +71,6 @@ FILE: frontend\package.json
     "fast-csv": "^5.0.5",
     "framer-motion": "^12.23.26",
     "html2canvas": "^1.4.1",
-    "jspdf": "^3.0.4",
-    "jspdf-autotable": "^5.0.2",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.561.0",
@@ -293,29 +289,33 @@ root.render(
 ==================================================================
 FILE: frontend\src\App.tsx
 ==================================================================
+import React from 'react' 
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 import { queryClient } from "./lib/react-query";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
+import { PrivacyProvider } from "./contexts/PrivacyContext"; // [NOVO]
 import { ThemeProvider } from "./components/common/theme-provider";
-
-// Importação do Error Boundary (criado no passo anterior)
 import ErrorBoundary from "./components/ui/error-boundary";
 
-import { ROUTE_PATHS } from "./constants/routes";
+import { ROUTE_PATHS, ROUTES } from "./constants/routes";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { MainLayout } from "./components/layout/MainLayout";
 import { Login } from "./pages/Login";
-import { Dashboard } from "./pages/Dashboard";
+
+// Orquestradores
+import { Dashboard } from "./pages/dashboard/Dashboard";
+import { Workspace } from "./pages/workspace/Workspace";
+
 import { Cases } from "./pages/Cases";
 import { ClosedCases } from "./pages/ClosedCases";
 import { CaseDetail } from "./pages/CaseDetail";
 import { Agenda } from "./pages/Agenda";
-import { Reports } from "./pages/Reports";
+import { Reports } from "./pages/reports/Reports";
 import { UserManagement } from "./pages/UserManagement";
 import { TeamOverview } from "./pages/TeamOverview";
 import { GlobalAudit } from "./pages/GlobalAudit";
@@ -324,65 +324,113 @@ import { AdvancedAnalytics } from "./pages/AdvancedAnalytics";
 import { GroupManagement } from "./pages/GroupManagement";
 import { WaitingList } from "./pages/WaitingList";
 
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isSessionLoading } = useAuthContext()
+
+  if (isSessionLoading) return null 
+  if (isAuthenticated) {
+    return <Navigate to={ROUTES.WORKSPACE} replace />
+  }
+  return <>{children}</>
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-        {/* ErrorBoundary protege a aplicação de telas brancas em caso de falha */}
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
-              <ModalProvider>
-                <SidebarProvider>
-                  <Routes>
-                    <Route path={ROUTE_PATHS.LOGIN} element={<Login />} />
+              {/* [NOVO] Provider de Privacidade envolvendo a aplicação */}
+              <PrivacyProvider>
+                <ModalProvider>
+                  <SidebarProvider>
+                    <Routes>
+                      
+                      <Route path="/" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
 
-                    <Route path={ROUTE_PATHS.DASHBOARD} element={<MainLayout />}>
-                      <Route
-                        index
+                      <Route 
+                        path={ROUTE_PATHS.LOGIN} 
                         element={
-                          <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]}>
-                            <Dashboard />
-                          </ProtectedRoute>
-                        }
+                          <PublicOnlyRoute>
+                            <Login />
+                          </PublicOnlyRoute>
+                        } 
                       />
 
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
-                        <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
-                        <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
-                        <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
-                        {/* [NOVO] Grupos liberados para todos */}
-                        <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
+                      <Route path={ROUTE_PATHS.APP} element={<MainLayout />}>
+                        <Route index element={<Navigate to={ROUTES.WORKSPACE} replace />} />
+
+                        <Route 
+                          path={ROUTE_PATHS.WORKSPACE} 
+                          element={
+                            <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]}>
+                              <Workspace />
+                            </ProtectedRoute>
+                          } 
+                        />
+
+                        <Route 
+                          path={ROUTE_PATHS.DASHBOARD} 
+                          element={
+                            <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]}>
+                              <Dashboard />
+                            </ProtectedRoute>
+                          } 
+                        />
+
+                        <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]} />}>
+                          <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
+                          <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
+                          <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} />
+                          <Route path={ROUTE_PATHS.CLOSED_CASES} element={<ClosedCases />} />
+                          <Route path={ROUTE_PATHS.AGENDA} element={<Agenda />} />
+                          <Route path={ROUTE_PATHS.GROUPS} element={<GroupManagement />} />
+                          <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
+                        </Route>
+
+                        <Route element={<ProtectedRoute allowedRoles={["Gerente", "Auditor"]} />}>
+                          <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
+                          <Route path="audit" element={<GlobalAudit />} />
+                          <Route path="analytics" element={<AdvancedAnalytics />} />
+                        </Route>
+
+                        <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
+                          <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
+                        </Route>
+
                       </Route>
 
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social"]} />}>
-                        <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
-                      </Route>
-
-                      <Route element={<ProtectedRoute allowedRoles={["Gerente"]} />}>
-                        <Route path={ROUTE_PATHS.REPORTS} element={<Reports />} />
-                        <Route path={ROUTE_PATHS.USERS} element={<UserManagement />} />
-                        <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
-                        <Route path={ROUTE_PATHS.WAITING_LIST} element={<WaitingList />} />
-                        <Route path="audit" element={<GlobalAudit />} />
-                        <Route path="analytics" element={<AdvancedAnalytics />} />
-                      </Route>
-                    </Route>
-
-                    <Route path={ROUTE_PATHS.NOT_FOUND} element={<NotFound />} />
-                    <Route path="*" element={<Navigate to={ROUTE_PATHS.DASHBOARD} replace />} />
-                  </Routes>
-                </SidebarProvider>
-              </ModalProvider>
+                      <Route path={ROUTE_PATHS.NOT_FOUND} element={<NotFound />} />
+                      <Route path="*" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
+                    </Routes>
+                  </SidebarProvider>
+                </ModalProvider>
+              </PrivacyProvider>
             </AuthProvider>
           </BrowserRouter>
         </ErrorBoundary>
-
         <Toaster richColors />
         <ReactQueryDevtools initialIsOpen={false} />
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+==================================================================
+FILE: frontend\src\vite-env.d.ts
+==================================================================
+/// <reference types="vite/client" />
+
+// [NOVO] Declara a variável global
+declare const __APP_VERSION__: string
+
+interface ImportMetaEnv {
+  readonly VITE_API_URL: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
 }
 
 ==================================================================
@@ -579,50 +627,60 @@ FILE: frontend\src\utils\pdfGenerator.ts
 ==================================================================
 import pdfMake from "pdfmake/build/pdfmake"
 import pdfFonts from "pdfmake/build/vfs_fonts"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { api } from "@/lib/api"
+import type { TDocumentDefinitions, StyleDictionary, Content } from "pdfmake/interfaces"
+
+// Imports de tipos do projeto
 import type { CaseDetailData, FamilyMember, PafData } from "@/types/case"
 import type { GroupActivity, GroupAttendance } from "@/types/group"
 import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
-// [CORREÇÃO] Estendendo a interface para evitar erros de TS
-interface ExtendedCaseData extends CaseDetailData {
+// --- INTERFACES DE DADOS ---
+
+export enum CaseStatus {
+  TRIAGEM = "AGUARDANDO_ACOLHIDA",
+  ACOLHIDA = "EM_ACOLHIDA",
+  PAEFI = "EM_ACOMPANHAMENTO",
+  MSE = "EM_ACOMPANHAMENTO_MSE",
+  DESLIGADO = "DESLIGADO"
+}
+
+interface ExtendedCaseData extends Omit<CaseDetailData, 'beneficios'> {
   familia?: FamilyMember[]
   idade?: number
+  entregas?: any[]
+  encaminhamentos?: any[]
+  evolucoes?: any[]
+  beneficios?: string[]
 }
 
-// --- CONFIGURAÇÃO VFS ---
-// @ts-ignore
-if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
-  // @ts-ignore
-  pdfMake.vfs = pdfFonts.pdfMake.vfs
-} else if (pdfFonts && (pdfFonts as any).vfs) {
-  // @ts-ignore
-  pdfMake.vfs = (pdfFonts as any).vfs
-} else {
-  // @ts-ignore
-  pdfMake.vfs = pdfFonts
+export interface RmaReportData {
+  periodo: string
+  bloco1: {
+    familiasAcompPaefi: number
+    novosCasos: number
+    desligamentos: number
+  }
+  bloco2: {
+    totalAtendimentos: number
+    visitasDomiciliares: number
+    abordagensRua: number
+  }
+  bloco3: {
+    violenciaFisica: number
+    violenciaPsicologica: number
+    negligencia: number
+    abusoSexual: number
+  }
 }
 
-// ... (Interfaces e Styles mantidos) ...
 export interface ManagementReportData {
   periodo: string
-  stats: {
-    ativos: number
-    acolhidas: number
-    paefi: number
-    novos: number
-    desligados: number
-  }
-  cargaHoraria: {
-    agentes: { name: string; value: number }[]
-    especialistas: { name: string; value: number }[]
-  }
-  vigilancia?: {
-    violacoes: { name: string; value: number }[]
-    demografia: { name: string; value: number }[]
-    territorio: { name: string; value: number }[]
-  }
+  stats: { ativos: number; acolhidas: number; paefi: number; novos: number; desligados: number }
+  cargaHoraria: { agentes: { name: string; value: number }[]; especialistas: { name: string; value: number }[] }
+  vigilancia?: { violacoes: { name: string; value: number }[]; demografia: { name: string; value: number }[]; territorio?: { name: string; value: number }[] }
 }
 
 export interface ObservatoryData {
@@ -638,55 +696,112 @@ export interface ObservatoryData {
   sexData: { name: string; value: number }[]
 }
 
+export interface DismissalReportData {
+  periodo: string
+  total: number
+  successRate: number
+  evasionRate: number
+  byReason: { name: string; value: number }[]
+  monthlyTrend: { name: string; value: number }[]
+}
+
+// --- CONFIGURAÇÃO VFS ---
+if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
+  pdfMake.vfs = pdfFonts.pdfMake.vfs;
+} else if (pdfFonts && (pdfFonts as any).vfs) {
+  pdfMake.vfs = (pdfFonts as any).vfs;
+} else if (pdfMake.vfs === undefined) {
+  pdfMake.vfs = pdfFonts;
+}
+
+// --- CONSTANTES E ESTILOS ---
 const BRAND_COLOR = "#2e4a7d"
 const HEADER_BG = "#eef2f6"
 
-const COMMON_STYLES = {
+const COMMON_STYLES: StyleDictionary = {
   header: { fontSize: 14, bold: true, color: BRAND_COLOR, margin: [0, 0, 0, 5] },
   subHeader: { fontSize: 12, bold: true, color: "#333", margin: [0, 10, 0, 5] },
   sectionTitle: { fontSize: 11, bold: true, color: "white", margin: [2, 2, 2, 2] },
   label: { fontSize: 9, bold: true, color: "#555" },
   value: { fontSize: 10, color: "#000" },
   tableHeader: { bold: true, fontSize: 10, color: "black", fillColor: "#e0e0e0", alignment: "center" },
-  smallText: { fontSize: 8, color: "#666" },
   kpiValue: { fontSize: 16, bold: true, alignment: "center", color: "#333", margin: [0, 5, 0, 0] }
 }
 
-const createSectionHeader = (title: string) => ({
-  table: {
-    widths: ['*'],
-    body: [
-      [{ 
-        text: title.toUpperCase(), 
-        style: 'sectionTitle', 
-        border: [false, false, false, false], 
-        fillColor: BRAND_COLOR 
-      }]
-    ]
+const REPORT_TEXTS = {
+  header: {
+    gov: "GOVERNO DO DISTRITO FEDERAL",
+    sec: "SECRETARIA DE ESTADO DE DESENVOLVIMENTO SOCIAL - SEDES",
+    unit: "CREAS BRAZLÂNDIA"
   },
-  margin: [0, 15, 0, 10]
-})
+  footer: { system: "Sistema de Gestão de Assistência - CREAS Brazlândia\n", page: "Página" }
+}
 
-const getOfficialHeader = (docTitle: string) => {
-  return {
-    stack: [
-      { text: "GOVERNO DO DISTRITO FEDERAL", style: "header", alignment: "center", fontSize: 11, margin: [0, 0, 0, 2] },
-      { text: "SECRETARIA DE ESTADO DE DESENVOLVIMENTO SOCIAL - SEDES", alignment: "center", fontSize: 9 },
-      { text: "CREAS BRAZLÂNDIA", alignment: "center", fontSize: 9, bold: true, margin: [0, 0, 0, 5] },
-      { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#ccc' }] },
-      { text: docTitle.toUpperCase(), style: "header", alignment: "center", margin: [0, 15, 0, 10] }
-    ],
-    margin: [0, 10, 0, 0]
+// --- HELPERS DE TABELA ---
+const TABLE_LAYOUTS = {
+  lightHorizontalLines: {
+    hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5,
+    vLineWidth: () => 0,
+    hLineColor: '#ccc'
+  },
+  alternatingRows: {
+    fillColor: (i: number) => (i === 0 ? '#e0e0e0' : (i % 2 === 0 ? null : '#f9f9f9')),
+    hLineWidth: () => 0.5,
+    vLineWidth: () => 0.5,
+    hLineColor: '#ccc',
+    vLineColor: '#ccc'
   }
 }
 
-const getOfficialFooter = (currentPage: number, pageCount: number) => ({
+// --- AUDITORIA ---
+const registerPdfAudit = async (type: string, details: string, caseId?: string) => {
+  try {
+    api.post('/audit/log', {
+      action: 'GENERATE_PDF',
+      resource: type,
+      details,
+      targetId: caseId,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.warn("Falha no log de auditoria PDF", err))
+  } catch (e) { console.warn(e) }
+}
+
+// --- HELPER FINALIZADOR ---
+const finalizePdf = (
+  docDefinition: TDocumentDefinitions, 
+  filenamePrefix: string, 
+  identifier: string,
+  mode: 'open' | 'download' = 'open'
+) => {
+  const sanitizedId = identifier.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
+  const dateStr = format(new Date(), 'yyyy-MM-dd')
+  const filename = `${filenamePrefix}_${sanitizedId}_${dateStr}.pdf`
+
+  const pdf = pdfMake.createPdf(docDefinition)
+  
+  if (mode === 'download') pdf.download(filename)
+  else pdf.open()
+}
+
+// --- HELPERS DE LAYOUT ---
+const getOfficialHeader = (docTitle: string): Content => ({
+  stack: [
+    { text: REPORT_TEXTS.header.gov, style: "header", alignment: "center", fontSize: 11, margin: [0, 0, 0, 2] },
+    { text: REPORT_TEXTS.header.sec, alignment: "center", fontSize: 9 },
+    { text: REPORT_TEXTS.header.unit, alignment: "center", fontSize: 9, bold: true, margin: [0, 0, 0, 5] },
+    { canvas: [{ type: 'line', x1: 0, y1: 5, x2: 515, y2: 5, lineWidth: 1, lineColor: '#ccc' }] },
+    { text: docTitle.toUpperCase(), style: "header", alignment: "center", margin: [0, 15, 0, 10] }
+  ],
+  margin: [0, 10, 0, 0]
+})
+
+const getOfficialFooter = (currentPage: number, pageCount: number): Content => ({
   stack: [
     { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#ccc' }] },
     {
       text: [
-        { text: "Sistema de Gestão de Assistência - CREAS Brazlândia\n", bold: true },
-        `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} • Página ${currentPage} de ${pageCount}`
+        { text: REPORT_TEXTS.footer.system, bold: true },
+        `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} • ${REPORT_TEXTS.footer.page} ${currentPage} de ${pageCount}`
       ],
       alignment: "center",
       fontSize: 8,
@@ -697,43 +812,51 @@ const getOfficialFooter = (currentPage: number, pageCount: number) => ({
   margin: [40, 0, 40, 10]
 })
 
-// [CORREÇÃO] Usando ExtendedCaseData no parâmetro
-export const generateCasePDF = (caseDataRaw: CaseDetailData) => {
+const createSectionHeader = (title: string): Content => ({
+  table: { widths: ['*'], body: [[{ text: title.toUpperCase(), style: 'sectionTitle', border: [false, false, false, false], fillColor: BRAND_COLOR }]] },
+  margin: [0, 15, 0, 10],
+  unbreakable: true
+})
+
+// ============================================================================
+// GERADORES
+// ============================================================================
+
+export const generateCasePDF = (caseDataRaw: CaseDetailData, mode: 'open' | 'download' = 'open') => {
   const caseData = caseDataRaw as ExtendedCaseData;
+  registerPdfAudit('PRONTUARIO', `Prontuário gerado para: ${caseData.nomeCompleto}`, caseData.id)
 
   const familyBody: any[] = [
-    [
-      { text: "NOME", style: "tableHeader", alignment: "left" },
-      { text: "PARENTESCO", style: "tableHeader" },
-      { text: "IDADE", style: "tableHeader" },
-      { text: "RENDA", style: "tableHeader" }
-    ]
+    [{ text: "NOME", style: "tableHeader", alignment: "left" }, { text: "PARENTESCO", style: "tableHeader" }, { text: "IDADE", style: "tableHeader" }, { text: "RENDA", style: "tableHeader" }]
   ]
 
   if (caseData.familia && caseData.familia.length > 0) {
-    caseData.familia.forEach((m: FamilyMember) => {
-      // [CORREÇÃO] Usando any para evitar erro de 'fontSize' em objeto literal
-      familyBody.push([
-        { text: m.nome, fontSize: 9 },
-        { text: m.parentesco, fontSize: 9, alignment: "center" },
-        { text: m.idade ? `${m.idade} anos` : "-", fontSize: 9, alignment: "center" },
-        { text: m.renda ? `R$ ${Number(m.renda).toFixed(2)}` : "-", fontSize: 9, alignment: "right" }
-      ] as any)
-    })
+    caseData.familia.forEach(m => familyBody.push([
+      { text: m.nome, fontSize: 9 },
+      { text: m.parentesco, fontSize: 9, alignment: "center" },
+      { text: m.idade ? `${m.idade} anos` : "-", fontSize: 9, alignment: "center" },
+      { text: m.renda ? `R$ ${Number(m.renda).toFixed(2)}` : "-", fontSize: 9, alignment: "right" }
+    ]))
   } else {
-    familyBody.push([{ text: "Nenhum familiar cadastrado.", colSpan: 4, alignment: "center", fontSize: 9, italics: true }, {}, {}, {}] as any)
+    familyBody.push([{ text: "Nenhum familiar cadastrado.", colSpan: 4, alignment: "center", fontSize: 9, italics: true }, {}, {}, {}])
   }
 
-  const beneficiosList = caseData.beneficios?.length ? 
-    { ul: caseData.beneficios, fontSize: 10, margin: [10, 0, 0, 0] } : 
-    { text: "Nenhum benefício ativo registrado.", fontSize: 10, italics: true, color: "#666" }
+  const evolucoesBody: any[] = [[{ text: "DATA/HORA", style: "tableHeader" }, { text: "TÉCNICO", style: "tableHeader" }, { text: "DESCRIÇÃO", style: "tableHeader", alignment: "left" }]];
+  if (caseData.evolucoes && caseData.evolucoes.length > 0) {
+    caseData.evolucoes.forEach(e => evolucoesBody.push([
+      { text: format(new Date(e.createdAt), "dd/MM/yy HH:mm"), fontSize: 8, alignment: 'center' },
+      { text: e.autor?.nome || 'Sistema', fontSize: 8, bold: true },
+      { text: e.conteudo || e.descricao, fontSize: 8, alignment: 'justify' }
+    ]))
+  } else {
+    evolucoesBody.push([{ text: "Sem registros recentes.", colSpan: 3, alignment: "center", fontSize: 9, italics: true }, {}, {}])
+  }
 
-  const docDefinition: any = {
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [40, 40, 40, 60],
     content: [
       getOfficialHeader("Prontuário Técnico Simplificado"),
-
       {
         style: 'tableExample',
         table: {
@@ -741,20 +864,13 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData) => {
           body: [
             [{ text: "NOME:", style: "label" }, { text: caseData.nomeCompleto.toUpperCase(), style: "value", bold: true }],
             [{ text: "CPF:", style: "label" }, { text: formatCPF(caseData.cpf), style: "value" }],
-            // [CORREÇÃO] 'idade' agora é reconhecido via cast
             [{ text: "NASCIMENTO:", style: "label" }, { text: `${formatDateSafe(caseData.nascimento)} (${caseData.idade ?? '?'} anos)`, style: "value" }],
             [{ text: "ENDEREÇO:", style: "label" }, { text: caseData.endereco, style: "value" }],
             [{ text: "CONTATO:", style: "label" }, { text: formatPhone(caseData.telefone), style: "value" }]
           ]
         },
-        layout: {
-          hLineWidth: (i: number) => (i === 0 || i === 5) ? 1 : 0.5,
-          vLineWidth: () => 0,
-          hLineColor: '#ccc',
-          fillColor: (i: number) => (i % 2 === 0) ? HEADER_BG : null
-        }
+        layout: { hLineWidth: (i) => (i === 0 || i === 5) ? 1 : 0.5, vLineWidth: () => 0, hLineColor: '#ccc', fillColor: (i) => (i % 2 === 0) ? HEADER_BG : null }
       },
-
       createSectionHeader("1. Situação do Atendimento"),
       {
         columns: [
@@ -766,49 +882,80 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData) => {
       { text: "\n" },
       {
         columns: [
-          { width: '*', text: [{ text: "Técnico Acolhida: ", style: "label" }, { text: caseData.agenteAcolhida?.nome || "Não definido", style: "value" }] },
-          { width: '*', text: [{ text: "Técnico Referência (PAEFI): ", style: "label" }, { text: caseData.especialistaPAEFI?.nome || "Não definido", style: "value" }] }
+          { width: '*', text: [{ text: "Agente Referência: ", style: "label" }, { text: caseData.agenteAcolhida?.nome || "Não definido", style: "value" }] },
+          { width: '*', text: [{ text: "Especialista Referência: ", style: "label" }, { text: caseData.especialistaPAEFI?.nome || "Não definido", style: "value" }] }
         ]
       },
-
       createSectionHeader("2. Composição Familiar"),
+      { table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: familyBody }, layout: 'lightHorizontalLines' },
+      
+      createSectionHeader("3. Benefícios e Rede"),
+      { text: "Benefícios Ativos:", fontSize: 10, bold: true, margin: [0, 5, 0, 2] },
+      caseData.beneficios?.length ? { ul: caseData.beneficios, fontSize: 9, margin: [10, 0, 0, 10] } : { text: "Nenhum benefício ativo.", fontSize: 9, italics: true, color: "#666", margin: [10, 0, 0, 10] },
+      
+      { text: '', pageBreak: 'before' },
+      createSectionHeader("4. Histórico Técnico (Últimos Registros)"),
       {
-        table: {
-          headerRows: 1,
-          widths: ['*', 'auto', 'auto', 'auto'],
-          body: familyBody
-        },
+        table: { headerRows: 1, widths: [70, 80, '*'], body: evolucoesBody },
         layout: 'lightHorizontalLines'
       },
 
-      createSectionHeader("3. Benefícios e Transferência de Renda"),
-      beneficiosList,
-
-      createSectionHeader("4. Plano de Acompanhamento (PAF)"),
+      createSectionHeader("5. Observações do PAF"),
       {
-        text: caseData.status === "EM_ACOMPANHAMENTO_PAEFI" 
-          ? "O caso encontra-se em acompanhamento. Consulte o documento específico do PAF para ver objetivos, metas e prazos detalhados." 
-          : "Não há PAF ativo para o status atual do caso.",
-        fontSize: 10,
-        alignment: "justify"
+        text: caseData.status === CaseStatus.PAEFI ? "Caso em acompanhamento. Ver anexo PAF detalhado para metas e prazos." : "Não há PAF ativo para o status atual.",
+        fontSize: 10, alignment: "justify"
       }
     ],
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
 
-  pdfMake.createPdf(docDefinition).open()
+  finalizePdf(docDefinition, "PRONTUARIO", caseData.nomeCompleto, mode)
 }
 
-// ... Resto do arquivo (generateGroupAttendancePDF, generatePafPDF, generateManagementPDF, generateObservatoryPDF) 
-// MANTENHA O RESTANTE IGUAL AO QUE JÁ ESTAVA, AS CORREÇÕES ERAM SÓ NO generateCasePDF
-// Vou incluir o restante simplificado para não cortar nada se você copiar e colar:
+export const generatePafPDF = (caseData: CaseDetailData, paf: PafData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('PAF', `PAF Versão ${paf.versaoAtual} gerado`, caseData.id)
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4",
+    pageMargins: [40, 40, 40, 60],
+    content: [
+      getOfficialHeader("Plano de Acompanhamento Familiar (PAF)"),
+      {
+        table: { widths: ['*'], body: [[{ text: `FAMÍLIA: ${caseData.nomeCompleto.toUpperCase()}`, fontSize: 11, bold: true, fillColor: HEADER_BG, alignment: 'center' }], [{ text: `CPF Resp: ${formatCPF(caseData.cpf)} | Versão: ${paf.versaoAtual}`, fontSize: 10, alignment: 'center' }]] },
+        layout: 'noBorders', margin: [0, 0, 0, 20]
+      },
+      createSectionHeader("1. Diagnóstico Sociofamiliar"),
+      { text: paf.diagnostico, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
+      createSectionHeader("2. Objetivos Pactuados"),
+      { text: paf.objetivos, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
+      createSectionHeader("3. Estratégias e Encaminhamentos"),
+      { text: paf.estrategias, fontSize: 10, alignment: "justify", margin: [0, 0, 0, 15] },
+      createSectionHeader("4. Prazos"),
+      { text: ["Reavaliação prevista para: ", { text: formatDateSafe(paf.deadline), bold: true }], fontSize: 10, margin: [0, 0, 0, 30] },
+      {
+        columns: [
+          { stack: [{ text: "_______________________", alignment: "center" }, { text: "Usuário(a)", alignment: "center", fontSize: 9 }] },
+          { stack: [{ text: "_______________________", alignment: "center" }, { text: paf.autor.nome, alignment: "center", fontSize: 9, bold: true }, { text: "Técnico(a)", alignment: "center", fontSize: 8 }] }
+        ],
+        margin: [0, 20, 0, 0], unbreakable: true
+      }
+    ],
+    footer: getOfficialFooter,
+    styles: COMMON_STYLES
+  }
+
+  finalizePdf(docDefinition, "PAF", caseData.nomeCompleto, mode)
+}
 
 export const generateGroupAttendancePDF = (
   group: GroupActivity, 
   participants: GroupAttendance[], 
-  type: 'blank' | 'filled' = 'blank'
+  type: 'blank' | 'filled' = 'blank', 
+  mode: 'open' | 'download' = 'open'
 ) => {
+  registerPdfAudit('GRUPO', `Lista de frequência: ${group.tema}`)
+  
   const title = type === 'blank' ? "LISTA DE FREQUÊNCIA" : "RELATÓRIO DE EXECUÇÃO"
   
   const tableHeader = type === 'blank' 
@@ -837,11 +984,10 @@ export const generateGroupAttendancePDF = (
         { text: p.observacoes || "-", fontSize: 9 }
       ]
     }
-  })
+  }) as any[]
 
   if (type === 'blank') {
     for (let i = 0; i < 5; i++) {
-      // @ts-ignore
       tableBody.push([
         { text: "", margin: [0, 12, 0, 12] },
         { text: "", margin: [0, 12, 0, 12] },
@@ -850,7 +996,7 @@ export const generateGroupAttendancePDF = (
     }
   }
 
-  const docDefinition: any = {
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [40, 40, 40, 60],
     content: [
@@ -900,266 +1046,223 @@ export const generateGroupAttendancePDF = (
           vLineColor: '#aaa'
         }
       },
-      type === 'blank' ? {
+      (type === 'blank' ? {
         stack: [
           { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
           { text: group.facilitador.nome, alignment: "center", fontSize: 10, bold: true },
           { text: "Técnico(a) Responsável", alignment: "center", fontSize: 9 }
-        ]
-      } : {}
+        ],
+        unbreakable: true
+      } : {}) as Content
     ],
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
-
-  pdfMake.createPdf(docDefinition).open()
+  
+  finalizePdf(docDefinition, "GRUPO", group.tema, mode)
 }
 
-export const generatePafPDF = (caseData: CaseDetailData, paf: PafData) => {
-  const docDefinition: any = {
+// ----------------------------------------------------------------------------
+// [NOVO] GERADOR DE RMA (Modelo Oficial SUAS)
+// ----------------------------------------------------------------------------
+export const generateRmaPDF = (data: RmaReportData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('RMA', `RMA gerado: ${data.periodo}`)
+
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
-    pageMargins: [40, 40, 40, 60],
+    pageMargins: [40, 60, 40, 60],
     content: [
-      getOfficialHeader("Plano de Acompanhamento Familiar (PAF)"),
+      getOfficialHeader("REGISTRO MENSAL DE ATENDIMENTOS (RMA)"),
+      { text: [{ text: "MÊS DE REFERÊNCIA: ", bold: true }, data.periodo], alignment: "center", margin: [0, 0, 0, 20] },
+
+      createSectionHeader("BLOCO I - Famílias e Indivíduos em Acompanhamento"),
       {
         table: {
-          widths: ['*'],
+          widths: ['*', 80],
           body: [
-            [{ text: `FAMÍLIA DE: ${caseData.nomeCompleto.toUpperCase()}`, fontSize: 11, bold: true, fillColor: HEADER_BG, alignment: 'center' }],
-            [{ text: `CPF Responsável: ${formatCPF(caseData.cpf)}  |  Versão do PAF: ${paf.versaoAtual}`, fontSize: 10, alignment: 'center' }]
+            [{ text: "INDICADOR", style: "tableHeader", alignment: "left" }, { text: "TOTAL", style: "tableHeader" }],
+            [{ text: "A.1. Famílias em acompanhamento", fontSize: 10 }, { text: String(data.bloco1.familiasAcompPaefi), alignment: "center" }],
+            [{ text: "A.2. Novos casos inseridos no mês", fontSize: 10 }, { text: String(data.bloco1.novosCasos), alignment: "center" }],
+            [{ text: "A.3. Casos desligados no mês", fontSize: 10 }, { text: String(data.bloco1.desligamentos), alignment: "center" }]
           ]
-        },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 20]
+        }, layout: 'lightHorizontalLines'
       },
-      createSectionHeader("1. Diagnóstico Sociofamiliar"),
-      { text: paf.diagnostico, fontSize: 10, textAlign: "justify", margin: [0, 0, 0, 15] },
-      createSectionHeader("2. Objetivos Pactuados"),
-      { text: paf.objetivos, fontSize: 10, textAlign: "justify", margin: [0, 0, 0, 15] },
-      createSectionHeader("3. Estratégias e Encaminhamentos"),
-      { text: paf.estrategias, fontSize: 10, textAlign: "justify", margin: [0, 0, 0, 15] },
-      createSectionHeader("4. Prazos"),
-      { 
-        text: [
-          "A família e a equipe técnica se comprometem com os objetivos acima, com previsão de reavaliação em: ",
-          { text: formatDateSafe(paf.deadline), bold: true }
-        ],
-        fontSize: 10, margin: [0, 0, 0, 30] 
-      },
+
+      createSectionHeader("BLOCO II - Atendimentos Realizados"),
       {
-        columns: [
-          {
-            stack: [
-              { text: "__________________________________", alignment: "center" },
-              { text: "Assinatura do(a) Usuário(a)", alignment: "center", fontSize: 9, bold: true }
-            ]
-          },
-          {
-            stack: [
-              { text: "__________________________________", alignment: "center" },
-              { text: paf.autor.nome, alignment: "center", fontSize: 9, bold: true },
-              { text: "Técnico(a) de Referência", alignment: "center", fontSize: 8 }
-            ]
-          }
+        table: {
+          widths: ['*', 80],
+          body: [
+            [{ text: "TIPO DE ATENDIMENTO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }],
+            [{ text: "B.1. Total de atendimentos particularizados", fontSize: 10 }, { text: String(data.bloco2.totalAtendimentos), alignment: "center" }],
+            [{ text: "B.2. Visitas domiciliares realizadas", fontSize: 10 }, { text: String(data.bloco2.visitasDomiciliares), alignment: "center" }],
+            [{ text: "B.3. Abordagens sociais (Rua)", fontSize: 10 }, { text: String(data.bloco2.abordagensRua), alignment: "center" }]
+          ]
+        }, layout: 'lightHorizontalLines'
+      },
+
+      createSectionHeader("BLOCO III - Violações Identificadas"),
+      {
+        table: {
+          widths: ['*', 80],
+          body: [
+            [{ text: "NATUREZA DA VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }],
+            [{ text: "C.1. Violência Física", fontSize: 10 }, { text: String(data.bloco3.violenciaFisica), alignment: "center" }],
+            [{ text: "C.2. Violência Psicológica", fontSize: 10 }, { text: String(data.bloco3.violenciaPsicologica), alignment: "center" }],
+            [{ text: "C.3. Negligência / Abandono", fontSize: 10 }, { text: String(data.bloco3.negligencia), alignment: "center" }],
+            [{ text: "C.4. Abuso / Exploração Sexual", fontSize: 10 }, { text: String(data.bloco3.abusoSexual), alignment: "center" }]
+          ]
+        }, layout: 'lightHorizontalLines'
+      },
+      
+      { text: "\nDeclaro que as informações acima são verdadeiras e baseadas nos registros técnicos da unidade.", fontSize: 9, italics: true, alignment: "center", margin: [0, 30, 0, 0] },
+      
+      {
+        stack: [
+          { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
+          { text: "Coordenador(a) do CREAS", alignment: "center", fontSize: 10, bold: true }
         ],
-        margin: [0, 20, 0, 0]
+        unbreakable: true
       }
     ],
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
-  pdfMake.createPdf(docDefinition).open()
+
+  finalizePdf(docDefinition, "RMA_SUAS", data.periodo, mode)
 }
 
-export const generateManagementPDF = (data: ManagementReportData) => {
-  const docDefinition: any = {
-    pageSize: "A4",
-    pageMargins: [40, 60, 40, 60],
+export const generateManagementPDF = (data: ManagementReportData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('RELATORIO_GESTAO', `Relatório gerencial: ${data.periodo}`)
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4", pageMargins: [40, 60, 40, 60],
     content: [
       getOfficialHeader("Relatório Gerencial de Monitoramento"),
-      {
-        text: [
-          { text: "PERÍODO DE REFERÊNCIA: ", bold: true, fontSize: 10 },
-          { text: data.periodo.toUpperCase(), fontSize: 10 }
-        ],
-        margin: [0, 0, 0, 20],
-        alignment: "center"
-      },
-      createSectionHeader("1. Indicadores de Volume (Mensal)"),
+      { text: [{ text: "PERÍODO: ", bold: true, fontSize: 10 }, { text: data.periodo.toUpperCase(), fontSize: 10 }], margin: [0, 0, 0, 20], alignment: "center" },
+      createSectionHeader("1. Indicadores de Volume"),
       {
         table: {
           widths: ['*', '*', '*', '*', '*'],
           body: [
-            [
-              { text: "TOTAL ATIVOS", style: "tableHeader" },
-              { text: "EM ACOLHIDA", style: "tableHeader" },
-              { text: "EM PAEFI", style: "tableHeader" },
-              { text: "NOVOS (MÊS)", style: "tableHeader" },
-              { text: "DESLIGADOS", style: "tableHeader" }
-            ],
-            [
-              { text: data.stats.ativos, style: "kpiValue" },
-              { text: data.stats.acolhidas, style: "kpiValue" },
-              { text: data.stats.paefi, style: "kpiValue" },
-              { text: data.stats.novos, style: "kpiValue", color: "#2563eb" },
-              { text: data.stats.desligados, style: "kpiValue", color: "#16a34a" }
-            ]
+            [{ text: "ATIVOS", style: "tableHeader" }, { text: "ACOLHIDA", style: "tableHeader" }, { text: "ACOMPANHAMENTO", style: "tableHeader" }, { text: "NOVOS", style: "tableHeader" }, { text: "DESLIGADOS", style: "tableHeader" }],
+            [{ text: String(data.stats.ativos), style: "kpiValue" }, { text: String(data.stats.acolhidas), style: "kpiValue" }, { text: String(data.stats.paefi), style: "kpiValue" }, { text: String(data.stats.novos), style: "kpiValue", color: "#2563eb" }, { text: String(data.stats.desligados), style: "kpiValue", color: "#16a34a" }]
           ]
-        },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 15]
+        }, layout: 'noBorders', margin: [0, 0, 0, 15]
       },
-      createSectionHeader("2. Distribuição da Equipe Técnica"),
+      createSectionHeader("2. Equipe Técnica"),
       {
         columns: [
-          {
-            width: '48%',
-            stack: [
-              { text: "AGENTES SOCIAIS (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" },
-              {
-                table: {
-                  widths: ['*', 40],
-                  body: [
-                    [{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.cargaHoraria.agentes.map(a => [
-                      { text: a.name, fontSize: 9 },
-                      { text: a.value, fontSize: 9, alignment: "center", bold: true }
-                    ])
-                  ]
-                },
-                layout: 'lightHorizontalLines'
-              }
-            ]
-          },
+          { width: '48%', stack: [{ text: "AGENTES (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.agentes.map(a => [{ text: a.name, fontSize: 9 }, { text: String(a.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] },
           { width: '4%', text: '' },
-          {
-            width: '48%',
-            stack: [
-              { text: "ESPECIALISTAS (PAEFI)", style: "subHeader", fontSize: 9, alignment: "center" },
-              {
-                table: {
-                  widths: ['*', 40],
-                  body: [
-                    [{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.cargaHoraria.especialistas.map(e => [
-                      { text: e.name, fontSize: 9 },
-                      { text: e.value, fontSize: 9, alignment: "center", bold: true }
-                    ])
-                  ]
-                },
-                layout: 'lightHorizontalLines'
-              }
-            ]
-          }
+          { width: '48%', stack: [{ text: "ESPECIALISTAS (ACOMPANHAMENTO)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.especialistas.map(e => [{ text: e.name, fontSize: 9 }, { text: String(e.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] }
         ]
       },
-      ...(data.vigilancia ? [
-        createSectionHeader("3. Vigilância Socioassistencial"),
-        {
-          table: {
-            widths: ['*', 60, 60],
-            body: [
-              [
-                { text: "TIPIFICAÇÃO DA VIOLAÇÃO", style: "tableHeader", alignment: "left" },
-                { text: "CASOS", style: "tableHeader" },
-                { text: "%", style: "tableHeader" }
-              ],
-              ...data.vigilancia.violacoes.map(v => {
-                const total = data.stats.ativos || 1
-                const percent = ((v.value / total) * 100).toFixed(1) + '%'
-                return [
-                  { text: v.name, fontSize: 10 },
-                  { text: v.value, fontSize: 10, alignment: "center" },
-                  { text: percent, fontSize: 10, alignment: "center" }
-                ]
-              })
-            ]
-          },
-          layout: {
-            fillColor: (i: number) => (i === 0 ? '#e0e0e0' : (i % 2 === 0 ? null : '#f9f9f9')),
-            hLineWidth: () => 0.5,
-            vLineWidth: () => 0.5,
-            hLineColor: '#ccc',
-            vLineColor: '#ccc'
-          }
-        },
-        createSectionHeader("4. Perfil Demográfico (Faixa Etária)"),
-        {
-          table: {
-            widths: ['*', '*', '*', '*'],
-            body: [
-              data.vigilancia.demografia.map(d => ({ text: d.name, style: "tableHeader" })),
-              data.vigilancia.demografia.map(d => ({ text: d.value, style: "kpiValue", fontSize: 12 }))
-            ]
-          },
-          layout: 'noBorders'
-        }
-      ] : []),
-      {
-        stack: [
-          { text: "______________________________________________________", alignment: "center", margin: [0, 60, 0, 5] },
-          { text: "Coordenação CREAS Brazlândia", alignment: "center", fontSize: 10, bold: true },
-          { text: "Responsável pelo Relatório", alignment: "center", fontSize: 9 }
-        ]
-      }
+      ...(data.vigilancia ? [{ text: '', pageBreak: 'before' }, createSectionHeader("3. Vigilância Socioassistencial"), { table: { widths: ['*', 60, 60], body: [[{ text: "VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }, { text: "%", style: "tableHeader" }], ...data.vigilancia.violacoes.map(v => [{ text: v.name, fontSize: 10 }, { text: String(v.value), fontSize: 10, alignment: "center" }, { text: ((v.value / (data.stats.ativos || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }])] }, layout: 'lightHorizontalLines' }] : []) as any
     ],
-    footer: getOfficialFooter,
-    styles: COMMON_STYLES
+    footer: getOfficialFooter, styles: COMMON_STYLES
   }
-  pdfMake.createPdf(docDefinition).open()
+  
+  finalizePdf(docDefinition, "GESTAO", data.periodo, mode)
 }
 
-export const generateObservatoryPDF = (data: ObservatoryData) => {
-  const docDefinition: any = {
+export const generateObservatoryPDF = (data: ObservatoryData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('OBSERVATORIO', `Observatório Social Detalhado gerado em ${new Date().toLocaleDateString()}`)
+  
+  const totalViolacoes = data.violationData.reduce((acc, v) => acc + v.value, 0) || 1
+  const totalBeneficios = data.benefitsData.reduce((acc, b) => acc + b.value, 0) || 1
+  const totalCasosPerfil = data.sexData.reduce((acc, s) => acc + s.value, 0) || 1
+
+  const docDefinition: TDocumentDefinitions = {
     pageSize: "A4",
     pageMargins: [40, 60, 40, 60],
     content: [
       getOfficialHeader("Relatório do Observatório Social"),
-      {
-        text: `Data de Emissão: ${format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`,
-        alignment: "center", fontSize: 10, margin: [0, 0, 0, 20]
+      { 
+        text: [
+          { text: "EMISSÃO: ", bold: true }, 
+          `${format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR }).toUpperCase()}`
+        ], 
+        alignment: "center", 
+        fontSize: 10, 
+        margin: [0, 0, 0, 20] 
       },
-      createSectionHeader("1. Dinâmica de Atendimento (Últimos 6 Meses)"),
+
+      // 1. DINÂMICA DE ATENDIMENTO
+      createSectionHeader("1. Dinâmica de Atendimentos (Fluxo Mensal)"),
       {
         table: {
           widths: ['*', '*', '*', '*'],
           body: [
             [
               { text: "MÊS DE REFERÊNCIA", style: "tableHeader", alignment: "left" },
-              { text: "ENTRADAS (NOVOS)", style: "tableHeader" },
-              { text: "SAÍDAS (DESLIGAMENTOS)", style: "tableHeader" },
-              { text: "SALDO", style: "tableHeader" }
+              { text: "NOVOS CASOS", style: "tableHeader" },
+              { text: "DESLIGAMENTOS", style: "tableHeader" },
+              { text: "SALDO LÍQUIDO", style: "tableHeader" }
             ],
             ...data.evolutionData.map(d => [
               { text: d.name, fontSize: 10 },
-              { text: d.novos, fontSize: 10, alignment: "center", color: "#2563eb" },
-              { text: d.desligados, fontSize: 10, alignment: "center", color: "#16a34a" },
-              { text: (d.novos - d.desligados), fontSize: 10, alignment: "center", bold: true }
-            ])
+              { text: String(d.novos), fontSize: 10, alignment: "center", color: "#2563eb", bold: true },
+              { text: String(d.desligados), fontSize: 10, alignment: "center", color: "#16a34a", bold: true },
+              { text: String(d.novos - d.desligados), fontSize: 10, alignment: "center", bold: true }
+            ]),
+            [
+              { text: "TOTAL NO PERÍODO", style: "tableHeader", alignment: "right" },
+              { text: String(data.evolutionData.reduce((acc, d) => acc + d.novos, 0)), style: "tableHeader" },
+              { text: String(data.evolutionData.reduce((acc, d) => acc + d.desligados, 0)), style: "tableHeader" },
+              { text: String(data.evolutionData.reduce((acc, d) => acc + (d.novos - d.desligados), 0)), style: "tableHeader" }
+            ]
           ]
         },
-        layout: 'lightHorizontalLines',
+        layout: TABLE_LAYOUTS.lightHorizontalLines as any,
         margin: [0, 0, 0, 15]
       },
-      createSectionHeader("2. Caracterização das Violações e Risco"),
+
+      // 2. DETALHAMENTO DE VIOLAÇÕES
+      createSectionHeader("2. Analítico de Violações de Direitos"),
+      {
+        table: {
+          widths: ['*', 60, 60],
+          body: [
+            [
+              { text: "TIPIFICAÇÃO DA VIOLAÇÃO", style: "tableHeader", alignment: "left" },
+              { text: "OCORRÊNCIAS", style: "tableHeader" },
+              { text: "% DO TOTAL", style: "tableHeader" }
+            ],
+            ...data.violationData
+              .sort((a, b) => b.value - a.value)
+              .map(v => [
+                { text: v.name, fontSize: 10 },
+                { text: String(v.value), fontSize: 10, alignment: "center" },
+                { text: ((v.value / totalViolacoes) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
+              ])
+          ]
+        },
+        layout: TABLE_LAYOUTS.alternatingRows as any,
+        margin: [0, 0, 0, 15]
+      },
+
+      { text: '', pageBreak: 'before' },
+
+      // 3. PERFIL E RISCO
       {
         columns: [
           {
             width: '48%',
             stack: [
-              { text: "PRINCIPAIS VIOLAÇÕES", style: "subHeader", fontSize: 10, alignment: "center" },
+              createSectionHeader("3. Estratificação de Risco"),
               {
                 table: {
-                  widths: ['*', 40],
+                  widths: ['*', 50],
                   body: [
-                    [{ text: "Tipificação", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.violationData.slice(0, 10).map(v => [
-                      { text: v.name, fontSize: 9 },
-                      { text: v.value, fontSize: 9, alignment: "center", bold: true }
+                    [{ text: "NÍVEL DE URGÊNCIA", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }],
+                    ...data.urgencyData.map(u => [
+                      { text: u.name, fontSize: 10 },
+                      { text: String(u.value), fontSize: 10, alignment: "center", bold: true }
                     ])
                   ]
                 },
-                layout: 'lightHorizontalLines'
+                layout: TABLE_LAYOUTS.lightHorizontalLines as any
               }
             ]
           },
@@ -1167,109 +1270,214 @@ export const generateObservatoryPDF = (data: ObservatoryData) => {
           {
             width: '48%',
             stack: [
-              { text: "NÍVEL DE RISCO/URGÊNCIA", style: "subHeader", fontSize: 10, alignment: "center" },
+              createSectionHeader("4. Perfil - Gênero"),
               {
                 table: {
-                  widths: ['*', 40],
+                  widths: ['*', 40, 45],
                   body: [
-                    [{ text: "Classificação", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }],
-                    ...data.urgencyData.map(u => [
-                      { text: u.name, fontSize: 9 },
-                      { text: u.value, fontSize: 9, alignment: "center", bold: true }
+                    [{ text: "GÊNERO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }, { text: "%", style: "tableHeader" }],
+                    ...data.sexData.map(s => [
+                      { text: s.name, fontSize: 10 },
+                      { text: String(s.value), fontSize: 10, alignment: "center" },
+                      { text: ((s.value / totalCasosPerfil) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
                     ])
                   ]
                 },
-                layout: 'lightHorizontalLines'
+                layout: TABLE_LAYOUTS.lightHorizontalLines as any
               }
             ]
           }
         ]
       },
-      createSectionHeader("3. Eficiência Operacional e Articulação"),
+
+      // 5. PERFIL ETÁRIO
+      createSectionHeader("5. Perfil Demográfico - Faixa Etária"),
       {
         table: {
           widths: ['*', '*', '*', '*'],
           body: [
+            ...Array.from({ length: Math.ceil(data.ageData.length / 4) }).map((_, rowIndex) => {
+              const rowItems = data.ageData.slice(rowIndex * 4, (rowIndex + 1) * 4)
+              while (rowItems.length < 4) rowItems.push({ name: '', value: 0 })
+              return rowItems.map(item => ({
+                stack: [
+                  { text: item.name, fontSize: 9, color: '#666' },
+                  { text: item.name ? String(item.value) : '', fontSize: 12, bold: true, color: '#333' }
+                ],
+                margin: [0, 5, 0, 5],
+                alignment: 'center' as const
+              }))
+            })
+          ]
+        },
+        layout: 'noBorders'
+      },
+
+      // 6. BENEFÍCIOS
+      createSectionHeader("6. Benefícios Eventuais e Transferência de Renda"),
+      {
+        table: {
+          widths: ['*', 50, 50],
+          body: [
             [
-              { text: "TEMPO MÉDIO ACOMP.", style: "tableHeader" },
-              { text: "TEMPO DE ESPERA", style: "tableHeader" },
-              { text: "GRUPOS REALIZADOS", style: "tableHeader" },
-              { text: "BENEFÍCIOS CONCEDIDOS", style: "tableHeader" }
+              { text: "BENEFÍCIO CONCEDIDO", style: "tableHeader", alignment: "left" },
+              { text: "QTD", style: "tableHeader" },
+              { text: "%", style: "tableHeader" }
             ],
+            ...(data.benefitsData.length > 0 
+              ? data.benefitsData.map(b => [
+                  { text: b.name, fontSize: 10 },
+                  { text: String(b.value), fontSize: 10, alignment: "center" },
+                  { text: ((b.value / totalBeneficios) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }
+                ])
+              : [[{ text: "Nenhum benefício registrado no período.", colSpan: 3, alignment: "center", italics: true, fontSize: 10 }, {}, {}]]
+            ),
             [
-              { text: `${data.efficiencyData.avgPermanence} dias`, style: "kpiValue" },
-              { text: `${data.efficiencyData.avgWaitTime} dias`, style: "kpiValue" },
-              { text: data.collectiveData.totalGroups, style: "kpiValue" },
-              { text: data.benefitsData.reduce((acc, b) => acc + b.value, 0), style: "kpiValue" }
+              { text: "TOTAL GERAL", style: "tableHeader", alignment: "right" },
+              { text: String(totalBeneficios), style: "tableHeader", alignment: "center" },
+              { text: "100%", style: "tableHeader", alignment: "center" }
             ]
           ]
         },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 15]
+        layout: TABLE_LAYOUTS.alternatingRows as any
       },
+
+      // 7. ARTICULAÇÃO
+      createSectionHeader("7. Articulação em Rede"),
       {
         columns: [
           {
             width: '48%',
             stack: [
-              { text: "PORTA DE ENTRADA (ORIGEM)", style: "subHeader", fontSize: 10 },
+              { text: "PRINCIPAIS ENCAMINHAMENTOS (SAÍDA)", style: "tableHeader", alignment: "center", margin: [0, 0, 0, 5] },
               {
-                ul: data.originData.slice(0, 5).map(o => `${o.name}: ${o.value} casos`),
-                fontSize: 9, margin: [10, 0, 0, 0]
+                ul: data.networkData.slice(0, 8).map(n => ({
+                  text: `${n.name}: ${n.value} ofícios`, fontSize: 10, margin: [0, 2, 0, 2]
+                }))
               }
             ]
           },
           {
             width: '48%',
             stack: [
-              { text: "ENCAMINHAMENTOS (SAÍDA)", style: "subHeader", fontSize: 10 },
+              { text: "PORTA DE ENTRADA (ORIGEM)", style: "tableHeader", alignment: "center", margin: [0, 0, 0, 5] },
               {
-                ul: data.networkData.slice(0, 5).map(n => `${n.name}: ${n.value} ofícios`),
-                fontSize: 9, margin: [10, 0, 0, 0]
+                ul: data.originData.slice(0, 8).map(o => ({
+                  text: `${o.name}: ${o.value} casos`, fontSize: 10, margin: [0, 2, 0, 2]
+                }))
               }
             ]
           }
         ]
       },
-      createSectionHeader("4. Perfil Demográfico do Público Atendido"),
+
+      // 8. EFICIÊNCIA OPERACIONAL
+      createSectionHeader("8. Eficiência Operacional"),
       {
         table: {
           widths: ['*', '*', '*', '*'],
           body: [
             [
-              { text: "FAIXA ETÁRIA", style: "tableHeader", colSpan: 2, alignment: "center" }, {},
-              { text: "GÊNERO", style: "tableHeader", colSpan: 2, alignment: "center" }, {}
+              { text: "TEMPO MÉDIO ACOMP.", style: "tableHeader" },
+              { text: "TEMPO ESPERA", style: "tableHeader" },
+              { text: "TAXA RETENÇÃO", style: "tableHeader" },
+              { text: "GRUPOS REALIZADOS", style: "tableHeader" }
             ],
             [
-              { 
-                stack: data.ageData.map(a => ({ 
-                  columns: [{ text: a.name, fontSize: 9 }, { text: a.value, fontSize: 9, bold: true, alignment: "right" }] 
-                })) 
-              },
-              {},
-              { 
-                stack: data.sexData.map(s => ({ 
-                  columns: [{ text: s.name, fontSize: 9 }, { text: s.value, fontSize: 9, bold: true, alignment: "right" }] 
-                })) 
-              },
-              {}
+              { text: `${data.efficiencyData.avgPermanence} dias`, style: "kpiValue" },
+              { text: `${data.efficiencyData.avgWaitTime} dias`, style: "kpiValue" },
+              { text: `${data.efficiencyData.retentionRate}%`, style: "kpiValue" },
+              { text: String(data.collectiveData.totalGroups), style: "kpiValue" }
             ]
           ]
         },
-        layout: 'noBorders'
+        layout: 'noBorders',
+        margin: [0, 0, 0, 5]
       },
+      { text: "Dados calculados com base nos atendimentos e encerramentos do período.", fontSize: 8, italics: true, color: "#888", alignment: 'center' },
+
+      // Assinatura do Gerente
       {
         stack: [
           { text: "______________________________________________________", alignment: "center", margin: [0, 40, 0, 5] },
-          { text: "Coordenação de Vigilância Socioassistencial", alignment: "center", fontSize: 10, bold: true },
-          { text: "CREAS Brazlândia", alignment: "center", fontSize: 9 }
-        ]
+          { text: "Gerente", alignment: "center", fontSize: 10, bold: true },
+          { text: REPORT_TEXTS.header.unit, alignment: "center", fontSize: 9 }
+        ],
+        unbreakable: true
+      }
+    ] as Content[], 
+    footer: getOfficialFooter,
+    styles: COMMON_STYLES
+  }
+  
+  finalizePdf(docDefinition, "OBSERVATORIO_SOCIAL", "DETALHADO", mode)
+}
+
+export const generateDismissalPDF = (data: DismissalReportData, mode: 'open' | 'download' = 'open') => {
+  registerPdfAudit('RELATORIO_DESLIGAMENTOS', `Relatório de desligamentos: ${data.periodo}`)
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: "A4",
+    pageMargins: [40, 60, 40, 60],
+    content: [
+      getOfficialHeader("Relatório Analítico de Desligamentos"),
+      {
+        text: [{ text: "PERÍODO: ", bold: true, fontSize: 10 }, { text: data.periodo.toUpperCase(), fontSize: 10 }],
+        margin: [0, 0, 0, 20], alignment: "center"
+      },
+      
+      createSectionHeader("1. Visão Geral"),
+      {
+        table: {
+          widths: ['*', '*', '*'],
+          body: [
+            [{ text: "TOTAL DE DESLIGAMENTOS", style: "tableHeader" }, { text: "TAXA DE SUCESSO", style: "tableHeader" }, { text: "ÍNDICE DE EVASÃO", style: "tableHeader" }],
+            [
+              { text: String(data.total), style: "kpiValue" },
+              { text: `${data.successRate}%`, style: "kpiValue", color: "#16a34a" },
+              { text: `${data.evasionRate}%`, style: "kpiValue", color: "#dc2626" }
+            ]
+          ]
+        },
+        layout: 'noBorders', margin: [0, 0, 0, 15]
+      },
+
+      createSectionHeader("2. Motivos de Desligamento"),
+      {
+        table: {
+          widths: ['*', 60, 60],
+          body: [
+            [{ text: "MOTIVO REGISTRADO", style: "tableHeader", alignment: "left" }, { text: "QTD", style: "tableHeader" }, { text: "%", style: "tableHeader" }],
+            ...data.byReason.sort((a, b) => b.value - a.value).map(r => [
+              { text: r.name, fontSize: 10 },
+              { text: String(r.value), fontSize: 10, alignment: "center" as const },
+              { text: ((r.value / (data.total || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" as const }
+            ])
+          ]
+        },
+        layout: TABLE_LAYOUTS.alternatingRows as any
+      },
+
+      createSectionHeader("3. Evolução Temporal"),
+      {
+        table: {
+          widths: ['*', 60],
+          body: [
+            [{ text: "MÊS", style: "tableHeader", alignment: "left" }, { text: "DESLIGAMENTOS", style: "tableHeader" }],
+            ...data.monthlyTrend.map(m => [
+              { text: m.name, fontSize: 10 },
+              { text: String(m.value), fontSize: 10, alignment: "center" as const, bold: true }
+            ])
+          ]
+        },
+        layout: TABLE_LAYOUTS.lightHorizontalLines as any
       }
     ],
     footer: getOfficialFooter,
     styles: COMMON_STYLES
   }
-  pdfMake.createPdf(docDefinition).open()
+
+  finalizePdf(docDefinition, "DESLIGAMENTOS", data.periodo, mode)
 }
 
 ==================================================================
@@ -1285,7 +1493,6 @@ export function isValidBrazilianPhone(phone?: string | null): boolean {
 ==================================================================
 FILE: frontend\src\utils\whatsapp.ts
 ==================================================================
-// frontend/src/utils/whatsapp.ts
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
@@ -1293,9 +1500,10 @@ export type MessageTemplate = 'geral' | 'agendamento' | 'documentos'
 
 export function getWhatsAppLink(phone: string, template: MessageTemplate, data?: any) {
   // 1. Limpar o telefone (deixar apenas números)
+  if (!phone) return null
   const cleanPhone = phone.replace(/\D/g, '')
   
-  // Validação básica
+  // Validação básica (mínimo DDD + número)
   if (cleanPhone.length < 10) return null
 
   // Adicionar DDI do Brasil (55) se não tiver
@@ -1319,7 +1527,7 @@ export function getWhatsAppLink(phone: string, template: MessageTemplate, data?:
       break
   }
 
-  // 3. Gerar Link Encode (para caracteres especiais funcionarem na URL)
+  // 3. Retornar link formatado
   return `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`
 }
 
@@ -1486,23 +1694,22 @@ export function useModal() {
 ==================================================================
 FILE: frontend\src\contexts\AuthContext.tsx
 ==================================================================
-// frontend/src/contexts/AuthContext.tsx
-import { createContext, useState, useEffect, type ReactNode } from 'react'
+// [CORREÇÃO] Adicionado useContext no import
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { jwtDecode } from 'jwt-decode' //
+import { jwtDecode } from 'jwt-decode'
 import { Loader2 } from 'lucide-react'
 import { getErrorMessage } from '@/utils/error'
-import { api } from '@/lib/api' //
-import { ROUTES } from '@/constants/routes' //
-import { STORAGE_KEYS } from '@/constants/storage' //
-import type { User, UserRole } from '@/types/user' //
+import { api } from '@/lib/api'
+import { ROUTES } from '@/constants/routes'
+import { STORAGE_KEYS } from '@/constants/storage'
+import type { User, UserRole } from '@/types/user'
 
-// Define o que o token JWT contém
 interface DecodedToken {
   exp: number
   iat: number
-  sub: string // O ID do usuário
+  sub: string 
   nome: string
   cargo: UserRole
 }
@@ -1517,11 +1724,15 @@ interface AuthContextType {
   user: User | null
   login: (data: LoginData) => Promise<boolean>
   logout: () => void
-  isSessionLoading: boolean // Para saber se a sessão inicial está carregando
-  isLoginLoading: boolean // Para o botão de login
+  isSessionLoading: boolean
+  isLoginLoading: boolean
 }
 
 export const AuthContext = createContext({} as AuthContextType)
+
+// [NOVO] Hook personalizado para facilitar o uso do contexto
+// Isso é obrigatório para o PublicOnlyRoute no App.tsx funcionar
+export const useAuthContext = () => useContext(AuthContext)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -1529,38 +1740,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoginLoading, setIsLoginLoading] = useState(false)
   const navigate = useNavigate()
 
-  // Função de Logout
   const logout = () => {
     setUser(null)
-    localStorage.removeItem(STORAGE_KEYS.TOKEN) //
-    delete api.defaults.headers.common.Authorization //
-    
-    // Navega para o login. O <Navigate> no App.tsx cuidará do resto.
-    navigate(ROUTES.LOGIN) //
+    localStorage.removeItem(STORAGE_KEYS.TOKEN)
+    delete api.defaults.headers.common.Authorization
+    navigate(ROUTES.LOGIN)
   }
 
-  // Efeito para carregar o usuário do localStorage na inicialização
   useEffect(() => {
     async function loadUserFromStorage() {
-      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN) //
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN)
       
       if (storedToken) {
         try {
           const decodedToken = jwtDecode<DecodedToken>(storedToken)
-          // Verifica se o token não está expirado
           if (decodedToken.exp * 1000 > Date.now()) {
-            // Define o token no axios ANTES de fazer a chamada /me
-            api.defaults.headers.common.Authorization = `Bearer ${storedToken}` //
-            
-            // Busca os dados mais recentes do usuário
-            const response = await api.get('/me') //
+            api.defaults.headers.common.Authorization = `Bearer ${storedToken}`
+            const response = await api.get('/me')
             setUser(response.data)
           } else {
-            // Token expirado
             logout()
           }
         } catch (error) {
-          // Token inválido ou erro na API
           console.error("Falha ao carregar sessão:", error)
           logout()
         }
@@ -1568,34 +1769,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsSessionLoading(false)
     }
     loadUserFromStorage()
-    // O 'navigate' não é uma dependência estável, então o desabilitamos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Função de Login
   const login = async ({ email, senha }: LoginData): Promise<boolean> => {
     setIsLoginLoading(true)
     try {
-      const response = await api.post('/login', { email, senha }) //
+      const response = await api.post('/login', { email, senha })
       const { token: newToken } = response.data
 
-      // 1. Salva o token
-      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken) //
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}` //
+      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
+      api.defaults.headers.common.Authorization = `Bearer ${newToken}`
 
-      // 2. Busca os dados do usuário com o novo token
-      const userResponse = await api.get('/me') //
+      const userResponse = await api.get('/me')
       const loggedUser: User = userResponse.data
-      setUser(loggedUser) //
+      setUser(loggedUser)
 
       toast.success('Login bem-sucedido!')
 
-      // 3. Redireciona com base no cargo
-      // Gerente vai para o Dashboard, outros para a lista de casos
-      navigate(loggedUser.cargo === 'Gerente' ? ROUTES.DASHBOARD : ROUTES.CASES) //
+      // Redireciona para a Mesa de Trabalho (Workspace)
+      navigate(ROUTES.WORKSPACE) 
+      
       return true
     } catch (error) {
-      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.') //
+      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.')
       toast.error(errMsg)
       return false
     } finally {
@@ -1603,7 +1800,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Mostra um loader em tela cheia enquanto a sessão (do localStorage) está sendo validada
   if (isSessionLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -1615,7 +1811,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: !!user, // Verdadeiro se 'user' não for nulo
+        isAuthenticated: !!user,
         user,
         login,
         logout,
@@ -1662,6 +1858,34 @@ export function ModalProvider({ children }: { children: ReactNode }) {
 }
 
 
+
+==================================================================
+FILE: frontend\src\contexts\PrivacyContext.tsx
+==================================================================
+import { createContext, useContext, useState, type ReactNode } from 'react'
+
+interface PrivacyContextType {
+  isPrivacyMode: boolean
+  togglePrivacyMode: () => void
+}
+
+const PrivacyContext = createContext({} as PrivacyContextType)
+
+// Hook para facilitar o uso
+export const usePrivacy = () => useContext(PrivacyContext)
+
+export function PrivacyProvider({ children }: { children: ReactNode }) {
+  // Começa desativado por padrão
+  const [isPrivacyMode, setIsPrivacyMode] = useState(false)
+
+  const togglePrivacyMode = () => setIsPrivacyMode((prev) => !prev)
+
+  return (
+    <PrivacyContext.Provider value={{ isPrivacyMode, togglePrivacyMode }}>
+      {children}
+    </PrivacyContext.Provider>
+  )
+}
 
 ==================================================================
 FILE: frontend\src\contexts\SidebarContext.tsx
@@ -1894,14 +2118,15 @@ export interface GroupAttendance {
 ==================================================================
 FILE: frontend\src\types\pdfmake.d.ts
 ==================================================================
+// ARQUIVO: frontend/src/types/pdfmake.d.ts
 declare module 'pdfmake/build/pdfmake' {
     const pdfMake: any;
-    export default pdfMake;
+    export = pdfMake;
 }
 
 declare module 'pdfmake/build/vfs_fonts' {
     const pdfFonts: any;
-    export default pdfFonts;
+    export = pdfFonts;
 }
 
 ==================================================================
@@ -1909,43 +2134,129 @@ FILE: frontend\src\types\user.ts
 ==================================================================
 // frontend/src/types/user.ts
 
-// [CORREÇÃO] Adicione o underline
-export type UserRole = 'Gerente' | 'Agente_Social' | 'Especialista'
+// Define os cargos disponíveis no sistema (deve bater com o schema.prisma)
+export type UserRole = 'Gerente' | 'Agente_Social' | 'Especialista' | 'Auditor'
 
 export interface User {
   id: string
   nome: string
-  cargo: UserRole
   email: string
+  cargo: UserRole
   matricula?: string | null
   ativo: boolean
+  
+  // Opcionais: úteis se você for exibir datas na listagem
+  createdAt?: string 
+  updatedAt?: string
 }
+
+==================================================================
+FILE: frontend\src\types\workspace.ts
+==================================================================
+export type UserRole = 'GERENTE' | 'AUDITOR' | 'AGENTE_SOCIAL' | 'ESPECIALISTA'
+
+export enum AlertType {
+  PAF_NOT_STARTED = 'PAF_NOT_STARTED',
+  PAF_STALLED = 'PAF_STALLED',
+  PAF_REVIEW_OVERDUE = 'PAF_REVIEW_OVERDUE',
+  RECEPTION_DELAY = 'RECEPTION_DELAY',
+  NOT_STARTED_YET = 'NOT_STARTED_YET' // [NOVO]
+}
+
+export interface Appointment {
+  id: string
+  data: string
+  titulo: string
+  caso?: { nomeCompleto: string }
+}
+
+export interface BaseCase {
+  id: string
+  nomeCompleto: string
+  status: string
+  urgencia?: 'ALTA' | 'MEDIA' | 'BAIXA' | null
+  violacao?: string | null
+  updatedAt: string
+  dataEntrada?: string // Importante para calcular atraso na acolhida
+}
+
+export interface CaseAlert extends BaseCase {
+  type: AlertType
+  days: number
+}
+
+// --- DTOs ---
+
+export interface ManagerWorkspaceData {
+  role: 'GERENTE'
+  stats: {
+    totalActive: number
+    waitingForReception: number     // Aguardando Acolhida (Porta de entrada)
+    waitingForDistribution: number  // Aguardando Distribuição PAEFI (Gargalo interno)
+  }
+  teamLoad: {
+    nome: string
+    role: string
+    cases: number
+  }[]
+  topViolations: { label: string; count: number }[]
+  appointments: Appointment[]
+}
+
+export interface AuditorWorkspaceData {
+  role: 'AUDITOR'
+  incompleteCases: any[]
+  recentLogs: any[]
+}
+
+export interface OperationalWorkspaceData {
+  role: 'AGENTE_SOCIAL' | 'ESPECIALISTA'
+  myCases: BaseCase[]
+  alerts: CaseAlert[]
+  appointments: Appointment[]
+  detailedStats: {
+    // Especialista
+    monitoramento?: number
+    acolhidaEsp?: number
+    acompanhamento?: number
+    // Agente
+    meusAguardando?: number    // Atribuídos a mim, não iniciados
+    meusEmAtendimento?: number // Atribuídos a mim, em andamento
+    filaGeral?: number         // Sem dono (para puxar)
+  }
+}
+
+export type WorkspaceResponse = 
+  | ManagerWorkspaceData 
+  | AuditorWorkspaceData 
+  | OperationalWorkspaceData
 
 ==================================================================
 FILE: frontend\src\constants\caseConstants.ts
 ==================================================================
-// frontend/src/constants/caseConstants.ts
-
+// ============================================================================
+// 1. STATUS E MAPAS VISUAIS
+// ============================================================================
 export const CASE_STATUS_MAP = {
   AGUARDANDO_ACOLHIDA: {
     text: 'Aguardando Acolhida',
-    style: 'bg-secondary text-secondary-foreground border-secondary-foreground/20',
+    style: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
   },
   EM_ACOLHIDA: {
     text: 'Em Acolhida',
     style: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
   },
-  AGUARDANDO_DISTRIBUICAO_PAEFI: {
+  AGUARDANDO_DISTRIBUICAO: {
     text: 'Aguardando Distribuição',
-    style: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
+    style: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
   },
   EM_ACOLHIDA_ESPECIALIZADA: {
     text: 'Acolhida Especializada',
-    style: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
+    style: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
   },
-  EM_ACOMPANHAMENTO_PAEFI: {
+  EM_ACOMPANHAMENTO: {
     text: 'Acompanhamento PAEFI',
-    style: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800',
+    style: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800',
   },
   EM_MONITORAMENTO: {
     text: 'Em Monitoramento',
@@ -1953,7 +2264,7 @@ export const CASE_STATUS_MAP = {
   },
   DESLIGADO: {
     text: 'Desligado',
-    style: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+    style: 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
   },
 } as const
 
@@ -1963,18 +2274,21 @@ export function getCaseStatusInfo(status: string | null | undefined) {
   if (status && status in CASE_STATUS_MAP) {
     return CASE_STATUS_MAP[status as CaseStatusIdentifier]
   }
-  return { text: 'Desconhecido', style: 'bg-muted text-muted-foreground' }
+  return { text: status?.replace(/_/g, ' ') || 'Desconhecido', style: 'bg-muted text-muted-foreground' }
 }
 
+// ============================================================================
+// 2. LISTAS DE DOMÍNIO (MOTIVOS, DESTINOS) - AQUI ESTAVA O ERRO
+// ============================================================================
 export const MOTIVOS_DESLIGAMENTO = [
   'Transferência de território',
   'Falecimento do(a) usuário(a)',
   'Recusa do atendimento por parte do(a) usuário(a)',
-  'Usuário(a) não localizado(a), após tentativas de contato sem êxito (por telefone, ligação via WhatsApp, mensagem via WhatsApp, entrega de convite ou visita domiciliar, considerando a acessibilidade do(a) usuário(a) à unidade)',
+  'Usuário(a) não localizado(a) após tentativas exaustivas',
   'Usuário(a) acolhido(a)',
   'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
-  'Minimização dos riscos, com possibilidade de retorno ao processo de referenciamento ou de acompanhamento',
-  'Situação identificada como não pertencente à demanda do CREAS'
+  'Minimização dos riscos (Autonomia)',
+  'Situação não pertencente à demanda do CREAS'
 ]
 
 export const DESTINOS_DESLIGAMENTO = [
@@ -1987,17 +2301,59 @@ export const DESTINOS_DESLIGAMENTO = [
   'Outro'
 ]
 
-const URGENCIA_GRAVISSIMA = ['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte']
-const URGENCIA_MUITO_GRAVE = ['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente']
-const URGENCIA_GRAVE = ['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante']
+// ============================================================================
+// 3. DEFINIÇÕES DE URGÊNCIA
+// ============================================================================
+export const URGENCIA_GRAVISSIMA = [  
+  'CONVIVE COM AGRESSOR', 'IDOSO 80+', 'PRIMEIRA INFÂNCIA', 
+  'RISCO DE MORTE', 'VIOLÊNCIA SEXUAL', 'VIOLENCIA SEXUAL'
+]
 
+export const URGENCIA_MUITO_GRAVE = [
+  'RISCO DE REINCIDÊNCIA', 'RISCO DE REINCIDENCIA',
+  'SOFRE AMEAÇA', 'SOFRE AMEACA', 'RISCO DE DESABRIGO', 
+  'CRIANÇA/ADOLESCENTE', 'CRIANCA/ADOLESCENTE'
+]
+
+export const URGENCIA_GRAVE = [
+ 'PCD', 'IDOSO', 
+ 'INTERNAÇÃO', 'INTERNACAO', 'ACOLHIMENTO', 'GESTANTE/LACTANTE'
+]
+
+export const URGENCIA_LEVE = [
+  'SEM RISCO IMEDIATO', 'VISITA PERIÓDICA'
+]
+
+// ============================================================================
+// 4. FUNÇÃO DE COR DA URGÊNCIA
+// ============================================================================
 export function getUrgencyColor(urgencia: string | null | undefined): string {
-  if (!urgencia) return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300'
-  const term = urgencia.trim()
-  if (URGENCIA_GRAVISSIMA.includes(term)) return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
-  if (URGENCIA_MUITO_GRAVE.includes(term)) return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
-  if (URGENCIA_GRAVE.includes(term)) return 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800'
-  return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+  if (!urgencia) return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400'
+  
+  const term = urgencia.toUpperCase().trim()
+  const check = (list: readonly string[]) => list.some(k => term === k || term.includes(k))
+
+  // 1. VERMELHO (GRAVÍSSIMA)
+  if (check(URGENCIA_GRAVISSIMA)) {
+    return 'bg-red-100 text-red-800 border-red-300 font-bold hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700'
+  }
+
+  // 2. LARANJA (MUITO GRAVE / ALTA)
+  if (check(URGENCIA_MUITO_GRAVE)) {
+    return 'bg-orange-100 text-orange-800 border-orange-300 font-semibold hover:bg-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-700'
+  }
+
+  // 3. AMARELO (GRAVE / MÉDIA)
+  if (check(URGENCIA_GRAVE)) {
+     return 'bg-yellow-100 text-yellow-800 border-yellow-300 font-medium hover:bg-yellow-200 dark:bg-yellow-900/40 dark:text-yellow-300 dark:border-yellow-700'
+  }
+
+  // 4. VERDE (LEVE / BAIXA)
+  if (check(URGENCIA_LEVE)) {
+    return 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+  }
+
+  return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400'
 }
 
 ==================================================================
@@ -2008,9 +2364,9 @@ FILE: frontend\src\constants\caseStatus.ts
 export const CASE_STATUSES = [
   'AGUARDANDO_ACOLHIDA',
   'EM_ACOLHIDA',
-  'AGUARDANDO_DISTRIBUICAO_PAEFI',
+  'AGUARDANDO_DISTRIBUICAO',
   'EM_ACOLHIDA_ESPECIALIZADA',
-  'EM_ACOMPANHAMENTO_PAEFI',
+  'EM_ACOMPANHAMENTO',
   'EM_MONITORAMENTO',
   'DESLIGADO',
 ] as const
@@ -2031,7 +2387,7 @@ export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayC
     label: 'Em Acolhida',
     color: 'blue',
   },
-  AGUARDANDO_DISTRIBUICAO_PAEFI: {
+  AGUARDANDO_DISTRIBUICAO: {
     label: 'Aguardando Distribuição',
     color: 'yellow',
   },
@@ -2039,7 +2395,7 @@ export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayC
     label: 'Acolhida Especializada',
     color: 'purple',
   },
-  EM_ACOMPANHAMENTO_PAEFI: {
+  EM_ACOMPANHAMENTO: {
     label: 'Acompanhamento PAEFI',
     color: 'green',
   },
@@ -2110,9 +2466,9 @@ export const caseTransitions: Partial<
   ],
   EM_ACOLHIDA: [
     {
-      label: 'Encaminhar para PAEFI (Triagem)',
+      label: 'Encaminhar para Distribuição',
       type: 'status',
-      nextStatus: 'AGUARDANDO_DISTRIBUICAO_PAEFI',
+      nextStatus: 'AGUARDANDO_DISTRIBUICAO',
       allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.accent,
     },
@@ -2123,7 +2479,7 @@ export const caseTransitions: Partial<
       style: buttonStyles.neutral,
     },
   ],
-  AGUARDANDO_DISTRIBUICAO_PAEFI: [
+  AGUARDANDO_DISTRIBUICAO: [
     {
       label: 'Atribuir Especialista',
       type: 'assign', // Abre modal de seleção
@@ -2133,9 +2489,9 @@ export const caseTransitions: Partial<
   ],
   EM_ACOLHIDA_ESPECIALIZADA: [
     {
-      label: 'Iniciar Acompanhamento (PAEFI)',
+      label: 'Iniciar Acompanhamento',
       type: 'status',
-      nextStatus: 'EM_ACOMPANHAMENTO_PAEFI',
+      nextStatus: 'EM_ACOMPANHAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.success,
     },
@@ -2154,7 +2510,7 @@ export const caseTransitions: Partial<
       style: buttonStyles.danger,
     },
   ],
-  EM_ACOMPANHAMENTO_PAEFI: [
+  EM_ACOMPANHAMENTO: [
     {
       label: 'Mover para Monitoramento',
       type: 'status',
@@ -2171,9 +2527,9 @@ export const caseTransitions: Partial<
   ],
   EM_MONITORAMENTO: [
     {
-      label: 'Retomar PAEFI Ativo',
+      label: 'Retomar para Acompanhamento',
       type: 'status',
-      nextStatus: 'EM_ACOMPANHAMENTO_PAEFI',
+      nextStatus: 'EM_ACOMPANHAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.success,
     },
@@ -2186,7 +2542,7 @@ export const caseTransitions: Partial<
   ],
   DESLIGADO: [
     {
-      label: 'Reabrir Caso (Reiniciar)',
+      label: 'Reabrir Caso',
       type: 'status',
       nextStatus: 'AGUARDANDO_ACOLHIDA',
       allowedRoles: ['Gerente'],
@@ -2211,10 +2567,9 @@ export function getAvailableActions(
 ==================================================================
 FILE: frontend\src\constants\navigation.ts
 ==================================================================
-// frontend/src/constants/navigation.ts
 import {
   PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
-  UserCog, ShieldCheck, Projector, AlertTriangle
+  UserCog, Projector, AlertTriangle, Briefcase, ShieldAlert
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ROUTES } from './routes'
@@ -2225,78 +2580,90 @@ interface NavLink {
   icon: LucideIcon
   label: string
   allowedRoles: UserRole[]
-  section: 'Acompanhamento' | 'Administração'
+  section: 'Meu Trabalho' | 'Gestão de Casos' | 'Administração'
 }
 
 export const navLinks: NavLink[] = [
+  // --- SEÇÃO: MEU TRABALHO ---
   {
-    to: ROUTES.DASHBOARD,
-    icon: LayoutDashboard,
-    label: 'Painel',
+    to: ROUTES.WORKSPACE,
+    icon: Briefcase,
+    label: 'Minha Mesa',
     allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
-  },
-  {
-    to: ROUTES.CASES,
-    icon: FolderKanban,
-    label: 'Meus Casos Ativos',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
+    section: 'Meu Trabalho',
   },
   {
     to: ROUTES.WAITING_LIST,
     icon: AlertTriangle,
     label: 'Fila de Espera',
-    allowedRoles: ['Gerente'],
-    section: 'Acompanhamento',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'], 
+    section: 'Meu Trabalho',
+  },
+  {
+    to: ROUTES.AGENDA,
+    icon: Calendar,
+    label: 'Minha Agenda',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
+    section: 'Meu Trabalho',
+  },
+
+  // --- SEÇÃO: GESTÃO DE CASOS ---
+  {
+    to: ROUTES.DASHBOARD,
+    icon: LayoutDashboard,
+    label: 'Painel Geral',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Gestão de Casos',
+  },
+  {
+    to: ROUTES.CASES,
+    icon: FolderKanban,
+    label: 'Todos os Casos',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Gestão de Casos',
+  },
+  // [MOVIDO] Trazido de volta para cá para facilitar acesso
+  {
+    to: ROUTES.TEAM_OVERVIEW,
+    icon: Users,
+    label: 'Gestão da Equipe',
+    allowedRoles: ['Gerente', 'Auditor'], // Apenas Gerente/Auditor veem
+    section: 'Gestão de Casos',
   },
   {
     to: ROUTES.GROUPS,
     icon: Projector,
     label: 'Grupos e Oficinas',
-    // [NOVO] Todos os cargos
-    allowedRoles: ['Gerente', 'Especialista', 'Agente_Social'],
-    section: 'Acompanhamento',
-  },
-  {
-    to: ROUTES.TEAM_OVERVIEW,
-    icon: Users,
-    label: 'Casos Ativos (Equipe)',
-    allowedRoles: ['Gerente'],
-    section: 'Acompanhamento',
+    allowedRoles: ['Gerente', 'Especialista', 'Agente_Social', 'Auditor'],
+    section: 'Gestão de Casos',
   },
   {
     to: ROUTES.CLOSED_CASES,
     icon: Archive,
-    label: 'Casos Finalizados',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
+    label: 'Arquivo Morto',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Gestão de Casos',
+  },
+
+  // --- SEÇÃO: ADMINISTRAÇÃO ---
+  {
+    to: ROUTES.REPORTS,
+    icon: PieChart,
+    label: 'Relatórios & RMA',
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    section: 'Administração',
   },
   {
-    to: ROUTES.AGENDA,
-    icon: Calendar,
-    label: 'Agenda',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
-    section: 'Acompanhamento',
+    to: ROUTES.AUDIT,
+    icon: ShieldAlert,
+    label: 'Auditoria de Logs',
+    allowedRoles: ['Gerente', 'Auditor'],
+    section: 'Administração',
   },
   {
     to: ROUTES.USERS,
     icon: UserCog,
-    label: 'Utilizadores',
-    allowedRoles: ['Gerente'],
-    section: 'Administração',
-  },
-  {
-    to: ROUTES.REPORTS,
-    icon: PieChart,
-    label: 'Relatórios',
-    allowedRoles: ['Gerente'],
-    section: 'Administração',
-  },
-  {
-    to: '/dashboard/audit',
-    icon: ShieldCheck,
-    label: 'Auditoria Global',
+    label: 'Gestão de Usuários',
     allowedRoles: ['Gerente'],
     section: 'Administração',
   },
@@ -2362,9 +2729,9 @@ export const OPTIONS = {
   status: [
     { value: 'AGUARDANDO_ACOLHIDA', label: 'Aguardando Acolhida' },
     { value: 'EM_ACOLHIDA', label: 'Em Acolhida' },
-    { value: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Aguardando Distribuição' },
+    { value: 'AGUARDANDO_DISTRIBUICAO', label: 'Aguardando Distribuição' },
     { value: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Especializada' },
-    { value: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Em Acompanhamento' },
+    { value: 'EM_ACOMPANHAMENTO', label: 'Em Acompanhamento' },
     { value: 'EM_MONITORAMENTO', label: 'Em Monitoramento' },
     { value: 'DESLIGADO', label: 'Desligado' },
   ]
@@ -2373,35 +2740,55 @@ export const OPTIONS = {
 ==================================================================
 FILE: frontend\src\constants\routes.ts
 ==================================================================
-// frontend/src/constants/routes.ts
 export const ROUTE_PATHS = {
-  LOGIN: '/',
-  DASHBOARD: '/dashboard',
+  LOGIN: '/login',
+  ROOT: '/',
+  
+  // Container Principal (Authenticated Layout)
+  APP: '/app',
+
+  // As duas telas principais
+  WORKSPACE: 'workspace', // /app/workspace (Mesa de Trabalho)
+  DASHBOARD: 'dashboard', // /app/dashboard (Indicadores/Estratégico)
+  
+  // Rotas Operacionais
   CASES: 'cases',
-  CLOSED_CASES: 'cases/closed',
-  WAITING_LIST: 'cases/waiting', // [NOVO]
   CASE_DETAIL: 'cases/:id',
+  WAITING_LIST: 'cases/waiting',
+  CLOSED_CASES: 'cases/closed',
+  GROUPS: 'groups',
   AGENDA: 'agenda',
-  TEAM: 'team-overview',
+
+  // Rotas de Gestão
+  TEAM: 'team',
   REPORTS: 'reports',
   USERS: 'users',
-  GROUPS: 'groups',
+  AUDIT: 'audit',
+  
   NOT_FOUND: '*',
 } as const
 
 export const ROUTES = {
   LOGIN: ROUTE_PATHS.LOGIN,
-  DASHBOARD: ROUTE_PATHS.DASHBOARD,
-  CASES: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.CASES}`,
-  CLOSED_CASES: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.CLOSED_CASES}`,
-  WAITING_LIST: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.WAITING_LIST}`, // [NOVO]
-  AGENDA: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.AGENDA}`,
-  TEAM_OVERVIEW: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.TEAM}`,
-  REPORTS: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.REPORTS}`,
-  USERS: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.USERS}`,
-  GROUPS: `${ROUTE_PATHS.DASHBOARD}/${ROUTE_PATHS.GROUPS}`,
-  NOT_FOUND: ROUTE_PATHS.NOT_FOUND,
-  CASE_DETAIL: (id: string) => `${ROUTE_PATHS.DASHBOARD}/cases/${id}`,
+  ROOT: ROUTE_PATHS.ROOT,
+  
+  // URLs Absolutas
+  APP: ROUTE_PATHS.APP,
+  WORKSPACE: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.WORKSPACE}`,
+  DASHBOARD: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.DASHBOARD}`,
+  
+  CASES: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.CASES}`,
+  WAITING_LIST: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.WAITING_LIST}`,
+  CLOSED_CASES: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.CLOSED_CASES}`,
+  GROUPS: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.GROUPS}`,
+  AGENDA: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.AGENDA}`,
+  
+  TEAM_OVERVIEW: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.TEAM}`,
+  REPORTS: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.REPORTS}`,
+  USERS: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.USERS}`,
+  AUDIT: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.AUDIT}`,
+  
+  CASE_DETAIL: (id: string) => `${ROUTE_PATHS.APP}/cases/${id}`,
 } as const
 
 ==================================================================
@@ -2412,6 +2799,85 @@ FILE: frontend\src\constants\storage.ts
 export const STORAGE_KEYS = {
   TOKEN: '@sgac-braz:token', //
 } as const
+
+==================================================================
+FILE: frontend\src\schemas\caseSchemas.ts
+==================================================================
+// frontend/src/schemas/caseSchemas.ts
+import { z } from 'zod'
+
+export const createCaseFormSchema = z.object({
+  nomeCompleto: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
+  cpf: z.string().min(11, 'CPF inválido.'),
+  // refine para garantir que não seja string vazia na hora de salvar
+  nascimento: z.string().refine((val) => val.length > 0, 'Data de nascimento obrigatória.'),
+  sexo: z.string().min(1, 'Selecione o sexo.'),
+  telefone: z.string().min(10, 'Telefone inválido.'),
+  endereco: z.string().min(5, 'Endereço muito curto.'),
+  dataEntrada: z.string(),
+  urgencia: z.string().min(1, 'Selecione a urgência.'),
+  violacao: z.string().min(1, 'Selecione a violação.'),
+  categoria: z.string().min(1, 'Selecione a categoria.'),
+  orgaoDemandante: z.string().min(2, 'Informe o órgão demandante.'),
+  
+  origem: z.enum(['ESPONTANEA', 'DOCUMENTAL', 'REFERENCIADA', 'BUSCA_ATIVA']),
+  
+  agenteAcolhidaId: z.string().uuid('Selecione um agente válido.'),
+  
+  // [CORREÇÃO] Tipos estritos: aceitam string vazia, mas não null/undefined
+  numeroSei: z.string(),
+  linkSei: z.string(), // Validaremos URL no form se não for vazio, ou aceitamos string
+  observacoes: z.string(),
+
+  // [CORREÇÃO] Array obrigatório (inicia como [])
+  beneficios: z.array(z.string()),
+})
+
+export type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
+
+export const pafFormSchema = z.object({
+  diagnostico: z.string().min(10, 'O diagnóstico deve ser mais detalhado.'),
+  objetivos: z.string().min(10, 'Descreva os objetivos.'),
+  estrategias: z.string().min(10, 'Descreva as estratégias.'),
+  deadline: z.string().refine((val) => val !== '', 'Data de reavaliação obrigatória.'),
+})
+
+export const evolutionFormSchema = z.object({
+  conteudo: z.string().min(5, 'A evolução deve ter pelo menos 5 caracteres.'),
+})
+
+export const closeCaseFormSchema = z.object({
+  motivoDesligamento: z.string().min(1, 'Selecione um motivo de desligamento.'),
+  destinoDesligamento: z.string().min(1, 'Selecione o destino do caso.'),
+  parecerFinal: z.string().min(10, 'O parecer final deve ser detalhado.'),
+})
+
+==================================================================
+FILE: frontend\src\schemas\userSchemas.ts
+==================================================================
+// frontend/src/schemas/userSchemas.ts
+import { z } from 'zod'
+
+export const editUserFormSchema = z.object({
+  nome: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
+  email: z.string().email('Por favor, insira um email válido.'),
+  
+  // [CORREÇÃO] Adicionada a opção 'Auditor' na validação
+  cargo: z.enum(['Gerente', 'Agente_Social', 'Especialista', 'Auditor'], {
+    message: "É obrigatório selecionar um cargo.",
+  }),
+})
+
+// Caso você tenha um schema separado para criação (NewUser), atualize ele também:
+export const newUserFormSchema = z.object({
+  nome: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
+  email: z.string().email('Por favor, insira um email válido.'),
+  matricula: z.string().optional(),
+  cargo: z.enum(['Gerente', 'Agente_Social', 'Especialista', 'Auditor'], {
+    message: "É obrigatório selecionar um cargo.",
+  }),
+  senhaInicial: z.string().min(6, 'A senha deve ter no mínimo 6 caracteres.').default('123456')
+})
 
 ==================================================================
 FILE: frontend\src\styles\index.css

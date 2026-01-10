@@ -280,7 +280,7 @@ export function ObservatoryTab() {
               <CardHeader><CardTitle className="text-base flex items-center gap-2"><Activity className="h-4 w-4"/> Tempo de Espera</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-amber-600 mb-1">{data.efficiencyData.avgWaitTime}</div>
-                <span className="text-xs text-muted-foreground">dias até PAEFI</span>
+                <span className="text-xs text-muted-foreground">dias até acompanhamento</span>
               </CardContent>
             </Card>
             <Card className="border-t-4 border-t-slate-500">

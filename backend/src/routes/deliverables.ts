@@ -1,159 +1,127 @@
-import { FastifyInstance } from 'fastify'
+// backend/src/routes/deliverables.ts
+import { type FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { LogAction } from '@prisma/client'
 
+const deliverableResponseSchema = z.object({
+  id: z.string(),
+  tipo: z.string(),
+  status: z.string(),
+  dataSolicitacao: z.date(),
+  dataEntrega: z.date().nullable(),
+  responsavel: z.object({ nome: z.string() })
+})
+
 export async function deliverablesRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
   
-  app.addHook('onRequest', async (request, reply) => {
-    try { await request.jwtVerify() } catch { return reply.status(401).send() }
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send() }
   })
 
-  // Schemas de Validação
-  const paramsSchema = z.object({ caseId: z.string().uuid() })
-  const updateParamsSchema = z.object({ id: z.string().uuid() })
-
-  const createBodySchema = z.object({
-    tipo: z.string().min(3), 
-    observacoes: z.string().optional(),
-  })
-
-  const updateStatusSchema = z.object({
-    status: z.enum(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE', 'NEGADO']),
-    dataEntrega: z.string().datetime().optional()
-  })
-
-  // --- ROTA DE CRIAÇÃO (POST) ---
-  app.post('/cases/:caseId/deliverables', async (request, reply) => {
-    const { caseId } = paramsSchema.parse(request.params) // Variável é 'caseId'
-    const { tipo, observacoes } = createBodySchema.parse(request.body)
-    const userId = (request.user as any).sub
-
-    // 1. Verificações de Integridade
-    const caso = await prisma.case.findUnique({ where: { id: caseId } })
-    if (!caso) return reply.status(404).send({ message: 'Caso não encontrado' })
-
-    const usuario = await prisma.user.findUnique({ where: { id: userId } })
-    if (!usuario) return reply.status(401).send({ message: 'Usuário inválido.' })
-
-    try {
-      const result = await prisma.$transaction(async (tx) => {
-        // 2. Cria o Benefício
-        const deliverable = await tx.serviceDeliverable.create({
-          data: {
-            tipo,
-            status: 'SOLICITADO',
-            observacoes,
-            casoId: caseId, // [CORREÇÃO] Mapeamento explícito: coluna 'casoId' recebe variável 'caseId'
-            responsavelId: userId,
-          },
-        })
-
-        // 3. Evolução Automática
-        await tx.evolucao.create({
-          data: {
-            casoId: caseId, // [CORREÇÃO] Mapeamento explícito
-            autorId: userId,
-            sigilo: false,
-            conteudo: `[SISTEMA] Solicitação de Benefício: ${tipo}. Obs: ${observacoes || '-'}`
-          }
-        })
-
-        // 4. Log de Auditoria
-        await tx.caseLog.create({
-          data: {
-            casoId: caseId, // [CORREÇÃO] Mapeamento explícito
-            autorId: userId,
-            acao: LogAction.ENTREGA_BENEFICIO_CRIADA,
-            descricao: `Solicitou benefício: ${tipo}`
-          }
-        })
-
-        return deliverable
-      })
-
-      return reply.status(201).send(result)
-    } catch (err) {
-      console.error("❌ Erro ao criar benefício:", err)
-      return reply.status(500).send({ message: 'Erro ao processar solicitação.' })
+  // [GET] Listar
+  server.get('/cases/:caseId/deliverables', {
+    schema: {
+      tags: ['Benefícios'],
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(deliverableResponseSchema) }
     }
+  }, async (req, reply) => {
+    const { caseId } = req.params
+
+    const items = await prisma.serviceDeliverable.findMany({
+      // CORREÇÃO: Mapeando explicitamente 'casoId' do banco para 'caseId' da rota
+      where: { casoId: caseId }, 
+      orderBy: { createdAt: 'desc' },
+      include: { 
+        responsavel: { select: { nome: true } } 
+      }
+    })
+
+    return reply.send(items)
   })
 
-  // --- ROTA DE LISTAGEM (GET) ---
-  app.get('/cases/:caseId/deliverables', async (request, reply) => {
-    const { caseId } = paramsSchema.parse(request.params)
+  // [POST] Criar
+  server.post('/cases/:caseId/deliverables', {
+    schema: {
+      tags: ['Benefícios'],
+      params: z.object({ caseId: z.string().uuid() }),
+      body: z.object({
+        tipo: z.string().min(3),
+        observacoes: z.string().optional()
+      })
+    }
+  }, async (req, reply) => {
+    const { caseId } = req.params
+    const { tipo, observacoes } = req.body
+    const userId = (req.user as any).sub
 
-    try {
-      const deliverables = await prisma.serviceDeliverable.findMany({
-        where: { 
-          casoId: caseId // [CORREÇÃO] Mapeamento explícito
-        },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          responsavel: { select: { nome: true } }
+    const result = await prisma.$transaction(async (tx) => {
+      const item = await tx.serviceDeliverable.create({
+        data: {
+          tipo,
+          status: 'SOLICITADO',
+          observacoes,
+          // CORREÇÃO: Mapeando explicitamente
+          casoId: caseId,
+          responsavelId: userId
         }
       })
 
-      const response = deliverables.map(d => ({
-        id: d.id,
-        tipo: d.tipo,
-        status: d.status,
-        dataSolicitacao: d.dataSolicitacao,
-        dataEntrega: d.dataEntrega,
-        responsavel: { nome: d.responsavel.nome }
-      }))
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId, // CORREÇÃO
+          autorId: userId,
+          acao: LogAction.ENTREGA_BENEFICIO_CRIADA,
+          descricao: `Solicitou benefício: ${tipo}`
+        }
+      })
+      
+      return item
+    })
 
-      return reply.send(response)
-    } catch (err) {
-      console.error("❌ Erro ao listar benefícios:", err)
-      return reply.status(500).send({ message: 'Erro ao buscar benefícios.' })
-    }
+    return reply.status(201).send(result)
   })
 
-  // --- ROTA DE ATUALIZAÇÃO (PATCH) ---
-  app.patch('/deliverables/:id', async (request, reply) => {
-    const { id } = updateParamsSchema.parse(request.params)
-    const { status, dataEntrega } = updateStatusSchema.parse(request.body)
-    const userId = (request.user as any).sub
+  // [PATCH] Atualizar Status
+  server.patch('/deliverables/:id', {
+    schema: {
+      tags: ['Benefícios'],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        status: z.enum(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE', 'NEGADO']),
+        dataEntrega: z.string().datetime().optional()
+      })
+    }
+  }, async (req, reply) => {
+    const { id } = req.params
+    const { status, dataEntrega } = req.body
+    const userId = (req.user as any).sub
 
-    try {
-      const result = await prisma.$transaction(async (tx) => {
-        // 1. Atualiza o status
-        const updated = await tx.serviceDeliverable.update({
-          where: { id },
-          data: {
-            status,
-            dataEntrega: dataEntrega ? new Date(dataEntrega) : undefined
-          }
-        })
-
-        // 2. Evolução Automática da Mudança de Status
-        await tx.evolucao.create({
-          data: {
-            casoId: updated.casoId, // Aqui usamos o retorno do update, então 'casoId' existe no objeto
-            autorId: userId,
-            sigilo: false,
-            conteudo: `[SISTEMA] Atualização de Benefício (${updated.tipo}): Status alterado para ${status}.`
-          }
-        })
-
-        // 3. Log de Auditoria
-        await tx.caseLog.create({
-          data: {
-            casoId: updated.casoId,
-            autorId: userId,
-            acao: LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
-            descricao: `Alterou status do benefício ${updated.tipo} para ${status}`
-          }
-        })
-
-        return updated
+    const updated = await prisma.$transaction(async (tx) => {
+      const item = await tx.serviceDeliverable.update({
+        where: { id },
+        data: {
+          status,
+          dataEntrega: dataEntrega ? new Date(dataEntrega) : undefined
+        },
+        include: { responsavel: { select: { nome: true } } }
       })
 
-      return reply.send(result)
-    } catch (err) {
-      console.error("❌ Erro ao atualizar benefício:", err)
-      return reply.status(500).send({ message: 'Erro ao atualizar benefício.' })
-    }
+      await tx.caseLog.create({
+        data: {
+          casoId: item.casoId,
+          autorId: userId,
+          acao: LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
+          descricao: `Atualizou benefício ${item.tipo} para ${status}`
+        }
+      })
+
+      return item
+    })
+
+    return reply.send(updated)
   })
 }

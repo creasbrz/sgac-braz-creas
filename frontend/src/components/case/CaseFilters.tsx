@@ -23,9 +23,9 @@ interface CaseFiltersProps {
 const STATUS_OPTIONS = [
   { label: 'Aguardando Acolhida', value: 'AGUARDANDO_ACOLHIDA' },
   { label: 'Em Acolhida', value: 'EM_ACOLHIDA' },
-  { label: 'Aguardando PAEFI', value: 'AGUARDANDO_DISTRIBUICAO_PAEFI' },
+  { label: 'Aguardando Distribuição', value: 'AGUARDANDO_DISTRIBUICAO' },
   { label: 'Acolhida Especializada', value: 'EM_ACOLHIDA_ESPECIALIZADA' },
-  { label: 'Acompanhamento PAEFI', value: 'EM_ACOMPANHAMENTO_PAEFI' },
+  { label: 'Acompanhamento', value: 'EM_ACOMPANHAMENTO' },
   { label: 'Monitoramento', value: 'EM_MONITORAMENTO' },
   { label: 'Desligado', value: 'DESLIGADO' },
 ]

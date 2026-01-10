@@ -41,9 +41,9 @@ export const caseTransitions: Partial<
   ],
   EM_ACOLHIDA: [
     {
-      label: 'Encaminhar para PAEFI (Triagem)',
+      label: 'Encaminhar para Distribuição',
       type: 'status',
-      nextStatus: 'AGUARDANDO_DISTRIBUICAO_PAEFI',
+      nextStatus: 'AGUARDANDO_DISTRIBUICAO',
       allowedRoles: ['Gerente', 'Agente_Social'],
       style: buttonStyles.accent,
     },
@@ -54,7 +54,7 @@ export const caseTransitions: Partial<
       style: buttonStyles.neutral,
     },
   ],
-  AGUARDANDO_DISTRIBUICAO_PAEFI: [
+  AGUARDANDO_DISTRIBUICAO: [
     {
       label: 'Atribuir Especialista',
       type: 'assign', // Abre modal de seleção
@@ -64,9 +64,9 @@ export const caseTransitions: Partial<
   ],
   EM_ACOLHIDA_ESPECIALIZADA: [
     {
-      label: 'Iniciar Acompanhamento (PAEFI)',
+      label: 'Iniciar Acompanhamento',
       type: 'status',
-      nextStatus: 'EM_ACOMPANHAMENTO_PAEFI',
+      nextStatus: 'EM_ACOMPANHAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.success,
     },
@@ -85,7 +85,7 @@ export const caseTransitions: Partial<
       style: buttonStyles.danger,
     },
   ],
-  EM_ACOMPANHAMENTO_PAEFI: [
+  EM_ACOMPANHAMENTO: [
     {
       label: 'Mover para Monitoramento',
       type: 'status',
@@ -102,9 +102,9 @@ export const caseTransitions: Partial<
   ],
   EM_MONITORAMENTO: [
     {
-      label: 'Retomar PAEFI Ativo',
+      label: 'Retomar para Acompanhamento',
       type: 'status',
-      nextStatus: 'EM_ACOMPANHAMENTO_PAEFI',
+      nextStatus: 'EM_ACOMPANHAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
       style: buttonStyles.success,
     },
@@ -117,7 +117,7 @@ export const caseTransitions: Partial<
   ],
   DESLIGADO: [
     {
-      label: 'Reabrir Caso (Reiniciar)',
+      label: 'Reabrir Caso',
       type: 'status',
       nextStatus: 'AGUARDANDO_ACOLHIDA',
       allowedRoles: ['Gerente'],

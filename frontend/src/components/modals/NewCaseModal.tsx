@@ -16,7 +16,6 @@ export function NewCaseModal() {
     <Dialog
       open={isNewCaseModalOpen} //
       onOpenChange={(open) => {
-        // Se o modal está tentando fechar (open = false), fechamos via hook
         if (!open) closeNewCaseModal() //
       }}
     >

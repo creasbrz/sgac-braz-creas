@@ -120,7 +120,7 @@ export function WaitingList() {
       case 'Gerente':
         return {
           title: 'Fila para Distribuição',
-          description: 'Casos triados aguardando designação de técnico de referência (PAEFI).',
+          description: 'Casos triados aguardando designação de especialista de referência (ACOMPANHAMENTO).',
           actionLabel: 'Distribuir',
           emptyMessage: 'Nenhum caso aguardando distribuição técnica.'
         }
@@ -295,7 +295,7 @@ export function WaitingList() {
           <DialogHeader>
             <DialogTitle>Distribuir Caso</DialogTitle>
             <DialogDescription>
-              Selecione o técnico de referência responsável pelo acompanhamento PAEFI.
+              Selecione o especialista de referência responsável pelo acompanhamento.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-3">

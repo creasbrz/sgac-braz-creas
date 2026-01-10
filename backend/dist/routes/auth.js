@@ -47,62 +47,102 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 var import_bcryptjs = __toESM(require("bcryptjs"));
 var import_client2 = require("@prisma/client");
 async function authRoutes(app) {
-  app.post("/register", async (request, reply) => {
-    const registerBodySchema = import_zod.z.object({
-      nome: import_zod.z.string().min(3),
-      email: import_zod.z.string().email(),
-      senha: import_zod.z.string().min(6),
-      cargo: import_zod.z.string().transform((val) => {
-        if (val === "Agente Social") return import_client2.Cargo.Agente_Social;
-        return val;
+  const server = app.withTypeProvider();
+  const userResponseSchema = import_zod.z.object({
+    id: import_zod.z.string().uuid(),
+    nome: import_zod.z.string(),
+    email: import_zod.z.string().email(),
+    cargo: import_zod.z.nativeEnum(import_client2.Cargo),
+    matricula: import_zod.z.string().nullable().optional(),
+    ativo: import_zod.z.boolean(),
+    createdAt: import_zod.z.date().optional()
+    // Opcional pois o create retorna, mas o /me pode formatar
+  });
+  server.post("/register", {
+    schema: {
+      tags: ["Autentica\xE7\xE3o"],
+      summary: "Registrar um novo usu\xE1rio no sistema",
+      body: import_zod.z.object({
+        nome: import_zod.z.string().min(3, "Nome deve ter no m\xEDnimo 3 caracteres"),
+        email: import_zod.z.string().email("E-mail inv\xE1lido"),
+        senha: import_zod.z.string().min(6, "Senha deve ter no m\xEDnimo 6 caracteres"),
+        // Transformação para lidar com possíveis inputs legados ou do frontend
+        cargo: import_zod.z.string().transform((val) => {
+          if (val === "Agente Social") return import_client2.Cargo.Agente_Social;
+          return val;
+        }),
+        matricula: import_zod.z.string().optional()
       }),
-      matricula: import_zod.z.string().optional()
+      response: {
+        201: userResponseSchema
+        // Filtra automaticamente a senha
+      }
+    }
+  }, async (request, reply) => {
+    const { nome, email, senha, cargo, matricula } = request.body;
+    const userExists = await prisma.user.findUnique({ where: { email } });
+    if (userExists) {
+      return reply.status(409).send({ message: "Email j\xE1 registrado." });
+    }
+    const hashedPassword = await import_bcryptjs.default.hash(senha, 10);
+    const user = await prisma.user.create({
+      data: {
+        nome,
+        email,
+        senha: hashedPassword,
+        cargo,
+        matricula,
+        ativo: true
+      }
     });
-    try {
-      const { nome, email, senha, cargo, matricula } = registerBodySchema.parse(request.body);
-      const userExists = await prisma.user.findUnique({ where: { email } });
-      if (userExists) return reply.status(409).send({ message: "Email j\xE1 registrado." });
-      const hashedPassword = await import_bcryptjs.default.hash(senha, 8);
-      const user = await prisma.user.create({
-        data: { nome, email, senha: hashedPassword, cargo, matricula, ativo: true }
-      });
-      const { senha: _, ...userSafe } = user;
-      return reply.status(201).send(userSafe);
-    } catch (error) {
-      return reply.status(400).send({ message: "Erro no registro", error });
-    }
+    return reply.status(201).send(user);
   });
-  app.post("/login", async (request, reply) => {
-    const loginBodySchema = import_zod.z.object({ email: import_zod.z.string().email(), senha: import_zod.z.string() });
-    try {
-      const { email, senha } = loginBodySchema.parse(request.body);
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) return reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
-      if (!user.ativo) return reply.status(401).send({ message: "Usu\xE1rio desativado." });
-      const isPasswordCorrect = await import_bcryptjs.default.compare(senha, user.senha);
-      if (!isPasswordCorrect) return reply.status(401).send({ message: "Credenciais inv\xE1lidas." });
-      const token = app.jwt.sign(
-        { nome: user.nome, cargo: user.cargo, email: user.email },
-        { sub: user.id, expiresIn: "7d" }
-      );
-      return reply.status(200).send({ token });
-    } catch (error) {
-      return reply.status(500).send({ message: "Erro interno no login." });
+  server.post("/login", {
+    schema: {
+      tags: ["Autentica\xE7\xE3o"],
+      summary: "Autenticar usu\xE1rio e obter token JWT",
+      body: import_zod.z.object({
+        email: import_zod.z.string().email(),
+        senha: import_zod.z.string()
+      }),
+      response: {
+        200: import_zod.z.object({
+          token: import_zod.z.string()
+        })
+      }
     }
+  }, async (request, reply) => {
+    const { email, senha } = request.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.ativo) {
+      return reply.status(401).send({ message: "Credenciais inv\xE1lidas ou usu\xE1rio desativado." });
+    }
+    const isPasswordCorrect = await import_bcryptjs.default.compare(senha, user.senha);
+    if (!isPasswordCorrect) {
+      return reply.status(401).send({ message: "Credenciais inv\xE1lidas ou usu\xE1rio desativado." });
+    }
+    const token = app.jwt.sign(
+      { nome: user.nome, cargo: user.cargo, email: user.email },
+      { sub: user.id, expiresIn: "7d" }
+    );
+    return reply.status(200).send({ token });
   });
-  app.get("/me", { onRequest: [app.authenticate] }, async (request, reply) => {
+  server.get("/me", {
+    onRequest: [app.authenticate],
+    schema: {
+      tags: ["Autentica\xE7\xE3o"],
+      summary: "Obter dados do usu\xE1rio logado",
+      security: [{ bearerAuth: [] }],
+      // Adiciona o cadeado no Swagger
+      response: {
+        200: userResponseSchema
+      }
+    }
+  }, async (request, reply) => {
     const userId = request.user.sub;
     const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        cargo: true,
-        matricula: true,
-        ativo: true
-        // Selecionamos o campo para checar depois
-      }
+      where: { id: userId }
+      // Não precisamos de 'select' manual aqui, pois o userResponseSchema já filtra a senha na saída
     });
     if (!user) return reply.status(404).send({ message: "Usu\xE1rio n\xE3o encontrado." });
     if (!user.ativo) return reply.status(401).send({ message: "Usu\xE1rio desativado." });

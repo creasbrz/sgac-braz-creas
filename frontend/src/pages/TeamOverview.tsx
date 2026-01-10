@@ -234,10 +234,10 @@ export function TeamOverview() {
         <Tabs defaultValue="agents" className="w-full">
           <TabsList className="grid w-full max-w-[400px] grid-cols-2 bg-muted/50 p-1">
             <TabsTrigger value="agents" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <User className="h-4 w-4" /> Acolhida (Agentes)
+              <User className="h-4 w-4" /> Agentes
             </TabsTrigger>
             <TabsTrigger value="specialists" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <BarChart3 className="h-4 w-4" /> PAEFI (Técnicos)
+              <BarChart3 className="h-4 w-4" /> Especialistas
             </TabsTrigger>
           </TabsList>
 
@@ -292,7 +292,7 @@ export function TeamOverview() {
                     <CardTitle className="text-lg flex items-center gap-2">
                       <ShieldAlert className="h-5 w-5 text-primary" /> Especialistas de Referência
                     </CardTitle>
-                    <CardDescription>Acompanhamento Sistemático (PAEFI) e Monitoramento.</CardDescription>
+                    <CardDescription>Acompanhamento e Monitoramento.</CardDescription>
                   </div>
                   <Badge variant="outline" className="font-normal text-muted-foreground bg-background">
                     Ref. Carga: 25 (NOB/SUAS)
@@ -305,7 +305,7 @@ export function TeamOverview() {
                     <TableRow className="bg-muted/30 hover:bg-muted/30 text-xs uppercase tracking-wider">
                       <TableHead className="w-[300px]">Servidor</TableHead>
                       <TableHead>Capacidade</TableHead>
-                      <TableHead className="text-center">Ativos (PAEFI)</TableHead>
+                      <TableHead className="text-center">Ativos (ACOMPANHAMENTO)</TableHead>
                       <TableHead className="text-center">Monitoramento</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>

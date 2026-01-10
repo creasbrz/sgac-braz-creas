@@ -103,9 +103,9 @@ function CaseWorkflow({ status }: { status: string }) {
   const steps = [
     { id: 'AGUARDANDO_ACOLHIDA', label: 'Triagem' },
     { id: 'EM_ACOLHIDA', label: 'Acolhida' },
-    { id: 'AGUARDANDO_DISTRIBUICAO_PAEFI', label: 'Distribuição' },
+    { id: 'AGUARDANDO_DISTRIBUICAO', label: 'Distribuição' },
     { id: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Esp.' },
-    { id: 'EM_ACOMPANHAMENTO_PAEFI', label: 'Acompanhamento' },
+    { id: 'EM_ACOMPANHAMENTO', label: 'Acompanhamento' },
     { id: 'EM_MONITORAMENTO', label: 'Monitoramento' },
     { id: 'DESLIGADO', label: 'Finalizado' }
   ]
@@ -371,7 +371,7 @@ export function CaseDetail() {
             <PackageCheck className="h-4 w-4" /> Benefícios
           </TabsTrigger>
 
-          {['EM_ACOLHIDA_ESPECIALIZADA', 'EM_ACOMPANHAMENTO_PAEFI', 'DESLIGADO'].includes(caseData.status) && (
+          {['EM_ACOLHIDA_ESPECIALIZADA', 'EM_ACOMPANHAMENTO', 'DESLIGADO'].includes(caseData.status) && (
             <TabsTrigger value="paf" className="gap-2 data-[state=active]:bg-background data-[state=active]:text-primary">
               <FileText className="h-4 w-4" /> PAF
             </TabsTrigger>

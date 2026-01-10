@@ -1,238 +1,212 @@
+// backend/src/routes/appointments.ts
 import { type FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { LogAction, Cargo } from '@prisma/client'
 
-// Interface unificada
-interface CalendarEvent {
-  id: string
-  title: string
-  start: Date
-  end?: Date | null
-  type: 'INDIVIDUAL' | 'GRUPO'
-  resourceId?: string
-  description?: string
-  status: string
-}
+// --- Schemas ---
+
+const calendarEventSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  start: z.date(),
+  end: z.date().nullable().optional(),
+  type: z.enum(['INDIVIDUAL', 'GRUPO']),
+  resourceId: z.string().optional(),
+  description: z.string().optional(),
+  status: z.string()
+})
+
+const upcomingSchema = z.object({
+  id: z.string(),
+  titulo: z.string(),
+  data: z.date(),
+  caso: z.object({ nomeCompleto: z.string() }).nullable().optional()
+})
+
+const createAppointmentSchema = z.object({
+  titulo: z.string().min(3, "Título muito curto"),
+  data: z.coerce.date(),
+  observacoes: z.string().nullable().optional(), 
+  casoId: z.string().uuid(),
+  tipo: z.string().optional()
+})
 
 export async function appointmentRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
   
-  app.addHook('onRequest', async (request, reply) => {
-    try { await request.jwtVerify() } catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // [GET] Listar Agendamentos
-  app.get('/appointments', async (request, reply) => {
-    // 1. Schema
-    const querySchema = z.object({ 
-      caseId: z.string().uuid().optional(), 
-      start: z.coerce.date().optional(), 
-      end: z.coerce.date().optional(),   
+  // [GET] Widget Dashboard
+  server.get('/stats/my-agenda', {
+    schema: {
+      tags: ['Agenda'],
+      summary: 'Próximos compromissos do usuário (Widget)',
+      response: { 200: z.array(upcomingSchema) }
+    }
+  }, async (req, reply) => {
+    const { sub: userId } = req.user as { sub: string }
+    const upcoming = await prisma.agendamento.findMany({
+      where: { responsavelId: userId, data: { gte: new Date() } },
+      include: { caso: { select: { nomeCompleto: true } } },
+      orderBy: { data: 'asc' },
+      take: 5
     })
+    return reply.send(upcoming)
+  })
 
-    const { caseId, start: reqStart, end: reqEnd } = querySchema.parse(request.query)
-    // [CORREÇÃO] Extraindo cargo para permissões
-    const { sub: userId, cargo } = request.user as { sub: string, cargo: string }
-
-    // 2. Lógica de "Smart Defaults"
-    let start = reqStart
-    let end = reqEnd
-
-    if (!start || !end) {
-      const now = new Date()
-      if (caseId) {
-        if (!start) start = new Date(now.getFullYear() - 5, 0, 1)
-        if (!end) end = new Date(now.getFullYear() + 2, 11, 31)
-      } else {
-        if (!start) start = new Date(now.getFullYear(), now.getMonth(), 1)
-        if (!end) end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      }
+  // [GET] Calendário Principal (Correção do Erro casoId)
+  server.get('/appointments', {
+    schema: {
+      tags: ['Agenda'],
+      summary: 'Listar compromissos (Agendamentos + Grupos)',
+      querystring: z.object({ 
+        caseId: z.string().uuid().optional(), 
+        start: z.coerce.date().optional(), 
+        end: z.coerce.date().optional(),   
+      }),
+      response: { 200: z.array(calendarEventSchema) }
     }
+  }, async (req, reply) => {
+    const { caseId, start, end } = req.query
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
-    const queryStart = start as Date
-    const queryEnd = end as Date
+    // Smart Defaults
+    const now = new Date()
+    const queryStart = start || new Date(now.getFullYear(), now.getMonth(), 1)
+    const queryEnd = end || new Date(now.getFullYear(), now.getMonth() + 1, 0)
 
-    // 3. Busca Agendamentos Individuais (CORRIGIDO)
-    const whereClause: any = {
-      data: { gte: queryStart, lte: queryEnd }
-    }
+    const whereClause: any = { data: { gte: queryStart, lte: queryEnd } }
 
     if (caseId) {
-      // Se filtrando por caso, traz tudo daquele caso
       whereClause.casoId = caseId
-    } else {
-      // Se é Agenda Geral:
-      // Gerentes veem tudo. Outros veem apenas o que são responsáveis OU onde são o técnico do caso.
-      if (cargo !== 'Gerente' && cargo !== Cargo.Gerente) {
-        whereClause.OR = [
-          { responsavelId: userId }, // Criado por mim
-          // OU sou o técnico do caso vinculado ao agendamento
-          { caso: { OR: [{ agenteAcolhidaId: userId }, { especialistaPAEFIId: userId }] } }
-        ]
-      }
-    }
-
-    const individualPromise = prisma.agendamento.findMany({
-      where: whereClause,
-      include: { caso: { select: { nomeCompleto: true } } }
-    })
-
-    // 4. Busca Grupos
-    const groupPromise = caseId 
-      ? prisma.groupActivity.findMany({
-          where: {
-            dataRealizacao: { gte: queryStart, lte: queryEnd },
-            participantes: { some: { casoId: caseId } }
-          },
-          include: { facilitador: { select: { nome: true } } }
-        })
-      : prisma.groupActivity.findMany({
-          where: {
-            dataRealizacao: { gte: queryStart, lte: queryEnd },
-          },
-          include: { facilitador: { select: { nome: true } } }
-        })
-
-    try {
-      const [appointments, groups] = await Promise.all([individualPromise, groupPromise])
-
-      const normalizedEvents: CalendarEvent[] = [
-        ...appointments.map(a => ({
-          id: a.id,
-          title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
-          start: a.data,
-          type: 'INDIVIDUAL' as const,
-          resourceId: a.casoId,
-          description: a.observacoes || '',
-          status: 'SCHEDULED'
-        })),
-        ...groups.map(g => ({
-          id: g.id,
-          title: `[GRUPO] ${g.tema} (${g.tipo.replace('_', ' ')})`,
-          start: g.dataRealizacao,
-          type: 'GRUPO' as const,
-          resourceId: g.id,
-          description: g.descricao || `Facilitador: ${g.facilitador.nome}`,
-          status: 'SCHEDULED'
-        }))
+    } else if (cargo !== Cargo.Gerente) {
+      whereClause.OR = [
+        { responsavelId: userId },
+        { caso: { OR: [{ agenteAcolhidaId: userId }, { especialistaPAEFIId: userId }] } }
       ]
-
-      return reply.send(normalizedEvents.sort((a, b) => a.start.getTime() - b.start.getTime()))
-    
-    } catch (error) {
-      console.error("ERRO GET /appointments:", error)
-      return reply.status(500).send({ message: "Erro ao buscar agenda." })
     }
+
+    const [appointments, groups] = await Promise.all([
+      // 1. Agendamentos Individuais
+      prisma.agendamento.findMany({
+        where: whereClause,
+        include: { caso: { select: { nomeCompleto: true } } }
+      }),
+      
+      // 2. Atividades de Grupo
+      caseId 
+        ? prisma.groupActivity.findMany({
+            where: { 
+              dataRealizacao: { gte: queryStart, lte: queryEnd }, 
+              // [CORREÇÃO AQUI] Usando 'casoId: caseId' explicitamente
+              participantes: { some: { casoId: caseId } } 
+            },
+            include: { facilitador: { select: { nome: true } } }
+          })
+        : prisma.groupActivity.findMany({
+            where: { dataRealizacao: { gte: queryStart, lte: queryEnd } },
+            include: { facilitador: { select: { nome: true } } }
+          })
+    ])
+
+    const normalized = [
+      ...appointments.map(a => ({
+        id: a.id,
+        title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
+        start: a.data,
+        type: 'INDIVIDUAL' as const,
+        resourceId: a.casoId,
+        description: a.observacoes || '',
+        status: 'SCHEDULED'
+      })),
+      ...groups.map(g => ({
+        id: g.id,
+        title: `[GRUPO] ${g.tema} (${g.tipo.replace('_', ' ')})`,
+        start: g.dataRealizacao,
+        type: 'GRUPO' as const,
+        resourceId: g.id,
+        description: g.descricao || '',
+        status: 'SCHEDULED'
+      }))
+    ]
+
+    return reply.send(normalized.sort((a, b) => a.start.getTime() - b.start.getTime()))
   })
 
-  // [POST] Criar Agendamento
-  app.post('/appointments', async (request, reply) => {
-    const bodySchema = z.object({
-      titulo: z.string().min(3),
-      data: z.coerce.date(),
-      observacoes: z.string().nullable().optional(), 
-      casoId: z.string().uuid(),
-      tipo: z.string().optional() // Adicionado tipo
+  // [POST] Criar
+  server.post('/appointments', {
+    schema: {
+      tags: ['Agenda'],
+      body: createAppointmentSchema
+    }
+  }, async (req, reply) => {
+    const data = req.body
+    const userId = (req.user as any).sub
+
+    const agendamento = await prisma.agendamento.create({
+      data: { ...data, responsavelId: userId }
     })
 
-    const { titulo, data, observacoes, casoId, tipo } = bodySchema.parse(request.body)
-    const userId = (request.user as any).sub
-
-    try {
-      const agendamento = await prisma.agendamento.create({
-        data: {
-          titulo,
-          data,
-          observacoes: observacoes || null,
-          casoId,
-          responsavelId: userId,
-          // Se tiver campo 'tipo' no banco, adicione aqui. Se não, remova.
-          // tipo: tipo 
-        }
-      })
-
-      try {
-        await prisma.caseLog.create({
-          data: {
-            casoId,
-            autorId: userId,
-            acao: LogAction.AGENDAMENTO_CRIADO, 
-            descricao: `Agendamento criado: ${titulo} para ${data.toLocaleString()}`
-          }
-        })
-      } catch (logError) {
-        console.warn("⚠️ Log falhou, mas agendamento ok.", logError)
+    // Log (Fire and forget)
+    prisma.caseLog.create({
+      data: {
+        casoId: data.casoId,
+        autorId: userId,
+        acao: LogAction.AGENDAMENTO_CRIADO,
+        descricao: `Agendamento: ${data.titulo}`
       }
+    }).catch(console.error)
 
-      return reply.status(201).send(agendamento)
-
-    } catch (mainError) {
-      console.error("❌ ERRO POST /appointments:", mainError)
-      return reply.status(500).send({ message: "Erro ao criar agendamento." })
-    }
+    return reply.status(201).send(agendamento)
   })
 
-  // [PUT] Atualizar
-  app.put('/appointments/:id', async (request, reply) => {
-    const paramsSchema = z.object({ id: z.string().uuid() })
-    const bodySchema = z.object({
-      titulo: z.string().min(3).optional(),
-      data: z.coerce.date().optional(),
-      observacoes: z.string().nullable().optional(),
-    })
-
-    const { id } = paramsSchema.parse(request.params)
-    const data = bodySchema.parse(request.body)
-    const userId = (request.user as any).sub
-    const { cargo } = request.user as { cargo: string }
+  // [PUT] Editar
+  server.put('/appointments/:id', {
+    schema: {
+      tags: ['Agenda'],
+      params: z.object({ id: z.string().uuid() }),
+      body: createAppointmentSchema.partial()
+    }
+  }, async (req, reply) => {
+    const { id } = req.params
+    const data = req.body
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
     const existing = await prisma.agendamento.findUnique({ where: { id } })
     
-    // Gerente pode editar qualquer um. Outros só o próprio.
-    if (!existing || (existing.responsavelId !== userId && cargo !== 'Gerente')) {
+    if (!existing || (existing.responsavelId !== userId && cargo !== Cargo.Gerente)) {
       return reply.status(403).send({ message: 'Sem permissão.' })
     }
 
     const updated = await prisma.agendamento.update({
       where: { id },
-      data: {
-        ...data,
-        ...(data.observacoes !== undefined ? { observacoes: data.observacoes } : {})
-      }
+      data
     })
 
     return reply.send(updated)
   })
 
   // [DELETE] Remover
-  app.delete('/appointments/:id', async (request, reply) => {
-    const paramsSchema = z.object({ id: z.string().uuid() })
-    const { id } = paramsSchema.parse(request.params)
-    const userId = (request.user as any).sub
-    const { cargo } = request.user as { cargo: string }
+  server.delete('/appointments/:id', {
+    schema: {
+      tags: ['Agenda'],
+      params: z.object({ id: z.string().uuid() })
+    }
+  }, async (req, reply) => {
+    const { id } = req.params
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
     const existing = await prisma.agendamento.findUnique({ where: { id } })
     
-    // Gerente pode deletar qualquer um. Outros só o próprio.
-    if (!existing || (existing.responsavelId !== userId && cargo !== 'Gerente')) {
+    if (!existing || (existing.responsavelId !== userId && cargo !== Cargo.Gerente)) {
       return reply.status(403).send({ message: 'Sem permissão.' })
     }
 
     await prisma.agendamento.delete({ where: { id } })
-
-    if (existing.casoId) {
-      try {
-        await prisma.caseLog.create({
-          data: {
-            casoId: existing.casoId,
-            autorId: userId,
-            acao: LogAction.OUTRO,
-            descricao: `Agendamento excluído: ${existing.titulo}`
-          }
-        })
-      } catch (e) {}
-    }
-
     return reply.status(204).send()
   })
 }

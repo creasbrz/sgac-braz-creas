@@ -37,101 +37,143 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 var import_client2 = require("@prisma/client");
 var stripTime = (date) => {
   const d = new Date(date);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0));
 };
+var pafBodySchema = import_zod.z.object({
+  diagnostico: import_zod.z.string().min(10, "O diagn\xF3stico deve conter ao menos 10 caracteres."),
+  objetivos: import_zod.z.string().min(10, "Os objetivos devem conter ao menos 10 caracteres."),
+  estrategias: import_zod.z.string().min(10, "As estrat\xE9gias devem conter ao menos 10 caracteres."),
+  deadline: import_zod.z.coerce.date({ required_error: "O prazo \xE9 obrigat\xF3rio." })
+});
+var pafResponseSchema = import_zod.z.object({
+  id: import_zod.z.string().uuid(),
+  diagnostico: import_zod.z.string(),
+  objetivos: import_zod.z.string(),
+  estrategias: import_zod.z.string(),
+  deadline: import_zod.z.date(),
+  versaoAtual: import_zod.z.number(),
+  updatedAt: import_zod.z.date(),
+  autor: import_zod.z.object({
+    id: import_zod.z.string(),
+    nome: import_zod.z.string()
+  }).optional()
+});
+var versionResponseSchema = import_zod.z.object({
+  id: import_zod.z.string().uuid(),
+  savedAt: import_zod.z.date(),
+  versaoNumero: import_zod.z.number(),
+  autor: import_zod.z.object({ nome: import_zod.z.string() }).optional()
+  // Adicione outros campos se quiser exibir o conteúdo histórico na lista
+});
 async function pafRoutes(app) {
-  app.addHook("onRequest", async (req, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (req, reply) => {
     try {
       await req.jwtVerify();
     } catch {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  const pafBodySchema = import_zod.z.object({
-    diagnostico: import_zod.z.string().min(10, "O diagn\xF3stico deve conter ao menos 10 caracteres."),
-    objetivos: import_zod.z.string().min(10, "Os objetivos devem conter ao menos 10 caracteres."),
-    estrategias: import_zod.z.string().min(10, "As estrat\xE9gias devem conter ao menos 10 caracteres."),
-    deadline: import_zod.z.coerce.date({ required_error: "O prazo \xE9 obrigat\xF3rio." })
-  });
-  const paramsSchema = import_zod.z.object({
-    caseId: import_zod.z.string().uuid()
-  });
-  app.get("/cases/:caseId/paf", async (request, reply) => {
-    try {
-      const { caseId } = paramsSchema.parse(request.params);
-      const paf = await prisma.paf.findUnique({
-        where: { casoId: caseId },
-        // Mapeamento correto
-        include: { autor: { select: { id: true, nome: true } } }
-      });
-      return reply.send(paf);
-    } catch (error) {
-      console.error("\u274C Erro GET /paf:", error);
-      return reply.status(500).send({ message: "Erro ao buscar PAF." });
-    }
-  });
-  app.get("/cases/:caseId/paf/history", async (request, reply) => {
-    try {
-      const { caseId } = paramsSchema.parse(request.params);
-      const paf = await prisma.paf.findUnique({ where: { casoId: caseId } });
-      if (!paf) return reply.send([]);
-      const history = await prisma.pafVersion.findMany({
-        where: { pafId: paf.id },
-        orderBy: { savedAt: "desc" },
-        include: { autor: { select: { nome: true } } }
-      });
-      return reply.send(history);
-    } catch (error) {
-      console.error("\u274C Erro GET /paf/history:", error);
-      return reply.status(500).send({ message: "Erro ao buscar hist\xF3rico." });
-    }
-  });
-  app.post("/cases/:caseId/paf", async (request, reply) => {
-    try {
-      const { caseId } = paramsSchema.parse(request.params);
-      const data = pafBodySchema.parse(request.body);
-      const { sub: autorId, cargo } = request.user;
-      if (cargo !== "Especialista" && cargo !== "Gerente") {
-        return reply.status(403).send({ message: "Apenas especialistas/gerentes criam PAF." });
+  server.get("/cases/:caseId/paf", {
+    schema: {
+      tags: ["PAF"],
+      summary: "Obter o Plano de Acompanhamento Familiar atual",
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      response: {
+        200: pafResponseSchema.nullable()
       }
-      const created = await prisma.paf.create({
-        data: {
-          ...data,
-          deadline: stripTime(data.deadline),
-          casoId: caseId,
-          // Campo do banco: Variável
-          autorId,
-          versaoAtual: 1
-        }
-      });
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId,
-          autorId,
-          acao: import_client2.LogAction.PAF_CRIADO,
-          descricao: "Elaborou o Plano de Acompanhamento Familiar (PAF)."
-        }
-      });
-      return reply.status(201).send(created);
-    } catch (error) {
-      console.error("\u274C Erro POST /paf:", error);
-      if (error instanceof import_zod.z.ZodError) {
-        return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
-      }
-      return reply.status(500).send({ message: "Erro interno ao criar PAF." });
     }
+  }, async (request, reply) => {
+    const { caseId } = request.params;
+    const paf = await prisma.paf.findUnique({
+      where: { casoId: caseId },
+      include: { autor: { select: { id: true, nome: true } } }
+    });
+    return reply.send(paf);
   });
-  app.put("/cases/:caseId/paf", async (request, reply) => {
-    try {
-      const { caseId } = paramsSchema.parse(request.params);
-      const bodyData = pafBodySchema.partial().parse(request.body);
-      const { sub: userId, cargo } = request.user;
-      const existing = await prisma.paf.findUnique({ where: { casoId: caseId } });
-      if (!existing) return reply.status(404).send({ message: "PAF n\xE3o encontrado." });
-      if (existing.autorId !== userId && cargo !== "Gerente") {
-        return reply.status(403).send({ message: "Sem permiss\xE3o para editar este PAF." });
+  server.get("/cases/:caseId/paf/history", {
+    schema: {
+      tags: ["PAF"],
+      summary: "Listar vers\xF5es anteriores do PAF",
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      response: {
+        200: import_zod.z.array(versionResponseSchema)
       }
-      await prisma.pafVersion.create({
+    }
+  }, async (request, reply) => {
+    const { caseId } = request.params;
+    const paf = await prisma.paf.findUnique({ where: { casoId: caseId } });
+    if (!paf) return reply.send([]);
+    const history = await prisma.pafVersion.findMany({
+      where: { pafId: paf.id },
+      orderBy: { savedAt: "desc" },
+      include: { autor: { select: { nome: true } } }
+    });
+    return reply.send(history);
+  });
+  server.post("/cases/:caseId/paf", {
+    schema: {
+      tags: ["PAF"],
+      summary: "Criar o primeiro PAF do caso",
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      body: pafBodySchema,
+      response: {
+        201: pafResponseSchema
+      }
+    }
+  }, async (request, reply) => {
+    const { caseId } = request.params;
+    const data = request.body;
+    const { sub: autorId, cargo } = request.user;
+    if (cargo !== import_client2.Cargo.Especialista && cargo !== import_client2.Cargo.Gerente) {
+      return reply.status(403).send({ message: "Apenas especialistas ou gerentes podem criar PAF." });
+    }
+    const existing = await prisma.paf.findUnique({ where: { casoId } });
+    if (existing) {
+      return reply.status(409).send({ message: "J\xE1 existe um PAF para este caso. Use a rota de atualiza\xE7\xE3o (PUT)." });
+    }
+    const created = await prisma.paf.create({
+      data: {
+        ...data,
+        deadline: stripTime(data.deadline),
+        casoId,
+        autorId,
+        versaoAtual: 1
+      },
+      include: { autor: { select: { id: true, nome: true } } }
+    });
+    prisma.caseLog.create({
+      data: {
+        casoId,
+        autorId,
+        acao: import_client2.LogAction.PAF_CRIADO,
+        descricao: "Elaborou o Plano de Acompanhamento Familiar (PAF)."
+      }
+    }).catch(console.error);
+    return reply.status(201).send(created);
+  });
+  server.put("/cases/:caseId/paf", {
+    schema: {
+      tags: ["PAF"],
+      summary: "Atualizar PAF (Gera nova vers\xE3o automaticamente)",
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      body: pafBodySchema.partial(),
+      // Permite update parcial
+      response: {
+        200: pafResponseSchema
+      }
+    }
+  }, async (request, reply) => {
+    const { caseId } = request.params;
+    const bodyData = request.body;
+    const { sub: userId, cargo } = request.user;
+    const existing = await prisma.paf.findUnique({ where: { casoId: caseId } });
+    if (!existing) return reply.status(404).send({ message: "PAF n\xE3o encontrado." });
+    if (cargo !== import_client2.Cargo.Gerente && cargo !== import_client2.Cargo.Especialista) {
+      return reply.status(403).send({ message: "Sem permiss\xE3o para editar este PAF." });
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.pafVersion.create({
         data: {
           pafId: existing.id,
           diagnostico: existing.diagnostico,
@@ -139,41 +181,34 @@ async function pafRoutes(app) {
           estrategias: existing.estrategias,
           deadline: existing.deadline,
           autorId: existing.autorId,
-          versaoNumero: existing.versaoAtual
+          // Autor da versão antiga
+          versaoNumero: existing.versaoAtual,
+          savedAt: /* @__PURE__ */ new Date()
         }
       });
       const nextVersion = existing.versaoAtual + 1;
-      const updated = await prisma.paf.update({
+      const updated = await tx.paf.update({
         where: { casoId: caseId },
-        // CORREÇÃO AQUI TAMBÉM
         data: {
           ...bodyData,
           deadline: bodyData.deadline ? stripTime(bodyData.deadline) : void 0,
           autorId: userId,
-          versaoAtual: nextVersion,
-          updatedAt: /* @__PURE__ */ new Date()
-        }
+          // Novo autor da versão atual
+          versaoAtual: nextVersion
+        },
+        include: { autor: { select: { id: true, nome: true } } }
       });
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId,
-          // CORREÇÃO
-          autorId: userId,
-          acao: import_client2.LogAction.PAF_ATUALIZADO,
-          descricao: `Atualizou PAF para vers\xE3o ${nextVersion}.`
-        }
-      });
-      return reply.send(updated);
-    } catch (error) {
-      console.error("\u274C Erro PUT /paf:", error);
-      if (error instanceof import_zod.z.ZodError) {
-        return reply.status(400).send({ message: "Dados inv\xE1lidos.", errors: error.flatten().fieldErrors });
+      return updated;
+    });
+    prisma.caseLog.create({
+      data: {
+        casoId,
+        autorId: userId,
+        acao: import_client2.LogAction.PAF_ATUALIZADO,
+        descricao: `Atualizou PAF para vers\xE3o ${result.versaoAtual}.`
       }
-      if (error.code === "P2021") {
-        return reply.status(500).send({ message: "Erro de banco: Tabela PafVersion n\xE3o encontrada. Rode 'npx prisma migrate dev'." });
-      }
-      return reply.status(500).send({ message: "Erro interno ao atualizar PAF." });
-    }
+    }).catch(console.error);
+    return reply.send(result);
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

@@ -9,7 +9,7 @@ async function main() {
   // 1. Encontra todos os casos que estão em acompanhamento mas não têm a data de início do PAEFI.
   const casesToUpdate = await prisma.case.findMany({
     where: {
-      status: 'EM_ACOMPANHAMENTO_PAEFI',
+      status: 'EM_ACOMPANHAMENTO',
       dataInicioPAEFI: null,
     },
   })

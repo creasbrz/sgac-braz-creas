@@ -244,7 +244,7 @@ export function CaseTable({ endpoint, title, description, defaultView = 'my', ex
                   )}
 
                   <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                    {item.status === 'EM_ACOMPANHAMENTO_PAEFI' || (endpoint === '/cases/closed' && item.especialistaPAEFI) 
+                    {item.status === 'EM_ACOMPANHAMENTO' || (endpoint === '/cases/closed' && item.especialistaPAEFI) 
                       ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? 'N/A' 
                       : item.agenteAcolhida?.nome?.split(' ')[0] ?? 'N/A'
                     }

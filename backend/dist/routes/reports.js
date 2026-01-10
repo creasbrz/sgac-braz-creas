@@ -36,8 +36,28 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 // src/routes/reports.ts
 var import_date_fns = require("date-fns");
 var import_client2 = require("@prisma/client");
+var teamOverviewResponseSchema = import_zod.z.array(import_zod.z.object({
+  nome: import_zod.z.string(),
+  cargo: import_zod.z.string(),
+  cases: import_zod.z.array(import_zod.z.object({
+    id: import_zod.z.string(),
+    nomeCompleto: import_zod.z.string(),
+    status: import_zod.z.string(),
+    urgencia: import_zod.z.string(),
+    violacao: import_zod.z.string()
+  }))
+}));
+var rmaResponseSchema = import_zod.z.object({
+  initialCount: import_zod.z.number(),
+  newEntries: import_zod.z.number(),
+  closedCases: import_zod.z.number(),
+  finalCount: import_zod.z.number(),
+  profileBySex: import_zod.z.record(import_zod.z.number()),
+  profileByAgeGroup: import_zod.z.record(import_zod.z.number())
+});
 async function reportRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
       const { cargo } = request.user;
@@ -48,7 +68,15 @@ async function reportRoutes(app) {
       await reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  app.get("/reports/team-overview", async (request, reply) => {
+  server.get("/reports/team-overview", {
+    schema: {
+      tags: ["Relat\xF3rios"],
+      summary: "Carga de trabalho detalhada por t\xE9cnico",
+      response: {
+        200: teamOverviewResponseSchema
+      }
+    }
+  }, async (request, reply) => {
     try {
       const technicians = await prisma.user.findMany({
         where: {
@@ -62,19 +90,15 @@ async function reportRoutes(app) {
         where: {
           status: { not: import_client2.CaseStatus.DESLIGADO }
         },
+        // SELECT MÍNIMO para performance
         select: {
           id: true,
           nomeCompleto: true,
-          cpf: true,
-          sexo: true,
+          status: true,
           urgencia: true,
           violacao: true,
-          dataEntrada: true,
-          status: true,
           agenteAcolhidaId: true,
-          especialistaPAEFIId: true,
-          agenteAcolhida: { select: { nome: true } },
-          especialistaPAEFI: { select: { nome: true } }
+          especialistaPAEFIId: true
         },
         orderBy: { pesoUrgencia: "desc" }
       });
@@ -84,7 +108,7 @@ async function reportRoutes(app) {
             return c.agenteAcolhidaId === tech.id && (c.status === import_client2.CaseStatus.AGUARDANDO_ACOLHIDA || c.status === import_client2.CaseStatus.EM_ACOLHIDA);
           }
           if (tech.cargo === import_client2.Cargo.Especialista) {
-            return c.especialistaPAEFIId === tech.id && c.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI;
+            return c.especialistaPAEFIId === tech.id && (c.status === import_client2.CaseStatus.EM_ACOLHIDA_ESPECIALIZADA || c.status === import_client2.CaseStatus.EM_ACOMPANHAMENTO || c.status === import_client2.CaseStatus.EM_MONITORAMENTO);
           }
           return false;
         });
@@ -92,29 +116,38 @@ async function reportRoutes(app) {
           nome: tech.nome,
           cargo: tech.cargo === import_client2.Cargo.Agente_Social ? "Agente Social" : "Especialista",
           cases: techCases
+          // Retorna os objetos filtrados
         };
       });
-      return reply.status(200).send(overview);
+      return reply.send(overview);
     } catch (error) {
       console.error("Erro /reports/team-overview:", error);
       return reply.status(500).send({ message: "Erro interno no servidor." });
     }
   });
-  app.get("/reports/rma", async (request, reply) => {
+  server.get("/reports/rma", {
+    schema: {
+      tags: ["Relat\xF3rios"],
+      summary: "Dados para preenchimento do RMA (MDS)",
+      querystring: import_zod.z.object({
+        month: import_zod.z.string().regex(/^\d{4}-\d{2}$/, "Formato inv\xE1lido (YYYY-MM).")
+      }),
+      response: {
+        200: rmaResponseSchema
+      }
+    }
+  }, async (request, reply) => {
     var _a, _b, _c;
-    const querySchema = import_zod.z.object({
-      month: import_zod.z.string().regex(/^\d{4}-\d{2}$/, "Formato inv\xE1lido (YYYY-MM).")
-    });
+    const { month } = request.query;
+    const targetDate = /* @__PURE__ */ new Date(month + "-01T00:00:00");
+    const firstDay = (0, import_date_fns.startOfMonth)(targetDate);
+    const lastDay = (0, import_date_fns.endOfMonth)(targetDate);
     try {
-      const { month } = querySchema.parse(request.query);
-      const targetDate = /* @__PURE__ */ new Date(month + "-01T00:00:00");
-      const firstDay = (0, import_date_fns.startOfMonth)(targetDate);
-      const lastDay = (0, import_date_fns.endOfMonth)(targetDate);
       const [initialCount, newEntriesCount, closedCasesCount] = await Promise.all([
-        // B1: Saldo anterior
+        // B1: Saldo anterior (Ativos antes do mês começar e não desligados antes)
         prisma.case.count({
           where: {
-            status: import_client2.CaseStatus.EM_ACOMPANHAMENTO_PAEFI,
+            status: import_client2.CaseStatus.EM_ACOMPANHAMENTO,
             dataInicioPAEFI: { lt: firstDay },
             OR: [
               { dataDesligamento: null },
@@ -171,7 +204,7 @@ async function reportRoutes(app) {
         else profileByAgeGroup["60+"]++;
       }
       const finalCount = initialCount + newEntriesCount - closedCasesCount;
-      return reply.status(200).send({
+      return reply.send({
         initialCount,
         newEntries: newEntriesCount,
         closedCases: closedCasesCount,

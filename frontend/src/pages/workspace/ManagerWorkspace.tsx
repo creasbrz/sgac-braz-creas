@@ -67,7 +67,7 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                       <Badge 
                         variant="outline" 
                         className="text-[10px] font-normal text-muted-foreground border-border cursor-help"
-                        title={member.role === 'Especialista' ? 'Técnico de Referência (PAEFI)' : 'Agente de Acolhida e Triagem'}
+                        title={member.role === 'Especialista' ? 'Técnico de Referência (ACOMPANHAMENTO)' : 'Agente de Acolhida e Triagem'}
                         aria-label={`Função: ${member.role}`}
                       >
                         {member.role === 'Especialista' ? 'ACOMPANHAMENTO' : 'ACOLHIDA'}

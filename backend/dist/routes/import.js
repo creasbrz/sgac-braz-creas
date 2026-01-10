@@ -32,6 +32,7 @@ __export(import_exports, {
   importRoutes: () => importRoutes
 });
 module.exports = __toCommonJS(import_exports);
+var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
@@ -49,7 +50,8 @@ var import_path = __toESM(require("path"));
 var import_promises = require("stream/promises");
 var import_client2 = require("@prisma/client");
 async function importRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
       const { cargo } = request.user;
@@ -60,11 +62,26 @@ async function importRoutes(app) {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  app.post("/import/cases", async (request, reply) => {
+  server.post("/import/cases", {
+    schema: {
+      tags: ["Importa\xE7\xE3o"],
+      summary: "Importar casos em massa via CSV",
+      consumes: ["multipart/form-data"],
+      response: {
+        200: import_zod.z.object({
+          message: import_zod.z.string(),
+          total: import_zod.z.number(),
+          success: import_zod.z.number(),
+          failed: import_zod.z.number(),
+          errors: import_zod.z.array(import_zod.z.string())
+        })
+      }
+    }
+  }, async (request, reply) => {
     const { sub: userId } = request.user;
     const data = await request.file();
     if (!data || data.mimetype !== "text/csv") {
-      return reply.status(400).send({ message: "Por favor, envie um ficheiro CSV v\xE1lido." });
+      return reply.status(400).send({ message: "Por favor, envie um arquivo CSV v\xE1lido." });
     }
     const uploadDir = import_path.default.resolve(__dirname, "../../uploads");
     if (!import_fs.default.existsSync(uploadDir)) import_fs.default.mkdirSync(uploadDir, { recursive: true });
@@ -77,14 +94,14 @@ async function importRoutes(app) {
       import_fs.default.createReadStream(tempFilePath).pipe((0, import_fast_csv.parse)({ headers: true, ignoreEmpty: true, delimiter: "," })).on("error", (error) => {
         console.error(error);
         import_fs.default.unlinkSync(tempFilePath);
-        reject(reply.status(500).send({ message: "Erro ao ler o ficheiro CSV." }));
+        reject(reply.status(500).send({ message: "Erro ao ler o arquivo CSV." }));
       }).on("data", (row) => results.push(row)).on("end", async () => {
         if (import_fs.default.existsSync(tempFilePath)) import_fs.default.unlinkSync(tempFilePath);
         await prisma.$transaction(async (tx) => {
           for (const [index, row] of results.entries()) {
             const rowNum = index + 2;
             if (!row.Nome || !row.CPF) {
-              errors.push(`Linha ${rowNum}: Nome ou CPF em falta.`);
+              errors.push(`Linha ${rowNum}: Nome ou CPF ausente.`);
               continue;
             }
             const cpfLimpo = row.CPF.replace(/\D/g, "");
@@ -99,16 +116,17 @@ async function importRoutes(app) {
             }
             let beneficiosArray = [];
             if (row.Beneficios) {
-              beneficiosArray = row.Beneficios.split(";").map((b) => b.trim()).filter((b) => b !== "");
+              beneficiosArray = row.Beneficios.split(";").map((b) => b.trim()).filter(Boolean);
             }
             try {
+              const dataNasc = new Date(row.Nascimento);
+              const nascimento = isNaN(dataNasc.getTime()) ? /* @__PURE__ */ new Date() : dataNasc;
               await tx.case.create({
                 data: {
                   // Obrigatórios
                   nomeCompleto: row.Nome,
                   cpf: cpfLimpo,
-                  nascimento: new Date(row.Nascimento || /* @__PURE__ */ new Date()),
-                  // Fallback hoje
+                  nascimento,
                   sexo: row.Sexo || "N\xE3o Informado",
                   telefone: row.Telefone || "",
                   endereco: row.Endereco || "",
@@ -116,21 +134,23 @@ async function importRoutes(app) {
                   violacao: row.Violacao || "Outros",
                   categoria: row.Categoria || "Fam\xEDlia em vulnerabilidade",
                   orgaoDemandante: row.Orgao || "Demanda Espont\xE2nea",
-                  // Opcionais (Novos Campos)
+                  origem: import_client2.CaseOrigin.DOCUMENTAL,
+                  // Marca como importado
+                  // Opcionais
                   numeroSei: row.NumeroSEI || null,
                   linkSei: row.LinkSEI || null,
                   observacoes: row.Observacoes || `Importado via CSV em ${(/* @__PURE__ */ new Date()).toLocaleDateString()}`,
                   beneficios: beneficiosArray,
                   // Sistema
                   pesoUrgencia: 1,
-                  status: "AGUARDANDO_ACOLHIDA",
+                  status: import_client2.CaseStatus.AGUARDANDO_ACOLHIDA,
                   criadoPorId: userId
                 }
               });
               successCount++;
             } catch (err) {
               console.error(err);
-              errors.push(`Linha ${rowNum}: Erro ao salvar no banco. Verifique formato de data (AAAA-MM-DD).`);
+              errors.push(`Linha ${rowNum}: Erro de banco de dados. Verifique o formato dos campos.`);
             }
           }
         });
@@ -140,6 +160,7 @@ async function importRoutes(app) {
           success: successCount,
           failed: errors.length,
           errors: errors.slice(0, 50)
+          // Retorna os primeiros 50 erros
         }));
       });
     });

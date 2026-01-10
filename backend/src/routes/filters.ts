@@ -1,20 +1,43 @@
-import { type FastifyInstance } from 'fastify'
+// backend/src/routes/filters.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 
+// --- Schemas ---
+
+const filterResponseSchema = z.object({
+  id: z.string().uuid(),
+  nome: z.string(),
+  config: z.any(), // JSON do banco
+  createdAt: z.date()
+})
+
+const createFilterSchema = z.object({
+  nome: z.string().min(1, "O nome do filtro é obrigatório"),
+  // Aceita um objeto JSON livre (estado do formulário de filtros do front)
+  config: z.record(z.string(), z.any()).or(z.any()) 
+})
+
 export async function filterRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
   
   // Middleware de Autenticação
-  app.addHook('onRequest', async (request, reply) => {
-    try {
-      await request.jwtVerify()
-    } catch (err) {
-      return reply.status(401).send({ message: 'Sessão expirada ou inválida.' })
-    }
+  server.addHook('onRequest', async (request, reply) => {
+    try { await request.jwtVerify() } 
+    catch (err) { return reply.status(401).send({ message: 'Sessão expirada ou inválida.' }) }
   })
 
-  // [GET] Listar Filtros Salvos do Usuário
-  app.get('/filters', async (request, reply) => {
+  // 1. [GET] Listar Filtros Salvos
+  server.get('/filters', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Listar filtros personalizados salvos pelo usuário',
+      response: {
+        200: z.array(filterResponseSchema)
+      }
+    }
+  }, async (request, reply) => {
     const { sub: userId } = request.user as { sub: string }
     
     try {
@@ -24,35 +47,35 @@ export async function filterRoutes(app: FastifyInstance) {
       })
       return reply.send(filters)
     } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao buscar seus filtros.' })
+      return reply.status(500).send({ message: 'Erro ao buscar filtros.' })
     }
   })
 
-  // [POST] Salvar Novo Filtro
-  app.post('/filters', async (request, reply) => {
+  // 2. [POST] Salvar Novo Filtro
+  server.post('/filters', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Salvar configuração atual de filtros',
+      body: createFilterSchema,
+      response: {
+        201: filterResponseSchema
+      }
+    }
+  }, async (request, reply) => {
     const { sub: userId } = request.user as { sub: string }
-    
-    // O 'config' armazena o estado do formulário do Frontend (território, status, violação)
-    // Ex: { territorio: "Vila São José", violacao: "Violência Física", status: "ATIVO" }
-    const bodySchema = z.object({
-      nome: z.string().min(1, "Dê um nome para identificar este filtro (Ex: Meus casos na Vila)"),
-      config: z.any() 
-    })
+    const { nome, config } = request.body
 
     try {
-      const { nome, config } = bodySchema.parse(request.body)
-
-      // Limite de segurança: Evitar que um usuário lote o banco com filtros inúteis
+      // Limite de segurança (Quota por usuário)
       const count = await prisma.savedFilter.count({ where: { userId } })
       if (count >= 15) {
-        return reply.status(400).send({ message: 'Limite de 15 filtros atingido. Exclua alguns antigos.' })
+        return reply.status(400).send({ message: 'Limite de 15 filtros atingido. Exclua alguns antigos para salvar novos.' })
       }
 
       const filter = await prisma.savedFilter.create({
         data: {
           nome,
-          config: config ?? {}, 
+          config: config ?? {}, // Garante objeto vazio se null
           userId
         }
       })
@@ -60,25 +83,27 @@ export async function filterRoutes(app: FastifyInstance) {
       return reply.status(201).send(filter)
 
     } catch (error) {
-      request.log.error(error)
       return reply.status(500).send({ message: 'Erro ao salvar filtro.' })
     }
   })
 
-  // [PATCH] Atualizar Filtro Existente (Renomear ou mudar regras)
-  app.patch('/filters/:id', async (request, reply) => {
-    const paramsSchema = z.object({ id: z.string().uuid() })
-    const bodySchema = z.object({
-      nome: z.string().min(1).optional(),
-      config: z.any().optional()
-    })
-
+  // 3. [PATCH] Atualizar Filtro
+  server.patch('/filters/:id', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Atualizar nome ou regras de um filtro existente',
+      params: z.object({ id: z.string().uuid() }),
+      body: createFilterSchema.partial(), // Campos opcionais no update
+      response: {
+        200: filterResponseSchema
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params
+    const { nome, config } = request.body
     const { sub: userId } = request.user as { sub: string }
-    const { id } = paramsSchema.parse(request.params)
-    const { nome, config } = bodySchema.parse(request.body)
 
     try {
-      // Verifica propriedade
       const existing = await prisma.savedFilter.findUnique({ where: { id } })
       
       if (!existing) return reply.status(404).send({ message: 'Filtro não encontrado.' })
@@ -88,26 +113,32 @@ export async function filterRoutes(app: FastifyInstance) {
         where: { id },
         data: {
           nome,
-          config: config ?? undefined // undefined faz o Prisma ignorar o campo se não foi enviado
+          config: config ?? undefined
         }
       })
 
       return reply.send(updated)
 
     } catch (error) {
-      request.log.error(error)
       return reply.status(500).send({ message: 'Erro ao atualizar filtro.' })
     }
   })
 
-  // [DELETE] Apagar Filtro
-  app.delete('/filters/:id', async (request, reply) => {
-    const paramsSchema = z.object({ id: z.string().uuid() })
+  // 4. [DELETE] Apagar Filtro
+  server.delete('/filters/:id', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Remover um filtro salvo',
+      params: z.object({ id: z.string().uuid() }),
+      response: {
+        204: z.null()
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params
     const { sub: userId } = request.user as { sub: string }
 
     try {
-      const { id } = paramsSchema.parse(request.params)
-
       const filter = await prisma.savedFilter.findUnique({ where: { id } })
       
       if (!filter) return reply.status(404).send({ message: 'Filtro não encontrado.' })
@@ -119,7 +150,6 @@ export async function filterRoutes(app: FastifyInstance) {
       return reply.status(204).send()
 
     } catch (error) {
-      request.log.error(error)
       return reply.status(500).send({ message: 'Erro ao remover filtro.' })
     }
   })

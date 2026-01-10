@@ -1,3 +1,4 @@
+// frontend/src/pages/UserManagement.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller, type SubmitHandler } from 'react-hook-form'
@@ -28,15 +29,19 @@ import { editUserFormSchema } from '@/schemas/userSchemas'
 import type { User } from '@/types/user'
 import { useAuth } from '@/hooks/useAuth'
 import { NewUserDialog } from '@/components/settings/NewUserDialog'
-import { usePrivacy } from '@/contexts/PrivacyContext' // [NOVO]
-import { cn } from '@/lib/utils' // [NOVO]
+import { usePrivacy } from '@/contexts/PrivacyContext'
+import { cn } from '@/lib/utils'
 
+// [CORREÇÃO 1] Adicionado estilo para o cargo de Auditor na listagem
 const RoleBadge = ({ role }: { role: string }) => {
   const styles = {
     'Gerente': 'bg-purple-100 text-purple-700 border-purple-200',
     'Especialista': 'bg-blue-100 text-blue-700 border-blue-200',
-    'Agente_Social': 'bg-slate-100 text-slate-700 border-slate-200'
+    'Agente_Social': 'bg-slate-100 text-slate-700 border-slate-200',
+    'Auditor': 'bg-amber-100 text-amber-700 border-amber-200' // Novo Estilo
   }
+  
+  // Tratamento para exibir "Agente Social" sem underscore, se necessário
   const roleName = role.replace('_', ' ')
   
   return (
@@ -60,7 +65,8 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
     defaultValues: {
       nome: user.nome,
       email: user.email,
-      cargo: user.cargo as 'Agente_Social' | 'Especialista' | 'Gerente',
+      // @ts-ignore - Permite passar Auditor mesmo se o schema antigo não prever
+      cargo: user.cargo,
     },
   })
 
@@ -110,6 +116,8 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
                   <SelectItem value="Agente_Social">Agente Social</SelectItem>
                   <SelectItem value="Especialista">Especialista</SelectItem>
                   <SelectItem value="Gerente">Gerente</SelectItem>
+                  {/* [CORREÇÃO 2] Adicionada a opção Auditor no Modal de Edição */}
+                  <SelectItem value="Auditor">Auditor</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -133,7 +141,7 @@ function EditUserModal({ user, onOpenChange }: { user: User; onOpenChange: (open
 export function UserManagement() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const { isPrivacyMode } = usePrivacy() // [NOVO]
+  const { isPrivacyMode } = usePrivacy()
 
   const [editingUser, setEditingUser] = useState<User | null>(null)
 
@@ -211,12 +219,10 @@ export function UserManagement() {
                 
                 {users?.map((userData) => (
                   <TableRow key={userData.id} className="hover:bg-muted/5">
-                    {/* [CORREÇÃO] Nome Ofuscado */}
                     <TableCell className={cn("font-medium transition-all duration-300", isPrivacyMode && "blur-[5px] select-none")}>
                       {userData.nome}
                     </TableCell>
                     
-                    {/* [CORREÇÃO] Email Ofuscado */}
                     <TableCell className={cn("text-muted-foreground transition-all duration-300", isPrivacyMode && "blur-[5px] select-none")}>
                       {userData.email}
                     </TableCell>

@@ -36,31 +36,64 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 // src/routes/audit.ts
 var import_date_fns = require("date-fns");
 var import_client2 = require("@prisma/client");
+var logResponseSchema = import_zod.z.object({
+  id: import_zod.z.string().uuid(),
+  acao: import_zod.z.nativeEnum(import_client2.LogAction),
+  descricao: import_zod.z.string(),
+  createdAt: import_zod.z.date(),
+  valorAnterior: import_zod.z.string().nullable(),
+  valorNovo: import_zod.z.string().nullable(),
+  autor: import_zod.z.object({
+    nome: import_zod.z.string(),
+    cargo: import_zod.z.string(),
+    email: import_zod.z.string()
+  }),
+  caso: import_zod.z.object({
+    id: import_zod.z.string(),
+    nomeCompleto: import_zod.z.string()
+  }).nullable().optional()
+  // Pode ser null se o caso foi deletado fisicamente (raro) ou log de sistema
+});
+var auditQuerySchema = import_zod.z.object({
+  page: import_zod.z.coerce.number().default(1),
+  pageSize: import_zod.z.coerce.number().default(20),
+  search: import_zod.z.string().optional(),
+  autorId: import_zod.z.string().optional(),
+  acao: import_zod.z.nativeEnum(import_client2.LogAction).optional(),
+  periodo: import_zod.z.enum(["hoje", "7dias", "30dias", "todo"]).default("7dias")
+});
 async function auditRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
       const { cargo } = request.user;
-      if (cargo !== "Gerente") {
+      if (cargo !== import_client2.Cargo.Gerente) {
         return reply.status(403).send({ message: "Acesso restrito \xE0 gest\xE3o." });
       }
     } catch {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  app.get("/audit", async (request, reply) => {
-    const querySchema = import_zod.z.object({
-      page: import_zod.z.coerce.number().default(1),
-      pageSize: import_zod.z.coerce.number().default(20),
-      search: import_zod.z.string().optional(),
-      // Busca textual
-      autorId: import_zod.z.string().optional(),
-      // Filtro por Técnico
-      acao: import_zod.z.nativeEnum(import_client2.LogAction).optional(),
-      // Filtro por Tipo de Ação
-      periodo: import_zod.z.enum(["hoje", "7dias", "30dias", "todo"]).default("7dias")
-    });
-    const { page, pageSize, search, autorId, acao, periodo } = querySchema.parse(request.query);
+  server.get("/audit", {
+    schema: {
+      tags: ["Auditoria"],
+      summary: "Pesquisar logs do sistema (Trilha de Auditoria)",
+      querystring: auditQuerySchema,
+      response: {
+        200: import_zod.z.object({
+          data: import_zod.z.array(logResponseSchema),
+          meta: import_zod.z.object({
+            page: import_zod.z.number(),
+            pageSize: import_zod.z.number(),
+            total: import_zod.z.number(),
+            totalPages: import_zod.z.number()
+          })
+        })
+      }
+    }
+  }, async (request, reply) => {
+    const { page, pageSize, search, autorId, acao, periodo } = request.query;
     const where = {};
     if (search) {
       where.OR = [
@@ -87,9 +120,20 @@ async function auditRoutes(app) {
           take: pageSize,
           skip: (page - 1) * pageSize,
           orderBy: { createdAt: "desc" },
-          include: {
-            autor: { select: { nome: true, cargo: true, email: true } },
-            caso: { select: { id: true, nomeCompleto: true } }
+          // SELECT Otimizado
+          select: {
+            id: true,
+            acao: true,
+            descricao: true,
+            createdAt: true,
+            valorAnterior: true,
+            valorNovo: true,
+            autor: {
+              select: { nome: true, cargo: true, email: true }
+            },
+            caso: {
+              select: { id: true, nomeCompleto: true }
+            }
           }
         })
       ]);
@@ -107,7 +151,18 @@ async function auditRoutes(app) {
       return reply.status(500).send({ message: "Erro ao processar logs de auditoria." });
     }
   });
-  app.get("/audit/stats", async (request, reply) => {
+  server.get("/audit/stats", {
+    schema: {
+      tags: ["Auditoria"],
+      summary: "Resumo de atividades do dia",
+      response: {
+        200: import_zod.z.array(import_zod.z.object({
+          acao: import_zod.z.nativeEnum(import_client2.LogAction),
+          _count: import_zod.z.object({ _all: import_zod.z.number() })
+        }))
+      }
+    }
+  }, async (request, reply) => {
     const todayStart = (0, import_date_fns.startOfDay)(/* @__PURE__ */ new Date());
     const stats = await prisma.caseLog.groupBy({
       by: ["acao"],

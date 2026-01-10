@@ -34,15 +34,36 @@ var prisma = globalForPrisma.prisma || new import_client.PrismaClient({
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/filters.ts
+var filterResponseSchema = import_zod.z.object({
+  id: import_zod.z.string().uuid(),
+  nome: import_zod.z.string(),
+  config: import_zod.z.any(),
+  // JSON do banco
+  createdAt: import_zod.z.date()
+});
+var createFilterSchema = import_zod.z.object({
+  nome: import_zod.z.string().min(1, "O nome do filtro \xE9 obrigat\xF3rio"),
+  // Aceita um objeto JSON livre (estado do formulário de filtros do front)
+  config: import_zod.z.record(import_zod.z.string(), import_zod.z.any()).or(import_zod.z.any())
+});
 async function filterRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
     } catch (err) {
       return reply.status(401).send({ message: "Sess\xE3o expirada ou inv\xE1lida." });
     }
   });
-  app.get("/filters", async (request, reply) => {
+  server.get("/filters", {
+    schema: {
+      tags: ["Filtros"],
+      summary: "Listar filtros personalizados salvos pelo usu\xE1rio",
+      response: {
+        200: import_zod.z.array(filterResponseSchema)
+      }
+    }
+  }, async (request, reply) => {
     const { sub: userId } = request.user;
     try {
       const filters = await prisma.savedFilter.findMany({
@@ -51,44 +72,54 @@ async function filterRoutes(app) {
       });
       return reply.send(filters);
     } catch (error) {
-      request.log.error(error);
-      return reply.status(500).send({ message: "Erro ao buscar seus filtros." });
+      return reply.status(500).send({ message: "Erro ao buscar filtros." });
     }
   });
-  app.post("/filters", async (request, reply) => {
+  server.post("/filters", {
+    schema: {
+      tags: ["Filtros"],
+      summary: "Salvar configura\xE7\xE3o atual de filtros",
+      body: createFilterSchema,
+      response: {
+        201: filterResponseSchema
+      }
+    }
+  }, async (request, reply) => {
     const { sub: userId } = request.user;
-    const bodySchema = import_zod.z.object({
-      nome: import_zod.z.string().min(1, "D\xEA um nome para identificar este filtro (Ex: Meus casos na Vila)"),
-      config: import_zod.z.any()
-    });
+    const { nome, config } = request.body;
     try {
-      const { nome, config } = bodySchema.parse(request.body);
       const count = await prisma.savedFilter.count({ where: { userId } });
       if (count >= 15) {
-        return reply.status(400).send({ message: "Limite de 15 filtros atingido. Exclua alguns antigos." });
+        return reply.status(400).send({ message: "Limite de 15 filtros atingido. Exclua alguns antigos para salvar novos." });
       }
       const filter = await prisma.savedFilter.create({
         data: {
           nome,
           config: config ?? {},
+          // Garante objeto vazio se null
           userId
         }
       });
       return reply.status(201).send(filter);
     } catch (error) {
-      request.log.error(error);
       return reply.status(500).send({ message: "Erro ao salvar filtro." });
     }
   });
-  app.patch("/filters/:id", async (request, reply) => {
-    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
-    const bodySchema = import_zod.z.object({
-      nome: import_zod.z.string().min(1).optional(),
-      config: import_zod.z.any().optional()
-    });
+  server.patch("/filters/:id", {
+    schema: {
+      tags: ["Filtros"],
+      summary: "Atualizar nome ou regras de um filtro existente",
+      params: import_zod.z.object({ id: import_zod.z.string().uuid() }),
+      body: createFilterSchema.partial(),
+      // Campos opcionais no update
+      response: {
+        200: filterResponseSchema
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { nome, config } = request.body;
     const { sub: userId } = request.user;
-    const { id } = paramsSchema.parse(request.params);
-    const { nome, config } = bodySchema.parse(request.body);
     try {
       const existing = await prisma.savedFilter.findUnique({ where: { id } });
       if (!existing) return reply.status(404).send({ message: "Filtro n\xE3o encontrado." });
@@ -98,20 +129,26 @@ async function filterRoutes(app) {
         data: {
           nome,
           config: config ?? void 0
-          // undefined faz o Prisma ignorar o campo se não foi enviado
         }
       });
       return reply.send(updated);
     } catch (error) {
-      request.log.error(error);
       return reply.status(500).send({ message: "Erro ao atualizar filtro." });
     }
   });
-  app.delete("/filters/:id", async (request, reply) => {
-    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
+  server.delete("/filters/:id", {
+    schema: {
+      tags: ["Filtros"],
+      summary: "Remover um filtro salvo",
+      params: import_zod.z.object({ id: import_zod.z.string().uuid() }),
+      response: {
+        204: import_zod.z.null()
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params;
     const { sub: userId } = request.user;
     try {
-      const { id } = paramsSchema.parse(request.params);
       const filter = await prisma.savedFilter.findUnique({ where: { id } });
       if (!filter) return reply.status(404).send({ message: "Filtro n\xE3o encontrado." });
       if (filter.userId !== userId) {
@@ -120,7 +157,6 @@ async function filterRoutes(app) {
       await prisma.savedFilter.delete({ where: { id } });
       return reply.status(204).send();
     } catch (error) {
-      request.log.error(error);
       return reply.status(500).send({ message: "Erro ao remover filtro." });
     }
   });

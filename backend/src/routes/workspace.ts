@@ -1,28 +1,117 @@
-import { type FastifyInstance } from 'fastify'
+// backend/src/routes/workspace.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { startOfDay, endOfDay, subDays, differenceInDays, isValid } from 'date-fns'
+import { CaseStatus, Cargo, LogAction } from '@prisma/client'
+
+// --- Enums e Interfaces ---
 
 enum CaseAlertType {
   PAF_NOT_STARTED = 'PAF_NOT_STARTED',
-  PAF_STALLED = 'PAF_STALLED',
-  PAF_REVIEW_OVERDUE = 'PAF_REVIEW_OVERDUE',
-  RECEPTION_DELAY = 'RECEPTION_DELAY',
-  NOT_STARTED_YET = 'NOT_STARTED_YET'
+  PAF_STALLED = 'PAF_STALLED', // > 30 dias sem evolução
+  PAF_REVIEW_OVERDUE = 'PAF_REVIEW_OVERDUE', // > 90 dias
+  RECEPTION_DELAY = 'RECEPTION_DELAY', // Acolhida atrasada
+  NOT_STARTED_YET = 'NOT_STARTED_YET' // Atribuído mas parado
 }
 
-interface AuthUser {
-  sub: string
-  cargo: 'Agente_Social' | 'Especialista' | 'Gerente' | 'Auditor'
-}
+// --- Schemas Reutilizáveis (Swagger Safe) ---
+
+const caseSummarySchema = z.object({
+  id: z.string(),
+  nomeCompleto: z.string(),
+  status: z.string(),
+  urgencia: z.string(),
+  violacao: z.string().nullable(),
+  updatedAt: z.date(),
+  dataEntrada: z.date()
+})
+
+const appointmentSchema = z.object({
+  id: z.string(),
+  titulo: z.string(),
+  data: z.date(),
+  caso: z.object({ nomeCompleto: z.string() }).optional()
+})
+
+const alertSchema = caseSummarySchema.extend({
+  type: z.nativeEnum(CaseAlertType),
+  days: z.number()
+})
+
+const teamLoadSchema = z.object({
+  nome: z.string(),
+  role: z.string(),
+  cases: z.number()
+})
+
+// [CORREÇÃO] Schema explícito para logs (Evita erro do Swagger com z.any)
+const logSchema = z.object({
+  id: z.string(),
+  acao: z.string(),
+  createdAt: z.date(),
+  autor: z.object({ nome: z.string() })
+})
+
+// Schema de Resposta Unificado
+const workspaceResponseSchema = z.object({
+  role: z.string(),
+  
+  // Comuns
+  appointments: z.array(appointmentSchema).optional(),
+  
+  // Gerente
+  stats: z.object({
+    totalActive: z.number(),
+    waitingForReception: z.number(),
+    waitingForDistribution: z.number()
+  }).optional(),
+  teamLoad: z.array(teamLoadSchema).optional(),
+  topViolations: z.array(z.object({ label: z.string(), count: z.number() })).optional(),
+  
+  // Auditor
+  incompleteCases: z.array(z.object({
+    id: z.string(),
+    nomeCompleto: z.string(),
+    cpf: z.string().nullable(),
+    endereco: z.string().nullable()
+  })).optional(),
+  recentLogs: z.array(logSchema).optional(),
+
+  // Operacional (Agente/Especialista)
+  myCases: z.array(caseSummarySchema).optional(),
+  alerts: z.array(alertSchema).optional(),
+  detailedStats: z.object({
+    // Especialista
+    monitoramento: z.number().optional(),
+    acolhidaEsp: z.number().optional(),
+    acompanhamento: z.number().optional(),
+    // Agente
+    meusAguardando: z.number().optional(),
+    meusEmAtendimento: z.number().optional(),
+    filaGeral: z.number().optional()
+  }).optional()
+})
 
 export async function workspaceRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
 
-  app.addHook('onRequest', async (req, reply) => {
-    try { await req.jwtVerify() } catch { return reply.status(401).send() }
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado' }) }
   })
 
-  app.get('/workspace/summary', async (req, reply) => {
-    const { sub: userId, cargo } = req.user as AuthUser
+  // 1. [GET] RESUMO DA MESA DE TRABALHO (Dashboard)
+  server.get('/workspace/summary', {
+    schema: {
+      tags: ['Workspace'],
+      summary: 'Dados consolidados para a tela inicial (Dashboard Pessoal)',
+      response: {
+        200: workspaceResponseSchema
+      }
+    }
+  }, async (req, reply) => {
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: Cargo }
     
     const todayStart = startOfDay(new Date())
     const todayEnd = endOfDay(new Date())
@@ -30,38 +119,37 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const ninetyDaysAgo = subDays(new Date(), 90)
 
     try {
-      // Agenda do Dia (Comum a todos exceto Auditor)
-      const appointments = cargo !== 'Auditor' ? await prisma.agendamento.findMany({
+      // 1. Agenda do Dia (Comum a todos exceto Auditor)
+      const appointments = cargo !== Cargo.Auditor ? await prisma.agendamento.findMany({
         where: { responsavelId: userId, data: { gte: todayStart, lte: todayEnd } },
         include: { caso: { select: { nomeCompleto: true } } },
         orderBy: { data: 'asc' }
       }) : []
 
       // --- PERFIL GERENTE ---
-      if (cargo === 'Gerente') {
-        const totalActive = await prisma.case.count({ where: { status: { not: 'DESLIGADO' } } })
+      if (cargo === Cargo.Gerente) {
+        const [totalActive, waitingForReception, waitingForDistribution] = await Promise.all([
+          prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } }),
+          prisma.case.count({ where: { status: CaseStatus.AGUARDANDO_ACOLHIDA } }),
+          // PAEFI não distribuído
+          prisma.case.count({ where: { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI } })
+        ])
         
-        // Filas Globais
-        const waitingForReception = await prisma.case.count({ where: { status: 'AGUARDANDO_ACOLHIDA' } })
-        const waitingForDistribution = await prisma.case.count({ where: { status: 'AGUARDANDO_DISTRIBUICAO_PAEFI' } })
-        
-        const teamLoad = await prisma.user.findMany({
-          where: { cargo: { in: ['Especialista', 'Agente_Social'] }, ativo: true },
+        // Carga da Equipe
+        const teamLoadRaw = await prisma.user.findMany({
+          where: { cargo: { in: [Cargo.Especialista, Cargo.Agente_Social] }, ativo: true },
           select: {
             nome: true,
             cargo: true,
             _count: { 
               select: { 
-                // Agente: Em atendimento + Atribuídos na fila
                 casosAcolhida: { 
-                  where: { 
-                    status: { in: ['EM_ACOLHIDA', 'AGUARDANDO_ACOLHIDA'] } 
-                  } 
+                  where: { status: { in: [CaseStatus.EM_ACOLHIDA, CaseStatus.AGUARDANDO_ACOLHIDA] } } 
                 }, 
-                // Especialista: Todo o fluxo PAEFI (inclusive fila especializada)
                 casosPAEFI: { 
                   where: { 
-                    status: { in: ['EM_ACOLHIDA_ESPECIALIZADA', 'EM_ACOMPANHAMENTO_PAEFI', 'EM_MONITORAMENTO'] } 
+                    // [ATUALIZAÇÃO] Enum corrigido para EM_ACOMPANHAMENTO
+                    status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } 
                   } 
                 }
               } 
@@ -71,7 +159,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
         const violationsRaw = await prisma.case.groupBy({
           by: ['violacao'],
-          where: { status: { not: 'DESLIGADO' } },
+          where: { status: { not: CaseStatus.DESLIGADO } },
           _count: { violacao: true },
           orderBy: { _count: { violacao: 'desc' } },
           take: 5
@@ -79,8 +167,9 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
         return reply.send({
           role: 'GERENTE',
+          appointments,
           stats: { totalActive, waitingForReception, waitingForDistribution },
-          teamLoad: teamLoad.map(t => ({
+          teamLoad: teamLoadRaw.map(t => ({
             nome: t.nome,
             role: t.cargo,
             cases: (t._count?.casosAcolhida || 0) + (t._count?.casosPAEFI || 0)
@@ -88,62 +177,70 @@ export async function workspaceRoutes(app: FastifyInstance) {
           topViolations: violationsRaw
             .filter(v => v.violacao && v.violacao.trim() !== '')
             .map(v => ({ label: v.violacao, count: v._count.violacao })),
-          appointments
         })
       }
 
       // --- PERFIL AUDITOR ---
-      if (cargo === 'Auditor') {
+      if (cargo === Cargo.Auditor) {
         const incompleteCases = await prisma.case.findMany({
           where: { 
-            status: { not: 'DESLIGADO' },
+            status: { not: CaseStatus.DESLIGADO },
             OR: [{ cpf: null }, { cpf: '' }, { endereco: null }, { endereco: '' }] 
           },
           take: 20,
           select: { id: true, nomeCompleto: true, cpf: true, endereco: true }
         })
+
         const recentLogs = await prisma.caseLog.findMany({
-          where: { acao: { in: ['DESLIGAMENTO', 'EXCLUSAO', 'MUDANCA_STATUS'] } },
+          where: { acao: { in: [LogAction.DESLIGAMENTO, LogAction.OUTRO, LogAction.MUDANCA_STATUS] } },
           take: 10,
           orderBy: { createdAt: 'desc' },
-          include: { autor: { select: { nome: true } } }
+          select: { // Select explícito para bater com logSchema
+            id: true,
+            acao: true,
+            createdAt: true,
+            autor: { select: { nome: true } } 
+          }
         })
-        return reply.send({ role: 'AUDITOR', incompleteCases, recentLogs })
+
+        // Conversão de tipos para bater com o schema (LogAction -> string)
+        const formattedLogs = recentLogs.map(log => ({
+          ...log,
+          acao: log.acao.toString()
+        }))
+
+        return reply.send({ role: 'AUDITOR', incompleteCases, recentLogs: formattedLogs })
       }
 
       // --- PERFIL OPERACIONAL (Especialista e Agente) ---
-      const isEspecialista = cargo === 'Especialista'
+      const isEspecialista = cargo === Cargo.Especialista
 
-      // Filtro Principal
-      const caseFilter = isEspecialista 
-        ? { especialistaPAEFIId: userId, status: { not: 'DESLIGADO' } }
-        : { agenteAcolhidaId: userId, status: { in: ['EM_ACOLHIDA', 'AGUARDANDO_ACOLHIDA'] } }
+      const caseFilter: any = isEspecialista 
+        ? { especialistaPAEFIId: userId, status: { not: CaseStatus.DESLIGADO } }
+        : { agenteAcolhidaId: userId, status: { in: [CaseStatus.EM_ACOLHIDA, CaseStatus.AGUARDANDO_ACOLHIDA] } }
 
       const myCases = await prisma.case.findMany({
         where: caseFilter,
-        orderBy: [
-          { pesoUrgencia: 'desc' }, // [ORDENAÇÃO PEDIDA] Urgência primeiro
-          { updatedAt: 'desc' }     // Depois atividade recente
-        ],
+        orderBy: [ { pesoUrgencia: 'desc' }, { updatedAt: 'desc' } ],
         select: {
           id: true, nomeCompleto: true, status: true, 
           urgencia: true, violacao: true, updatedAt: true, dataEntrada: true
         }
       })
 
-      // Estatísticas Detalhadas para os Cards/Abas
       let detailedStats = {}
+      
       if (isEspecialista) {
         const stats = await prisma.case.groupBy({
           by: ['status'],
-          where: { especialistaPAEFIId: userId, status: { not: 'DESLIGADO' } },
+          where: { especialistaPAEFIId: userId, status: { not: CaseStatus.DESLIGADO } },
           _count: { _all: true }
         })
         detailedStats = {
-          // Estes números batem com as abas do frontend
-          monitoramento: stats.find(s => s.status === 'EM_MONITORAMENTO')?._count._all || 0,
-          acolhidaEsp: stats.find(s => s.status === 'EM_ACOLHIDA_ESPECIALIZADA')?._count._all || 0,
-          acompanhamento: stats.find(s => s.status === 'EM_ACOMPANHAMENTO_PAEFI')?._count._all || 0
+          monitoramento: stats.find(s => s.status === CaseStatus.EM_MONITORAMENTO)?._count._all || 0,
+          acolhidaEsp: stats.find(s => s.status === CaseStatus.EM_ACOLHIDA_ESPECIALIZADA)?._count._all || 0,
+          // [ATUALIZAÇÃO] Enum corrigido
+          acompanhamento: stats.find(s => s.status === CaseStatus.EM_ACOMPANHAMENTO)?._count._all || 0
         }
       } else {
         const stats = await prisma.case.groupBy({
@@ -152,23 +249,21 @@ export async function workspaceRoutes(app: FastifyInstance) {
           _count: { _all: true }
         })
         
-        // Contagem da fila geral (disponível para puxar)
         const generalQueue = await prisma.case.count({ 
-          where: { status: 'AGUARDANDO_ACOLHIDA', agenteAcolhidaId: null } 
+          where: { status: CaseStatus.AGUARDANDO_ACOLHIDA, agenteAcolhidaId: null } 
         })
 
         detailedStats = {
-          meusAguardando: stats.find(s => s.status === 'AGUARDANDO_ACOLHIDA')?._count._all || 0,
-          meusEmAtendimento: stats.find(s => s.status === 'EM_ACOLHIDA')?._count._all || 0,
+          meusAguardando: stats.find(s => s.status === CaseStatus.AGUARDANDO_ACOLHIDA)?._count._all || 0,
+          meusEmAtendimento: stats.find(s => s.status === CaseStatus.EM_ACOLHIDA)?._count._all || 0,
           filaGeral: generalQueue
         }
       }
 
-      // Geração de Alertas
+      // Alertas
       const caseIds = myCases.map(c => c.id)
       let evoMap = new Map()
       
-      // Busca última evolução de cada caso para calcular alertas
       if (caseIds.length > 0) {
         const lastEvolutions = await prisma.evolucao.findMany({
           where: { casoId: { in: caseIds } },
@@ -184,25 +279,19 @@ export async function workspaceRoutes(app: FastifyInstance) {
         const dataEntrada = c.dataEntrada ? new Date(c.dataEntrada) : new Date()
         
         if (isEspecialista) {
-          // Alertas de Especialista: Foco no PAF e Prazos
           if (!lastDate) return { ...c, type: CaseAlertType.PAF_NOT_STARTED, days: 0 }
           
           if (isValid(new Date(lastDate))) {
-             // Alerta Amarelo: Entre 30 e 90 dias sem evolução
              if (lastDate < thirtyDaysAgo && lastDate >= ninetyDaysAgo) 
-                return { ...c, type: CaseAlertType.PAF_STALLED, days: differenceInDays(new Date(), lastDate) }
-             // Alerta Vermelho: Mais de 90 dias (Revisão vencida)
+               return { ...c, type: CaseAlertType.PAF_STALLED, days: differenceInDays(new Date(), lastDate) }
              if (lastDate < ninetyDaysAgo) 
-                return { ...c, type: CaseAlertType.PAF_REVIEW_OVERDUE, days: differenceInDays(new Date(), lastDate) }
+               return { ...c, type: CaseAlertType.PAF_REVIEW_OVERDUE, days: differenceInDays(new Date(), lastDate) }
           }
         } else {
-          // Alertas de Agente: Foco no início do atendimento
-          // Se atribuído mas não começou em 2 dias
-          if (c.status === 'AGUARDANDO_ACOLHIDA' && differenceInDays(new Date(), dataEntrada) > 2) {
+          if (c.status === CaseStatus.AGUARDANDO_ACOLHIDA && differenceInDays(new Date(), dataEntrada) > 2) {
              return { ...c, type: CaseAlertType.NOT_STARTED_YET, days: differenceInDays(new Date(), dataEntrada) }
           }
-          // Se em acolhida mas sem evolução há 5 dias
-          if (c.status === 'EM_ACOLHIDA' && !lastDate && differenceInDays(new Date(), dataEntrada) > 5) {
+          if (c.status === CaseStatus.EM_ACOLHIDA && !lastDate && differenceInDays(new Date(), dataEntrada) > 5) {
             return { ...c, type: CaseAlertType.RECEPTION_DELAY, days: differenceInDays(new Date(), dataEntrada) }
           }
         }
@@ -211,9 +300,9 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
       return reply.send({
         role: cargo.toUpperCase(),
-        myCases,
-        alerts,
         appointments,
+        myCases,
+        alerts: alerts as any, // Cast simples para satisfazer o union do alertSchema
         detailedStats
       })
 
@@ -221,5 +310,94 @@ export async function workspaceRoutes(app: FastifyInstance) {
       console.error('[WORKSPACE_ERROR]', error)
       return reply.status(500).send({ message: 'Erro interno no servidor.' })
     }
+  })
+
+  // 2. [GET] CASOS NÃO DISTRIBUÍDOS (Kanban - Backlog)
+  server.get('/workspace/undistributed', {
+    schema: {
+      tags: ['Workspace'],
+      summary: 'Listar casos aguardando distribuição',
+      response: {
+        200: z.array(z.object({
+          id: z.string(),
+          nomeCompleto: z.string(),
+          status: z.string(),
+          urgencia: z.string(),
+          dataEntrada: z.date()
+        }))
+      }
+    }
+  }, async (req, reply) => {
+    const cases = await prisma.case.findMany({
+      where: {
+        OR: [
+          // Casos novos sem agente
+          { status: CaseStatus.AGUARDANDO_ACOLHIDA, agenteAcolhidaId: null },
+          // Casos PAEFI sem especialista
+          { status: CaseStatus.AGUARDANDO_DISTRIBUICAO_PAEFI, especialistaPAEFIId: null }
+        ]
+      },
+      orderBy: { dataEntrada: 'asc' },
+      select: {
+        id: true,
+        nomeCompleto: true,
+        status: true,
+        urgencia: true,
+        dataEntrada: true
+      }
+    })
+    return reply.send(cases)
+  })
+
+  // 3. [PATCH] DISTRIBUIR CASO
+  server.patch('/workspace/distribute', {
+    schema: {
+      tags: ['Workspace'],
+      summary: 'Atribuir caso a um técnico',
+      body: z.object({
+        caseId: z.string().uuid(),
+        targetUserId: z.string().uuid(),
+        roleType: z.enum(['AGENTE', 'ESPECIALISTA'])
+      })
+    }
+  }, async (req, reply) => {
+    const { caseId, targetUserId, roleType } = req.body
+    const managerId = (req.user as any).sub
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, nome: true, cargo: true, ativo: true }
+    })
+
+    if (!targetUser || !targetUser.ativo) {
+      return reply.status(400).send({ message: 'Usuário inválido ou inativo.' })
+    }
+
+    const dataToUpdate: any = {}
+    
+    if (roleType === 'AGENTE') {
+      if (targetUser.cargo !== Cargo.Agente_Social) return reply.status(400).send({ message: 'Usuário não é Agente Social.' })
+      dataToUpdate.agenteAcolhidaId = targetUserId
+      dataToUpdate.status = CaseStatus.EM_ACOLHIDA
+    } else {
+      if (targetUser.cargo !== Cargo.Especialista) return reply.status(400).send({ message: 'Usuário não é Especialista.' })
+      dataToUpdate.especialistaPAEFIId = targetUserId
+      // [ATUALIZAÇÃO] Enum corrigido
+      dataToUpdate.status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.case.update({ where: { id: caseId }, data: dataToUpdate })
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: managerId,
+          acao: LogAction.ATRIBUICAO,
+          descricao: `Caso atribuído para ${targetUser.nome} (${roleType})`
+        }
+      })
+    })
+
+    return reply.send({ message: 'Caso distribuído com sucesso.' })
   })
 }

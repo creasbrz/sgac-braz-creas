@@ -106,7 +106,7 @@ export function PafSection({ caseData }: { caseData: CaseDetailData }) {
   const [isEditing, setIsEditing] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
 
-  const canCreatePaf = !paf && caseData.status === 'EM_ACOMPANHAMENTO_PAEFI' && caseData.especialistaPAEFI?.id === user?.id
+  const canCreatePaf = !paf && caseData.status === 'EM_ACOMPANHAMENTO' && caseData.especialistaPAEFI?.id === user?.id
   const canEditPaf = paf && (user?.id === paf.autor.id || user?.cargo === 'Gerente') && caseData.status !== 'DESLIGADO'
 
   return (
@@ -145,7 +145,7 @@ export function PafSection({ caseData }: { caseData: CaseDetailData }) {
             !canCreatePaf && (
               <div className="text-center py-8 border-2 border-dashed rounded-lg bg-muted/10 text-muted-foreground">
                 <p className="text-sm">
-                  {caseData.status === 'EM_ACOMPANHAMENTO_PAEFI' ? 'Aguardando elaboração do PAF.' : 'Disponível apenas em Acompanhamento PAEFI.'}
+                  {caseData.status === 'EM_ACOMPANHAMENTO' ? 'Aguardando elaboração do PAF.' : 'Disponível apenas em Acompanhamento PAEFI.'}
                 </p>
               </div>
             )

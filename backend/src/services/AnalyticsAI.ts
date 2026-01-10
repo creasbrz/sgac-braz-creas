@@ -1,6 +1,7 @@
-// ARQUIVO: backend/src/services/AnalyticsAI.ts
-import { prisma } from '../lib/prisma' // Ajuste o import conforme sua estrutura
+// backend/src/services/AnalyticsAI.ts
+import { prisma } from '../lib/prisma'
 import { subMonths, startOfMonth, subDays } from 'date-fns'
+import { CaseStatus } from '@prisma/client'
 
 export interface Insight {
   type: 'success' | 'warning' | 'info'
@@ -19,9 +20,7 @@ export class AnalyticsAI {
     const currentMonthStart = startOfMonth(today)
     const lastMonthStart = startOfMonth(subMonths(today, 1))
 
-    // =================================================================
-    // 1. ANÁLISE DE TENDÊNCIA DE DEMANDA (Crescimento de Casos)
-    // =================================================================
+    // 1. TENDÊNCIA DE DEMANDA
     const [currentMonthCases, lastMonthCases] = await Promise.all([
       prisma.case.count({ where: { dataEntrada: { gte: currentMonthStart } } }),
       prisma.case.count({ where: { dataEntrada: { gte: lastMonthStart, lt: currentMonthStart } } })
@@ -45,13 +44,10 @@ export class AnalyticsAI {
       }
     }
 
-    // =================================================================
-    // 2. ANÁLISE DE RISCO DE ABANDONO (Casos sem Evolução)
-    // =================================================================
-    // Busca casos ativos (não desligados) que não tiveram evolução nos últimos 30 dias
+    // 2. RISCO DE ABANDONO (Casos sem Evolução > 30 dias)
     const stalledCases = await prisma.case.count({
       where: {
-        status: { not: 'DESLIGADO' },
+        status: { not: CaseStatus.DESLIGADO },
         evolucoes: {
           none: {
             createdAt: { gte: subDays(today, 30) }
@@ -74,9 +70,7 @@ export class AnalyticsAI {
       })
     }
 
-    // =================================================================
-    // 3. PADRÃO DE VIOLAÇÃO (A mais frequente)
-    // =================================================================
+    // 3. PADRÃO DE VIOLAÇÃO
     const topViolations = await prisma.case.groupBy({
       by: ['violacao'],
       where: { 
@@ -96,17 +90,13 @@ export class AnalyticsAI {
       })
     }
 
-    // =================================================================
-    // 4. ÍNDICE DE BUSCA ATIVA (Visitas Domiciliares)
-    // =================================================================
+    // 4. ÍNDICE DE BUSCA ATIVA
     const visitsCount = await prisma.agendamento.count({
       where: {
         data: { gte: subMonths(today, 1) },
-        // Procura por termos comuns de visita no título ou observação
         OR: [
           { titulo: { contains: 'Visita', mode: 'insensitive' } },
           { titulo: { contains: 'Busca', mode: 'insensitive' } },
-          { tipo: { contains: 'Visita', mode: 'insensitive' } } // Se houver campo tipo string
         ]
       }
     })
@@ -119,7 +109,7 @@ export class AnalyticsAI {
       })
     }
 
-    // Retorna os top 3 insights mais importantes (Prioriza Warning > Success > Info)
+    // Ordena por prioridade (Warning > Success > Info)
     return insights.sort((a, b) => {
       const priority = { warning: 0, success: 1, info: 2 }
       return priority[a.type] - priority[b.type]

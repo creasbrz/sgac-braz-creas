@@ -35,40 +35,63 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/evolutions.ts
 var import_client2 = require("@prisma/client");
+var authorSchema = import_zod.z.object({
+  id: import_zod.z.string().uuid(),
+  nome: import_zod.z.string(),
+  cargo: import_zod.z.nativeEnum(import_client2.Cargo)
+});
+var evolutionResponseSchema = import_zod.z.object({
+  id: import_zod.z.string().uuid(),
+  conteudo: import_zod.z.string(),
+  sigilo: import_zod.z.boolean(),
+  createdAt: import_zod.z.date(),
+  updatedAt: import_zod.z.date(),
+  autorId: import_zod.z.string(),
+  autor: authorSchema
+});
 async function evolutionRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (request, reply) => {
     try {
       await request.jwtVerify();
     } catch (err) {
       return reply.status(401).send({ message: "N\xE3o autorizado." });
     }
   });
-  app.get("/cases/:caseId/evolutions", async (request, reply) => {
-    const paramsSchema = import_zod.z.object({
-      caseId: import_zod.z.string().uuid()
-    });
-    const querySchema = import_zod.z.object({
-      page: import_zod.z.coerce.number().min(1).default(1),
-      pageSize: import_zod.z.coerce.number().min(1).max(50).default(10)
-    });
-    const { caseId } = paramsSchema.parse(request.params);
-    const { page, pageSize } = querySchema.parse(request.query);
+  server.get("/cases/:caseId/evolutions", {
+    schema: {
+      tags: ["Evolu\xE7\xF5es"],
+      summary: "Listar hist\xF3rico de evolu\xE7\xF5es de um caso",
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      querystring: import_zod.z.object({
+        page: import_zod.z.coerce.number().min(1).default(1),
+        pageSize: import_zod.z.coerce.number().min(1).max(50).default(10)
+      }),
+      response: {
+        200: import_zod.z.object({
+          items: import_zod.z.array(evolutionResponseSchema),
+          total: import_zod.z.number(),
+          page: import_zod.z.number(),
+          totalPages: import_zod.z.number()
+        })
+      }
+    }
+  }, async (request, reply) => {
+    const { caseId } = request.params;
+    const { page, pageSize } = request.query;
     const { sub: userId, cargo } = request.user;
     const caso = await prisma.case.findUnique({
       where: { id: caseId },
       select: {
         agenteAcolhidaId: true,
-        especialistaPAEFIId: true,
-        status: true
+        especialistaPAEFIId: true
       }
     });
     if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado." });
     const isGerente = cargo === import_client2.Cargo.Gerente;
-    const isResponsavelAtual = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId;
-    const canViewSigilo = isGerente || isResponsavelAtual;
-    const whereCondition = {
-      casoId: caseId
-    };
+    const isResponsavel = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId;
+    const canViewSigilo = isGerente || isResponsavel;
+    const whereCondition = { casoId: caseId };
     if (!canViewSigilo) {
       whereCondition.OR = [
         { sigilo: false },
@@ -82,9 +105,7 @@ async function evolutionRoutes(app) {
         take: pageSize,
         skip: (page - 1) * pageSize,
         include: {
-          autor: {
-            select: { id: true, nome: true, cargo: true }
-          }
+          autor: { select: { id: true, nome: true, cargo: true } }
         }
       }),
       prisma.evolucao.count({ where: whereCondition })
@@ -96,61 +117,84 @@ async function evolutionRoutes(app) {
       totalPages: Math.ceil(total / pageSize)
     });
   });
-  app.post("/cases/:caseId/evolutions", async (request, reply) => {
-    const { caseId } = import_zod.z.object({ caseId: import_zod.z.string().uuid() }).parse(request.params);
-    const bodySchema = import_zod.z.object({
-      conteudo: import_zod.z.string().min(5, "A evolu\xE7\xE3o deve ter conte\xFAdo relevante."),
-      sigilo: import_zod.z.boolean().optional().default(false)
-    });
-    const { conteudo, sigilo } = bodySchema.parse(request.body);
+  server.post("/cases/:caseId/evolutions", {
+    schema: {
+      tags: ["Evolu\xE7\xF5es"],
+      summary: "Adicionar nova evolu\xE7\xE3o ao prontu\xE1rio",
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      body: import_zod.z.object({
+        conteudo: import_zod.z.string().min(5, "A evolu\xE7\xE3o deve ter conte\xFAdo relevante."),
+        sigilo: import_zod.z.boolean().default(false)
+      }),
+      response: {
+        201: evolutionResponseSchema
+      }
+    }
+  }, async (request, reply) => {
+    const { caseId } = request.params;
+    const { conteudo, sigilo } = request.body;
     const { sub: userId } = request.user;
     const evolucao = await prisma.evolucao.create({
       data: {
         conteudo,
         sigilo,
+        // [CORREÇÃO] Mapeamento explícito
         casoId: caseId,
         autorId: userId
       },
       include: { autor: { select: { id: true, nome: true, cargo: true } } }
     });
-    await prisma.caseLog.create({
+    prisma.caseLog.create({
       data: {
+        // [CORREÇÃO] Mapeamento explícito
         casoId: caseId,
         autorId: userId,
         acao: import_client2.LogAction.EVOLUCAO_CRIADA,
         descricao: sigilo ? "Registrou uma evolu\xE7\xE3o t\xE9cnica (SIGILOSA)." : "Registrou uma evolu\xE7\xE3o t\xE9cnica p\xFAblica."
       }
-    });
+    }).catch((err) => console.error("Erro ao criar log de evolu\xE7\xE3o:", err));
     return reply.status(201).send(evolucao);
   });
-  app.patch("/evolutions/:id", async (request, reply) => {
-    const paramsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
-    const bodySchema = import_zod.z.object({
-      conteudo: import_zod.z.string().min(5, "Conte\xFAdo muito curto.").optional(),
-      sigilo: import_zod.z.boolean().optional()
-    });
-    const { id } = paramsSchema.parse(request.params);
-    const { conteudo, sigilo } = bodySchema.parse(request.body);
+  server.patch("/evolutions/:id", {
+    schema: {
+      tags: ["Evolu\xE7\xF5es"],
+      summary: "Editar conte\xFAdo de uma evolu\xE7\xE3o (Apenas Autor)",
+      params: import_zod.z.object({ id: import_zod.z.string().uuid() }),
+      body: import_zod.z.object({
+        conteudo: import_zod.z.string().min(5).optional(),
+        sigilo: import_zod.z.boolean().optional()
+      }),
+      response: {
+        200: evolutionResponseSchema
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { conteudo, sigilo } = request.body;
     const { sub: userId } = request.user;
-    const existingEvolucao = await prisma.evolucao.findUnique({
-      where: { id }
-    });
+    const existingEvolucao = await prisma.evolucao.findUnique({ where: { id } });
     if (!existingEvolucao) return reply.status(404).send({ message: "Evolu\xE7\xE3o n\xE3o encontrada." });
     if (existingEvolucao.autorId !== userId) {
       return reply.status(403).send({ message: "Voc\xEA s\xF3 pode editar evolu\xE7\xF5es criadas por voc\xEA." });
     }
     const updated = await prisma.evolucao.update({
       where: { id },
-      data: {
-        conteudo,
-        sigilo
-      },
+      data: { conteudo, sigilo },
       include: { autor: { select: { id: true, nome: true, cargo: true } } }
     });
     return reply.send(updated);
   });
-  app.delete("/evolutions/:id", async (request, reply) => {
-    const { id } = import_zod.z.object({ id: import_zod.z.string().uuid() }).parse(request.params);
+  server.delete("/evolutions/:id", {
+    schema: {
+      tags: ["Evolu\xE7\xF5es"],
+      summary: "Remover uma evolu\xE7\xE3o (Apenas Autor)",
+      params: import_zod.z.object({ id: import_zod.z.string().uuid() }),
+      response: {
+        204: import_zod.z.null()
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params;
     const { sub: userId } = request.user;
     const existingEvolucao = await prisma.evolucao.findUnique({ where: { id } });
     if (!existingEvolucao) return reply.status(404).send({ message: "Evolu\xE7\xE3o n\xE3o encontrada." });

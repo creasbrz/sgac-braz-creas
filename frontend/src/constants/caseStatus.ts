@@ -3,9 +3,9 @@
 export const CASE_STATUSES = [
   'AGUARDANDO_ACOLHIDA',
   'EM_ACOLHIDA',
-  'AGUARDANDO_DISTRIBUICAO_PAEFI',
+  'AGUARDANDO_DISTRIBUICAO',
   'EM_ACOLHIDA_ESPECIALIZADA',
-  'EM_ACOMPANHAMENTO_PAEFI',
+  'EM_ACOMPANHAMENTO',
   'EM_MONITORAMENTO',
   'DESLIGADO',
 ] as const
@@ -26,7 +26,7 @@ export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayC
     label: 'Em Acolhida',
     color: 'blue',
   },
-  AGUARDANDO_DISTRIBUICAO_PAEFI: {
+  AGUARDANDO_DISTRIBUICAO: {
     label: 'Aguardando Distribuição',
     color: 'yellow',
   },
@@ -34,7 +34,7 @@ export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayC
     label: 'Acolhida Especializada',
     color: 'purple',
   },
-  EM_ACOMPANHAMENTO_PAEFI: {
+  EM_ACOMPANHAMENTO: {
     label: 'Acompanhamento PAEFI',
     color: 'green',
   },

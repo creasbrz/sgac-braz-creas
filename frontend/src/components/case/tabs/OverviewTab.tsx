@@ -117,7 +117,7 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
             </div>
             <Separator />
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">PAEFI</span>
+              <span className="text-xs text-muted-foreground">ACOMPANHAMENTO</span>
               <div className="flex items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${caseData.especialistaPAEFI ? 'bg-blue-500' : 'bg-gray-300'}`} />
                 <span className="text-sm font-medium">{caseData.especialistaPAEFI?.nome || "Aguardando"}</span>

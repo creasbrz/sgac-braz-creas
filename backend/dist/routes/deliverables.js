@@ -35,134 +35,111 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/deliverables.ts
 var import_client2 = require("@prisma/client");
+var deliverableResponseSchema = import_zod.z.object({
+  id: import_zod.z.string(),
+  tipo: import_zod.z.string(),
+  status: import_zod.z.string(),
+  dataSolicitacao: import_zod.z.date(),
+  dataEntrega: import_zod.z.date().nullable(),
+  responsavel: import_zod.z.object({ nome: import_zod.z.string() })
+});
 async function deliverablesRoutes(app) {
-  app.addHook("onRequest", async (request, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (req, reply) => {
     try {
-      await request.jwtVerify();
+      await req.jwtVerify();
     } catch {
       return reply.status(401).send();
     }
   });
-  const paramsSchema = import_zod.z.object({ caseId: import_zod.z.string().uuid() });
-  const updateParamsSchema = import_zod.z.object({ id: import_zod.z.string().uuid() });
-  const createBodySchema = import_zod.z.object({
-    tipo: import_zod.z.string().min(3),
-    observacoes: import_zod.z.string().optional()
-  });
-  const updateStatusSchema = import_zod.z.object({
-    status: import_zod.z.enum(["SOLICITADO", "CONCEDIDO", "ENTREGUE", "NEGADO"]),
-    dataEntrega: import_zod.z.string().datetime().optional()
-  });
-  app.post("/cases/:caseId/deliverables", async (request, reply) => {
-    const { caseId } = paramsSchema.parse(request.params);
-    const { tipo, observacoes } = createBodySchema.parse(request.body);
-    const userId = request.user.sub;
-    const caso = await prisma.case.findUnique({ where: { id: caseId } });
-    if (!caso) return reply.status(404).send({ message: "Caso n\xE3o encontrado" });
-    const usuario = await prisma.user.findUnique({ where: { id: userId } });
-    if (!usuario) return reply.status(401).send({ message: "Usu\xE1rio inv\xE1lido." });
-    try {
-      const result = await prisma.$transaction(async (tx) => {
-        const deliverable = await tx.serviceDeliverable.create({
-          data: {
-            tipo,
-            status: "SOLICITADO",
-            observacoes,
-            casoId: caseId,
-            // [CORREÇÃO] Mapeamento explícito: coluna 'casoId' recebe variável 'caseId'
-            responsavelId: userId
-          }
-        });
-        await tx.evolucao.create({
-          data: {
-            casoId: caseId,
-            // [CORREÇÃO] Mapeamento explícito
-            autorId: userId,
-            sigilo: false,
-            conteudo: `[SISTEMA] Solicita\xE7\xE3o de Benef\xEDcio: ${tipo}. Obs: ${observacoes || "-"}`
-          }
-        });
-        await tx.caseLog.create({
-          data: {
-            casoId: caseId,
-            // [CORREÇÃO] Mapeamento explícito
-            autorId: userId,
-            acao: import_client2.LogAction.ENTREGA_BENEFICIO_CRIADA,
-            descricao: `Solicitou benef\xEDcio: ${tipo}`
-          }
-        });
-        return deliverable;
-      });
-      return reply.status(201).send(result);
-    } catch (err) {
-      console.error("\u274C Erro ao criar benef\xEDcio:", err);
-      return reply.status(500).send({ message: "Erro ao processar solicita\xE7\xE3o." });
+  server.get("/cases/:caseId/deliverables", {
+    schema: {
+      tags: ["Benef\xEDcios"],
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      response: { 200: import_zod.z.array(deliverableResponseSchema) }
     }
+  }, async (req, reply) => {
+    const { caseId } = req.params;
+    const items = await prisma.serviceDeliverable.findMany({
+      // CORREÇÃO: Mapeando explicitamente 'casoId' do banco para 'caseId' da rota
+      where: { casoId: caseId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        responsavel: { select: { nome: true } }
+      }
+    });
+    return reply.send(items);
   });
-  app.get("/cases/:caseId/deliverables", async (request, reply) => {
-    const { caseId } = paramsSchema.parse(request.params);
-    try {
-      const deliverables = await prisma.serviceDeliverable.findMany({
-        where: {
-          casoId: caseId
-          // [CORREÇÃO] Mapeamento explícito
-        },
-        orderBy: { createdAt: "desc" },
-        include: {
-          responsavel: { select: { nome: true } }
+  server.post("/cases/:caseId/deliverables", {
+    schema: {
+      tags: ["Benef\xEDcios"],
+      params: import_zod.z.object({ caseId: import_zod.z.string().uuid() }),
+      body: import_zod.z.object({
+        tipo: import_zod.z.string().min(3),
+        observacoes: import_zod.z.string().optional()
+      })
+    }
+  }, async (req, reply) => {
+    const { caseId } = req.params;
+    const { tipo, observacoes } = req.body;
+    const userId = req.user.sub;
+    const result = await prisma.$transaction(async (tx) => {
+      const item = await tx.serviceDeliverable.create({
+        data: {
+          tipo,
+          status: "SOLICITADO",
+          observacoes,
+          // CORREÇÃO: Mapeando explicitamente
+          casoId: caseId,
+          responsavelId: userId
         }
       });
-      const response = deliverables.map((d) => ({
-        id: d.id,
-        tipo: d.tipo,
-        status: d.status,
-        dataSolicitacao: d.dataSolicitacao,
-        dataEntrega: d.dataEntrega,
-        responsavel: { nome: d.responsavel.nome }
-      }));
-      return reply.send(response);
-    } catch (err) {
-      console.error("\u274C Erro ao listar benef\xEDcios:", err);
-      return reply.status(500).send({ message: "Erro ao buscar benef\xEDcios." });
-    }
-  });
-  app.patch("/deliverables/:id", async (request, reply) => {
-    const { id } = updateParamsSchema.parse(request.params);
-    const { status, dataEntrega } = updateStatusSchema.parse(request.body);
-    const userId = request.user.sub;
-    try {
-      const result = await prisma.$transaction(async (tx) => {
-        const updated = await tx.serviceDeliverable.update({
-          where: { id },
-          data: {
-            status,
-            dataEntrega: dataEntrega ? new Date(dataEntrega) : void 0
-          }
-        });
-        await tx.evolucao.create({
-          data: {
-            casoId: updated.casoId,
-            // Aqui usamos o retorno do update, então 'casoId' existe no objeto
-            autorId: userId,
-            sigilo: false,
-            conteudo: `[SISTEMA] Atualiza\xE7\xE3o de Benef\xEDcio (${updated.tipo}): Status alterado para ${status}.`
-          }
-        });
-        await tx.caseLog.create({
-          data: {
-            casoId: updated.casoId,
-            autorId: userId,
-            acao: import_client2.LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
-            descricao: `Alterou status do benef\xEDcio ${updated.tipo} para ${status}`
-          }
-        });
-        return updated;
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId,
+          // CORREÇÃO
+          autorId: userId,
+          acao: import_client2.LogAction.ENTREGA_BENEFICIO_CRIADA,
+          descricao: `Solicitou benef\xEDcio: ${tipo}`
+        }
       });
-      return reply.send(result);
-    } catch (err) {
-      console.error("\u274C Erro ao atualizar benef\xEDcio:", err);
-      return reply.status(500).send({ message: "Erro ao atualizar benef\xEDcio." });
+      return item;
+    });
+    return reply.status(201).send(result);
+  });
+  server.patch("/deliverables/:id", {
+    schema: {
+      tags: ["Benef\xEDcios"],
+      params: import_zod.z.object({ id: import_zod.z.string().uuid() }),
+      body: import_zod.z.object({
+        status: import_zod.z.enum(["SOLICITADO", "CONCEDIDO", "ENTREGUE", "NEGADO"]),
+        dataEntrega: import_zod.z.string().datetime().optional()
+      })
     }
+  }, async (req, reply) => {
+    const { id } = req.params;
+    const { status, dataEntrega } = req.body;
+    const userId = req.user.sub;
+    const updated = await prisma.$transaction(async (tx) => {
+      const item = await tx.serviceDeliverable.update({
+        where: { id },
+        data: {
+          status,
+          dataEntrega: dataEntrega ? new Date(dataEntrega) : void 0
+        },
+        include: { responsavel: { select: { nome: true } } }
+      });
+      await tx.caseLog.create({
+        data: {
+          casoId: item.casoId,
+          autorId: userId,
+          acao: import_client2.LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
+          descricao: `Atualizou benef\xEDcio ${item.tipo} para ${status}`
+        }
+      });
+      return item;
+    });
+    return reply.send(updated);
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

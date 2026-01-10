@@ -34,6 +34,7 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/services/AnalyticsAI.ts
 var import_date_fns = require("date-fns");
+var import_client2 = require("@prisma/client");
 var AnalyticsAI = class {
   /**
    * Gera insights baseados em análise estatística dos dados reais do CREAS
@@ -65,7 +66,7 @@ var AnalyticsAI = class {
     }
     const stalledCases = await prisma.case.count({
       where: {
-        status: { not: "DESLIGADO" },
+        status: { not: import_client2.CaseStatus.DESLIGADO },
         evolucoes: {
           none: {
             createdAt: { gte: (0, import_date_fns.subDays)(today, 30) }
@@ -106,12 +107,9 @@ var AnalyticsAI = class {
     const visitsCount = await prisma.agendamento.count({
       where: {
         data: { gte: (0, import_date_fns.subMonths)(today, 1) },
-        // Procura por termos comuns de visita no título ou observação
         OR: [
           { titulo: { contains: "Visita", mode: "insensitive" } },
-          { titulo: { contains: "Busca", mode: "insensitive" } },
-          { tipo: { contains: "Visita", mode: "insensitive" } }
-          // Se houver campo tipo string
+          { titulo: { contains: "Busca", mode: "insensitive" } }
         ]
       }
     });

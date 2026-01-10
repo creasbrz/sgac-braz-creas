@@ -1,3 +1,4 @@
+// frontend/src/components/case/CaseAttachments.tsx
 import { useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -30,14 +31,12 @@ interface Attachment {
   }
 }
 
-// [CORREÇÃO] Interface para as props do componente
 interface CaseAttachmentsProps {
   caseId: string
   onError?: (error: unknown) => void
 }
 
 export function CaseAttachments({ caseId, onError }: CaseAttachmentsProps) {
-  // [CORREÇÃO] Removemos useParams, pois o ID vem via prop agora
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -57,7 +56,8 @@ export function CaseAttachments({ caseId, onError }: CaseAttachmentsProps) {
       const formData = new FormData()
       formData.append('file', file)
       
-      await api.post(`/attachments?casoId=${caseId}`, formData, {
+      // [CORREÇÃO CRÍTICA]: Alterado de 'casoId' para 'caseId' para bater com o schema Zod do backend
+      await api.post(`/attachments?caseId=${caseId}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
     },

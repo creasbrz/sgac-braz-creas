@@ -22,6 +22,7 @@ __export(alerts_exports, {
   alertRoutes: () => alertRoutes
 });
 module.exports = __toCommonJS(alerts_exports);
+var import_zod = require("zod");
 
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
@@ -34,28 +35,53 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // src/routes/alerts.ts
 var import_date_fns = require("date-fns");
+var import_client2 = require("@prisma/client");
+var alertResponseSchema = import_zod.z.object({
+  id: import_zod.z.string(),
+  nomeCompleto: import_zod.z.string(),
+  type: import_zod.z.enum([
+    "PAF_NOT_STARTED",
+    "PAF_STALLED",
+    "PAF_REVIEW_OVERDUE",
+    "NOT_STARTED_YET",
+    "RECEPTION_DELAY"
+  ]),
+  days: import_zod.z.number(),
+  urgencia: import_zod.z.string()
+});
 async function alertRoutes(app) {
-  app.addHook("onRequest", async (req, reply) => {
+  const server = app.withTypeProvider();
+  server.addHook("onRequest", async (req, reply) => {
     try {
       await req.jwtVerify();
     } catch {
       return reply.status(401).send();
     }
   });
-  app.get("/alerts", async (req, reply) => {
+  server.get("/alerts", {
+    schema: {
+      tags: ["Alertas"],
+      summary: "Monitoramento de prazos e pend\xEAncias (Sinais de Tr\xE2nsito)",
+      response: {
+        200: import_zod.z.array(alertResponseSchema)
+      }
+    }
+  }, async (req, reply) => {
     const { sub: userId, cargo } = req.user;
     try {
-      let whereCondition = { status: { not: "DESLIGADO" } };
-      if (cargo === "Especialista") {
+      let whereCondition = { status: { not: import_client2.CaseStatus.DESLIGADO } };
+      if (cargo === import_client2.Cargo.Especialista) {
         whereCondition.especialistaPAEFIId = userId;
-      } else if (cargo === "Agente_Social") {
+      } else if (cargo === import_client2.Cargo.Agente_Social) {
         whereCondition.agenteAcolhidaId = userId;
-        whereCondition.status = { in: ["EM_ACOLHIDA", "AGUARDANDO_ACOLHIDA"] };
-      } else if (cargo === "Gerente" || cargo === "Auditor") {
+        whereCondition.status = { in: [import_client2.CaseStatus.EM_ACOLHIDA, import_client2.CaseStatus.AGUARDANDO_ACOLHIDA] };
+      } else if (cargo === import_client2.Cargo.Gerente || cargo === import_client2.Cargo.Auditor) {
         whereCondition.OR = [
           { especialistaPAEFIId: { not: null } },
           { agenteAcolhidaId: { not: null } }
         ];
+      } else {
+        return reply.send([]);
       }
       const cases = await prisma.case.findMany({
         where: whereCondition,
@@ -65,23 +91,24 @@ async function alertRoutes(app) {
           status: true,
           dataEntrada: true,
           urgencia: true,
+          // Traz apenas a data da última evolução para calcular o "silêncio"
           evolucoes: {
             orderBy: { createdAt: "desc" },
             take: 1,
             select: { createdAt: true }
           }
         },
-        take: 100
+        take: 200
         // Limite de segurança
       });
+      const today = /* @__PURE__ */ new Date();
       const alerts = cases.map((c) => {
         var _a;
         try {
           const lastEvolucao = (_a = c.evolucoes[0]) == null ? void 0 : _a.createdAt;
           const lastDate = lastEvolucao ? new Date(lastEvolucao) : null;
           const dataEntrada = c.dataEntrada ? new Date(c.dataEntrada) : /* @__PURE__ */ new Date();
-          const today = /* @__PURE__ */ new Date();
-          if (cargo === "Especialista" || cargo === "Gerente" && c.status.includes("PAEFI")) {
+          if (cargo === import_client2.Cargo.Especialista || cargo === import_client2.Cargo.Gerente && c.status.includes("PAEFI")) {
             if (!lastDate) {
               return { id: c.id, nomeCompleto: c.nomeCompleto, type: "PAF_NOT_STARTED", days: 0, urgencia: c.urgencia };
             }
@@ -91,12 +118,12 @@ async function alertRoutes(app) {
               if (daysSince >= 30) return { id: c.id, nomeCompleto: c.nomeCompleto, type: "PAF_STALLED", days: daysSince, urgencia: c.urgencia };
             }
           }
-          if (cargo === "Agente_Social" || cargo === "Gerente" && c.status.includes("ACOLHIDA")) {
+          if (cargo === import_client2.Cargo.Agente_Social || cargo === import_client2.Cargo.Gerente && c.status.includes("ACOLHIDA")) {
             const daysWaiting = (0, import_date_fns.differenceInDays)(today, dataEntrada);
-            if (c.status === "AGUARDANDO_ACOLHIDA" && daysWaiting > 2) {
+            if (c.status === import_client2.CaseStatus.AGUARDANDO_ACOLHIDA && daysWaiting > 2) {
               return { id: c.id, nomeCompleto: c.nomeCompleto, type: "NOT_STARTED_YET", days: daysWaiting, urgencia: c.urgencia };
             }
-            if (c.status === "EM_ACOLHIDA" && !lastDate && daysWaiting > 5) {
+            if (c.status === import_client2.CaseStatus.EM_ACOLHIDA && !lastDate && daysWaiting > 5) {
               return { id: c.id, nomeCompleto: c.nomeCompleto, type: "RECEPTION_DELAY", days: daysWaiting, urgencia: c.urgencia };
             }
           }

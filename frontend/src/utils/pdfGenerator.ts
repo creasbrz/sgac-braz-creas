@@ -15,7 +15,7 @@ import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
 export enum CaseStatus {
   TRIAGEM = "AGUARDANDO_ACOLHIDA",
   ACOLHIDA = "EM_ACOLHIDA",
-  PAEFI = "EM_ACOMPANHAMENTO_PAEFI",
+  PAEFI = "EM_ACOMPANHAMENTO",
   MSE = "EM_ACOMPANHAMENTO_MSE",
   DESLIGADO = "DESLIGADO"
 }
@@ -255,8 +255,8 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData, mode: 'open' | 'dow
       { text: "\n" },
       {
         columns: [
-          { width: '*', text: [{ text: "Técnico Acolhida: ", style: "label" }, { text: caseData.agenteAcolhida?.nome || "Não definido", style: "value" }] },
-          { width: '*', text: [{ text: "Técnico Referência (PAEFI): ", style: "label" }, { text: caseData.especialistaPAEFI?.nome || "Não definido", style: "value" }] }
+          { width: '*', text: [{ text: "Agente Referência: ", style: "label" }, { text: caseData.agenteAcolhida?.nome || "Não definido", style: "value" }] },
+          { width: '*', text: [{ text: "Especialista Referência: ", style: "label" }, { text: caseData.especialistaPAEFI?.nome || "Não definido", style: "value" }] }
         ]
       },
       createSectionHeader("2. Composição Familiar"),
@@ -275,7 +275,7 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData, mode: 'open' | 'dow
 
       createSectionHeader("5. Observações do PAF"),
       {
-        text: caseData.status === CaseStatus.PAEFI ? "Caso em acompanhamento PAEFI. Ver anexo PAF detalhado para metas e prazos." : "Não há PAF ativo para o status atual.",
+        text: caseData.status === CaseStatus.PAEFI ? "Caso em acompanhamento. Ver anexo PAF detalhado para metas e prazos." : "Não há PAF ativo para o status atual.",
         fontSize: 10, alignment: "justify"
       }
     ],
@@ -454,7 +454,7 @@ export const generateRmaPDF = (data: RmaReportData, mode: 'open' | 'download' = 
           widths: ['*', 80],
           body: [
             [{ text: "INDICADOR", style: "tableHeader", alignment: "left" }, { text: "TOTAL", style: "tableHeader" }],
-            [{ text: "A.1. Famílias em acompanhamento PAEFI", fontSize: 10 }, { text: String(data.bloco1.familiasAcompPaefi), alignment: "center" }],
+            [{ text: "A.1. Famílias em acompanhamento", fontSize: 10 }, { text: String(data.bloco1.familiasAcompPaefi), alignment: "center" }],
             [{ text: "A.2. Novos casos inseridos no mês", fontSize: 10 }, { text: String(data.bloco1.novosCasos), alignment: "center" }],
             [{ text: "A.3. Casos desligados no mês", fontSize: 10 }, { text: String(data.bloco1.desligamentos), alignment: "center" }]
           ]
@@ -528,7 +528,7 @@ export const generateManagementPDF = (data: ManagementReportData, mode: 'open' |
         columns: [
           { width: '48%', stack: [{ text: "AGENTES (ACOLHIDA)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.agentes.map(a => [{ text: a.name, fontSize: 9 }, { text: String(a.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] },
           { width: '4%', text: '' },
-          { width: '48%', stack: [{ text: "ESPECIALISTAS (PAEFI)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.especialistas.map(e => [{ text: e.name, fontSize: 9 }, { text: String(e.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] }
+          { width: '48%', stack: [{ text: "ESPECIALISTAS (ACOMPANHAMENTO)", style: "subHeader", fontSize: 9, alignment: "center" }, { table: { widths: ['*', 40], body: [[{ text: "Técnico", style: "tableHeader", alignment: "left" }, { text: "Qtd", style: "tableHeader" }], ...data.cargaHoraria.especialistas.map(e => [{ text: e.name, fontSize: 9 }, { text: String(e.value), fontSize: 9, alignment: "center", bold: true }])] }, layout: 'lightHorizontalLines' }] }
         ]
       },
       ...(data.vigilancia ? [{ text: '', pageBreak: 'before' }, createSectionHeader("3. Vigilância Socioassistencial"), { table: { widths: ['*', 60, 60], body: [[{ text: "VIOLAÇÃO", style: "tableHeader", alignment: "left" }, { text: "CASOS", style: "tableHeader" }, { text: "%", style: "tableHeader" }], ...data.vigilancia.violacoes.map(v => [{ text: v.name, fontSize: 10 }, { text: String(v.value), fontSize: 10, alignment: "center" }, { text: ((v.value / (data.stats.ativos || 1)) * 100).toFixed(1) + '%', fontSize: 10, alignment: "center" }])] }, layout: 'lightHorizontalLines' }] : []) as any

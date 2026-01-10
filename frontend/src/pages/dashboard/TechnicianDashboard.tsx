@@ -112,7 +112,7 @@ export function TechnicianDashboard() {
       
       {/* 1. KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Famílias PAEFI" value={data.detailedStats?.acompanhamento || 0} icon={Users} theme="blue" trend={2.5} trendLabel="mês"/>
+        <StatCard title="Famílias em acompanhamento" value={data.detailedStats?.acompanhamento || 0} icon={Users} theme="blue" trend={2.5} trendLabel="mês"/>
         <StatCard title="Adesão PAF" value="92%" icon={FileCheck} theme="emerald" trend={1} trendLabel="conformidade"/>
         <StatCard title="Aguardando Aceite" value={data.detailedStats?.acolhidaEsp || 0} icon={Clock} theme="amber" trendLabel="na fila"/>
         <StatCard title="Monitoramento" value={data.detailedStats?.monitoramento || 0} icon={Activity} theme="purple" trendLabel="fase final"/>

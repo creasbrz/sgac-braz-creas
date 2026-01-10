@@ -1,4 +1,3 @@
-// [CORREÇÃO] Adicionado useContext no import
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -34,8 +33,7 @@ interface AuthContextType {
 
 export const AuthContext = createContext({} as AuthContextType)
 
-// [NOVO] Hook personalizado para facilitar o uso do contexto
-// Isso é obrigatório para o PublicOnlyRoute no App.tsx funcionar
+// Hook personalizado para facilitar o uso do contexto
 export const useAuthContext = () => useContext(AuthContext)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -47,7 +45,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null)
     localStorage.removeItem(STORAGE_KEYS.TOKEN)
-    delete api.defaults.headers.common.Authorization
+    localStorage.removeItem(STORAGE_KEYS.USER) // Limpa dados do usuário se existirem
+    
+    // Não precisamos limpar o header manualmente, pois o interceptor do api.ts
+    // lê o localStorage a cada requisição. Se não tem token lá, não envia.
+    
     navigate(ROUTES.LOGIN)
   }
 
@@ -57,21 +59,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (storedToken) {
         try {
+          // 1. Verifica validade do token localmente (Data de Expiração)
           const decodedToken = jwtDecode<DecodedToken>(storedToken)
-          if (decodedToken.exp * 1000 > Date.now()) {
-            api.defaults.headers.common.Authorization = `Bearer ${storedToken}`
+          const isTokenValid = decodedToken.exp * 1000 > Date.now()
+
+          if (isTokenValid) {
+            // 2. Tenta buscar os dados atualizados do usuário no Backend
+            // O interceptor do axios já vai anexar o token automaticamente
             const response = await api.get('/me')
             setUser(response.data)
           } else {
+            // Token expirou pelo tempo
             logout()
           }
         } catch (error) {
-          console.error("Falha ao carregar sessão:", error)
+          console.error("Sessão inválida ou expirada:", error)
+          // Se der erro no decode ou na requisição /me (ex: 401), faz logout
           logout()
         }
       }
+      
       setIsSessionLoading(false)
     }
+
     loadUserFromStorage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -79,24 +89,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async ({ email, senha }: LoginData): Promise<boolean> => {
     setIsLoginLoading(true)
     try {
+      // 1. Autenticação
       const response = await api.post('/login', { email, senha })
       const { token: newToken } = response.data
 
+      // 2. Salvar Token
       localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}`
-
+      
+      // 3. Buscar dados completos do usuário
+      // (Necessário pois o login as vezes retorna só o token básico)
       const userResponse = await api.get('/me')
       const loggedUser: User = userResponse.data
+      
+      // 4. Atualizar Estado e Storage Auxiliar
       setUser(loggedUser)
+      // Opcional: Salvar user básico no storage para recuperação rápida
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(loggedUser))
 
       toast.success('Login bem-sucedido!')
 
-      // Redireciona para a Mesa de Trabalho (Workspace)
+      // 5. Redirecionamento
       navigate(ROUTES.WORKSPACE) 
       
       return true
     } catch (error) {
-      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.')
+      console.error(error)
+      const errMsg = getErrorMessage(error, 'Credenciais inválidas. Tente novamente.')
       toast.error(errMsg)
       return false
     } finally {

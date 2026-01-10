@@ -14,13 +14,12 @@ import {
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 
-// Rotas
+// --- IMPORTAÇÃO DAS ROTAS ---
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
 import { evolutionRoutes } from './routes/evolutions'
 import { pafRoutes } from './routes/paf'
-import { statsRoutes } from './routes/stats'
 import { appointmentRoutes } from './routes/appointments'
 import { reportRoutes } from './routes/reports'
 import { alertRoutes } from './routes/alerts'
@@ -34,7 +33,10 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
-import { dashboardRoutes } from './routes/dashboard'
+
+// AQUI ESTÁ A CORREÇÃO:
+// O dashboard usa a mesma lógica das estatísticas, então importamos apenas statsRoutes
+import { statsRoutes } from './routes/stats'
 
 // Inicialização
 const app = fastify({
@@ -52,7 +54,7 @@ app.setSerializerCompiler(serializerCompiler)
 
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS API', description: 'Sistema de Gestão SGAC', version: '7.1.1' },
+    info: { title: 'CREAS API', description: 'Sistema de Gestão SGAC', version: '7.1.3' },
     components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
   },
   transform: jsonSchemaTransform,
@@ -76,8 +78,6 @@ app.register(async (api) => {
   api.register(userRoutes, { prefix: '/users' })
   api.register(evolutionRoutes, { prefix: '/evolutions' })
   api.register(pafRoutes, { prefix: '/paf' })
-  api.register(statsRoutes, { prefix: '/stats' })
-  api.register(dashboardRoutes, { prefix: '/dashboard' })
   api.register(appointmentRoutes, { prefix: '/appointments' })
   api.register(reportRoutes, { prefix: '/reports' })
   api.register(alertRoutes, { prefix: '/alerts' })
@@ -91,12 +91,17 @@ app.register(async (api) => {
   api.register(groupRoutes, { prefix: '/groups' })
   api.register(workspaceRoutes, { prefix: '/workspace' })
   api.register(waitingListRoutes, { prefix: '/waiting-list' })
+  
+  // CORREÇÃO AQUI:
+  // Registramos statsRoutes tanto em /stats quanto em /dashboard (alias)
+  // Isso garante compatibilidade se o frontend chamar qualquer um dos dois
+  api.register(statsRoutes, { prefix: '/stats' })
+  api.register(statsRoutes, { prefix: '/dashboard' }) 
+
 }, { prefix: '/api' })
 
 
 // --- SERVIR FRONTEND (SPA) ---
-// CORREÇÃO: Usamos path.join com __dirname direto, pois o tsup injeta o shim de CJS
-// O caminho '../frontend/dist' assume que 'dist/server.js' está em backend/dist
 const frontendDist = path.join(__dirname, '../../frontend/dist')
 
 app.register(fastifyStatic, {

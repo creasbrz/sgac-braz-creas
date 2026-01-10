@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Info, AlertTriangle, CheckCircle2, Check, Clock, Activity, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -85,33 +85,52 @@ export function NotificationBell() {
   useEffect(() => {
     const stored = localStorage.getItem('sgac_read_notifications')
     if (stored) {
-      setReadIds(JSON.parse(stored))
+      try {
+        setReadIds(JSON.parse(stored))
+      } catch (e) {
+        console.error("Erro ao ler notificações salvas", e)
+      }
     }
   }, [])
 
   // 2. Buscar dados do Backend
-  const { data: rawNotifications = [] } = useQuery<AlertRaw[]>({
+  // Usamos 'any' aqui temporariamente para permitir a checagem segura abaixo
+  const { data: rawData } = useQuery({
     queryKey: ['notifications-bell'],
     queryFn: async () => {
       const res = await api.get('/alerts')
       return res.data
     },
     refetchInterval: 1000 * 60 * 2, // 2 minutos
-    retry: false
+    retry: false,
+    initialData: [], // Evita undefined no primeiro render
   })
 
-  // 3. Processar e Filtrar
-  const notifications = rawNotifications
-    .filter(n => !readIds.includes(n.id))
-    .map(n => ({
-      ...n,
-      config: getNotificationConfig(n.type, n.days)
-    }))
+  // 3. Processamento Seguro (CORREÇÃO DO CRASH)
+  // Normaliza os dados para garantir que sempre teremos um Array,
+  // independente se a API retornou [], null, ou { data: [] }
+  const validNotifications: AlertRaw[] = useMemo(() => {
+    if (!rawData) return [];
+    if (Array.isArray(rawData)) return rawData;
+    // @ts-ignore - Verifica se existe propriedade data que é array
+    if (rawData.data && Array.isArray(rawData.data)) return rawData.data;
+    return [];
+  }, [rawData]);
+
+  // 4. Filtrar Lidas e Aplicar Configuração Visual
+  const notifications = useMemo(() => {
+    return validNotifications
+      .filter(n => !readIds.includes(n.id))
+      .map(n => ({
+        ...n,
+        config: getNotificationConfig(n.type, n.days)
+      }))
+  }, [validNotifications, readIds])
 
   const criticalCount = notifications.filter(n => n.config.critical).length
   const hasNotifications = notifications.length > 0
 
-  // 4. Ações
+  // 5. Ações
   const handleRead = (id: string) => {
     const newReadIds = [...readIds, id]
     setReadIds(newReadIds)
@@ -120,7 +139,8 @@ export function NotificationBell() {
   }
 
   const markAllAsRead = () => {
-    const allIds = rawNotifications.map(n => n.id)
+    const allIds = validNotifications.map(n => n.id)
+    // Mescla IDs antigos com os novos, removendo duplicatas
     const newReadIds = [...new Set([...readIds, ...allIds])]
     setReadIds(newReadIds)
     localStorage.setItem('sgac_read_notifications', JSON.stringify(newReadIds))
@@ -177,7 +197,8 @@ export function NotificationBell() {
                         return (
                           <Link 
                             key={item.id} 
-                            to={`${ROUTES.CASES}/${item.id}`} // [LINK CORRETO]
+                            // [CORREÇÃO] Usa a função do routes.ts para gerar a URL correta (/app/cases/:id)
+                            to={typeof ROUTES.CASE_DETAIL === 'function' ? ROUTES.CASE_DETAIL(item.id) : `${ROUTES.APP}/cases/${item.id}`}
                             onClick={() => handleRead(item.id)}
                             className="flex gap-3 px-4 py-3 hover:bg-muted/40 transition-colors items-start group relative"
                           >
@@ -198,7 +219,7 @@ export function NotificationBell() {
                                 </p>
                             </div>
 
-                            {/* Indicador de Urgência Alta (Bolinha Vermelha no canto) */}
+                            {/* Indicador de Urgência Alta */}
                             {item.urgencia === 'ALTA' && (
                                 <span className="absolute top-3 right-3 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-950" title="Urgência Alta" />
                             )}

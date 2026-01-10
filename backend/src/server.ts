@@ -14,7 +14,7 @@ import {
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 
-// Importação das rotas
+// Rotas
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
@@ -44,60 +44,55 @@ const app = fastify({
   },
 }).withTypeProvider<ZodTypeProvider>()
 
-// --- CONFIGS GERAIS ---
+// --- PLUGINS GLOBAIS ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
-
 app.register(cors, { origin: true })
 app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret' })
 app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
-// Swagger
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS API', version: '7.1.5' },
+    info: { title: 'CREAS API', version: '7.2.0' },
     components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
   },
   transform: jsonSchemaTransform,
 })
 app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
-// Decorator Auth
 app.decorate('authenticate', async (request: any, reply: any) => {
   try { await request.jwtVerify() } catch (err) { reply.send(err) }
 })
 
-// --- REGISTRO DE ROTAS PLANO (SEM WRAPPERS) ---
-// Tentativa 1: Registrar Auth com prefixo /api (O padrão esperado)
-app.register(authRoutes, { prefix: '/api' })
+// --- REGISTRO DE ROTAS CORRIGIDO ---
+// Criamos um grupo '/api'. Dentro dele, registramos as rotas SEM adicionar prefixo extra.
+// Como os arquivos já tem '/cases', '/users', etc., o resultado final será '/api/cases'.
+app.register(async (api) => {
+  api.register(authRoutes)         // -> /api/login
+  api.register(caseRoutes)         // -> /api/cases
+  api.register(userRoutes)         // -> /api/users
+  api.register(evolutionRoutes)    // -> /api/evolutions
+  api.register(pafRoutes)          // -> /api/paf
+  api.register(statsRoutes)        // -> /api/stats
+  api.register(appointmentRoutes)  // -> /api/appointments
+  api.register(reportRoutes)       // -> /api/reports
+  api.register(alertRoutes)        // -> /api/alerts
+  api.register(auditRoutes)        // -> /api/audit
+  api.register(attachmentRoutes)   // -> /api/attachments
+  api.register(importRoutes)       // -> /api/import
+  api.register(filterRoutes)       // -> /api/filters
+  api.register(referralRoutes)     // -> /api/referrals
+  api.register(familyRoutes)       // -> /api/family
+  api.register(deliverablesRoutes) // -> /api/deliverables
+  api.register(groupRoutes)        // -> /api/groups
+  api.register(workspaceRoutes)    // -> /api/workspace
+  api.register(waitingListRoutes)  // -> /api/waiting-list
+  
+  // Dashboard é especial (alias). Se statsRoutes define /stats, e colocarmos prefixo /dashboard...
+  // ficaria /api/dashboard/stats. Vamos deixar assim por compatibilidade.
+  api.register(statsRoutes, { prefix: '/dashboard' })
 
-// Tentativa 2: Registrar Auth SEM prefixo (Caso o arquivo auth.ts já tenha '/api' dentro dele)
-// O Fastify avisa se tiver rota duplicada, mas se auth.ts usar '/login', isso cria a rota '/login' raiz
-// Se auth.ts usar '/api/login', isso cria a rota '/api/login' corretamente.
-// app.register(authRoutes) <--- Deixei comentado para não dar conflito, vamos testar o prefixo primeiro.
-
-// Demais rotas (Forçando /api explicitamente)
-app.register(caseRoutes, { prefix: '/api/cases' })
-app.register(userRoutes, { prefix: '/api/users' })
-app.register(evolutionRoutes, { prefix: '/api/evolutions' })
-app.register(pafRoutes, { prefix: '/api/paf' })
-app.register(statsRoutes, { prefix: '/api/stats' })
-app.register(appointmentRoutes, { prefix: '/api/appointments' })
-app.register(reportRoutes, { prefix: '/api/reports' })
-app.register(alertRoutes, { prefix: '/api/alerts' })
-app.register(auditRoutes, { prefix: '/api/audit' })
-app.register(attachmentRoutes, { prefix: '/api/attachments' })
-app.register(importRoutes, { prefix: '/api/import' })
-app.register(filterRoutes, { prefix: '/api/filters' })
-app.register(referralRoutes, { prefix: '/api/referrals' })
-app.register(familyRoutes, { prefix: '/api/family' })
-app.register(deliverablesRoutes, { prefix: '/api/deliverables' })
-app.register(groupRoutes, { prefix: '/api/groups' })
-app.register(workspaceRoutes, { prefix: '/api/workspace' })
-app.register(waitingListRoutes, { prefix: '/api/waiting-list' })
-
-// Alias Dashboard
-app.register(statsRoutes, { prefix: '/api/dashboard' })
+}, { prefix: '/api' })
 
 // --- SERVIR FRONTEND ---
 const frontendDist = path.join(__dirname, '../../frontend/dist')
@@ -114,17 +109,14 @@ app.setNotFoundHandler((req, reply) => {
   return reply.sendFile('index.html')
 })
 
-// --- START & DEBUG ---
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 3333
     const host = '0.0.0.0'
     
-    // Mostra todas as rotas registradas no log ao iniciar!
+    // Imprime rotas para confirmar a correção
     await app.ready()
-    console.log('\n--- MAPA DE ROTAS REGISTRADAS ---')
     console.log(app.printRoutes()) 
-    console.log('---------------------------------\n')
 
     await app.listen({ port, host })
     console.log(`🚀 HTTP Server running on http://${host}:${port}`)

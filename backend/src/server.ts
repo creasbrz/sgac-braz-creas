@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'node:path'
+import fs from 'node:fs'
 import { 
   serializerCompiler, 
   validatorCompiler, 
@@ -19,6 +20,7 @@ import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
 import { evolutionRoutes } from './routes/evolutions'
 import { pafRoutes } from './routes/paf'
+import { statsRoutes } from './routes/stats'
 import { appointmentRoutes } from './routes/appointments'
 import { reportRoutes } from './routes/reports'
 import { alertRoutes } from './routes/alerts'
@@ -32,11 +34,9 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
-import { statsRoutes } from './routes/stats'
 
-// Inicialização
+// --- INICIALIZAÇÃO DO APP ---
 const app = fastify({
-  // FORÇANDO LOGS BONITOS MESMO EM PRODUÇÃO PARA DEBUG
   logger: {
     transport: {
       target: 'pino-pretty',
@@ -49,100 +49,149 @@ const app = fastify({
   },
 }).withTypeProvider<ZodTypeProvider>()
 
-// --- ZOD & SWAGGER ---
+// --- 1. CONFIGURAÇÃO ZOD & SWAGGER ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
 
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS API', description: 'Sistema de Gestão SGAC', version: '7.1.4' },
-    components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
+    info: {
+      title: 'CREAS Brazlândia API',
+      description: 'Sistema de Gestão de Atendimentos Social (SGAC)',
+      version: '7.1.0',
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
   },
   transform: jsonSchemaTransform,
 })
 
-app.register(fastifySwaggerUi, { routePrefix: '/docs' })
+app.register(fastifySwaggerUi, {
+  routePrefix: '/docs',
+})
 
-// --- PLUGINS GLOBAIS ---
-app.register(cors, { origin: true })
-app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret-key' })
-app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
+// --- 2. CONFIGURAÇÃO DE DIRETÓRIOS E ARQUIVOS ---
+// Uploads
+const uploadDir = path.join(__dirname, '../uploads')
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
 
-// DECORATOR DE AUTH
+app.register(multipart, { 
+  limits: { fileSize: 10 * 1024 * 1024 } // Aumentado para 10MB para segurança
+})
+
+// Servir Uploads
+app.register(fastifyStatic, {
+  root: uploadDir,
+  prefix: '/uploads/',
+  decorateReply: false 
+})
+
+// --- 3. PLUGINS GERAIS ---
+app.register(cors, { 
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] 
+})
+
+app.register(jwt, { 
+  secret: process.env.JWT_SECRET || 'dev-secret' 
+})
+
+// Decorator de Autenticação
 app.decorate('authenticate', async (request: any, reply: any) => {
-  try { await request.jwtVerify() } catch (err) { reply.send(err) }
+  try {
+    await request.jwtVerify()
+  } catch (err) {
+    reply.send(err)
+  }
 })
 
-// --- REGISTRO DE ROTAS (CAMINHO COMPLETO) ---
-// Removemos o aninhamento para garantir que todas funcionem
-app.register(authRoutes, { prefix: '/api' }) // Login fica em /api/login
+// --- 4. REGISTRO DE ROTAS (MANTENDO NOMES ORIGINAIS) ---
+app.register(authRoutes)
+app.register(caseRoutes)
+app.register(userRoutes)
+app.register(evolutionRoutes)
+app.register(pafRoutes)
+app.register(statsRoutes)
+app.register(appointmentRoutes)
+app.register(reportRoutes)
+app.register(alertRoutes)
+app.register(auditRoutes)
+app.register(attachmentRoutes)
+app.register(importRoutes)
+app.register(filterRoutes)
+app.register(referralRoutes)
+app.register(familyRoutes)
+app.register(deliverablesRoutes)
+app.register(groupRoutes)
+app.register(workspaceRoutes)
+app.register(waitingListRoutes)
 
-app.register(caseRoutes, { prefix: '/api/cases' })
-app.register(userRoutes, { prefix: '/api/users' })
-app.register(evolutionRoutes, { prefix: '/api/evolutions' })
-app.register(pafRoutes, { prefix: '/api/paf' })
-app.register(statsRoutes, { prefix: '/api/stats' })
-app.register(appointmentRoutes, { prefix: '/api/appointments' })
-app.register(reportRoutes, { prefix: '/api/reports' })
-app.register(alertRoutes, { prefix: '/api/alerts' })
-app.register(auditRoutes, { prefix: '/api/audit' })
-app.register(attachmentRoutes, { prefix: '/api/attachments' })
-app.register(importRoutes, { prefix: '/api/import' })
-app.register(filterRoutes, { prefix: '/api/filters' })
-app.register(referralRoutes, { prefix: '/api/referrals' })
-app.register(familyRoutes, { prefix: '/api/family' })
-app.register(deliverablesRoutes, { prefix: '/api/deliverables' })
-app.register(groupRoutes, { prefix: '/api/groups' })
-app.register(workspaceRoutes, { prefix: '/api/workspace' })
-app.register(waitingListRoutes, { prefix: '/api/waiting-list' })
+// Alias para Dashboard (apontando para statsRoutes, caso frontend chame)
+app.register(statsRoutes, { prefix: '/dashboard' })
 
-// ALIAS PARA DASHBOARD
-app.register(statsRoutes, { prefix: '/api/dashboard' })
-
-
-// --- TRATAMENTO DE ERROS GLOBAL ---
-app.setErrorHandler((error, request, reply) => {
-  app.log.error(error) // Loga o erro real no console do Render
-  
-  if (error.statusCode === 401) {
-    return reply.status(401).send({ message: 'Não autorizado' })
-  }
-  
-  // Se for erro de validação do Zod
-  if (error.validation) {
-    return reply.status(400).send({ message: 'Erro de validação', errors: error.validation })
-  }
-
-  return reply.status(500).send({ 
-    message: 'Erro interno do servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-  })
-})
-
-// --- SERVIR FRONTEND (SPA) ---
+// --- 5. SERVIR FRONTEND (SPA) ---
+// Resolve o caminho corretamente mesmo após build (tsup/dist)
 const frontendDist = path.join(__dirname, '../../frontend/dist')
 
 app.register(fastifyStatic, {
   root: frontendDist,
   prefix: '/',
-  wildcard: false,
+  wildcard: false, // Importante: Desativa wildcard automático para o handler abaixo funcionar
 })
 
+// Handler SPA (Fallback para React Router)
 app.setNotFoundHandler((req, reply) => {
-  if (req.raw.url && req.raw.url.startsWith('/api')) {
-    return reply.status(404).send({ error: 'Not Found', message: `Rota API '${req.raw.url}' não existe.` })
+  // Se for rota de API, Uploads ou Docs, retorna 404 JSON
+  if (req.raw.url && (
+    req.raw.url.startsWith('/api') || 
+    req.raw.url.startsWith('/uploads') || 
+    req.raw.url.startsWith('/docs')
+  )) {
+    return reply.status(404).send({ 
+      message: 'Recurso não encontrado', 
+      url: req.raw.url 
+    })
   }
+  // Caso contrário, retorna o index.html do frontend
   return reply.sendFile('index.html')
 })
 
-// --- START ---
+// --- 6. TRATAMENTO DE ERROS GLOBAL ---
+app.setErrorHandler((error, request, reply) => {
+  request.log.error(error)
+  
+  if (error.statusCode === 401) {
+    return reply.status(401).send({ message: 'Não autorizado' })
+  }
+  
+  // Erros de validação Zod
+  if (error.validation) {
+    return reply.status(400).send({ 
+      message: 'Erro de validação', 
+      errors: error.validation 
+    })
+  }
+
+  return reply.status(500).send({ 
+    message: 'Erro interno do servidor',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+  })
+})
+
+// --- 7. START ---
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 3333
-    const host = '0.0.0.0'
+    const host = '0.0.0.0' // Obrigatório para Render
     await app.listen({ port, host })
-    console.log(`🚀 HTTP Server running on http://${host}:${port}`)
-    console.log(`📋 Rotas disponíveis: /api/cases, /api/users, etc...`)
+    console.log(`🚀 Servidor rodando em http://${host}:${port}`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)

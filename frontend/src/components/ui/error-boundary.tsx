@@ -1,8 +1,7 @@
-// Removi o "React" do início, mantendo apenas os tipos e classes necessários
 import { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './button'; 
-import { Card, CardContent, CardHeader, CardTitle } from './card';
+import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 interface Props {
   children?: ReactNode;
@@ -13,10 +12,10 @@ interface State {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
   };
 
   public static getDerivedStateFromError(error: Error): State {
@@ -31,34 +30,59 @@ class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-          <Card className="w-full max-w-md shadow-lg border-red-100">
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+          <Card className="w-full max-w-md shadow-lg border-destructive/20">
             <CardHeader className="text-center pb-2">
-              <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
+              <div className="mx-auto w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
               </div>
-              <CardTitle className="text-xl text-gray-800">Ops! Algo deu errado.</CardTitle>
+              <CardTitle className="text-xl">Ops! Algo deu errado.</CardTitle>
+              <CardDescription>
+                Ocorreu um erro inesperado na execução da aplicação.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-gray-600">
-                Ocorreu um erro inesperado na aplicação. Nossa equipe foi notificada (via console).
-                Por favor, tente recarregar a página.
+            
+            <CardContent className="text-center space-y-6">
+              <p className="text-sm text-muted-foreground">
+                Nossa equipe técnica foi notificada automaticamente.
+                Você pode tentar recuperar a sessão ou recarregar a página.
               </p>
               
-              {/* Mostra o erro técnico apenas em desenvolvimento */}
+              {/* Área de Debug (Apenas em Desenvolvimento) */}
               {import.meta.env.DEV && this.state.error && (
-                <div className="bg-gray-100 p-2 rounded text-xs text-left overflow-auto max-h-32 text-red-800 font-mono">
-                  {this.state.error.toString()}
+                <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-md text-left overflow-auto max-h-40 border text-xs font-mono">
+                  <p className="text-destructive font-bold mb-1">Stack Trace:</p>
+                  <span className="text-slate-600 dark:text-slate-400">
+                    {this.state.error.toString()}
+                  </span>
                 </div>
               )}
 
-              <Button onClick={this.handleReload} className="w-full bg-blue-600 hover:bg-blue-700">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Recarregar Página
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+                <Button 
+                  onClick={this.handleReset} 
+                  variant="outline" 
+                  className="w-full sm:w-auto"
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Tentar Novamente
+                </Button>
+                
+                <Button 
+                  onClick={this.handleReload} 
+                  className="w-full sm:w-auto"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Recarregar Página
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

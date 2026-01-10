@@ -2,31 +2,18 @@ import { useState, useRef, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
-// Gráficos
+// Gráficos (Recharts)
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  BarChart,
-  Bar,
-  LabelList,
-  Label
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, BarChart, Bar, LabelList, Label
 } from "recharts"
 
 // Ícones e UI
 import { 
   Loader2, BarChart3, Clock, TrendingUp, Download, AlertTriangle, 
-  CheckCircle2, Info} from "lucide-react"
+  CheckCircle2, Info, FileBarChart
+} from "lucide-react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -41,34 +28,47 @@ import pdfMake from "pdfmake/build/pdfmake"
 import pdfFonts from "pdfmake/build/vfs_fonts"
 import type { TDocumentDefinitions } from "pdfmake/interfaces"
 
-// --- CONFIGURAÇÃO VFS DO PDFMAKE ---
+// --- CONFIGURAÇÃO VFS DO PDFMAKE (Workaround Seguro) ---
+const pdfMakeAny: any = pdfMake;
 if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
-  pdfMake.vfs = pdfFonts.pdfMake.vfs;
+  pdfMakeAny.vfs = pdfFonts.pdfMake.vfs;
 } else if (pdfFonts && (pdfFonts as any).vfs) {
-  pdfMake.vfs = (pdfFonts as any).vfs;
-} else if (pdfMake.vfs === undefined) {
-  pdfMake.vfs = pdfFonts;
+  pdfMakeAny.vfs = (pdfFonts as any).vfs;
+} else if (pdfMakeAny.vfs === undefined) {
+  try { pdfMakeAny.vfs = pdfFonts; } catch(e) { console.warn('Erro ao carregar fontes PDF', e)}
 }
 
+// --- CONSTANTES ---
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
 
-// --- INTERFACES ---
-interface TrendData { name: string; novos: number; fechados: number }
-interface PieData { name: string; value: number }
-interface Insight { type: 'success' | 'warning' | 'info'; title: string; description: string }
-interface ProductivityItem { name: string; value: number }
-
-function PremiumSkeleton() {
-  return (
-    <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Carregando dados">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[0,1,2].map(i => <div key={i} className="h-28 rounded-xl bg-muted/20" />)}
-      </div>
-      <div className="h-[320px] rounded-xl bg-muted/10" />
-    </div>
-  )
+// --- INTERFACES (CORRIGIDAS PARA RECHARTS) ---
+// Adicionamos [key: string]: any para satisfazer a tipagem estrita do Recharts
+interface TrendData { 
+  name: string; 
+  novos: number; 
+  fechados: number; 
+  [key: string]: any 
 }
 
+interface PieData { 
+  name: string; 
+  value: number; 
+  [key: string]: any 
+}
+
+interface Insight { 
+  type: 'success' | 'warning' | 'info'; 
+  title: string; 
+  description: string 
+}
+
+interface ProductivityItem { 
+  name: string; 
+  value: number; 
+  [key: string]: any 
+}
+
+// --- UTILITÁRIOS ---
 function linearRegressionForecast(xs: number[], ys: number[]): number | null {
   if (xs.length < 2) return null
   const n = xs.length
@@ -87,12 +87,30 @@ function linearRegressionForecast(xs: number[], ys: number[]): number | null {
   return m * nextX + b
 }
 
+function AnalyticsSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse p-6">
+      <div className="flex justify-between">
+        <div className="h-8 w-48 bg-muted rounded" />
+        <div className="h-8 w-32 bg-muted rounded" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[0,1,2].map(i => <div key={i} className="h-28 rounded-xl bg-muted/20 border" />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 h-[350px] rounded-xl bg-muted/10 border" />
+        <div className="h-[350px] rounded-xl bg-muted/10 border" />
+      </div>
+    </div>
+  )
+}
+
 export function AdvancedAnalytics() {
   const [periodMonths, setPeriodMonths] = useState<number>(12)
   const exportRef = useRef<HTMLDivElement | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   
-  // 1. Query Principal
+  // 1. Query Principal (Dados Gerais)
   const { data: dataRaw, isLoading, isError } = useQuery({
     queryKey: ["stats", "advanced", periodMonths],
     queryFn: async () => {
@@ -100,7 +118,8 @@ export function AdvancedAnalytics() {
         const res = await api.get("/stats/advanced", { params: { months: periodMonths } })
         return res.data
       } catch (error) {
-        console.warn("Usando dados mockados para Analytics (API Offline)")
+        console.warn("API Offline: Usando dados simulados para demonstração.")
+        // Fallback Mock Data
         return {
           avgHandlingTime: 45,
           totalActive: 128,
@@ -109,25 +128,27 @@ export function AdvancedAnalytics() {
             { name: 'Fev', novos: 15, fechados: 10 },
             { name: 'Mar', novos: 10, fechados: 12 },
             { name: 'Abr', novos: 18, fechados: 14 },
+            { name: 'Mai', novos: 22, fechados: 18 },
+            { name: 'Jun', novos: 14, fechados: 20 },
           ],
           pieData: [
             { name: 'Física', value: 40 },
             { name: 'Psicológica', value: 30 },
             { name: 'Negligência', value: 20 },
-            { name: 'Outros', value: 10 },
+            { name: 'Financeira', value: 10 },
           ],
           insights: [
-            { type: 'warning', title: 'Tendência de Alta', description: 'Aumento de 15% nos casos de negligência em idosos.' },
-            { type: 'success', title: 'Meta Atingida', description: '95% das visitas domiciliares realizadas no prazo.' },
-            { type: 'info', title: 'Auditoria Necessária', description: 'Existem 12 casos sem evolução há mais de 30 dias.' }
+            { type: 'warning', title: 'Atenção: Negligência', description: 'Aumento de 15% nos casos de negligência contra idosos no último bimestre.' },
+            { type: 'success', title: 'Meta Atingida', description: '95% das visitas domiciliares planejadas foram realizadas no prazo.' },
+            { type: 'info', title: 'Auditoria Pendente', description: 'Existem 12 casos sem evolução técnica registrada há mais de 30 dias.' }
           ]
         }
       }
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 5, // 5 minutos de cache
   })
 
-  // 2. Sanitização
+  // 2. Sanitização e Memorização
   const data = useMemo(() => ({
     avgHandlingTime: dataRaw?.avgHandlingTime || 0,
     totalActive: dataRaw?.totalActive || 0,
@@ -136,7 +157,7 @@ export function AdvancedAnalytics() {
     insights: (Array.isArray(dataRaw?.insights) ? dataRaw.insights : []) as Insight[]
   }), [dataRaw])
 
-  // 3. Produtividade
+  // 3. Query Secundária (Produtividade)
   const { data: productivityRaw } = useQuery<ProductivityItem[]>({
     queryKey: ["stats", "productivity", periodMonths],
     queryFn: async () => {
@@ -150,13 +171,14 @@ export function AdvancedAnalytics() {
           { name: 'Ana', value: 45 },
           { name: 'Carlos', value: 38 },
           { name: 'Maria', value: 52 },
+          { name: 'João', value: 29 },
         ]
       }
     }
   })
   const productivity = useMemo(() => Array.isArray(productivityRaw) ? productivityRaw : [], [productivityRaw])
 
-  // 4. Cálculos
+  // 4. Cálculos Matemáticos (Regressão e Totais)
   const forecast = useMemo(() => {
     const xs: number[] = []
     const ys: number[] = []
@@ -166,29 +188,31 @@ export function AdvancedAnalytics() {
 
   const totalViolations = useMemo(() => data.pieData.reduce((acc, curr) => acc + curr.value, 0), [data.pieData])
 
-  const tooltipStyle = useMemo(() => ({
+  // Estilo padrão para Tooltips do Recharts (Tema Dark/Light safe)
+  const tooltipStyle = {
     backgroundColor: 'hsl(var(--popover))',
-    border: '1px solid hsl(var(--border))',
-    borderRadius: '8px',
+    borderColor: 'hsl(var(--border))',
     color: 'hsl(var(--popover-foreground))',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-    fontSize: '12px'
-  }), [])
+    borderRadius: '6px',
+    fontSize: '12px',
+    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+  }
 
-  // 5. Exportação PDF (Com Rodapé)
+  // 5. Função de Exportação PDF
   const handleExportPdf = async () => {
     if (!exportRef.current) return
 
     try {
       setIsExporting(true)
-      toast.info("Gerando PDF analítico...")
+      toast.info("Processando relatório analítico...")
 
+      // Captura o elemento, ignorando botões marcados
       const canvas = await html2canvas(exportRef.current, { 
-        scale: 2, 
+        scale: 2, // Melhor qualidade
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
-        ignoreElements: (element) => element.hasAttribute('data-no-export')
+        ignoreElements: (element) => element.getAttribute('data-html2canvas-ignore') === 'true'
       })
       
       const imgData = canvas.toDataURL('image/png')
@@ -196,271 +220,321 @@ export function AdvancedAnalytics() {
       const docDefinition: TDocumentDefinitions = {
         pageSize: 'A4',
         pageOrientation: 'landscape',
-        pageMargins: [20, 20, 20, 40], // Margem inferior maior para rodapé
+        pageMargins: [30, 30, 30, 40],
         content: [
           {
-            text: 'Relatório Analítico Avançado - CREAS',
+            text: 'Relatório de Inteligência de Dados - CREAS',
             style: 'header',
             alignment: 'center',
-            margin: [0, 0, 0, 10]
+            margin: [0, 0, 0, 5]
           },
           {
-            text: `Gerado em: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} | Período: ${periodMonths} meses`,
+            text: `Período de Análise: Últimos ${periodMonths} meses | Gerado em: ${format(new Date(), "dd/MM/yyyy HH:mm")}`,
             style: 'subheader',
             alignment: 'center',
             margin: [0, 0, 0, 20]
           },
           {
             image: imgData,
-            width: 780,
+            width: 760, // Ajustado para A4 Landscape
             alignment: 'center'
           }
         ],
-        footer: (currentPage, pageCount) => {
-          return {
-            text: `Documento Gerado Automaticamente - CREAS | Página ${currentPage} de ${pageCount}`,
-            alignment: 'center',
-            style: 'footer',
-            margin: [0, 10, 0, 0]
-          }
-        },
+        footer: (currentPage: number, pageCount: number) => ({
+          text: `Sistema de Gestão SUAS - Página ${currentPage} de ${pageCount}`,
+          alignment: 'center',
+          style: 'footer',
+          margin: [0, 10, 0, 0]
+        }),
         styles: {
-          header: { fontSize: 18, bold: true, color: '#2e4a7d' },
-          subheader: { fontSize: 10, color: '#666' },
-          footer: { fontSize: 8, color: '#aaa' }
+          header: { fontSize: 18, bold: true, color: '#1e293b' },
+          subheader: { fontSize: 10, color: '#64748b' },
+          footer: { fontSize: 8, color: '#94a3b8' }
         }
       }
 
-      pdfMake.createPdf(docDefinition).download(`analytics_creas_${new Date().toISOString().slice(0,10)}.pdf`)
-      toast.success("PDF gerado com sucesso!")
+      pdfMakeAny.createPdf(docDefinition).download(`analytics_creas_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`)
+      toast.success("Relatório exportado com sucesso!")
 
     } catch (e) {
-      console.error('Erro ao exportar', e)
-      toast.error("Erro ao gerar PDF.")
+      console.error('Erro ao exportar:', e)
+      toast.error("Falha ao gerar o arquivo PDF.")
     } finally {
       setIsExporting(false)
     }
   }
 
-  if (isLoading) return <PremiumSkeleton />
+  if (isLoading) return <AnalyticsSkeleton />
   
   if (isError) {
     return (
-      <div className="p-4" role="alert">
+      <div className="p-6">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Erro</AlertTitle>
-          <AlertDescription>Não foi possível carregar os dados analíticos.</AlertDescription>
+          <AlertTitle>Erro no Carregamento</AlertTitle>
+          <AlertDescription>
+            Não foi possível obter os dados analíticos do servidor. Verifique sua conexão.
+          </AlertDescription>
         </Alert>
         <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
-          Tentar Novamente
+          Recarregar Página
         </Button>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
+    <div className="space-y-6 p-6 animate-in fade-in duration-500">
 
-      {/* Cabeçalho Executivo */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
+      {/* Cabeçalho e Controles */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight leading-tight text-foreground">Análise Estratégica</h2>
-          <p className="text-muted-foreground text-sm mt-1">Monitoramento de KPIs e inteligência de dados.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Inteligência de Dados
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Monitoramento estratégico de violações e desempenho da unidade.
+          </p>
         </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-3 items-center bg-card p-1 rounded-lg border shadow-sm">
           <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
-            <SelectTrigger className="w-[140px] bg-background" aria-label="Selecione o período"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[140px] border-0 focus:ring-0 shadow-none h-8">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
-              <SelectItem value="3">3 Meses</SelectItem>
-              <SelectItem value="6">6 Meses</SelectItem>
-              <SelectItem value="12">12 Meses</SelectItem>
+              <SelectItem value="3">Últimos 3 Meses</SelectItem>
+              <SelectItem value="6">Últimos 6 Meses</SelectItem>
+              <SelectItem value="12">Últimos 12 Meses</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={handleExportPdf} disabled={isExporting} variant="outline" size="sm" aria-label="Exportar PDF">
-             {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Download className="h-4 w-4 mr-2"/>}
-             Exportar
+          
+          <div className="h-4 w-[1px] bg-border" />
+
+          <Button 
+            onClick={handleExportPdf} 
+            disabled={isExporting} 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 text-muted-foreground hover:text-primary"
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Download className="h-4 w-4 mr-2"/>}
+            Exportar PDF
           </Button>
         </div>
       </div>
 
-      <div ref={exportRef} className="space-y-6 bg-background/50 p-2 rounded-lg">
+      {/* Área Capturável para PDF */}
+      <div ref={exportRef} className="space-y-6 bg-background rounded-xl">
         
-        {/* KPI Cards - Uniformizados */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-label="Indicadores Chave">
-            <div className="h-full min-h-[110px]">
-              <DashboardStatCard 
-                index={0} 
-                title="Tempo Médio" 
-                value={data.avgHandlingTime} 
-                description="Dias para resolução" 
-                icon={Clock} 
-                colorClass="text-blue-500"
-              />
-            </div>
-            <div className="h-full min-h-[110px]">
-              <DashboardStatCard 
-                index={1} 
-                title="Total Ativos" 
-                value={data.totalActive} 
-                description="Casos em andamento" 
-                icon={BarChart3} 
-                colorClass="text-purple-500" 
-              />
-            </div>
-            <div className="h-full min-h-[110px]">
-              <DashboardStatCard 
-                index={2} 
-                title="Novos (Mês)" 
-                value={data.trendData[data.trendData.length-1]?.novos ?? 0} 
-                description="Entradas recentes" 
-                icon={TrendingUp} 
-                colorClass="text-emerald-500" 
-              />
-            </div>
+        {/* KPI Cards */}
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <DashboardStatCard 
+            index={0} title="Tempo Médio de Resolução" value={data.avgHandlingTime} 
+            description="Dias desde a triagem até o desligamento" icon={Clock} colorClass="text-blue-600"
+          />
+          <DashboardStatCard 
+            index={1} title="Casos Ativos (PAEFI)" value={data.totalActive} 
+            description="Famílias em acompanhamento contínuo" icon={FileBarChart} colorClass="text-purple-600" 
+          />
+          <DashboardStatCard 
+            index={2} title="Novos Casos (Mês)" value={data.trendData[data.trendData.length-1]?.novos ?? 0} 
+            description="Demandas espontâneas e encaminhadas" icon={TrendingUp} colorClass="text-emerald-600" 
+          />
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Gráfico de Linha - Refinado */}
-          <Card className="lg:col-span-2 shadow-sm" aria-label="Gráfico de Tendência de Casos">
+          
+          {/* Gráfico Principal: Fluxo */}
+          <Card className="lg:col-span-2 shadow-sm border-slate-200 dark:border-slate-800">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Fluxo de Casos</CardTitle>
-              <CardDescription>Entrada vs Saída ({periodMonths} meses)</CardDescription>
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                Fluxo de Atendimentos
+              </CardTitle>
+              <CardDescription>Comparativo de novos casos vs. desligamentos no período</CardDescription>
             </CardHeader>
             <CardContent>
-              <div style={{ width: '100%', height: 320 }}>
+              <div className="h-[320px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                   <LineChart data={data.trendData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
+                  <LineChart data={data.trendData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'hsl(var(--muted-foreground))'}} />
-                    <YAxis fontSize={10} tickLine={false} axisLine={false} tick={{fill: 'hsl(var(--muted-foreground))'}} />
-                    <Tooltip contentStyle={tooltipStyle} />
+                    <XAxis 
+                      dataKey="name" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      tick={{fill: 'hsl(var(--muted-foreground))'}} 
+                      dy={10}
+                    />
+                    <YAxis 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      tick={{fill: 'hsl(var(--muted-foreground))'}} 
+                    />
+                    <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1 }} />
                     <Legend verticalAlign="top" height={36} iconType="circle"/>
-                    <Line type="monotone" dataKey="novos" name="Novos" stroke={COLORS[0]} strokeWidth={3} dot={{r: 3}} activeDot={{r: 5}} />
-                    {/* Linha tracejada para diferenciar saída */}
-                    <Line type="monotone" dataKey="fechados" name="Fechados" stroke={COLORS[1]} strokeWidth={2} strokeDasharray="5 5" dot={{r: 3}} activeDot={{r: 5}} />
+                    
+                    <Line 
+                      type="monotone" 
+                      dataKey="novos" 
+                      name="Novos Casos" 
+                      stroke={COLORS[0]} 
+                      strokeWidth={3} 
+                      dot={{r: 4, strokeWidth: 2}} 
+                      activeDot={{r: 6}} 
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="fechados" 
+                      name="Desligamentos" 
+                      stroke={COLORS[1]} 
+                      strokeWidth={2} 
+                      strokeDasharray="5 5" 
+                      dot={{r: 4}} 
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground text-center flex items-center justify-center gap-2 bg-muted/20 py-1 rounded">
-                 <TrendingUp className="h-3 w-3" />
-                 Previsão de novos casos (Regressão): <strong>{forecast ? Math.round(forecast) : '?'}</strong>
+              <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-900 rounded-md flex items-center justify-center gap-2 text-sm text-muted-foreground border border-dashed border-slate-200 dark:border-slate-800">
+                <Info className="h-4 w-4" />
+                <span>Previsão linear para o próximo mês: <strong>~{forecast ? Math.round(forecast) : '?'} novos casos</strong></span>
               </div>
             </CardContent>
           </Card>
 
-          {/* Insights Inteligentes (Nativo) */}
-          <div className="lg:col-span-1">
-            <Card className="h-full shadow-sm flex flex-col">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary"/> Insights IA
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 space-y-3">
-                {data.insights.map((insight, idx) => {
-                  const styles = {
-                    success: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 text-emerald-800 dark:text-emerald-300",
-                    warning: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 text-amber-800 dark:text-amber-300",
-                    info: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 text-blue-800 dark:text-blue-300"
-                  }
-                  const icons = {
-                    success: CheckCircle2,
-                    warning: AlertTriangle,
-                    info: Info
-                  }
-                  const Icon = icons[insight.type] || Info
+          {/* Coluna Lateral: Insights IA */}
+          <Card className="h-full shadow-sm flex flex-col border-slate-200 dark:border-slate-800">
+            <CardHeader className="pb-3 bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-t-xl">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-indigo-500"/> 
+                Insights IA
+              </CardTitle>
+              <CardDescription>Análise automatizada de padrões</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-3 pt-4">
+              {data.insights.map((insight, idx) => {
+                const styles = {
+                  success: "bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/10 dark:text-emerald-300",
+                  warning: "bg-amber-50 border-amber-100 text-amber-800 dark:bg-amber-900/10 dark:text-amber-300",
+                  info: "bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-900/10 dark:text-blue-300"
+                }
+                const icons = {
+                  success: CheckCircle2,
+                  warning: AlertTriangle,
+                  info: Info
+                }
+                const Icon = icons[insight.type] || Info
 
-                  return (
-                    <div key={idx} className={cn("p-3 rounded-lg border text-sm flex gap-3 items-start", styles[insight.type] || styles.info)}>
-                      <Icon className="h-4 w-4 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold block text-xs uppercase tracking-wide mb-0.5">{insight.title}</span>
-                        <span className="opacity-90 leading-snug block">{insight.description}</span>
-                      </div>
+                return (
+                  <div key={idx} className={cn("p-3 rounded-lg border flex gap-3 items-start transition-all hover:shadow-sm", styles[insight.type])}>
+                    <Icon className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold block text-xs uppercase tracking-wide mb-1 opacity-80">
+                        {insight.title}
+                      </span>
+                      <p className="text-sm leading-relaxed font-medium">
+                        {insight.description}
+                      </p>
                     </div>
-                  )
-                })}
-                {data.insights.length === 0 && <div className="text-center text-muted-foreground text-sm py-4">Nenhum insight gerado.</div>}
-              </CardContent>
-            </Card>
-          </div>
+                  </div>
+                )
+              })}
+              
+              {data.insights.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-center p-4 opacity-50">
+                  <BarChart3 className="h-12 w-12 mb-2 stroke-1" />
+                  <p>Coletando dados para gerar insights...</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Gráfico de Pizza - Centralizado */}
-          <Card aria-label="Gráfico de Violações" className="shadow-sm">
-            <CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Top 5 Violações</CardTitle></CardHeader>
+          
+          {/* Gráfico Pizza: Tipificação */}
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Tipificação das Violações</CardTitle>
+              <CardDescription>Distribuição percentual por natureza</CardDescription>
+            </CardHeader>
             <CardContent>
-               <div style={{ width: '100%', height: 340 }}>
-                  {data.pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie 
-                          data={data.pieData as any[]} 
-                          cx="50%" 
-                          cy="50%" 
-                          innerRadius={60} // Donut
-                          outerRadius={80} 
-                          paddingAngle={5} 
-                          dataKey="value"
-                          stroke="hsl(var(--card))" 
-                          strokeWidth={2}
-                        >
-                          {data.pieData.map((_: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                          <Label 
-                            value={totalViolations} 
-                            position="center" 
-                            className="text-2xl font-bold fill-foreground"
-                          />
-                        </Pie>
-                        <Tooltip contentStyle={tooltipStyle} />
-                        <Legend 
-                          layout="horizontal" 
-                          verticalAlign="bottom" 
-                          align="center" 
-                          iconType="circle" 
-                          wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }}
+              <div className="h-[300px] w-full">
+                {data.pieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie 
+                        data={data.pieData} 
+                        cx="50%" cy="50%" 
+                        innerRadius={60} outerRadius={90} 
+                        paddingAngle={2} dataKey="value"
+                        stroke="hsl(var(--card))" strokeWidth={2}
+                      >
+                        {data.pieData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                        <Label 
+                          value={totalViolations} position="center" 
+                          className="text-3xl font-bold fill-slate-900 dark:fill-white"
                         />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de violação.</div>}
-               </div>
+                        <Label 
+                          value="Violações" position="center" dy={20}
+                          className="text-xs fill-muted-foreground uppercase tracking-wider"
+                        />
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '12px' }}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    Nenhuma violação tipificada no período.
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
-          {/* Gráfico de Barras - Produtividade */}
-          <Card aria-label="Gráfico de Desempenho da Equipe" className="shadow-sm">
+          {/* Gráfico Barras: Produtividade */}
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Desempenho da Equipe</CardTitle>
-              <CardDescription>Intervenções registradas.</CardDescription>
+              <CardTitle className="text-base font-semibold">Produtividade Técnica</CardTitle>
+              <CardDescription>Total de intervenções registradas por técnico</CardDescription>
             </CardHeader>
             <CardContent>
-               <div style={{ width: '100%', height: 340 }}>
-                  {productivity.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={productivity} layout="vertical" margin={{left: 0, right: 30}}>
-                        <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} fontSize={12} tick={{fill: 'hsl(var(--foreground))'}}/>
-                        <Tooltip 
-                          cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
-                          contentStyle={tooltipStyle} 
-                          formatter={(value: any) => [value, 'Intervenções']}
+              <div className="h-[300px] w-full">
+                {productivity.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={productivity} layout="vertical" margin={{ left: 0, right: 40, top: 10 }}>
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        dataKey="name" type="category" width={80} 
+                        tickLine={false} axisLine={false} fontSize={12} 
+                        tick={{fill: 'hsl(var(--foreground))', fontWeight: 500}}
+                      />
+                      <Tooltip 
+                        cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
+                        contentStyle={tooltipStyle}
+                      />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={28}>
+                        {productivity.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                        <LabelList 
+                          dataKey="value" position="right" 
+                          style={{ fontSize: '12px', fill: 'hsl(var(--muted-foreground))', fontWeight: 'bold' }} 
                         />
-                        <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={24}>
-                          {/* LabelList para leitura direta */}
-                          <LabelList dataKey="value" position="right" style={{ fontSize: '11px', fill: 'hsl(var(--muted-foreground))' }} />
-                          {productivity.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : <div className="flex h-full items-center justify-center text-muted-foreground">Sem dados de atividade.</div>}
-               </div>
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    Sem registros de produtividade.
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

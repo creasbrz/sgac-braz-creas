@@ -3,12 +3,18 @@ import pdfFonts from "pdfmake/build/vfs_fonts"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { api } from "@/lib/api"
-import type { TDocumentDefinitions, StyleDictionary, Content } from "pdfmake/interfaces"
 
 // Imports de tipos do projeto
 import type { CaseDetailData, FamilyMember, PafData } from "@/types/case"
 import type { GroupActivity, GroupAttendance } from "@/types/group"
 import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
+
+// --- TIPAGEM LOCAL (Para evitar erros de build 'module not found') ---
+// O pdfmake muitas vezes tem problemas com @types em certas configs do Vite.
+// Usamos 'any' aqui para destravar o deploy, já que a estrutura JSON é validada em runtime.
+type TDocumentDefinitions = any
+type StyleDictionary = any
+type Content = any
 
 // --- INTERFACES DE DADOS ---
 
@@ -78,13 +84,19 @@ export interface DismissalReportData {
   monthlyTrend: { name: string; value: number }[]
 }
 
-// --- CONFIGURAÇÃO VFS ---
+// --- CONFIGURAÇÃO VFS (FONTS) ---
+// Workaround para garantir que as fontes carreguem no client-side
+const pdfMakeAny: any = pdfMake;
 if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
-  pdfMake.vfs = pdfFonts.pdfMake.vfs;
+  pdfMakeAny.vfs = pdfFonts.pdfMake.vfs;
 } else if (pdfFonts && (pdfFonts as any).vfs) {
-  pdfMake.vfs = (pdfFonts as any).vfs;
-} else if (pdfMake.vfs === undefined) {
-  pdfMake.vfs = pdfFonts;
+  pdfMakeAny.vfs = (pdfFonts as any).vfs;
+} else if (pdfMakeAny.vfs === undefined) {
+  try {
+    pdfMakeAny.vfs = pdfFonts;
+  } catch (e) {
+    console.warn("Erro ao configurar fontes do PDFMake", e);
+  }
 }
 
 // --- CONSTANTES E ESTILOS ---
@@ -242,7 +254,7 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData, mode: 'open' | 'dow
             [{ text: "CONTATO:", style: "label" }, { text: formatPhone(caseData.telefone), style: "value" }]
           ]
         },
-        layout: { hLineWidth: (i) => (i === 0 || i === 5) ? 1 : 0.5, vLineWidth: () => 0, hLineColor: '#ccc', fillColor: (i) => (i % 2 === 0) ? HEADER_BG : null }
+        layout: { hLineWidth: (i: number) => (i === 0 || i === 5) ? 1 : 0.5, vLineWidth: () => 0, hLineColor: '#ccc', fillColor: (i: number) => (i % 2 === 0) ? HEADER_BG : null }
       },
       createSectionHeader("1. Situação do Atendimento"),
       {

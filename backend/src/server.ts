@@ -3,8 +3,9 @@ import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
-import path from 'path'
-import fs from 'fs'
+import path from 'node:path'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { 
   serializerCompiler, 
   validatorCompiler, 
@@ -14,7 +15,7 @@ import {
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 
-// Importação das rotas
+// Rotas
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
@@ -34,133 +35,106 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
+import { uploadRoutes } from './routes/upload' // Se tiver criado essa rota separada
+import { dashboardRoutes } from './routes/dashboard'
 
-// Inicialização do App com Tipagem Zod
+// Configuração de diretórios (ESM workaroud)
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Inicialização
 const app = fastify({
- logger: {
-    transport: {
+  logger: {
+    // Pretty print apenas em dev para performance
+    transport: process.env.NODE_ENV === 'development' ? {
       target: 'pino-pretty',
-      options: {
-        translateTime: 'HH:MM:ss Z', // Mostra a hora legível
-        ignore: 'pid,hostname',       // Esconde ID do processo e nome da máquina (poluição visual)
-        colorize: true                // Força as cores
-      },
-    },
+      options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
+    } : undefined,
   },
 }).withTypeProvider<ZodTypeProvider>()
 
-// --- 1. CONFIGURAÇÃO DO ZOD (VALIDATION) ---
+// --- ZOD & SWAGGER ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
 
-// --- 2. CONFIGURAÇÃO DO SWAGGER (DOCUMENTAÇÃO) ---
 app.register(fastifySwagger, {
   openapi: {
-    info: {
-      title: 'CREAS Brazlândia API',
-      description: 'Sistema de Gestão de Atendimentos Social (SGAC)',
-      version: '7.1.0',
-    },
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        },
-      },
-    },
+    info: { title: 'CREAS API', description: 'Sistema de Gestão SGAC', version: '7.1.1' },
+    components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
   },
   transform: jsonSchemaTransform,
 })
 
-app.register(fastifySwaggerUi, {
-  routePrefix: '/docs',
+app.register(fastifySwaggerUi, { routePrefix: '/docs' })
+
+// --- PLUGINS ---
+app.register(cors, { origin: true })
+app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret-key' })
+app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }) // 10MB
+
+// Decorator Auth
+app.decorate('authenticate', async (request: any, reply: any) => {
+  try { await request.jwtVerify() } catch (err) { reply.send(err) }
 })
 
-// --- 3. CONFIGURAÇÃO DE ARQUIVOS (UPLOADS & ESTÁTICOS) ---
-// ALERTA: No Render, arquivos em disco são deletados a cada deploy.
-const uploadDir = path.join(__dirname, '../uploads')
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
+// --- ROTAS DA API (PREFIXO /api) ---
+// Agrupando para organização e evitar colisão com frontend
+app.register(async (api) => {
+  api.register(authRoutes) // /api/login, /api/register
+  api.register(caseRoutes, { prefix: '/cases' })
+  api.register(userRoutes, { prefix: '/users' })
+  api.register(evolutionRoutes, { prefix: '/evolutions' })
+  api.register(pafRoutes, { prefix: '/paf' })
+  api.register(statsRoutes, { prefix: '/stats' })
+  api.register(dashboardRoutes, { prefix: '/dashboard' })
+  api.register(appointmentRoutes, { prefix: '/appointments' })
+  api.register(reportRoutes, { prefix: '/reports' })
+  api.register(alertRoutes, { prefix: '/alerts' })
+  api.register(auditRoutes, { prefix: '/audit' })
+  api.register(attachmentRoutes, { prefix: '/attachments' })
+  api.register(importRoutes, { prefix: '/import' })
+  api.register(filterRoutes, { prefix: '/filters' })
+  api.register(referralRoutes, { prefix: '/referrals' })
+  api.register(familyRoutes, { prefix: '/family' })
+  api.register(deliverablesRoutes, { prefix: '/deliverables' })
+  api.register(groupRoutes, { prefix: '/groups' })
+  api.register(workspaceRoutes, { prefix: '/workspace' })
+  api.register(waitingListRoutes, { prefix: '/waiting-list' })
+  // Se tiver rota de upload dedicada:
+  // api.register(uploadRoutes, { prefix: '/upload' }) 
+}, { prefix: '/api' })
 
-app.register(multipart, { 
-  limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
-})
 
-// Servir arquivos de upload (prefixo /uploads/)
-app.register(fastifyStatic, {
-  root: uploadDir,
-  prefix: '/uploads/',
-  decorateReply: false 
-})
-
-// Servir Frontend (SPA) - Ajuste o caminho '../frontend/dist' conforme sua estrutura de pastas real
-const frontendDist = path.join(__dirname, '../../frontend/dist')
+// --- SERVIR FRONTEND (SPA) ---
+// Resolve o caminho para a pasta 'dist' do frontend (gerada pelo Vite)
+// Em dev (src/), volta 2 níveis. Em prod (dist/), volta 2 níveis.
+const frontendDist = path.resolve(__dirname, '../../frontend/dist')
 
 app.register(fastifyStatic, {
   root: frontendDist,
   prefix: '/',
-  wildcard: false, // Desativa wildcard automático para tratarmos SPA manualmente abaixo
+  wildcard: false, // Desativa wildcard automático p/ tratar 404 manualmente
 })
 
-// --- 4. PLUGINS GERAIS ---
-app.register(cors, { 
-  origin: true, 
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] 
-})
-
-app.register(jwt, { 
-  secret: process.env.JWT_SECRET as string 
-})
-
-// Decorator de Autenticação
-app.decorate('authenticate', async (request: any, reply: any) => {
-  try {
-    await request.jwtVerify()
-  } catch (err) {
-    reply.send(err)
-  }
-})
-
-// --- 5. REGISTRO DE ROTAS ---
-// Importante: Registre após o Swagger para aparecerem na documentação
-app.register(authRoutes)
-app.register(caseRoutes)
-app.register(userRoutes)
-app.register(evolutionRoutes)
-app.register(pafRoutes)
-app.register(statsRoutes)
-app.register(appointmentRoutes)
-app.register(reportRoutes)
-app.register(alertRoutes)
-app.register(auditRoutes)
-app.register(attachmentRoutes)
-app.register(importRoutes)
-app.register(filterRoutes)
-app.register(referralRoutes)
-app.register(familyRoutes)
-app.register(deliverablesRoutes)
-app.register(groupRoutes)
-app.register(workspaceRoutes)
-app.register(waitingListRoutes)
-
-// --- 6. HANDLER SPA (FALLBACK) ---
-// Retorna index.html para qualquer rota não encontrada na API (necessário para React Router)
+// Handler SPA: Se não for API nem arquivo estático, devolve index.html
 app.setNotFoundHandler((req, reply) => {
-  if (req.raw.url && (req.raw.url.startsWith('/api') || req.raw.url.startsWith('/uploads') || req.raw.url.startsWith('/docs'))) {
-    return reply.status(404).send({ 
-      message: 'Recurso não encontrado', 
-      url: req.raw.url 
-    })
+  if (req.raw.url && req.raw.url.startsWith('/api')) {
+    return reply.status(404).send({ error: 'Not Found', message: `Route ${req.raw.url} not found` })
   }
-  return reply.sendFile('index.html', frontendDist)
+  return reply.sendFile('index.html')
 })
 
-// --- 7. INICIALIZAÇÃO ---
-const port = Number(process.env.PORT) || 3333
-const host = '0.0.0.0' // Obrigatório para o Render aceitar conexões externas
+// --- START ---
+const start = async () => {
+  try {
+    const port = Number(process.env.PORT) || 3333
+    const host = '0.0.0.0'
+    await app.listen({ port, host })
+    console.log(`🚀 HTTP Server running on http://${host}:${port}`)
+  } catch (err) {
+    app.log.error(err)
+    process.exit(1)
+  }
+}
 
-app.listen({ port, host }).then(() => {
-  console.log(`🚀 Servidor rodando na porta ${port}`)
-  console.log(`📚 Documentação disponível em http://localhost:${port}/docs`)
-})
+start()

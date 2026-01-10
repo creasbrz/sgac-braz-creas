@@ -4,7 +4,6 @@ import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'node:path'
-import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { 
   serializerCompiler, 
@@ -35,8 +34,6 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
-import { uploadRoutes } from './routes/upload' // Se tiver criado essa rota separada
-import { dashboardRoutes } from './routes/dashboard'
 
 // Configuração de diretórios (ESM workaroud)
 const __filename = fileURLToPath(import.meta.url)
@@ -86,7 +83,6 @@ app.register(async (api) => {
   api.register(evolutionRoutes, { prefix: '/evolutions' })
   api.register(pafRoutes, { prefix: '/paf' })
   api.register(statsRoutes, { prefix: '/stats' })
-  api.register(dashboardRoutes, { prefix: '/dashboard' })
   api.register(appointmentRoutes, { prefix: '/appointments' })
   api.register(reportRoutes, { prefix: '/reports' })
   api.register(alertRoutes, { prefix: '/alerts' })

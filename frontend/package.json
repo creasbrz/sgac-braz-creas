@@ -57,8 +57,6 @@
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^3.23.8",
-
-    "_COMMENT": "--- FERRAMENTAS DE BUILD MOVIDAS PARA DEPENDENCIES (PARA RENDER) ---",
     "vite": "^5.4.9",
     "typescript": "^5.6.3",
     "@vitejs/plugin-react": "^4.3.3",

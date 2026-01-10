@@ -4,7 +4,7 @@ import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import fs from 'node:fs'
 import { 
   serializerCompiler, 
   validatorCompiler, 
@@ -34,15 +34,11 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
-
-// Configuração de diretórios (ESM workaroud)
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+import { dashboardRoutes } from './routes/dashboard'
 
 // Inicialização
 const app = fastify({
   logger: {
-    // Pretty print apenas em dev para performance
     transport: process.env.NODE_ENV === 'development' ? {
       target: 'pino-pretty',
       options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
@@ -67,22 +63,21 @@ app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 // --- PLUGINS ---
 app.register(cors, { origin: true })
 app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret-key' })
-app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }) // 10MB
+app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
-// Decorator Auth
 app.decorate('authenticate', async (request: any, reply: any) => {
   try { await request.jwtVerify() } catch (err) { reply.send(err) }
 })
 
 // --- ROTAS DA API (PREFIXO /api) ---
-// Agrupando para organização e evitar colisão com frontend
 app.register(async (api) => {
-  api.register(authRoutes) // /api/login, /api/register
+  api.register(authRoutes)
   api.register(caseRoutes, { prefix: '/cases' })
   api.register(userRoutes, { prefix: '/users' })
   api.register(evolutionRoutes, { prefix: '/evolutions' })
   api.register(pafRoutes, { prefix: '/paf' })
   api.register(statsRoutes, { prefix: '/stats' })
+  api.register(dashboardRoutes, { prefix: '/dashboard' })
   api.register(appointmentRoutes, { prefix: '/appointments' })
   api.register(reportRoutes, { prefix: '/reports' })
   api.register(alertRoutes, { prefix: '/alerts' })
@@ -96,23 +91,20 @@ app.register(async (api) => {
   api.register(groupRoutes, { prefix: '/groups' })
   api.register(workspaceRoutes, { prefix: '/workspace' })
   api.register(waitingListRoutes, { prefix: '/waiting-list' })
-  // Se tiver rota de upload dedicada:
-  // api.register(uploadRoutes, { prefix: '/upload' }) 
 }, { prefix: '/api' })
 
 
 // --- SERVIR FRONTEND (SPA) ---
-// Resolve o caminho para a pasta 'dist' do frontend (gerada pelo Vite)
-// Em dev (src/), volta 2 níveis. Em prod (dist/), volta 2 níveis.
-const frontendDist = path.resolve(__dirname, '../../frontend/dist')
+// CORREÇÃO: Usamos path.join com __dirname direto, pois o tsup injeta o shim de CJS
+// O caminho '../frontend/dist' assume que 'dist/server.js' está em backend/dist
+const frontendDist = path.join(__dirname, '../../frontend/dist')
 
 app.register(fastifyStatic, {
   root: frontendDist,
   prefix: '/',
-  wildcard: false, // Desativa wildcard automático p/ tratar 404 manualmente
+  wildcard: false,
 })
 
-// Handler SPA: Se não for API nem arquivo estático, devolve index.html
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && req.raw.url.startsWith('/api')) {
     return reply.status(404).send({ error: 'Not Found', message: `Route ${req.raw.url} not found` })

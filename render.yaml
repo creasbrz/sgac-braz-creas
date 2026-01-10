@@ -1,22 +1,16 @@
 services:
-  # -----------------------------------------------------------
-  # 1. Aplicação Full-Stack (Node.js + React Static)
-  # -----------------------------------------------------------
   - type: web
     name: sgac-brazlandia-fullstack
     env: node
-    plan: free # Mude para 'starter' em produção para performance real
-    region: oregon # ou ohio/frankfurt
+    plan: free
+    region: oregon
     
-    # IMPORTANTE: Ordem de Build
-    # 1. Entra na pasta frontend, instala deps e gera o build (dist)
-    # 2. Volta, entra no backend, instala deps, gera o prisma client e compila o TS
-    buildCommand: "cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npm run build"
+    # --- CORREÇÃO AQUI ---
+    # Adicionamos '--include=dev' para garantir que Vite, TypeScript e Tsup sejam instalados
+    buildCommand: "cd frontend && npm install --include=dev && npm run build && cd ../backend && npm install --include=dev && npx prisma generate && npm run build"
     
-    # Comando de Inicialização
     startCommand: "cd backend && npm start"
     
-    # Variáveis de Ambiente
     envVars:
       - key: NODE_ENV
         value: production
@@ -25,26 +19,20 @@ services:
           name: sgac-db
           property: connectionString
       - key: JWT_SECRET
-        generateValue: true # Gera um segredo criptográfico seguro automaticamente
-      
-      # Cloudinary (Você deve preencher isso no Dashboard do Render após o deploy falhar na 1ª vez, ou criar um 'Environment Group')
+        generateValue: true
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-
-    # Configuração de Auto-Deploy
+    
     autoDeploy: true
 
 databases:
-  # -----------------------------------------------------------
-  # 2. Banco de Dados PostgreSQL
-  # -----------------------------------------------------------
   - name: sgac-db
     databaseName: sgac
     user: sgac_user
-    plan: free # Atenção: O plano Free do Render apaga dados após 90 dias de inatividade. Use 'starter' para produção.
+    plan: free
     region: oregon
-    ipAllowList: [] # Permite acesso de qualquer IP (ou restrinja se necessário)
+    ipAllowList: []

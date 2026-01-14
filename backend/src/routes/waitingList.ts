@@ -1,4 +1,3 @@
-// backend/src/routes/waitingList.ts
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -13,14 +12,15 @@ const waitingCaseSchema = z.object({
   dataEntrada: z.date(),
   urgencia: z.string(),
   pesoUrgencia: z.number(),
-  violacao: z.string(),
+  // [CORREÇÃO] Ajustado para array de strings, conforme o banco de dados
+  violacao: z.array(z.string()), 
   status: z.string(),
   agenteAcolhida: z.object({ nome: z.string() }).nullable().optional(),
   especialistaPAEFI: z.object({ nome: z.string() }).nullable().optional()
 })
 
 const assignBodySchema = z.object({
-  targetUserId: z.string().uuid().optional() // Obrigatório apenas para Gerente distribuindo
+  targetUserId: z.string().uuid().optional()
 })
 
 export async function waitingListRoutes(app: FastifyInstance) {
@@ -48,21 +48,17 @@ export async function waitingListRoutes(app: FastifyInstance) {
       // --- Lógica de Negócio: Quem vê o quê na fila? ---
       
       if (cargo === Cargo.Agente_Social) {
-        // Agente vê: Casos na sua caixa de entrada pessoal
         whereCondition.status = CaseStatus.AGUARDANDO_ACOLHIDA
         whereCondition.agenteAcolhidaId = userId 
       } 
       else if (cargo === Cargo.Gerente) {
-        // Gerente vê: Gargalo de distribuição (casos que saíram da acolhida e esperam técnico)
         whereCondition.status = CaseStatus.AGUARDANDO_DISTRIBUICAO
       } 
       else if (cargo === Cargo.Especialista) {
-        // Especialista vê: Casos atribuídos a ele que ainda não deu o "aceite"
         whereCondition.status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA
         whereCondition.especialistaPAEFIId = userId 
       }
       else if (cargo === Cargo.Auditor) {
-        // Auditor vê: Todos os gargalos do sistema
         whereCondition.status = { 
           in: [
             CaseStatus.AGUARDANDO_ACOLHIDA, 
@@ -71,14 +67,14 @@ export async function waitingListRoutes(app: FastifyInstance) {
           ] 
         }
       } else {
-        return reply.send([]) // Outros cargos não têm fila
+        return reply.send([])
       }
 
       const cases = await prisma.case.findMany({
         where: whereCondition,
         orderBy: [
-          { pesoUrgencia: 'desc' }, // 1º Prioridade: Urgência
-          { dataEntrada: 'asc' }    // 2º Prioridade: Antiguidade (FIFO)
+          { pesoUrgencia: 'desc' },
+          { dataEntrada: 'asc' }
         ],
         select: {
           id: true,
@@ -101,7 +97,7 @@ export async function waitingListRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. [PATCH] Ações da Fila (Transição de Estado + Log)
+  // 2. [PATCH] Ações da Fila
   server.patch('/cases/waiting/:id/assign', {
     schema: {
       tags: ['Fila de Espera'],
@@ -109,7 +105,7 @@ export async function waitingListRoutes(app: FastifyInstance) {
       params: z.object({ id: z.string().uuid() }),
       body: assignBodySchema,
       response: {
-        200: z.object({ status: z.string() }) // Retorna apenas o novo status
+        200: z.object({ status: z.string() })
       }
     }
   }, async (req, reply) => {
@@ -125,8 +121,6 @@ export async function waitingListRoutes(app: FastifyInstance) {
       let logDescricao = ''
       let logAction: LogAction = LogAction.MUDANCA_STATUS
 
-      // --- Máquina de Estados ---
-
       // Cenário 1: Agente inicia acolhida
       if (cargo === Cargo.Agente_Social && existingCase.status === CaseStatus.AGUARDANDO_ACOLHIDA) {
         if (existingCase.agenteAcolhidaId !== userId) {
@@ -136,30 +130,29 @@ export async function waitingListRoutes(app: FastifyInstance) {
         logDescricao = 'Iniciou a Acolhida (Check-in)'
       }
       
-      // Cenário 2: Gerente distribui para Especialista (Fluxo PAEFI)
+      // Cenário 2: Gerente distribui para Especialista
       else if (cargo === Cargo.Gerente && existingCase.status === CaseStatus.AGUARDANDO_DISTRIBUICAO) {
         if (!targetUserId) return reply.status(400).send({ message: 'Selecione um especialista para assumir o caso.' })
         
         updateData = {
-          status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, // Próximo passo: Especialista aceitar
+          status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
           especialistaPAEFIId: targetUserId
         }
         
-        // Busca nome do especialista para o log ficar bonito
         const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { nome: true } })
         
         logAction = LogAction.ATRIBUICAO
         logDescricao = `Distribuiu caso para: ${targetUser?.nome || 'Especialista'}`
       }
       
-      // Cenário 3: Especialista inicia acompanhamento (Aceite)
+      // Cenário 3: Especialista inicia acompanhamento
       else if (cargo === Cargo.Especialista && existingCase.status === CaseStatus.EM_ACOLHIDA_ESPECIALIZADA) {
         if (existingCase.especialistaPAEFIId !== userId) {
            return reply.status(403).send({ message: 'Este caso não foi atribuído a você.' })
         }
         updateData = { 
           status: CaseStatus.EM_ACOMPANHAMENTO,
-          dataInicioPAEFI: new Date() // Marca o início oficial do acompanhamento
+          dataInicioPAEFI: new Date()
         }
         logDescricao = 'Iniciou Acompanhamento PAEFI (Aceite)'
       }
@@ -168,12 +161,11 @@ export async function waitingListRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Ação não permitida para o status atual ou seu cargo.' })
       }
 
-      // TRANSACTION: Atualiza Caso + Cria Log (Atômico)
       const result = await prisma.$transaction(async (tx) => {
         const updated = await tx.case.update({
           where: { id },
           data: updateData,
-          select: { status: true } // Retorno leve
+          select: { status: true }
         })
 
         await tx.caseLog.create({

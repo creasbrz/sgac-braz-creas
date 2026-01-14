@@ -28,22 +28,20 @@ export function Cases() {
     urgencia: ''
   })
 
-  // Sincronização inteligente de visualização
   useEffect(() => {
     if (viewMode === 'kanban') {
-      setFilterView('all') // Kanban sempre vê o todo
+      setFilterView('all')
     } else {
-      setFilterView('my')  // Tabela foca no individual por padrão
+      setFilterView('my') 
     }
   }, [viewMode])
 
-  // Query otimizada para o Kanban
   const { data: kanbanCases, isLoading: isLoadingKanban } = useQuery({
     queryKey: ['cases', 'kanban', filterView, filters],
     queryFn: async () => {
       const res = await api.get('/cases', { 
         params: { 
-          pageSize: 100, // Limite seguro para performance visual
+          pageSize: 100,
           view: filterView,
           ...filters 
         } 
@@ -51,14 +49,13 @@ export function Cases() {
       return res.data.data || res.data.items || [] 
     },
     enabled: viewMode === 'kanban', 
-    staleTime: 1000 * 60 // 1 minuto de cache
+    staleTime: 1000 * 60 
   })
 
   if (isSessionLoading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
   }
 
-  // Títulos contextuais refinados
   const getTitle = () => {
     if (filterView === 'all' && viewMode === 'kanban') return 'Fluxo da Unidade (Kanban)'
     if (filterView === 'all') return 'Visão Geral da Unidade'
@@ -73,14 +70,12 @@ export function Cases() {
 
   const clearFilters = () => setFilters({ search: '', status: '', urgencia: '' })
   
-  // Contagem de filtros ativos
   const activeFilterCount = [filters.search, filters.status, filters.urgencia].filter(Boolean).length
   const hasActiveFilters = activeFilterCount > 0
 
   return (
     <div className="space-y-6 h-full flex flex-col p-2 sm:p-0 animate-in fade-in duration-500">
       
-      {/* Header e Controles */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">
         <div className="space-y-1">
           <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -100,10 +95,7 @@ export function Cases() {
           </p>
         </div>
         
-        {/* Painel de Controle Unificado */}
         <div className="flex flex-col sm:flex-row items-center gap-3 bg-muted/40 p-1.5 rounded-xl border border-border/50 shadow-sm">
-          
-          {/* Seletor de Escopo com Bloqueio Inteligente */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -130,7 +122,6 @@ export function Cases() {
 
           <div className="w-px h-6 bg-border hidden sm:block"></div>
 
-          {/* Alternador de Visualização */}
           <div className="flex items-center bg-muted p-1 rounded-lg h-9">
             <Button 
               variant={viewMode === 'table' ? 'default' : 'ghost'} 
@@ -152,7 +143,6 @@ export function Cases() {
         </div>
       </div>
 
-      {/* Barra de Filtros (Sticky) */}
       <div className="bg-background/80 backdrop-blur-md sticky top-0 z-20 py-3 border-b flex items-center gap-3 transition-all">
         <div className="flex-1">
           <CaseFilters filters={filters} setFilters={setFilters} />
@@ -171,15 +161,18 @@ export function Cases() {
         )}
       </div>
 
-      {/* Conteúdo Principal */}
       <div className="flex-1 overflow-hidden min-h-[400px] relative">
         {viewMode === 'table' ? (
           <CaseTable
             title="" 
             description=""
             endpoint="/cases"
+            // [CORRIGIDO] Agora esta prop será aceita pelo componente atualizado
             defaultView={filterView}
-            filters={filters} 
+            queryParams={{ 
+              view: filterView,
+              ...filters 
+            }}
           />
         ) : (
           <>

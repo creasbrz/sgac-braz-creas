@@ -1,12 +1,12 @@
-// schema.prisma
+// backend/prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url  	    = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // --- ENUMS ---
@@ -73,9 +73,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  casosCriados      Case[]             @relation("Criador")
-  casosAcolhida     Case[]             @relation("AgenteAcolhida")
-  casosPAEFI        Case[]             @relation("EspecialistaPAEFI")
+  // Relacionamentos
+  casosCriados      Case[]               @relation("Criador")
+  casosAcolhida     Case[]               @relation("AgenteAcolhida")
+  casosPAEFI        Case[]               @relation("EspecialistaPAEFI")
   evolucoes         Evolucao[]
   pafs              Paf[]
   pafVersions       PafVersion[]
@@ -89,43 +90,76 @@ model User {
 }
 
 model Case {
-  id              String     @id @default(uuid())
-  nomeCompleto    String
-  cpf             String     @unique
-  nascimento      DateTime
-  sexo            String
-  urgencia        String
-  pesoUrgencia    Int        @default(1)
-  violacao        String
-  categoria       String
-  telefone        String
-  endereco        String
-  dataEntrada     DateTime   @default(now())
-  orgaoDemandante String
-  origem          CaseOrigin @default(ESPONTANEA)
-  numeroSei       String?
-  linkSei         String?
-  observacoes     String?
-  status          CaseStatus @default(AGUARDANDO_ACOLHIDA)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id                   String   @id @default(uuid())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  // 1. Identificação
+  nomeCompleto         String
+  nomeSocial           String?
+  cpf                  String   @unique
+  nascimento           DateTime
+  sexo                 String
 
+  // 2. Contato (Versão 2.0 - Flexível)
+  // Armazena array: [{ numero: "...", tipo: "Pessoal", nome: "Mãe" }]
+  contatos     Json?
+
+  // 3. Endereço e Localização (Versão 2.0 e 3.0)
+  endereco_logradouro  String?
+  endereco_complemento String?
+  endereco_bairro      String?
+  endereco_cidade      String? @default("Brasília")
+  endereco_uf          String? @default("DF")
+  endereco_cep         String?
+  endereco_ra          String? // Essencial para filtros regionais
+  
+  // Geolocalização (V3.0 - Mapa de Calor)
+  latitude             Float?
+  longitude            Float?
+
+  // 4. Responsável (Menores/Incapazes)
+  responsavelLegal      String?
+  parentescoResponsavel String?
+
+  // 5. Dados Técnicos da Demanda
+  dataEntrada          DateTime   @default(now())
+  orgaoDemandante      String
+  origem               CaseOrigin @default(ESPONTANEA)
+  urgencia             String
+  pesoUrgencia         Int        @default(1)
+  violacao             String[] 
+  categoria            String
+  
+  // 6. Dados Administrativos
+  numeroSei   String?
+  linkSei     String?
+  observacoes String?
+  status      CaseStatus @default(AGUARDANDO_ACOLHIDA)
+  beneficios  String[]   @default([]) // Cache simples de benefícios ativos
+
+  // 7. Gestão de Equipe (Relacionamentos)
   criadoPorId         String
   criadoPor           User   @relation("Criador", fields: [criadoPorId], references: [id])
+  
   agenteAcolhidaId    String?
   agenteAcolhida      User?  @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
+  
   especialistaPAEFIId String?
   especialistaPAEFI   User?  @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
 
-  beneficios          String[] @default([])
+  // 8. Desligamento
   dataInicioPAEFI     DateTime?
   dataDesligamento    DateTime?
   motivoDesligamento  String?
   destinoDesligamento String?
   parecerFinal        String?
-  deletado            Boolean  @default(false)
-  dataDeletado        DateTime?
+  
+  // Soft Delete
+  deletado     Boolean   @default(false)
+  dataDeletado DateTime?
 
+  // 9. Relacionamentos Detalhados
   evolucoes       Evolucao[]
   paf             Paf?
   agendamentos    Agendamento[]
@@ -136,13 +170,16 @@ model Case {
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
 
-  // Índices para performance do Workspace
+  // Índices para Dashboard e Pesquisa Rápida
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
-  @@index([agenteAcolhidaId]) // Novo: Filtro rápido para Agente
-  @@index([especialistaPAEFIId]) // Novo: Filtro rápido para Especialista
-  @@index([violacao]) // Novo: Gráfico de violações do Gerente
+  @@index([agenteAcolhidaId])
+  @@index([especialistaPAEFIId])
+  @@index([violacao])
+  @@index([endereco_ra]) // Novo índice para filtros regionais
+
+  @@map("cases")
 }
 
 model Evolucao {
@@ -151,12 +188,13 @@ model Evolucao {
   sigilo    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  
   casoId    String
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
 
-  // Índice composto para buscar "última evolução" instantaneamente
   @@index([casoId, createdAt(sort: Desc)])
 }
 
@@ -168,10 +206,13 @@ model Paf {
   deadline    DateTime
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  
   casoId      String       @unique
   caso        Case         @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
   autorId     String
   autor       User         @relation(fields: [autorId], references: [id])
+  
   versaoAtual Int          @default(1)
   versoes     PafVersion[]
 }
@@ -183,30 +224,30 @@ model PafVersion {
   estrategias  String
   deadline     DateTime
   savedAt      DateTime @default(now())
+  
   pafId        String
   paf          Paf      @relation(fields: [pafId], references: [id], onDelete: Cascade)
+  
   autorId      String
   autor        User     @relation(fields: [autorId], references: [id])
   versaoNumero Int      @default(1)
 }
 
 model Agendamento {
-  id            String   @id @default(uuid())
-  titulo        String
-  data          DateTime
+  id          String   @id @default(uuid())
+  titulo      String
+  data        DateTime
+  tipo        String   @default("Atendimento")
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   
-  // [NOVO CAMPO] Necessário para diferenciar Visita, Atendimento, etc.
-  tipo          String   @default("Atendimento") 
-  
-  observacoes   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
   responsavelId String
-  responsavel   User     @relation(fields: [responsavelId], references: [id])
+  responsavel   User   @relation(fields: [responsavelId], references: [id])
+  
   casoId        String
-  caso          Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  caso          Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
 
-  // Índice para carregar a Agenda do Dia rapidamente
   @@index([responsavelId, data])
 }
 
@@ -217,8 +258,10 @@ model CaseLog {
   valorAnterior String?
   valorNovo     String?
   createdAt     DateTime  @default(now())
+  
   casoId        String
   caso          Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
   autorId       String
   autor         User      @relation(fields: [autorId], references: [id])
 }
@@ -230,8 +273,10 @@ model Anexo {
   url       String
   tamanho   Int?
   createdAt DateTime @default(now())
+  
   casoId    String
   caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
   autorId   String
   autor     User     @relation(fields: [autorId], references: [id])
 }
@@ -241,6 +286,7 @@ model SavedFilter {
   nome      String
   config    Json
   createdAt DateTime @default(now())
+  
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -253,16 +299,18 @@ model Encaminhamento {
   status      String   @default("PENDENTE")
   dataEnvio   DateTime @default(now())
   retorno     String?
-  casoId      String
-  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  autorId     String
-  autor       User     @relation(fields: [autorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  casoId      String
+  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
+  autorId     String
+  autor       User     @relation(fields: [autorId], references: [id])
 }
 
 model MembroFamilia {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   nome        String
   parentesco  String
   idade       Int?
@@ -270,57 +318,61 @@ model MembroFamilia {
   nascimento  DateTime?
   telefone    String?
   ocupacao    String?
-  renda       Decimal? @db.Decimal(10, 2)
+  renda       Decimal?  @db.Decimal(10, 2)
   observacoes String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
   casoId      String
-  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  caso        Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
 }
 
 model ServiceDeliverable {
   id              String    @id @default(uuid())
-  tipo            String
-  status          String
+  tipo            String    // "Cesta Básica", "Auxílio Natalidade"
+  status          String    // "SOLICITADO", "ENTREGUE"
   dataSolicitacao DateTime  @default(now())
   dataEntrega     DateTime?
   observacoes     String?
-  casoId          String
-  caso            Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  responsavelId   String
-  responsavel     User      @relation(fields: [responsavelId], references: [id])
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  
+  casoId          String
+  caso            Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
+  responsavelId   String
+  responsavel     User      @relation(fields: [responsavelId], references: [id])
 }
 
 model GroupActivity {
-  id               String            @id @default(uuid())
-  tema             String
-  tipo             GroupType
-  dataRealizacao   DateTime
-  local            String?
-  descricao        String?
-  orgaosEnvolvidos String[]          @default([])
-  
-  // Novo campo para controle visual (Verde/Amarelo no frontend)
-  attendanceConfirmed Boolean        @default(false)
+  id                  String            @id @default(uuid())
+  tema                String
+  tipo                GroupType
+  dataRealizacao      DateTime
+  local               String?
+  descricao           String?
+  orgaosEnvolvidos    String[]          @default([])
+  attendanceConfirmed Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  facilitadorId    String
-  facilitador      User              @relation(fields: [facilitadorId], references: [id])
-  participantes    GroupAttendance[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  facilitadorId       String
+  facilitador         User              @relation(fields: [facilitadorId], references: [id])
+  
+  participantes       GroupAttendance[]
 }
 
 model GroupAttendance {
   id          String        @id @default(uuid())
-  grupoId     String
-  grupo       GroupActivity @relation(fields: [grupoId], references: [id], onDelete: Cascade)
-  casoId      String
-  caso        Case          @relation(fields: [casoId], references: [id], onDelete: Cascade)
   presente    Boolean       @default(false)
   observacoes String?
   createdAt   DateTime      @default(now())
+  
+  grupoId     String
+  grupo       GroupActivity @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  
+  casoId      String
+  caso        Case          @relation(fields: [casoId], references: [id], onDelete: Cascade)
 
   @@unique([grupoId, casoId])
 }

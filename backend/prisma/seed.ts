@@ -27,9 +27,9 @@ const LISTA_URGENCIAS = [
 
 const LISTA_VIOLACOES = [
   'Abandono', 'Negligência', 'Afastamento do convívio familiar',
-  'Cumprimento de medidas socioeducativas', 'Descumprimento de condicionalidade do PBF',
-  'Discriminação', 'Situação de rua', 'Trabalho infantil',
-  'Violência física e/ou psicológica', 'Violência sexual', 'Outros'
+  'Violência física', 'Violência psicológica', 'Violência sexual',
+  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial',
+  'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
 ]
 
 const LISTA_DESTINOS = [
@@ -48,7 +48,7 @@ const TRANSFERENCIA_RENDA = [
   'PROGRAMA CARTÃO GÁS', 'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
 ]
 
-const MOTIVOS_DESLIGAMENTO = [
+const LISTA_MOTIVOS_DESLIGAMENTO = [
   'Transferência de território', 'Falecimento do(a) usuário(a)',
   'Recusa do atendimento por parte do(a) usuário(a)', 'Usuário(a) não localizado(a)',
   'Usuário(a) acolhido(a)', 'Minimização dos riscos', 'Não pertencente à demanda do CREAS'
@@ -56,6 +56,7 @@ const MOTIVOS_DESLIGAMENTO = [
 
 const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT']
 const TEMAS_GRUPO = ['Oficina de Parentalidade', 'Grupo de Mulheres', 'Acolhida Coletiva', 'Roda de Conversa BPC', 'Grupo de Idosos']
+const REGIOES_ADMINISTRATIVAS = ['Brazlândia', 'Ceilândia', 'Taguatinga', 'Sol Nascente/Pôr do Sol']
 
 const EVOLUCAO_TEMPLATES = [
   "Realizada visita domiciliar. Família apresenta vulnerabilidade habitacional. Orientado sobre documentação necessária para inclusão no Cadastro Único.",
@@ -79,6 +80,16 @@ const PAF_OBJETIVOS = [
 const randInt = (min: number, max: number) => faker.number.int({ min, max })
 const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 
+// Gera coordenada aleatória próxima a Brazlândia (-15.668, -48.201)
+const generateCoords = () => {
+  const latBase = -15.668
+  const lngBase = -48.201
+  // Variação de ~2km
+  const lat = latBase + (Math.random() - 0.5) * 0.04
+  const lng = lngBase + (Math.random() - 0.5) * 0.04
+  return { lat, lng }
+}
+
 const calculateUrgencyWeight = (u: string) => {
   if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(u)) return 4;
   if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
@@ -87,9 +98,9 @@ const calculateUrgencyWeight = (u: string) => {
 }
 
 async function main() {
-  console.log('🌱 [SEED V7.1 - OTIMIZADO] Iniciando povoamento...')
+  console.log('🌱 [SEED V8.0 - GEO + NOVOS CAMPOS] Iniciando...')
 
-  // 1. Limpeza Segura (Ordem Reversa de Dependência)
+  // 1. Limpeza Segura (Ordem Reversa)
   try {
     console.log('🧹 Limpando banco de dados...')
     await prisma.groupAttendance.deleteMany()
@@ -107,7 +118,7 @@ async function main() {
     await prisma.savedFilter.deleteMany()
     await prisma.user.deleteMany()
   } catch (e) {
-    console.warn("⚠️  Aviso: O banco já estava limpo ou ocorreu um erro não-crítico na limpeza.")
+    console.warn("⚠️  Aviso: O banco já estava limpo ou erro não-crítico.")
   }
 
   // 2. Usuários
@@ -131,13 +142,14 @@ async function main() {
 
   // 3. Casos
   const NUM_CASES = 150
-  console.log(`📂 Gerando ${NUM_CASES} casos simulados...`)
+  console.log(`📂 Gerando ${NUM_CASES} casos simulados com GEO...`)
 
   for (let i = 0; i < NUM_CASES; i++) {
     const dataEntrada = faker.date.past({ years: 1 })
     const origem = faker.helpers.arrayElement(Object.values(CaseOrigin))
+    const coords = generateCoords()
     
-    // Lógica de Status (Funil de Atendimento)
+    // Status Logic
     const statusRoll = Math.random()
     let status = CaseStatus.AGUARDANDO_ACOLHIDA
     if (statusRoll > 0.10) status = CaseStatus.EM_ACOLHIDA 
@@ -159,12 +171,12 @@ async function main() {
     
     const especialistaResp = needsSpecialist ? faker.helpers.arrayElement(especialistas) : null
 
-    // Lógica de Desligamento
+    // Desligamento
     let desligamentoData = {}
     if (status === CaseStatus.DESLIGADO) {
         desligamentoData = {
             dataDesligamento: addDays(dataEntrada, randInt(60, 300)),
-            motivoDesligamento: faker.helpers.arrayElement(MOTIVOS_DESLIGAMENTO),
+            motivoDesligamento: faker.helpers.arrayElement(LISTA_MOTIVOS_DESLIGAMENTO),
             destinoDesligamento: faker.helpers.arrayElement(LISTA_DESTINOS),
             parecerFinal: "Superação de vulnerabilidade identificada após intervenção técnica."
         }
@@ -172,30 +184,47 @@ async function main() {
 
     const urgencia = faker.helpers.arrayElement(LISTA_URGENCIAS)
 
-    // CRIAÇÃO DO CASO
+    // --- CRIAÇÃO DO CASO (V3.0) ---
     const newCase = await prisma.case.create({
       data: {
         nomeCompleto: faker.person.fullName(),
+        nomeSocial: Math.random() > 0.8 ? faker.person.firstName() : null,
         cpf: generateCPF(), 
         nascimento: faker.date.birthdate({ min: 14, max: 85, mode: 'age' }),
         sexo: faker.helpers.arrayElement(['Masculino', 'Feminino']),
-        telefone: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`,
-        endereco: `Qd ${randInt(1, 50)} Conj ${String.fromCharCode(65 + randInt(0, 20))} - Brazlândia`,
+        
+        // Novo formato de contatos (JSON válido)
+        contatos: [
+            { numero: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`, tipo: "Pessoal" },
+            { numero: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`, tipo: "Recado", nome: "Vizinha" }
+        ],
+
+        // Novo formato de endereço
+        endereco_logradouro: `Quadra ${randInt(1, 50)} Conjunto ${String.fromCharCode(65 + randInt(0, 20))} Casa ${randInt(1, 40)}`,
+        endereco_ra: faker.helpers.arrayElement(REGIOES_ADMINISTRATIVAS),
+        endereco_cidade: 'Brasília',
+        endereco_uf: 'DF',
+        endereco_cep: '72700-000',
+        
+        // Mapa de Calor
+        latitude: coords.lat,
+        longitude: coords.lng,
         
         urgencia,
         pesoUrgencia: calculateUrgencyWeight(urgencia),
-        violacao: faker.helpers.arrayElement(LISTA_VIOLACOES),
+        // [AJUSTE] Gera Array de Strings para adequar ao Schema e testar lógica de multiplas violações
+        violacao: faker.helpers.arrayElements(LISTA_VIOLACOES, randInt(1, 2)),
         categoria: faker.helpers.arrayElement(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente']),
         
         origem,
         dataEntrada,
         orgaoDemandante: origem === CaseOrigin.ESPONTANEA ? 'Demanda Espontânea' : faker.helpers.arrayElement(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS', 'Conselho Tutelar']),
         numeroSei: `00431-${faker.string.numeric(8)}/2025`,
+        // [AJUSTE] Benefícios como array de strings
         beneficios: faker.helpers.arrayElements(TRANSFERENCIA_RENDA, randInt(0, 2)), 
         
         status,
         
-        // Conexões de Relacionamento
         criadoPor: { connect: { id: criador.id } },
         agenteAcolhida: agenteResp ? { connect: { id: agenteResp.id } } : undefined,
         especialistaPAEFI: especialistaResp ? { connect: { id: especialistaResp.id } } : undefined,
@@ -230,13 +259,14 @@ async function main() {
         }
     }
 
-    // PAF (Plano de Acompanhamento)
+    // PAF
     if ([CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO].includes(status) && especialistaResp) {
         await prisma.paf.create({
             data: {
                 casoId: newCase.id,
                 autorId: especialistaResp.id,
-                diagnostico: `Situação de risco: ${urgencia}. Violação: ${newCase.violacao}`,
+                // Ajuste para pegar a primeira violação se houver mais de uma
+                diagnostico: `Situação de risco: ${urgencia}. Violação: ${newCase.violacao.join(', ')}`,
                 objetivos: faker.helpers.arrayElement(PAF_OBJETIVOS),
                 estrategias: "Visitas mensais, encaminhamento para CRAS e BPC.",
                 deadline: addDays(dataEntrada, 180),
@@ -245,7 +275,7 @@ async function main() {
         });
     }
 
-    // Agendamentos (Histórico e Futuro)
+    // Agendamentos
     const responsavelAgendamento = especialistaResp || agenteResp || criador;
 
     if (Math.random() > 0.3) {
@@ -272,7 +302,7 @@ async function main() {
        })
     }
 
-    // Benefícios Eventuais
+    // Benefícios (ServiceDeliverable)
     if (status !== CaseStatus.AGUARDANDO_ACOLHIDA && Math.random() > 0.2) {
         const numEventuais = randInt(1, 3)
         for (let j = 0; j < numEventuais; j++) {
@@ -310,7 +340,7 @@ async function main() {
       }
     }
 
-    // Composição Familiar
+    // Membros Família
     const numMembros = randInt(1, 4)
     for (let m = 0; m < numMembros; m++) {
       await prisma.membroFamilia.create({
@@ -320,18 +350,16 @@ async function main() {
           parentesco: faker.helpers.arrayElement(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)']),
           idade: randInt(2, 90),
           cpf: Math.random() > 0.3 ? generateCPF() : null,
-          // [CORREÇÃO] Uso de Prisma.Decimal para tipagem estrita
           renda: new Prisma.Decimal(randInt(0, 1412)) 
         }
       })
     }
 
-    // Barra de progresso simples
     if (i % 10 === 0) process.stdout.write('.')
   }
 
   // 4. Logs de Sistema Adicionais
-  console.log('\n📈 Gerando volume de histórico (logs)...')
+  console.log('\n📈 Gerando logs históricos...')
   const allWorkers = [...especialistas, ...agentes]
   const safeActions = [LogAction.MUDANCA_STATUS, LogAction.OUTRO, LogAction.ATRIBUICAO]
 
@@ -353,7 +381,7 @@ async function main() {
   }
 
   // 5. Grupos e Oficinas
-  console.log('\n👥 Criando Grupos e Listas de Presença...')
+  console.log('\n👥 Criando Grupos...')
   const NUM_GROUPS = 15
   for (let i = 0; i < NUM_GROUPS; i++) {
     const facilitator = faker.helpers.arrayElement(especialistas)
@@ -384,7 +412,7 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Seed V7.1 COMPLETO! Banco de dados povoado com sucesso.')
+  console.log('\n✅ Seed V8.0 COMPLETO!')
 }
 
 main()

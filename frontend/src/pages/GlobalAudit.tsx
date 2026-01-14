@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Pagination } from "@/components/common/Pagination"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
-import { ROUTES } from "@/constants/routes"
+import { ROUTES } from "@/constants/app-routes"
 
 // Configuração Semântica das Ações (Cor + Ícone)
 const ACTION_CONFIG: Record<string, { label: string, style: string, icon: any }> = {

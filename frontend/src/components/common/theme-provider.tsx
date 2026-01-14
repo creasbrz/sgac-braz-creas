@@ -1,11 +1,5 @@
 // frontend/src/components/theme-provider.tsx
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 
 type Theme = "dark" | "light" | "system"
 
@@ -20,52 +14,42 @@ interface ThemeProviderState {
   setTheme: (theme: Theme) => void
 }
 
-const ThemeContext = createContext<ThemeProviderState | undefined>(undefined)
+const initialState: ThemeProviderState = {
+  theme: "system",
+  setTheme: () => null,
+}
+
+const ThemeContext = createContext<ThemeProviderState>(initialState)
 
 export function ThemeProvider({
   children,
   defaultTheme = "system",
   storageKey = "vite-ui-theme",
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(defaultTheme)
+  
+  const [theme, setTheme] = useState<Theme>(() => {
+    return (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  })
 
-  // Carregar tema salvo (evita acessar localStorage no SSR)
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey) as Theme | null
-    if (stored) setTheme(stored)
-  }, [storageKey])
+    const root = window.document.documentElement
 
-  // Aplicar tema ao DOM
-  useLayoutEffect(() => {
-    const root = document.documentElement
     root.classList.remove("light", "dark")
 
     if (theme === "system") {
-      const systemPrefersDark = window.matchMedia(
-        "(prefers-color-scheme: dark)"
-      ).matches
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+        .matches
+        ? "dark"
+        : "light"
 
-      root.classList.add(systemPrefersDark ? "dark" : "light")
+      root.classList.add(systemTheme)
       return
     }
 
     root.classList.add(theme)
   }, [theme])
 
-  // Atualizar tema se usuário alterar tema do sistema
-  useEffect(() => {
-    if (theme !== "system") return
-
-    const media = window.matchMedia("(prefers-color-scheme: dark)")
-    const handler = () => {
-      setTheme("system") // força recalcular
-    }
-    media.addEventListener("change", handler)
-
-    return () => media.removeEventListener("change", handler)
-  }, [theme])
-
-  const value: ThemeProviderState = {
+  const value = {
     theme,
     setTheme: (newTheme: Theme) => {
       localStorage.setItem(storageKey, newTheme)
@@ -73,6 +57,7 @@ export function ThemeProvider({
     },
   }
 
+  // CORREÇÃO: Removido {...props} que causava o erro
   return (
     <ThemeContext.Provider value={value}>
       {children}
@@ -80,10 +65,11 @@ export function ThemeProvider({
   )
 }
 
-export function useTheme() {
+export const useTheme = () => {
   const context = useContext(ThemeContext)
-  if (!context) {
+
+  if (context === undefined)
     throw new Error("useTheme must be used within a ThemeProvider")
-  }
+
   return context
 }

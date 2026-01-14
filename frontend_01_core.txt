@@ -31,7 +31,7 @@ FILE: frontend\package.json
 ==================================================================
 {
   "name": "frontend",
-  "version": "7.1.0",
+  "version": "7.1.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -40,74 +40,75 @@ FILE: frontend\package.json
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fullcalendar/daygrid": "^6.1.19",
-    "@fullcalendar/interaction": "^6.1.19",
-    "@fullcalendar/list": "^6.1.19",
-    "@fullcalendar/react": "^6.1.19",
-    "@fullcalendar/timegrid": "^6.1.19",
-    "@hookform/resolvers": "^5.2.2",
-    "@radix-ui/react-accordion": "^1.2.12",
-    "@radix-ui/react-alert-dialog": "^1.1.15",
-    "@radix-ui/react-avatar": "^1.1.11",
-    "@radix-ui/react-checkbox": "^1.3.3",
-    "@radix-ui/react-dialog": "^1.1.15",
-    "@radix-ui/react-dropdown-menu": "^2.1.16",
-    "@radix-ui/react-label": "^2.1.8",
-    "@radix-ui/react-popover": "^1.1.15",
-    "@radix-ui/react-primitive": "^2.1.4",
-    "@radix-ui/react-scroll-area": "^1.2.10",
-    "@radix-ui/react-select": "^2.2.6",
+    "@fullcalendar/daygrid": "^6.1.15",
+    "@fullcalendar/interaction": "^6.1.15",
+    "@fullcalendar/list": "^6.1.15",
+    "@fullcalendar/react": "^6.1.15",
+    "@fullcalendar/timegrid": "^6.1.15",
+    "@hookform/resolvers": "^3.9.1",
+    "@radix-ui/react-accordion": "^1.2.1",
+    "@radix-ui/react-alert-dialog": "^1.1.2",
+    "@radix-ui/react-avatar": "^1.1.1",
+    "@radix-ui/react-checkbox": "^1.1.2",
+    "@radix-ui/react-dialog": "^1.1.2",
+    "@radix-ui/react-dropdown-menu": "^2.1.2",
+    "@radix-ui/react-label": "^2.1.0",
+    "@radix-ui/react-popover": "^1.1.2",
+    "@radix-ui/react-primitive": "^2.0.0",
+    "@radix-ui/react-scroll-area": "^1.2.0",
+    "@radix-ui/react-select": "^2.1.2",
     "@radix-ui/react-slot": "^1.2.4",
-    "@radix-ui/react-switch": "^1.2.6",
-    "@radix-ui/react-tabs": "^1.1.13",
-    "@radix-ui/react-tooltip": "^1.2.8",
-    "@tanstack/react-query": "^5.90.12",
-    "@tanstack/react-query-devtools": "^5.91.1",
-    "axios": "^1.13.2",
+    "@radix-ui/react-switch": "^1.1.1",
+    "@radix-ui/react-tabs": "^1.1.1",
+    "@radix-ui/react-tooltip": "^1.1.4",
+    "@tanstack/react-query": "^5.62.0",
+    "@tanstack/react-query-devtools": "^5.62.0",
+    "@types/node": "^22.10.1",
+    "@types/pdfmake": "^0.2.9",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "axios": "^1.7.9",
+    "breadcrumb": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
+    "cmdk": "^1.0.4",
     "date-fns": "^4.1.0",
-    "fast-csv": "^5.0.5",
-    "framer-motion": "^12.23.26",
+    "fast-csv": "^5.0.2",
+    "framer-motion": "^11.13.1",
     "html2canvas": "^1.4.1",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
-    "lucide-react": "^0.561.0",
-    "pdfmake": "^0.2.20",
-    "react": "^19.2.3",
-    "react-day-picker": "^9.12.0",
-    "react-dom": "^19.2.3",
-    "react-hook-form": "^7.68.0",
-    "react-hot-toast": "^2.6.0",
+    "lucide-react": "^0.468.0",
+    "pdfmake": "^0.2.15",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-day-picker": "^9.4.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.54.0",
+    "react-hot-toast": "^2.4.1",
     "react-imask": "^7.6.1",
-    "react-leaflet": "^5.0.0",
-    "react-router-dom": "^7.10.1",
-    "recharts": "^3.6.0",
-    "sonner": "^2.0.7",
-    "tailwind-merge": "^3.4.0",
+    "react-leaflet": "^4.2.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.15.0",
+    "sonner": "^1.7.1",
+    "tailwind-merge": "^2.5.5",
+    "tailwindcss": "^3.4.16",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^4.1.13"
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
+    "@eslint/js": "^9.16.0",
     "@types/leaflet": "^1.9.21",
-    "@types/node": "^25.0.1",
-    "@types/pdfmake": "^0.2.12",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.2",
-    "autoprefixer": "^10.4.22",
-    "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "postcss": "^8.5.6",
-    "tailwindcss": "3.4.4",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.49.0",
-    "vite": "^7.2.7",
-    "vite-plugin-pwa": "^1.2.0"
+    "eslint": "^9.16.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.13.0",
+    "typescript-eslint": "^8.18.0",
+    "vite-plugin-pwa": "^0.21.1"
   }
 }
 
@@ -257,7 +258,7 @@ FILE: frontend\tsconfig.json
       "@/*": ["./src/*"] //
     }
   },
-  "include": ["src"], //
+  "include": ["src", "../backend/src/utils/geocoding.ts"], //
   "references": [{ "path": "./tsconfig.node.json" }] //
 }
 
@@ -289,7 +290,7 @@ root.render(
 ==================================================================
 FILE: frontend\src\App.tsx
 ==================================================================
-import React from 'react' 
+import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
@@ -298,11 +299,12 @@ import { queryClient } from "./lib/react-query";
 import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
-import { PrivacyProvider } from "./contexts/PrivacyContext"; // [NOVO]
+import { PrivacyProvider } from "./contexts/PrivacyContext";
 import { ThemeProvider } from "./components/common/theme-provider";
 import ErrorBoundary from "./components/ui/error-boundary";
 
-import { ROUTE_PATHS, ROUTES } from "./constants/routes";
+// [CORREÇÃO] Importando do novo arquivo app-routes.ts
+import { ROUTE_PATHS, ROUTES } from "./constants/app-routes"; 
 import { ProtectedRoute } from "./ProtectedRoute";
 import { MainLayout } from "./components/layout/MainLayout";
 import { Login } from "./pages/Login";
@@ -327,7 +329,7 @@ import { WaitingList } from "./pages/WaitingList";
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isSessionLoading } = useAuthContext()
 
-  if (isSessionLoading) return null 
+  if (isSessionLoading) return null
   if (isAuthenticated) {
     return <Navigate to={ROUTES.WORKSPACE} replace />
   }
@@ -341,7 +343,6 @@ export function App() {
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
-              {/* [NOVO] Provider de Privacidade envolvendo a aplicação */}
               <PrivacyProvider>
                 <ModalProvider>
                   <SidebarProvider>
@@ -436,40 +437,52 @@ interface ImportMeta {
 ==================================================================
 FILE: frontend\src\lib\api.ts
 ==================================================================
-import axios from 'axios'
+import axios, { type InternalAxiosRequestConfig, type AxiosError } from 'axios'
+import { STORAGE_KEYS } from '@/constants/storage' // [Melhoria] Importando constants para consistência
 
-// Define a URL base. Em produção, como é o mesmo domínio, pode ser '/'
-// Em dev, usa a variável de ambiente ou localhost
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api'
+// Lógica de URL:
+// Prod (Render): '/api' (Backend e Frontend na mesma origem)
+// Dev (Local): 'http://localhost:3333/api'
+const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3333/api' : '/api')
 
 export const api = axios.create({
   baseURL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 })
 
-// Interceptador de Requisição (Anexa o token)
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('sgac_token')
-  if (token) {
+// Interceptador de Requisição
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // [Melhoria] Usando a constante para garantir que lemos o mesmo token que o AuthContext salvou
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
+  
+  if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  
   return config
 })
 
-// Interceptador de Resposta (Trata erros globais)
+// Interceptador de Resposta
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Se o erro for 401 (Não autorizado / Token expirado)
+  (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Evita loop infinito se o erro for na própria rota de login
-      if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('sgac_token')
-        localStorage.removeItem('sgac_user')
+      const isLoginPage = window.location.pathname.includes('/login')
+
+      if (!isLoginPage) {
+        // [Melhoria] Limpeza consistente usando constantes
+        localStorage.removeItem(STORAGE_KEYS.TOKEN)
+        localStorage.removeItem(STORAGE_KEYS.USER)
         
-        // Redireciona para login
+        // Remove header global para evitar vazamento em futuras requisições sem refresh
+        delete api.defaults.headers.common.Authorization
+        
         window.location.href = '/login'
       }
     }
+    
     return Promise.reject(error)
   }
 )
@@ -630,12 +643,18 @@ import pdfFonts from "pdfmake/build/vfs_fonts"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { api } from "@/lib/api"
-import type { TDocumentDefinitions, StyleDictionary, Content } from "pdfmake/interfaces"
 
 // Imports de tipos do projeto
 import type { CaseDetailData, FamilyMember, PafData } from "@/types/case"
 import type { GroupActivity, GroupAttendance } from "@/types/group"
 import { formatDateSafe, formatCPF, formatPhone } from "./formatters"
+
+// --- TIPAGEM LOCAL (Para evitar erros de build 'module not found') ---
+// O pdfmake muitas vezes tem problemas com @types em certas configs do Vite.
+// Usamos 'any' aqui para destravar o deploy, já que a estrutura JSON é validada em runtime.
+type TDocumentDefinitions = any
+type StyleDictionary = any
+type Content = any
 
 // --- INTERFACES DE DADOS ---
 
@@ -705,13 +724,19 @@ export interface DismissalReportData {
   monthlyTrend: { name: string; value: number }[]
 }
 
-// --- CONFIGURAÇÃO VFS ---
+// --- CONFIGURAÇÃO VFS (FONTS) ---
+// Workaround para garantir que as fontes carreguem no client-side
+const pdfMakeAny: any = pdfMake;
 if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
-  pdfMake.vfs = pdfFonts.pdfMake.vfs;
+  pdfMakeAny.vfs = pdfFonts.pdfMake.vfs;
 } else if (pdfFonts && (pdfFonts as any).vfs) {
-  pdfMake.vfs = (pdfFonts as any).vfs;
-} else if (pdfMake.vfs === undefined) {
-  pdfMake.vfs = pdfFonts;
+  pdfMakeAny.vfs = (pdfFonts as any).vfs;
+} else if (pdfMakeAny.vfs === undefined) {
+  try {
+    pdfMakeAny.vfs = pdfFonts;
+  } catch (e) {
+    console.warn("Erro ao configurar fontes do PDFMake", e);
+  }
 }
 
 // --- CONSTANTES E ESTILOS ---
@@ -869,7 +894,7 @@ export const generateCasePDF = (caseDataRaw: CaseDetailData, mode: 'open' | 'dow
             [{ text: "CONTATO:", style: "label" }, { text: formatPhone(caseData.telefone), style: "value" }]
           ]
         },
-        layout: { hLineWidth: (i) => (i === 0 || i === 5) ? 1 : 0.5, vLineWidth: () => 0, hLineColor: '#ccc', fillColor: (i) => (i % 2 === 0) ? HEADER_BG : null }
+        layout: { hLineWidth: (i: number) => (i === 0 || i === 5) ? 1 : 0.5, vLineWidth: () => 0, hLineColor: '#ccc', fillColor: (i: number) => (i % 2 === 0) ? HEADER_BG : null }
       },
       createSectionHeader("1. Situação do Atendimento"),
       {
@@ -1694,7 +1719,6 @@ export function useModal() {
 ==================================================================
 FILE: frontend\src\contexts\AuthContext.tsx
 ==================================================================
-// [CORREÇÃO] Adicionado useContext no import
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -1702,7 +1726,7 @@ import { jwtDecode } from 'jwt-decode'
 import { Loader2 } from 'lucide-react'
 import { getErrorMessage } from '@/utils/error'
 import { api } from '@/lib/api'
-import { ROUTES } from '@/constants/routes'
+import { ROUTES } from '@/constants/app-routes'
 import { STORAGE_KEYS } from '@/constants/storage'
 import type { User, UserRole } from '@/types/user'
 
@@ -1730,8 +1754,7 @@ interface AuthContextType {
 
 export const AuthContext = createContext({} as AuthContextType)
 
-// [NOVO] Hook personalizado para facilitar o uso do contexto
-// Isso é obrigatório para o PublicOnlyRoute no App.tsx funcionar
+// Hook personalizado para facilitar o uso do contexto
 export const useAuthContext = () => useContext(AuthContext)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -1743,7 +1766,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null)
     localStorage.removeItem(STORAGE_KEYS.TOKEN)
-    delete api.defaults.headers.common.Authorization
+    localStorage.removeItem(STORAGE_KEYS.USER) // Limpa dados do usuário se existirem
+    
+    // Não precisamos limpar o header manualmente, pois o interceptor do api.ts
+    // lê o localStorage a cada requisição. Se não tem token lá, não envia.
+    
     navigate(ROUTES.LOGIN)
   }
 
@@ -1753,21 +1780,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (storedToken) {
         try {
+          // 1. Verifica validade do token localmente (Data de Expiração)
           const decodedToken = jwtDecode<DecodedToken>(storedToken)
-          if (decodedToken.exp * 1000 > Date.now()) {
-            api.defaults.headers.common.Authorization = `Bearer ${storedToken}`
+          const isTokenValid = decodedToken.exp * 1000 > Date.now()
+
+          if (isTokenValid) {
+            // 2. Tenta buscar os dados atualizados do usuário no Backend
+            // O interceptor do axios já vai anexar o token automaticamente
             const response = await api.get('/me')
             setUser(response.data)
           } else {
+            // Token expirou pelo tempo
             logout()
           }
         } catch (error) {
-          console.error("Falha ao carregar sessão:", error)
+          console.error("Sessão inválida ou expirada:", error)
+          // Se der erro no decode ou na requisição /me (ex: 401), faz logout
           logout()
         }
       }
+      
       setIsSessionLoading(false)
     }
+
     loadUserFromStorage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1775,24 +1810,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async ({ email, senha }: LoginData): Promise<boolean> => {
     setIsLoginLoading(true)
     try {
+      // 1. Autenticação
       const response = await api.post('/login', { email, senha })
       const { token: newToken } = response.data
 
+      // 2. Salvar Token
       localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
-      api.defaults.headers.common.Authorization = `Bearer ${newToken}`
-
+      
+      // 3. Buscar dados completos do usuário
+      // (Necessário pois o login as vezes retorna só o token básico)
       const userResponse = await api.get('/me')
       const loggedUser: User = userResponse.data
+      
+      // 4. Atualizar Estado e Storage Auxiliar
       setUser(loggedUser)
+      // Opcional: Salvar user básico no storage para recuperação rápida
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(loggedUser))
 
       toast.success('Login bem-sucedido!')
 
-      // Redireciona para a Mesa de Trabalho (Workspace)
+      // 5. Redirecionamento
       navigate(ROUTES.WORKSPACE) 
       
       return true
     } catch (error) {
-      const errMsg = getErrorMessage(error, 'Verifique suas credenciais.')
+      console.error(error)
+      const errMsg = getErrorMessage(error, 'Credenciais inválidas. Tente novamente.')
       toast.error(errMsg)
       return false
     } finally {
@@ -1938,8 +1981,10 @@ FILE: frontend\src\types\agenda.ts
 export interface UpcomingAppointment {
   id: string
   titulo: string
-  data: string
-  caso: {
+  data: string // ISO Date string
+  tipo: string
+  // O '?' torna esta propriedade opcional, resolvendo o erro "Type undefined is not assignable..."
+  caso?: {
     id: string
     nomeCompleto: string
   }
@@ -1949,14 +1994,23 @@ export interface UpcomingAppointment {
 FILE: frontend\src\types\case.ts
 ==================================================================
 // frontend/src/types/case.ts
+// --- SUB-INTERFACES ---
+
+export interface Contact {
+  numero: string
+  tipo: 'Pessoal' | 'Residencial' | 'Trabalho' | 'Vizinho' | 'Parente' | 'Outro'
+  nome?: string
+  observacao?: string
+}
+
 export interface ServiceDeliverable {
   id: string
   tipo: string
-  status: 'SOLICITADO' | 'CONCEDIDO' | 'NEGADO' | 'ENTREGUE'
+  status: 'SOLICITADO' | 'CONCEDIDO' | 'NEGADO' | 'ENTREGUE' | 'PENDENTE' | 'CANCELADO'
   dataSolicitacao: string
   dataEntrega?: string | null
   observacoes?: string | null
-  responsavel: { nome: string }
+  responsavel?: { nome: string } // Pode ser opcional dependendo do backend
 }
 
 export interface FamilyMember {
@@ -1971,6 +2025,46 @@ export interface FamilyMember {
   renda?: number | null
   observacoes?: string | null
   createdAt: string
+}
+
+export interface CaseAttachment {
+  id: string
+  nome: string
+  tipo: string
+  url: string
+  tamanho?: number
+  createdAt: string
+  autor: { nome: string }
+}
+
+export interface Referral {
+  id: string
+  tipo: string
+  instituicao: string
+  motivo: string
+  status: 'PENDENTE' | 'CONCLUIDO' | 'NEGADO' | 'CANCELADO'
+  dataEnvio: string
+  retorno?: string | null
+  createdAt: string
+  autor: { nome: string }
+}
+
+export interface CaseLog {
+  id: string
+  acao: string
+  descricao: string
+  createdAt: string
+  valorAnterior?: string | null
+  valorNovo?: string | null
+  autor: { nome: string }
+}
+
+export interface Evolution {
+  id: string
+  conteudo: string
+  sigilo: boolean
+  createdAt: string
+  autor: { id: string; nome: string; cargo?: string }
 }
 
 export interface PafVersion {
@@ -1996,73 +2090,80 @@ export interface PafData {
   autor: { id: string; nome: string }
 }
 
-export interface CaseLog {
+export interface UserOption {
   id: string
-  acao: string
-  descricao: string
-  createdAt: string
-  valorAnterior?: string | null
-  valorNovo?: string | null
-  autor: { nome: string }
+  nome: string
 }
 
-export interface Referral {
-  id: string
-  tipo: string
-  instituicao: string
-  motivo: string
-  status: 'PENDENTE' | 'CONCLUIDO' | 'NEGADO'
-  dataEnvio: string
-  retorno?: string | null
-  createdAt: string
-  autor: { nome: string }
-}
+// --- INTERFACES PRINCIPAIS ---
 
 export interface CaseDetailData {
   id: string
+  createdAt: string
+  updatedAt: string
+
+  // Identificação
   nomeCompleto: string
+  nomeSocial?: string | null
   cpf: string
   nascimento: string
   sexo: string
-  telefone: string
-  endereco: string
+  
+  // --- VERSÃO 2.0 (Novos Campos) ---
+  contatos?: Contact[] // Array de contatos estruturados
+  telefone?: string | null // Mantido para legado
+  
+  // Endereço Detalhado
+  endereco?: string | null // Mantido para legado
+  endereco_logradouro?: string
+  endereco_complemento?: string
+  endereco_bairro?: string
+  endereco_cidade?: string
+  endereco_uf?: string
+  endereco_cep?: string
+  endereco_ra?: string
+  latitude?: number
+  longitude?: number
+
+  // Responsável (Menores)
+  responsavelLegal?: string | null
+  parentescoResponsavel?: string | null
+
+  // Dados Técnicos
   dataEntrada: string
   urgencia: string
   violacao: string
   categoria: string
   orgaoDemandante: string
-  origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA'
+  origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA' | string
+  status: string
 
+  // Administrativo
   numeroSei: string | null
   linkSei: string | null
   observacoes: string | null
-  status: string
-
+  
+  // Relacionamentos (Objetos)
   criadoPor: { nome: string }
   agenteAcolhida: { id: string, nome: string } | null
   especialistaPAEFI: { id: string, nome: string } | null
 
+  // Listas (Includes do Prisma)
   beneficios: string[] 
   logs: CaseLog[]
+  familia?: FamilyMember[]
+  evolucoes?: Evolution[]
+  encaminhamentos?: Referral[]
+  entregas?: ServiceDeliverable[]
+  anexos?: CaseAttachment[]
+  paf?: PafData | null
 
+  // Desligamento
   motivoDesligamento: string | null
-  destinoDesligamento: string | null // [NOVO]
+  destinoDesligamento: string | null
   parecerFinal: string | null
   dataInicioPAEFI?: string
   dataDesligamento?: string
-}
-
-export interface Evolution {
-  id: string
-  conteudo: string
-  sigilo: boolean
-  createdAt: string
-  autor: { id: string; nome: string; cargo?: string }
-}
-
-export interface UserOption {
-  id: string
-  nome: string
 }
 
 export interface CaseSummary {
@@ -2074,9 +2175,16 @@ export interface CaseSummary {
   urgencia: string
   violacao?: string
   sexo?: string
+  
+  // Endereço e Contato resumidos para listas
+  endereco?: string | null
+  endereco_ra?: string | null
+  contatos?: Contact[]
+  telefone?: string | null
+
   dataDesligamento?: string | null
   motivoDesligamento?: string | null
-  destinoDesligamento?: string | null // [NOVO]
+  destinoDesligamento?: string | null
   
   agenteAcolhida: { nome: string } | null
   especialistaPAEFI: { nome: string } | null
@@ -2232,347 +2340,15 @@ export type WorkspaceResponse =
   | OperationalWorkspaceData
 
 ==================================================================
-FILE: frontend\src\constants\caseConstants.ts
+FILE: frontend\src\constants\app-navigation.ts
 ==================================================================
-// ============================================================================
-// 1. STATUS E MAPAS VISUAIS
-// ============================================================================
-export const CASE_STATUS_MAP = {
-  AGUARDANDO_ACOLHIDA: {
-    text: 'Aguardando Acolhida',
-    style: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
-  },
-  EM_ACOLHIDA: {
-    text: 'Em Acolhida',
-    style: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
-  },
-  AGUARDANDO_DISTRIBUICAO: {
-    text: 'Aguardando Distribuição',
-    style: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
-  },
-  EM_ACOLHIDA_ESPECIALIZADA: {
-    text: 'Acolhida Especializada',
-    style: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
-  },
-  EM_ACOMPANHAMENTO: {
-    text: 'Acompanhamento PAEFI',
-    style: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800',
-  },
-  EM_MONITORAMENTO: {
-    text: 'Em Monitoramento',
-    style: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-800',
-  },
-  DESLIGADO: {
-    text: 'Desligado',
-    style: 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
-  },
-} as const
-
-export type CaseStatusIdentifier = keyof typeof CASE_STATUS_MAP
-
-export function getCaseStatusInfo(status: string | null | undefined) {
-  if (status && status in CASE_STATUS_MAP) {
-    return CASE_STATUS_MAP[status as CaseStatusIdentifier]
-  }
-  return { text: status?.replace(/_/g, ' ') || 'Desconhecido', style: 'bg-muted text-muted-foreground' }
-}
-
-// ============================================================================
-// 2. LISTAS DE DOMÍNIO (MOTIVOS, DESTINOS) - AQUI ESTAVA O ERRO
-// ============================================================================
-export const MOTIVOS_DESLIGAMENTO = [
-  'Transferência de território',
-  'Falecimento do(a) usuário(a)',
-  'Recusa do atendimento por parte do(a) usuário(a)',
-  'Usuário(a) não localizado(a) após tentativas exaustivas',
-  'Usuário(a) acolhido(a)',
-  'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
-  'Minimização dos riscos (Autonomia)',
-  'Situação não pertencente à demanda do CREAS'
-]
-
-export const DESTINOS_DESLIGAMENTO = [
-  'Referenciado ao CRAS (PAIF)',
-  'Serviço de Saúde (CAPS/UBS)',
-  'Sistema de Justiça',
-  'Acolhimento Institucional',
-  'Superação da Vulnerabilidade (Autonomia)',
-  'Mudança de Município/Estado',
-  'Outro'
-]
-
-// ============================================================================
-// 3. DEFINIÇÕES DE URGÊNCIA
-// ============================================================================
-export const URGENCIA_GRAVISSIMA = [  
-  'CONVIVE COM AGRESSOR', 'IDOSO 80+', 'PRIMEIRA INFÂNCIA', 
-  'RISCO DE MORTE', 'VIOLÊNCIA SEXUAL', 'VIOLENCIA SEXUAL'
-]
-
-export const URGENCIA_MUITO_GRAVE = [
-  'RISCO DE REINCIDÊNCIA', 'RISCO DE REINCIDENCIA',
-  'SOFRE AMEAÇA', 'SOFRE AMEACA', 'RISCO DE DESABRIGO', 
-  'CRIANÇA/ADOLESCENTE', 'CRIANCA/ADOLESCENTE'
-]
-
-export const URGENCIA_GRAVE = [
- 'PCD', 'IDOSO', 
- 'INTERNAÇÃO', 'INTERNACAO', 'ACOLHIMENTO', 'GESTANTE/LACTANTE'
-]
-
-export const URGENCIA_LEVE = [
-  'SEM RISCO IMEDIATO', 'VISITA PERIÓDICA'
-]
-
-// ============================================================================
-// 4. FUNÇÃO DE COR DA URGÊNCIA
-// ============================================================================
-export function getUrgencyColor(urgencia: string | null | undefined): string {
-  if (!urgencia) return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400'
-  
-  const term = urgencia.toUpperCase().trim()
-  const check = (list: readonly string[]) => list.some(k => term === k || term.includes(k))
-
-  // 1. VERMELHO (GRAVÍSSIMA)
-  if (check(URGENCIA_GRAVISSIMA)) {
-    return 'bg-red-100 text-red-800 border-red-300 font-bold hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700'
-  }
-
-  // 2. LARANJA (MUITO GRAVE / ALTA)
-  if (check(URGENCIA_MUITO_GRAVE)) {
-    return 'bg-orange-100 text-orange-800 border-orange-300 font-semibold hover:bg-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-700'
-  }
-
-  // 3. AMARELO (GRAVE / MÉDIA)
-  if (check(URGENCIA_GRAVE)) {
-     return 'bg-yellow-100 text-yellow-800 border-yellow-300 font-medium hover:bg-yellow-200 dark:bg-yellow-900/40 dark:text-yellow-300 dark:border-yellow-700'
-  }
-
-  // 4. VERDE (LEVE / BAIXA)
-  if (check(URGENCIA_LEVE)) {
-    return 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
-  }
-
-  return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400'
-}
-
-==================================================================
-FILE: frontend\src\constants\caseStatus.ts
-==================================================================
-// frontend/src/constants/caseStatus.ts
-
-export const CASE_STATUSES = [
-  'AGUARDANDO_ACOLHIDA',
-  'EM_ACOLHIDA',
-  'AGUARDANDO_DISTRIBUICAO',
-  'EM_ACOLHIDA_ESPECIALIZADA',
-  'EM_ACOMPANHAMENTO',
-  'EM_MONITORAMENTO',
-  'DESLIGADO',
-] as const
-
-export type CaseStatus = (typeof CASE_STATUSES)[number]
-
-type StatusDisplayConfig = {
-  label: string
-  color: 'blue' | 'yellow' | 'green' | 'red' | 'gray' | 'purple'
-}
-
-export const CASE_STATUS_MAP: Record<CaseStatus | 'DESCONHECIDO', StatusDisplayConfig> = {
-  AGUARDANDO_ACOLHIDA: {
-    label: 'Aguardando Acolhida',
-    color: 'yellow',
-  },
-  EM_ACOLHIDA: {
-    label: 'Em Acolhida',
-    color: 'blue',
-  },
-  AGUARDANDO_DISTRIBUICAO: {
-    label: 'Aguardando Distribuição',
-    color: 'yellow',
-  },
-  EM_ACOLHIDA_ESPECIALIZADA: {
-    label: 'Acolhida Especializada',
-    color: 'purple',
-  },
-  EM_ACOMPANHAMENTO: {
-    label: 'Acompanhamento PAEFI',
-    color: 'green',
-  },
-  EM_MONITORAMENTO: {
-    label: 'Em Monitoramento',
-    color: 'gray',
-  },
-  DESLIGADO: {
-    label: 'Desligado',
-    color: 'red',
-  },
-  DESCONHECIDO: {
-    label: 'Desconhecido',
-    color: 'gray',
-  },
-}
-
-export function getCaseStatusDisplay(status: string | null | undefined): StatusDisplayConfig {
-  if (!status || !Object.keys(CASE_STATUS_MAP).includes(status)) {
-    return CASE_STATUS_MAP.DESCONHECIDO
-  }
-  return CASE_STATUS_MAP[status as CaseStatus]
-}
-
-==================================================================
-FILE: frontend\src\constants\caseTransitions.ts
-==================================================================
-// frontend/src/constants/caseTransitions.ts
-import { type CaseStatusIdentifier } from './caseConstants'
-import type { UserRole } from '@/types/user'
-
-const buttonStyles = {
-  success: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-  danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-  neutral: 'bg-muted text-muted-foreground hover:bg-muted/90',
-  accent: 'bg-purple-600 hover:bg-purple-700 text-white',
-  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
-  info: 'bg-cyan-600 hover:bg-cyan-700 text-white',
-}
-
-export type ActionType = 'status' | 'assign' | 'close'
-
-export interface StatusAction {
-  label: string
-  type: ActionType
-  nextStatus?: CaseStatusIdentifier
-  allowedRoles: UserRole[]
-  style: string
-}
-
-export const caseTransitions: Partial<
-  Record<CaseStatusIdentifier, StatusAction[]>
-> = {
-  AGUARDANDO_ACOLHIDA: [
-    {
-      label: 'Iniciar Acolhida',
-      type: 'status',
-      nextStatus: 'EM_ACOLHIDA',
-      allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.success,
-    },
-    {
-      label: 'Desligamento Simplificado',
-      type: 'close',
-      allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.neutral,
-    },
-  ],
-  EM_ACOLHIDA: [
-    {
-      label: 'Encaminhar para Distribuição',
-      type: 'status',
-      nextStatus: 'AGUARDANDO_DISTRIBUICAO',
-      allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.accent,
-    },
-    {
-      label: 'Desligamento Simplificado',
-      type: 'close',
-      allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.neutral,
-    },
-  ],
-  AGUARDANDO_DISTRIBUICAO: [
-    {
-      label: 'Atribuir Especialista',
-      type: 'assign', // Abre modal de seleção
-      allowedRoles: ['Gerente'],
-      style: buttonStyles.primary,
-    },
-  ],
-  EM_ACOLHIDA_ESPECIALIZADA: [
-    {
-      label: 'Iniciar Acompanhamento',
-      type: 'status',
-      nextStatus: 'EM_ACOMPANHAMENTO',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.success,
-    },
-    // [NOVO] Permite pular direto para monitoramento se for caso leve
-    {
-      label: 'Inserir em Monitoramento',
-      type: 'status',
-      nextStatus: 'EM_MONITORAMENTO',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.info,
-    },
-    {
-      label: 'Encerrar após Escuta',
-      type: 'close',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.danger,
-    },
-  ],
-  EM_ACOMPANHAMENTO: [
-    {
-      label: 'Mover para Monitoramento',
-      type: 'status',
-      nextStatus: 'EM_MONITORAMENTO',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.info,
-    },
-    {
-      label: 'Desligar Acompanhamento',
-      type: 'close',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.danger,
-    },
-  ],
-  EM_MONITORAMENTO: [
-    {
-      label: 'Retomar para Acompanhamento',
-      type: 'status',
-      nextStatus: 'EM_ACOMPANHAMENTO',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.success,
-    },
-    {
-      label: 'Desligar (Fim Monitoramento)',
-      type: 'close',
-      allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.danger,
-    },
-  ],
-  DESLIGADO: [
-    {
-      label: 'Reabrir Caso',
-      type: 'status',
-      nextStatus: 'AGUARDANDO_ACOLHIDA',
-      allowedRoles: ['Gerente'],
-      style: buttonStyles.primary,
-    },
-  ],
-}
-
-export function getAvailableActions(
-  status: string | null | undefined, // [CORREÇÃO] Tipagem mais flexível para evitar erros
-  cargo: UserRole,
-): StatusAction[] {
-  if (!status) return []
-  const safeStatus = status as CaseStatusIdentifier
-  const possibleActions = caseTransitions[safeStatus] || []
-  
-  return possibleActions.filter(action => 
-    action.allowedRoles.includes(cargo)
-  )
-}
-
-==================================================================
-FILE: frontend\src\constants\navigation.ts
-==================================================================
+// frontend/src/constants/app-navigation.ts
 import {
   PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
   UserCog, Projector, AlertTriangle, Briefcase, ShieldAlert
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { ROUTES } from './routes'
+import { ROUTES } from './app-routes'
 import type { UserRole } from '@/types/user'
 
 interface NavLink {
@@ -2670,76 +2446,9 @@ export const navLinks: NavLink[] = [
 ]
 
 ==================================================================
-FILE: frontend\src\constants\options.ts
+FILE: frontend\src\constants\app-routes.ts
 ==================================================================
-// frontend/src/constants/options.ts
-
-export const OPTIONS = {
-  sexo: [
-    'Masculino',
-    'Feminino',
-    'Outro',
-    'Não Informado'
-  ],
-
-  urgencia: [
-    'Convive com agressor',
-    'Idoso 80+',
-    'Primeira infância',
-    'Risco de morte',
-    'Risco de reincidência',
-    'Sofre ameaça',
-    'Risco de desabrigo',
-    'Criança/Adolescente',
-    'PCD',
-    'Idoso',
-    'Internação',
-    'Acolhimento',
-    'Gestante/Lactante',
-    'Sem risco imediato',
-    'Visita periódica'
-  ],
-
-  violacao: [
-    'Abandono',
-    'Negligência',
-    'Afastamento do convívio familiar',
-    'Cumprimento de medidas socioeducativas',
-    'Descumprimento de condicionalidade do PBF',
-    'Discriminação',
-    'Situação de rua',
-    'Trabalho infantil',
-    'Violência física e/ou psicológica',
-    'Violência sexual',
-    'Outros'
-  ],
-
-  categoria: [
-    'Mulher',
-    'POP RUA',
-    'LGBTQIA+',
-    'Migrante',
-    'Idoso',
-    'Criança/adolescente',
-    'PCD',
-    'Álcool/drogas',
-    'Família em vulnerabilidade'
-  ],
-
-  status: [
-    { value: 'AGUARDANDO_ACOLHIDA', label: 'Aguardando Acolhida' },
-    { value: 'EM_ACOLHIDA', label: 'Em Acolhida' },
-    { value: 'AGUARDANDO_DISTRIBUICAO', label: 'Aguardando Distribuição' },
-    { value: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Especializada' },
-    { value: 'EM_ACOMPANHAMENTO', label: 'Em Acompanhamento' },
-    { value: 'EM_MONITORAMENTO', label: 'Em Monitoramento' },
-    { value: 'DESLIGADO', label: 'Desligado' },
-  ]
-}
-
-==================================================================
-FILE: frontend\src\constants\routes.ts
-==================================================================
+// frontend/src/constants/app-routes.ts
 export const ROUTE_PATHS = {
   LOGIN: '/login',
   ROOT: '/',
@@ -2792,48 +2501,416 @@ export const ROUTES = {
 } as const
 
 ==================================================================
+FILE: frontend\src\constants\cases\definitions.ts
+==================================================================
+// frontend/src/constants/cases/definitions.ts
+// Define os Status como constantes para usar em todo o app
+export const CASE_STATUS = {
+  AGUARDANDO_ACOLHIDA: 'AGUARDANDO_ACOLHIDA',
+  EM_ACOLHIDA: 'EM_ACOLHIDA',
+  AGUARDANDO_DISTRIBUICAO: 'AGUARDANDO_DISTRIBUICAO',
+  EM_ACOLHIDA_ESPECIALIZADA: 'EM_ACOLHIDA_ESPECIALIZADA',
+  EM_ACOMPANHAMENTO: 'EM_ACOMPANHAMENTO',
+  EM_MONITORAMENTO: 'EM_MONITORAMENTO',
+  DESLIGADO: 'DESLIGADO',
+} as const
+
+export type CaseStatusType = keyof typeof CASE_STATUS
+
+// Listas de Domínio (Urgência, Violações, Motivos)
+export const URGENCIA_NIVEIS = {
+  GRAVISSIMA: ['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual'],
+  MUITO_GRAVE: ['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'],
+  GRAVE: ['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'],
+  LEVE: ['Sem risco imediato', 'Visita periódica']
+}
+
+export const LISTA_VIOLACOES = [
+  'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
+  'Violência física', 'Violência psicológica', 'Violência sexual',
+  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial',
+  'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
+]
+
+export const LISTA_MOTIVOS_DESLIGAMENTO = [
+  'Transferência de território',
+  'Falecimento do(a) usuário(a)',
+  'Recusa do atendimento por parte do(a) usuário(a)',
+  'Usuário(a) não localizado(a) após tentativas exaustivas',
+  'Usuário(a) acolhido(a)',
+  'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
+  'Minimização dos riscos (Autonomia)',
+  'Situação não pertencente à demanda do CREAS'
+]
+
+export const LISTA_DESTINOS = [
+  'Referenciado ao CRAS (PAIF)',
+  'Serviço de Saúde (CAPS/UBS)',
+  'Sistema de Justiça',
+  'Acolhimento Institucional',
+  'Superação da Vulnerabilidade (Autonomia)',
+  'Mudança de Município/Estado',
+  'Outro'
+]
+
+==================================================================
+FILE: frontend\src\constants\cases\index.ts
+==================================================================
+// frontend/src/constants/cases/index.ts
+export * from './definitions'
+export * from './styles'
+export * from './transitions'
+
+==================================================================
+FILE: frontend\src\constants\cases\styles.ts
+==================================================================
+// frontend/src/constants/cases/styles.ts
+import { CASE_STATUS, CaseStatusType, URGENCIA_NIVEIS } from './definitions'
+
+// Mapa de Labels e Estilos por Status
+export const STATUS_CONFIG: Record<CaseStatusType, { label: string; style: string }> = {
+  [CASE_STATUS.AGUARDANDO_ACOLHIDA]: {
+    label: 'Aguardando Acolhida',
+    style: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30'
+  },
+  [CASE_STATUS.EM_ACOLHIDA]: {
+    label: 'Em Acolhida',
+    style: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30'
+  },
+  [CASE_STATUS.AGUARDANDO_DISTRIBUICAO]: {
+    label: 'Aguardando Distribuição',
+    style: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30'
+  },
+  [CASE_STATUS.EM_ACOLHIDA_ESPECIALIZADA]: {
+    label: 'Acolhida Especializada',
+    style: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30'
+  },
+  [CASE_STATUS.EM_ACOMPANHAMENTO]: {
+    label: 'Acompanhamento PAEFI',
+    style: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30'
+  },
+  [CASE_STATUS.EM_MONITORAMENTO]: {
+    label: 'Em Monitoramento',
+    style: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30'
+  },
+  [CASE_STATUS.DESLIGADO]: {
+    label: 'Desligado',
+    style: 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800'
+  }
+}
+
+// Função Helper para Cor de Urgência
+export function getUrgencyColor(urgencia: string | null | undefined): string {
+  if (!urgencia) return 'bg-slate-100 text-slate-600'
+  
+  const term = urgencia.trim()
+  
+  if (URGENCIA_NIVEIS.GRAVISSIMA.includes(term)) return 'bg-red-100 text-red-800 border-red-300 font-bold'
+  if (URGENCIA_NIVEIS.MUITO_GRAVE.includes(term)) return 'bg-orange-100 text-orange-800 border-orange-300 font-semibold'
+  if (URGENCIA_NIVEIS.GRAVE.includes(term)) return 'bg-yellow-100 text-yellow-800 border-yellow-300 font-medium'
+  if (URGENCIA_NIVEIS.LEVE.includes(term)) return 'bg-emerald-100 text-emerald-800 border-emerald-300'
+  
+  return 'bg-slate-100 text-slate-600'
+}
+
+==================================================================
+FILE: frontend\src\constants\cases\transitions.ts
+==================================================================
+// frontend/src/constants/cases/caseTransitions.ts
+import { type CaseStatusType } from './definitions'
+import type { UserRole } from '@/types/user'
+
+export type ActionType = 'status' | 'assign' | 'close'
+
+// New type for Shadcn Button variants
+export type ActionVariant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+
+export interface StatusAction {
+  label: string
+  type: ActionType
+  nextStatus?: CaseStatusType
+  allowedRoles: UserRole[]
+  // [NEW] Maps directly to Shadcn Button 'variant' prop
+  variant: ActionVariant 
+}
+
+export const caseTransitions: Partial<
+  Record<CaseStatusType, StatusAction[]>
+> = {
+  AGUARDANDO_ACOLHIDA: [
+    {
+      label: 'Iniciar Acolhida',
+      type: 'status',
+      nextStatus: 'EM_ACOLHIDA',
+      allowedRoles: ['Gerente', 'Agente_Social'],
+      variant: 'default', // Blue/Primary
+    },
+    {
+      label: 'Desligamento Simplificado',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Agente_Social'],
+      variant: 'secondary', // Gray/Neutral
+    },
+  ],
+  EM_ACOLHIDA: [
+    {
+      label: 'Encaminhar para Distribuição',
+      type: 'status',
+      nextStatus: 'AGUARDANDO_DISTRIBUICAO',
+      allowedRoles: ['Gerente', 'Agente_Social'],
+      variant: 'default',
+    },
+    {
+      label: 'Desligamento Simplificado',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Agente_Social'],
+      variant: 'secondary',
+    },
+  ],
+  AGUARDANDO_DISTRIBUICAO: [
+    {
+      label: 'Atribuir Especialista',
+      type: 'assign', // Triggers the assignment modal
+      allowedRoles: ['Gerente'],
+      variant: 'outline', // Distinct visual style for assignment
+    },
+  ],
+  EM_ACOLHIDA_ESPECIALIZADA: [
+    {
+      label: 'Iniciar Acompanhamento',
+      type: 'status',
+      nextStatus: 'EM_ACOMPANHAMENTO',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'default',
+    },
+    {
+      label: 'Inserir em Monitoramento',
+      type: 'status',
+      nextStatus: 'EM_MONITORAMENTO',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'secondary',
+    },
+    {
+      label: 'Encerrar após Escuta',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'destructive', // Red/Danger
+    },
+  ],
+  EM_ACOMPANHAMENTO: [
+    {
+      label: 'Mover para Monitoramento',
+      type: 'status',
+      nextStatus: 'EM_MONITORAMENTO',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'secondary',
+    },
+    {
+      label: 'Desligar Acompanhamento',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'destructive',
+    },
+  ],
+  EM_MONITORAMENTO: [
+    {
+      label: 'Retomar para Acompanhamento',
+      type: 'status',
+      nextStatus: 'EM_ACOMPANHAMENTO',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'default',
+    },
+    {
+      label: 'Desligar (Fim Monitoramento)',
+      type: 'close',
+      allowedRoles: ['Gerente', 'Especialista'],
+      variant: 'destructive',
+    },
+  ],
+  DESLIGADO: [
+    {
+      label: 'Reabrir Caso',
+      type: 'status',
+      nextStatus: 'AGUARDANDO_ACOLHIDA',
+      allowedRoles: ['Gerente'],
+      variant: 'outline',
+    },
+  ],
+}
+
+export function getAvailableActions(
+  status: string | null | undefined,
+  cargo: UserRole,
+): StatusAction[] {
+  if (!status) return []
+  
+  // Cast safe because we handle the undefined check above, 
+  // but be aware that if 'status' is a string not in CaseStatusType, 
+  // it will just return undefined from the object lookup, which we handle with || [].
+  const safeStatus = status as CaseStatusType
+  const possibleActions = caseTransitions[safeStatus] || []
+  
+  return possibleActions.filter(action => 
+    action.allowedRoles.includes(cargo)
+  )
+}
+
+==================================================================
+FILE: frontend\src\constants\locations.ts
+==================================================================
+// frontend/src/constants/locations.ts
+export const REGIOES_ADMINISTRATIVAS = [
+  "Brazlândia",
+  "Ceilândia",
+  "Taguatinga",
+  "Sol Nascente/Pôr do Sol",
+  "Samambaia",
+  "Plano Piloto",
+  "Águas Claras",
+  "Arniqueira",
+  "Candangolândia",
+  "Cruzeiro",
+  "Fercal",
+  "Gama",
+  "Guará",
+  "Itapoã",
+  "Jardim Botânico",
+  "Lago Norte",
+  "Lago Sul",
+  "Núcleo Bandeirante",
+  "Paranoá",
+  "Park Way",
+  "Planaltina",
+  "Recanto das Emas",
+  "Riacho Fundo",
+  "Riacho Fundo II",
+  "Santa Maria",
+  "São Sebastião",
+  "SCIA/Estrutural",
+  "Sia",
+  "Sobradinho",
+  "Sobradinho II",
+  "Sudoeste/Octogonal",
+  "Varjão",
+  "Vicente Pires"
+] as const;
+
+==================================================================
+FILE: frontend\src\constants\options.ts
+==================================================================
+// frontend/src/constants/options.ts
+import { STATUS_CONFIG } from './cases/styles'
+import { URGENCIA_NIVEIS, LISTA_VIOLACOES, LISTA_DESTINOS } from './cases/definitions'
+
+// Achatar a lista de urgências para usar em dropdowns simples
+const FLAT_URGENCIA = [
+  ...URGENCIA_NIVEIS.GRAVISSIMA,
+  ...URGENCIA_NIVEIS.MUITO_GRAVE,
+  ...URGENCIA_NIVEIS.GRAVE,
+  ...URGENCIA_NIVEIS.LEVE
+]
+
+export const OPTIONS = {
+  sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
+  
+  // Fontes de verdade
+  urgencia: FLAT_URGENCIA,
+  violacao: LISTA_VIOLACOES,
+  destinos: LISTA_DESTINOS, // [ADICIONADO] Para o modal de desligamento
+  
+  categoria: [
+    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 
+    'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'
+  ],
+
+  // Formata para { value, label } para componentes de Select
+  status: Object.entries(STATUS_CONFIG).map(([key, config]) => ({
+    value: key,
+    label: config.label
+  }))
+}
+
+==================================================================
 FILE: frontend\src\constants\storage.ts
 ==================================================================
 // frontend/src/constants/storage.ts
-
 export const STORAGE_KEYS = {
-  TOKEN: '@sgac-braz:token', //
+  TOKEN: '@sgac-braz:token',
+  USER: '@sgac-braz:user',
+  THEME: '@sgac-braz:theme', // Sugestão: adicionei para o ThemeToggle
 } as const
 
 ==================================================================
 FILE: frontend\src\schemas\caseSchemas.ts
 ==================================================================
-// frontend/src/schemas/caseSchemas.ts
 import { z } from 'zod'
 
+// --- SUB-SCHEMAS (Novas Estruturas) ---
+
+// Item 1: Contato Estruturado
+const contactSchema = z.object({
+  numero: z.string().min(8, 'Número inválido (mínimo 8 dígitos).'),
+  tipo: z.enum(["Pessoal", "Residencial", "Trabalho", "Vizinho", "Parente", "Outro"], {
+    errorMap: () => ({ message: "Selecione o tipo de contato." })
+  }),
+  nome: z.string().optional(), // Ex: Nome da vizinha que dá recado
+  observacao: z.string().optional(),
+})
+
+// Item 2: Endereço Detalhado (Padrão DF)
+const addressSchema = z.object({
+  ra: z.string().min(1, 'Selecione a Região Administrativa.'), // Campo Obrigatório
+  logradouro: z.string().min(3, 'O logradouro é obrigatório (Qd, Rua, Av).'),
+  complemento: z.string().optional(),
+  bairro: z.string().optional(), // Geralmente redundante com RA no DF, mas útil
+  cidade: z.string().default("Brasília"),
+  uf: z.string().default("DF"),
+  cep: z.string().optional(), // Pode adicionar validação de regex se quiser: /^\d{5}-\d{3}$/
+})
+
+// --- SCHEMA PRINCIPAL DE CRIAÇÃO ---
+
 export const createCaseFormSchema = z.object({
+  // Identificação
   nomeCompleto: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
-  cpf: z.string().min(11, 'CPF inválido.'),
-  // refine para garantir que não seja string vazia na hora de salvar
+  nomeSocial: z.string().optional(), // Novo campo de inclusão
+  cpf: z.string().min(11, 'CPF inválido.'), // Idealmente usar biblioteca de validação de CPF
   nascimento: z.string().refine((val) => val.length > 0, 'Data de nascimento obrigatória.'),
   sexo: z.string().min(1, 'Selecione o sexo.'),
-  telefone: z.string().min(10, 'Telefone inválido.'),
-  endereco: z.string().min(5, 'Endereço muito curto.'),
-  dataEntrada: z.string(),
-  urgencia: z.string().min(1, 'Selecione a urgência.'),
-  violacao: z.string().min(1, 'Selecione a violação.'),
-  categoria: z.string().min(1, 'Selecione a categoria.'),
-  orgaoDemandante: z.string().min(2, 'Informe o órgão demandante.'),
-  
-  origem: z.enum(['ESPONTANEA', 'DOCUMENTAL', 'REFERENCIADA', 'BUSCA_ATIVA']),
-  
-  agenteAcolhidaId: z.string().uuid('Selecione um agente válido.'),
-  
-  // [CORREÇÃO] Tipos estritos: aceitam string vazia, mas não null/undefined
-  numeroSei: z.string(),
-  linkSei: z.string(), // Validaremos URL no form se não for vazio, ou aceitamos string
-  observacoes: z.string(),
 
-  // [CORREÇÃO] Array obrigatório (inicia como [])
-  beneficios: z.array(z.string()),
+  // Novos Campos Estruturados
+  contatos: z.array(contactSchema).min(1, "Adicione pelo menos um telefone de contato."),
+  endereco: addressSchema,
+
+  // Item 3: Responsável Legal (Opcional no schema, obrigatório visualmente se < 18 anos)
+  responsavelLegal: z.string().optional(),
+  parentescoResponsavel: z.string().optional(),
+
+  // Dados Técnicos
+  dataEntrada: z.string().refine((val) => val.length > 0, 'Data de entrada obrigatória.'),
+  urgencia: z.string().min(1, 'Selecione a urgência.'),
+  violacao: z.array(z.string()).min(1, 'Selecione ao menos uma violação.'),
+  categoria: z.string().min(1, 'Selecione a categoria (Público-alvo).'),
+  orgaoDemandante: z.string().min(2, 'Informe o órgão demandante.'),
+  origem: z.enum(['ESPONTANEA', 'DOCUMENTAL', 'REFERENCIADA', 'BUSCA_ATIVA'], {
+    errorMap: () => ({ message: "Selecione a origem do caso." })
+  }),
+
+  // Agente: Pode vir vazio inicialmente se não distribuído
+  agenteAcolhidaId: z.string().uuid().optional().or(z.literal('')),
+
+  // Campos Opcionais / Strings vazias permitidas
+  numeroSei: z.string().optional(),
+  linkSei: z.string().optional(), // Poderia usar .url() se quiser validar formato estrito
+  observacoes: z.string().optional(),
+
+  // Array obrigatório (inicia como [])
+  beneficios: z.array(z.string()).default([]),
 })
 
 export type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
+
+// --- OUTROS SCHEMAS (Mantidos do original) ---
 
 export const pafFormSchema = z.object({
   diagnostico: z.string().min(10, 'O diagnóstico deve ser mais detalhado.'),
@@ -2886,13 +2963,12 @@ FILE: frontend\src\styles\index.css
 @tailwind components;
 @tailwind utilities;
 
-/* ----------------------------- */
-/* TEMA GOV.BR MODERNO v4.4.5    */
-/* ----------------------------- */
-
+/* -------------------------------------------------------------------------- */
+/* CONFIGURAÇÃO BASE                          */
+/* -------------------------------------------------------------------------- */
 @layer base {
   :root {
-    /* LIGHT MODE (Padrão) */
+    /* --- CORES PRINCIPAIS (Light Mode) --- */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
@@ -2902,8 +2978,8 @@ FILE: frontend\src\styles\index.css
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    /* Azul Institucional */
-    --primary: 221.2 83.2% 53.3%; /* #2563eb (blue-600) */
+    /* Azul Institucional (Gov Like) */
+    --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -2923,11 +2999,28 @@ FILE: frontend\src\styles\index.css
     --ring: 221.2 83.2% 53.3%;
 
     --radius: 0.5rem;
+
+    /* --- CHART COLORS (Para gráficos Recharts) --- */
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    /* --- SIDEBAR (Para isolar o tema da navegação) --- */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
-  /* DARK MODE (Otimizado para conforto visual) */
+  /* --- DARK MODE --- */
   .dark {
-    --background: 222.2 84% 4.9%; /* Slate 950 */
+    --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
     --card: 222.2 84% 4.9%;
@@ -2936,7 +3029,7 @@ FILE: frontend\src\styles\index.css
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 217.2 91.2% 59.8%; /* Azul mais claro para contraste */
+    --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
     --secondary: 217.2 32.6% 17.5%;
@@ -2954,6 +3047,23 @@ FILE: frontend\src\styles\index.css
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    /* Chart Dark */
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+
+    /* Sidebar Dark */
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
 
@@ -2967,29 +3077,72 @@ FILE: frontend\src\styles\index.css
   }
 }
 
-/* Scrollbar Bonita para Webkit */
+/* -------------------------------------------------------------------------- */
+/* SCROLLBARS                                 */
+/* -------------------------------------------------------------------------- */
+
+@layer utilities {
+  /* Classe utilitária para scrollbar fina (usada no MainLayout) */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50 transition-colors;
+  }
+}
+
+/* Fallback Global para Webkit (Chrome/Edge/Safari) */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
 }
 
-/* Modo Privacidade (Blur) */
-body.privacy-mode .font-medium, 
-body.privacy-mode h1, 
-body.privacy-mode h3, 
-body.privacy-mode td:first-child, 
-body.privacy-mode td:nth-child(2) {
+/* -------------------------------------------------------------------------- */
+/* MODO PRIVACIDADE (BLUR)                          */
+/* -------------------------------------------------------------------------- */
+
+/* Aplica blur em elementos sensíveis quando a classe .privacy-mode está no body.
+   Adicione a classe .privacy-mask manualmente em componentes específicos se necessário.
+*/
+body.privacy-mode .privacy-mask,
+body.privacy-mode h1,
+body.privacy-mode h2,
+body.privacy-mode h3,
+body.privacy-mode h4,
+body.privacy-mode .font-medium, /* Geralmente nomes de usuários */
+body.privacy-mode td:first-child, /* Geralmente nomes em tabelas */
+body.privacy-mode td:nth-child(2) /* Geralmente CPFs ou dados secundários */
+{
   filter: blur(5px);
   user-select: none;
-  transition: filter 0.3s ease;
+  transition: filter 0.2s ease-in-out;
   cursor: default;
 }
+
+/* Exceções explícitas */
 body.privacy-mode .privacy-exempt {
   filter: none !important;
+}
+
+/* Recurso "Peek": Passar o mouse revela o dado momentaneamente */
+body.privacy-mode .privacy-mask:hover,
+body.privacy-mode h1:hover,
+body.privacy-mode td:first-child:hover {
+  filter: blur(0);
+  transition-delay: 0.1s; /* Pequeno delay para evitar flashes acidentais */
 }

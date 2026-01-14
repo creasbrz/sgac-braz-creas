@@ -1,5 +1,10 @@
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, UserPlus, Activity, FileText, Calendar, AlertTriangle, Clock, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react'
+import { 
+  Users, Activity, FileText, Calendar, AlertTriangle, 
+  Clock, AlertCircle, CheckCircle2, Loader2, 
+  ClipboardList, ShieldCheck
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,158 +13,154 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { KPICard, CaseListTable } from '@/components/workspace/SharedComponents'
 import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
 import { OperationalWorkspaceData } from '@/types/workspace'
-import { ROUTES } from '@/constants/routes'
+import { ROUTES } from '@/constants/app-routes'
 import { cn } from '@/lib/utils'
+import type { UpcomingAppointment } from '@/types/agenda'
 
-// Helper de Alertas com Cores de Borda
-const getAlertDetails = (type: string, days: number) => {
-  switch (type) {
-    case 'PAF_NOT_STARTED': 
-      return { label: 'PAF não iniciado', icon: AlertCircle, color: 'text-red-600 dark:text-red-400', border: 'border-red-500' }
-    case 'PAF_REVIEW_OVERDUE': 
-      return { label: `Revisão vencida (${days}d)`, icon: Clock, color: 'text-orange-600 dark:text-orange-400', border: 'border-orange-500' }
-    case 'PAF_STALLED': 
-      return { label: `Sem evolução (${days}d)`, icon: Activity, color: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500' }
-    default: 
-      return { label: 'Atenção necessária', icon: AlertTriangle, color: 'text-slate-600 dark:text-slate-400', border: 'border-slate-400' }
-  }
-}
-
-export function TechnicianWorkspace({ data }: { data: OperationalWorkspaceData }) {
-  const navigate = useNavigate()
+// Sub-componente de Alerta (Harmonizado com Gestão de Casos)
+const TechnicianAlertItem = ({ alert, isNavigating, onClick }: { alert: any, isNavigating: boolean, onClick: () => void }) => {
+  const days = alert.days || 0
   
-  const awaitingCases = data.myCases.filter(c => c.status === 'EM_ACOLHIDA_ESPECIALIZADA')
-  const activeCases = data.myCases.filter(c => c.status === 'EM_ACOMPANHAMENTO')
-  const monitoringCases = data.myCases.filter(c => c.status === 'EM_MONITORAMENTO')
+  const getStyle = (type: string) => {
+    switch (type) {
+      case 'PAF_NOT_STARTED': return { icon: AlertCircle, text: 'PAF não iniciado', color: 'text-red-600 dark:text-red-400', border: 'border-l-red-500', bg: 'hover:bg-red-50 dark:hover:bg-red-900/10' }
+      case 'PAF_REVIEW_OVERDUE': return { icon: Clock, text: `Revisão vencida (${days}d)`, color: 'text-orange-600 dark:text-orange-400', border: 'border-l-orange-500', bg: 'hover:bg-orange-50 dark:hover:bg-orange-900/10' }
+      case 'PAF_STALLED': return { icon: Activity, text: `Sem evolução (${days}d)`, color: 'text-amber-600 dark:text-amber-400', border: 'border-l-amber-500', bg: 'hover:bg-amber-50 dark:hover:bg-amber-900/10' }
+      default: return { icon: AlertTriangle, text: 'Atenção necessária', color: 'text-slate-600 dark:text-slate-400', border: 'border-l-slate-400', bg: 'hover:bg-slate-50 dark:hover:bg-slate-900/10' }
+    }
+  }
+  const style = getStyle(alert.type)
+  const Icon = style.icon
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div onClick={onClick} className={cn("group relative p-3 pl-4 border-b last:border-0 cursor-pointer transition-colors duration-200 bg-card hover:bg-muted/50 border-l-[4px]", style.border, style.bg, isNavigating && "opacity-70 pointer-events-none bg-muted")}>
+      <div className="flex justify-between items-start mb-1 gap-2">
+        <span className="text-sm font-semibold truncate max-w-[200px] text-foreground group-hover:text-primary transition-colors">{alert.nomeCompleto || 'Beneficiário Anônimo'}</span>
+        {isNavigating && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+      <div className={cn("flex items-center gap-2 text-xs font-medium", style.color)}><Icon className="h-3.5 w-3.5"/><span>{style.text}</span></div>
+    </div>
+  )
+}
+
+export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData }) {
+  const navigate = useNavigate()
+  const [navigatingId, setNavigatingId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("active") 
+
+  const safeData = useMemo(() => {
+    if (!data) return null;
+    return {
+      appointments: Array.isArray(data.appointments) ? data.appointments : [],
+      alerts: Array.isArray(data.alerts) ? data.alerts : [],
+      myCases: Array.isArray(data.myCases) ? data.myCases : [],
+      stats: data.detailedStats || { acolhidaEsp: 0, acompanhamento: 0, monitoramento: 0 }
+    };
+  }, [data]);
+  
+  if (!safeData) return <div className="flex h-full flex-col items-center justify-center p-12 text-muted-foreground gap-3"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="text-sm font-medium">Carregando...</p></div>
+
+  const { appointments, alerts, myCases, stats } = safeData;
+  const receptionCases = myCases.filter(c => c && c.status === 'EM_ACOLHIDA_ESPECIALIZADA');
+  const activeCases = myCases.filter(c => c && c.status === 'EM_ACOMPANHAMENTO');
+  const monitoringCases = myCases.filter(c => c && c.status === 'EM_MONITORAMENTO');
+
+  const handleAlertClick = (id: string) => {
+    setNavigatingId(id)
+    navigate(`/app/cases/${id}`)
+  }
+
+  const mappedAppointments: UpcomingAppointment[] = appointments.filter(apt => !!apt).map((apt: any) => ({
+      id: apt.id ?? Math.random().toString(),
+      titulo: apt.titulo ?? 'Atendimento',
+      data: apt.data ?? apt.dataAgendamento ?? new Date().toISOString(),
+      tipo: apt.tipo ?? 'Agendamento',
+      caso: apt.caso ? { id: apt.caso.id ?? '', nomeCompleto: apt.caso.nomeCompleto ?? 'Anônimo' } : undefined
+  }));
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-6">
       
-      {/* 1. KPIs com Card de Ação "Ver Todos" Melhorado */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard title="Aguardando" value={data.detailedStats.acolhidaEsp || 0} icon={UserPlus} theme="orange" />
-        <KPICard title="Ativos" value={data.detailedStats.acompanhamento || 0} icon={Users} theme="emerald" />
-        <KPICard title="Monitoramento" value={data.detailedStats.monitoramento || 0} icon={Activity} theme="blue" />
-        
-        <Card 
-          className="flex flex-col justify-center items-center border-dashed border-2 border-slate-200 dark:border-slate-700 bg-transparent hover:bg-primary/5 hover:border-primary/50 transition-all cursor-pointer group relative" 
-          onClick={() => navigate(ROUTES.CASES)}
-        >
-           <span className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-2">
-             <FileText className="h-4 w-4"/> Ver Todos
-           </span>
-           <ChevronRight className="h-4 w-4 absolute right-4 opacity-0 group-hover:opacity-100 transition-all text-primary" />
+      {/* KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+        <KPICard title="Elaboração de PAF" value={stats.acolhidaEsp || 0} icon={ClipboardList} theme="orange" subtitle="Acolhida Especializada" onClick={() => setActiveTab("reception")} />
+        <KPICard title="Em Acompanhamento" value={stats.acompanhamento || 0} icon={Users} theme="emerald" subtitle="Ativo" onClick={() => setActiveTab("active")} />
+        <KPICard title="Em Monitoramento" value={stats.monitoramento || 0} icon={ShieldCheck} theme="blue" subtitle="Fase Final" onClick={() => setActiveTab("monitoring")} />
+        <Card className="flex flex-col justify-center items-center border-dashed border-2 border-slate-200 dark:border-slate-700 bg-transparent hover:bg-primary/5 hover:border-primary/50 transition-all cursor-pointer group shadow-sm" onClick={() => navigate(ROUTES.CASES)}>
+           <span className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-2"><FileText className="h-4 w-4"/> Ver Todos os Casos</span>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Grid Principal - Ajustado para alinhamento melhor */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         
-        {/* 2. COLUNA LATERAL */}
-        <div className="space-y-6">
-          <Card>
-             <CardHeader className="pb-3 border-b bg-muted/20"><CardTitle className="text-sm font-medium">Ações Rápidas</CardTitle></CardHeader>
-             <CardContent className="p-4 space-y-2">
-                <Button variant="outline" className="w-full justify-start border-dashed hover:border-primary hover:text-primary transition-colors" onClick={() => navigate(ROUTES.CASES)}>
-                  <Users className="mr-2 h-4 w-4"/> Gerenciar Casos
-                </Button>
-                <Button variant="secondary" className="w-full justify-start" onClick={() => navigate(ROUTES.AGENDA)}>
-                  <Calendar className="mr-2 h-4 w-4"/> Minha Agenda
-                </Button>
+        {/* Coluna Esquerda (Sidebar) - Flex col para distribuir altura */}
+        <div className="flex flex-col gap-6 h-full">
+          {/* Card de Ações Rápidas */}
+          <Card className="shadow-sm shrink-0">
+             <CardHeader className="pb-3 pt-4 px-4 border-b bg-muted/10"><CardTitle className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Ações Rápidas</CardTitle></CardHeader>
+             <CardContent className="p-3 grid gap-2">
+                <Button variant="outline" className="w-full justify-start h-9 text-sm" onClick={() => navigate(ROUTES.CASES)}><Users className="mr-2 h-4 w-4 text-muted-foreground"/> Gerenciar Casos</Button>
+                <Button variant="outline" className="w-full justify-start h-9 text-sm" onClick={() => navigate(ROUTES.AGENDA)}><Calendar className="mr-2 h-4 w-4 text-muted-foreground"/> Minha Agenda</Button>
              </CardContent>
           </Card>
 
-          <UpcomingAppointments 
-            data={data.appointments} 
-            title="Hoje" 
-            enableScroll 
-          />
-
-          {/* Alertas com Indicador Lateral */}
-          <Card className="border-l-4 border-l-amber-500 shadow-sm">
-            <CardHeader className="pb-3 border-b bg-amber-50/50 dark:bg-amber-950/10">
-               <CardTitle className="text-sm flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                 <Activity className="h-4 w-4"/> Alertas Prioritários
-               </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[300px]">
-                {data.alerts.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground"><CheckCircle2 className="h-8 w-8 text-green-500 mx-auto opacity-50 mb-2"/><p className="text-xs">Tudo em dia!</p></div>
-                ) : (
-                  data.alerts.map((alert) => {
-                     const details = getAlertDetails(alert.type, alert.days)
-                     const Icon = details.icon
-                     return (
-                       <div 
-                         key={alert.id} 
-                         onClick={() => navigate(`${ROUTES.CASES}/${alert.id}`)} 
-                         className={cn(
-                           "p-3 pl-4 border-b hover:bg-muted/50 cursor-pointer transition-colors group relative",
-                           // Indicador lateral colorido
-                           "border-l-[3px]", 
-                           details.border
-                         )}
-                       >
-                         <div className="flex justify-between items-start mb-1">
-                           <span className="text-sm font-semibold truncate max-w-[180px] text-foreground group-hover:text-primary transition-colors">
-                             {alert.nomeCompleto}
-                           </span>
-                         </div>
-                         <div className={`flex items-center gap-2 text-xs ${details.color} font-medium`}>
-                           <Icon className="h-3 w-3"/><span>{details.label}</span>
-                         </div>
-                       </div>
-                     )
-                  })
-                )}
-              </ScrollArea>
+          {/* Agenda */}
+          <div className="shrink-0">
+            <UpcomingAppointments data={mappedAppointments} title="Agenda Hoje" enableScroll />
+          </div>
+          
+          {/* Pendências do PAF (Flex-1 para ocupar o resto do espaço se necessário, mas com altura fixa no scroll) */}
+          <Card className="flex flex-col border shadow-sm overflow-hidden bg-card flex-1 min-h-[300px]">
+            <div className="px-5 pt-5 pb-3 border-b border-border bg-card">
+               <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-500"><Activity className="h-5 w-5"/></div>
+                  <div className="flex-1"><h3 className="text-sm font-bold text-foreground leading-none">Pendências do PAF</h3><p className="text-[11px] text-muted-foreground mt-1">Ações prioritárias e atrasos</p></div>
+                  <Badge variant="outline" className="ml-auto border-amber-200 text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400">{alerts.length}</Badge>
+               </div>
+            </div>
+            <CardContent className="p-0 bg-muted/5 flex-1 relative">
+              {/* Absolute inset-0 para garantir que o scroll area ocupe todo o espaço do pai flexível */}
+              <div className="absolute inset-0">
+                <ScrollArea className="h-full">
+                  {alerts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-6 text-center"><CheckCircle2 className="h-8 w-8 text-emerald-500/50"/><div><p className="text-sm font-medium">PAFs atualizados!</p><p className="text-xs opacity-70">Nenhuma revisão pendente.</p></div></div>
+                  ) : (
+                    <div className="divide-y border-t border-border/50">
+                      {alerts.map((alert) => (alert ? <TechnicianAlertItem key={alert.id || Math.random()} alert={alert} isNavigating={navigatingId === alert.id} onClick={() => alert.id && !navigatingId && handleAlertClick(alert.id)} /> : null))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* 3. COLUNA PRINCIPAL (Abas Refinadas) */}
+        {/* Coluna Principal */}
         <div className="lg:col-span-2 h-full">
-          <Card className="h-full flex flex-col border shadow-sm bg-card">
-             <Tabs defaultValue="active" className="h-full flex flex-col">
-               <div className="px-4 pt-4 pb-0 border-b border-border">
-                  <div className="flex items-center justify-between mb-4">
-                     <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                       <FileText className="h-5 w-5 text-primary"/> Minhas Famílias
-                     </h2>
-                     <Badge variant="secondary" className="bg-muted text-muted-foreground">{data.myCases.length} total</Badge>
+          <Card className="flex flex-col border shadow-sm overflow-hidden bg-card h-full">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+                <div className="px-6 pt-6 pb-0 border-b border-border bg-card shrink-0">
+                  <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-primary/10 rounded-lg"><FileText className="h-5 w-5 text-primary"/></div>
+                      <div><h2 className="text-lg font-bold text-foreground leading-none">Gestão de Casos</h2><p className="text-sm text-muted-foreground mt-1">Visão técnica dos casos sob sua responsabilidade</p></div>
                   </div>
-                  
-                  <TabsList className="w-full justify-start h-10 p-0 bg-transparent gap-6 overflow-x-auto">
-                     {/* Estilização personalizada para as abas (Underline animado) */}
-                     {['awaiting', 'active', 'monitoring'].map((tab) => {
-                        const labels: Record<string, string> = { awaiting: 'Aguardando', active: 'Acompanhamento', monitoring: 'Monitoramento' }
-                        const counts: Record<string, number> = { awaiting: awaitingCases.length, active: activeCases.length, monitoring: monitoringCases.length }
-                        
-                        return (
-                          <TabsTrigger 
-                            key={tab} 
-                            value={tab} 
-                            className="
-                              data-[state=active]:border-b-2 data-[state=active]:border-primary 
-                              data-[state=active]:text-primary data-[state=active]:font-bold
-                              rounded-none h-full px-1 pb-2 
-                              text-muted-foreground hover:text-foreground transition-all gap-2
-                            "
-                          >
-                            {labels[tab]} 
-                            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] ml-1">{counts[tab]}</Badge>
-                          </TabsTrigger>
-                        )
-                     })}
+                  <TabsList className="w-full justify-start h-auto p-0 bg-transparent gap-6 border-b-0 overflow-x-auto scrollbar-hide">
+                      <TabsTrigger value="reception" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-1 pb-3 text-sm font-medium text-muted-foreground transition-all">Acolhida Esp. <span className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded-full">{receptionCases.length}</span></TabsTrigger>
+                      <TabsTrigger value="active" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-1 pb-3 text-sm font-medium text-muted-foreground transition-all">Em Acompanhamento <span className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded-full">{activeCases.length}</span></TabsTrigger>
+                      <TabsTrigger value="monitoring" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-1 pb-3 text-sm font-medium text-muted-foreground transition-all">Monitoramento <span className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded-full">{monitoringCases.length}</span></TabsTrigger>
                   </TabsList>
-               </div>
-               
-               <CardContent className="flex-1 p-0 bg-muted/10 pt-4">
-                  <TabsContent value="awaiting" className="m-0 h-full px-4"><CaseListTable cases={awaitingCases} isEspecialista={true} emptyMessage="Caixa de entrada vazia." /></TabsContent>
-                  <TabsContent value="active" className="m-0 h-full px-4"><CaseListTable cases={activeCases} isEspecialista={true} emptyMessage="Nenhum caso em acompanhamento." /></TabsContent>
-                  <TabsContent value="monitoring" className="m-0 h-full px-4"><CaseListTable cases={monitoringCases} isEspecialista={true} emptyMessage="Nenhum caso em monitoramento." /></TabsContent>
-               </CardContent>
-             </Tabs>
+                </div>
+                
+                <CardContent className="p-0 bg-muted/5 flex-1 relative min-h-[500px]">
+                   {/* Layout absoluto para o conteúdo da tab preencher a altura do card pai */}
+                   <div className="absolute inset-0 overflow-auto">
+                      <TabsContent value="reception" className="m-0 h-full"><CaseListTable cases={receptionCases} isEspecialista={true} emptyMessage="Nenhum caso em Acolhida Especializada." /></TabsContent>
+                      <TabsContent value="active" className="m-0 h-full"><CaseListTable cases={activeCases} isEspecialista={true} emptyMessage="Nenhum caso em acompanhamento regular." /></TabsContent>
+                      <TabsContent value="monitoring" className="m-0 h-full"><CaseListTable cases={monitoringCases} isEspecialista={true} emptyMessage="Nenhum caso em monitoramento." /></TabsContent>
+                   </div>
+                </CardContent>
+              </Tabs>
           </Card>
         </div>
       </div>

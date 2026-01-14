@@ -1,9 +1,10 @@
+// frontend/src/constants/app-navigation.ts
 import {
   PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
   UserCog, Projector, AlertTriangle, Briefcase, ShieldAlert
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { ROUTES } from './routes'
+import { ROUTES } from './app-routes'
 import type { UserRole } from '@/types/user'
 
 interface NavLink {

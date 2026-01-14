@@ -1,3 +1,4 @@
+// frontend/src/constants/app-routes.ts
 export const ROUTE_PATHS = {
   LOGIN: '/login',
   ROOT: '/',

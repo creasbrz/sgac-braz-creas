@@ -15,7 +15,7 @@ import {
 
 import { useAuth } from "@/hooks/useAuth"
 import { useModal } from "@/hooks/useModal"
-import { navLinks } from "@/constants/navigation"
+import { navLinks } from "@/constants/app-navigation"
 import { GdfLogo } from "./GdfLogo"
 
 // --- TYPES ---

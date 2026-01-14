@@ -1,4 +1,3 @@
-// backend/src/routes/paf.ts
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -36,12 +35,17 @@ const pafResponseSchema = z.object({
   }).optional()
 })
 
+// [CORREÇÃO] Adicionados os campos de conteúdo que estavam faltando aqui
 const versionResponseSchema = z.object({
   id: z.string().uuid(),
   savedAt: z.date(),
   versaoNumero: z.number(),
-  autor: z.object({ nome: z.string() }).optional()
-  // Adicione outros campos se quiser exibir o conteúdo histórico na lista
+  // Campos restaurados:
+  diagnostico: z.string(),
+  objetivos: z.string(),
+  estrategias: z.string(),
+  deadline: z.date(),
+  autor: z.object({ nome: z.string().nullable() }).optional()
 })
 
 // --- ROTAS ---
@@ -71,7 +75,6 @@ export async function pafRoutes(app: FastifyInstance) {
       include: { autor: { select: { id: true, nome: true } } },
     })
     
-    // Retorna null (200 OK) se não tiver PAF ainda, o front trata isso
     return reply.send(paf)
   })
 
@@ -116,13 +119,11 @@ export async function pafRoutes(app: FastifyInstance) {
     const data = request.body
     const { sub: autorId, cargo } = request.user as { sub: string; cargo: string }
 
-    // Validação de Permissão
     if (cargo !== Cargo.Especialista && cargo !== Cargo.Gerente) {
       return reply.status(403).send({ message: 'Apenas especialistas ou gerentes podem criar PAF.' })
     }
 
-    // Verifica duplicidade
-    const existing = await prisma.paf.findUnique({ where: { casoId } })
+    const existing = await prisma.paf.findUnique({ where: { casoId: caseId } })
     if (existing) {
       return reply.status(409).send({ message: 'Já existe um PAF para este caso. Use a rota de atualização (PUT).' })
     }
@@ -131,17 +132,16 @@ export async function pafRoutes(app: FastifyInstance) {
       data: {
         ...data,
         deadline: stripTime(data.deadline),
-        casoId,
+        casoId: caseId,
         autorId,
         versaoAtual: 1,
       },
       include: { autor: { select: { id: true, nome: true } } }
     })
 
-    // Log Assíncrono
     prisma.caseLog.create({
       data: {
-        casoId, 
+        casoId: caseId, 
         autorId,
         acao: LogAction.PAF_CRIADO,
         descricao: 'Elaborou o Plano de Acompanhamento Familiar (PAF).',
@@ -157,7 +157,7 @@ export async function pafRoutes(app: FastifyInstance) {
       tags: ['PAF'],
       summary: 'Atualizar PAF (Gera nova versão automaticamente)',
       params: z.object({ caseId: z.string().uuid() }),
-      body: pafBodySchema.partial(), // Permite update parcial
+      body: pafBodySchema.partial(),
       response: {
         200: pafResponseSchema
       }
@@ -170,14 +170,10 @@ export async function pafRoutes(app: FastifyInstance) {
     const existing = await prisma.paf.findUnique({ where: { casoId: caseId } })
     if (!existing) return reply.status(404).send({ message: 'PAF não encontrado.' })
 
-    // Validação de Permissão (Gerente pode tudo, Autor pode editar o seu)
-    // Nota: Em muitos CREAS, qualquer Especialista pode editar PAF de outro se assumir o caso. 
-    // Ajustei para permitir se for Gerente OU Especialista (assumindo responsabilidade)
     if (cargo !== Cargo.Gerente && cargo !== Cargo.Especialista) {
       return reply.status(403).send({ message: 'Sem permissão para editar este PAF.' })
     }
 
-    // TRANSACTION: Garante que só atualiza o PAF se salvar a versão com sucesso
     const result = await prisma.$transaction(async (tx) => {
       // 1. Salvar versão antiga
       await tx.pafVersion.create({
@@ -187,8 +183,8 @@ export async function pafRoutes(app: FastifyInstance) {
           objetivos: existing.objetivos,
           estrategias: existing.estrategias,
           deadline: existing.deadline,
-          autorId: existing.autorId, // Autor da versão antiga
-          versaoNumero: existing.versaoAtual,
+          autorId: existing.autorId,
+          versaoNumero: existing.versaoAtual, 
           savedAt: new Date()
         },
       })
@@ -201,7 +197,7 @@ export async function pafRoutes(app: FastifyInstance) {
         data: {
           ...bodyData,
           deadline: bodyData.deadline ? stripTime(bodyData.deadline) : undefined,
-          autorId: userId, // Novo autor da versão atual
+          autorId: userId,
           versaoAtual: nextVersion,
         },
         include: { autor: { select: { id: true, nome: true } } }
@@ -210,10 +206,9 @@ export async function pafRoutes(app: FastifyInstance) {
       return updated
     })
 
-    // 3. Auditoria (Fora da transaction para não bloquear o banco com logs)
     prisma.caseLog.create({
       data: {
-        casoId,
+        casoId: caseId,
         autorId: userId,
         acao: LogAction.PAF_ATUALIZADO,
         descricao: `Atualizou PAF para versão ${result.versaoAtual}.`,

@@ -29,7 +29,6 @@ ESTRUTURA GERAL (Backend):
 ==================================================================
 FILE: frontend\src\components\ui\accordion.tsx
 ==================================================================
-// frontend/src/components/ui/accordion.tsx
 import * as React from "react"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { ChevronDown } from "lucide-react"
@@ -64,7 +63,7 @@ const AccordionTrigger = React.forwardRef<
       {...props}
     >
       {children}
-      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 text-muted-foreground" />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
 ))
@@ -86,11 +85,9 @@ AccordionContent.displayName = AccordionPrimitive.Content.displayName
 
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\alert-dialog.tsx
 ==================================================================
-// frontend/src/components/ui/alert-dialog.tsx
 import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
@@ -184,8 +181,7 @@ const AlertDialogDescription = React.forwardRef<
     {...props}
   />
 ))
-AlertDialogDescription.displayName =
-  AlertDialogPrimitive.Description.displayName
+AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayName
 
 const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
@@ -229,27 +225,41 @@ export {
   AlertDialogCancel,
 }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\alert.tsx
 ==================================================================
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { 
+  AlertCircle, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Info, 
+  Terminal,
+  type LucideIcon 
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/* -------------------------------------------------------------------------- */
+/* 1. PRIMITIVOS                               */
+/* -------------------------------------------------------------------------- */
+// (Mantivemos a base sólida e acessível da resposta anterior)
+
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground",
+  "relative w-full rounded-lg border p-4 pl-12 shadow-sm transition-all duration-200 animate-in fade-in slide-in-from-top-1 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:h-5 [&>svg]:w-5",
   {
     variants: {
       variant: {
         default: "bg-background text-foreground",
         destructive:
-          "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
-        // Adicionei as variantes extras que você queria, mas mantendo a lógica padrão:
-        success: "border-green-500/50 text-green-700 dark:text-green-400 [&>svg]:text-green-600",
-        warning: "border-amber-500/50 text-amber-700 dark:text-amber-400 [&>svg]:text-amber-600",
-        info: "border-blue-500/50 text-blue-700 dark:text-blue-400 [&>svg]:text-blue-600",
+          "border-destructive/50 bg-destructive/5 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        success: 
+          "border-emerald-500/50 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400",
+        warning: 
+          "border-amber-500/50 bg-amber-50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400",
+        info: 
+          "border-blue-500/50 bg-blue-50 text-blue-900 dark:bg-blue-950/20 dark:text-blue-200 [&>svg]:text-blue-600 dark:[&>svg]:text-blue-400",
       },
     },
     defaultVariants: {
@@ -277,7 +287,7 @@ const AlertTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h5
     ref={ref}
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    className={cn("mb-1 font-semibold leading-none tracking-tight", className)}
     {...props}
   />
 ))
@@ -289,33 +299,96 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
+    className={cn("text-sm opacity-90 [&_p]:leading-relaxed", className)}
     {...props}
   />
 ))
 AlertDescription.displayName = "AlertDescription"
 
-export { Alert, AlertTitle, AlertDescription }
+/* -------------------------------------------------------------------------- */
+/* 2. SMART COMPONENT (NOVO)                         */
+/* -------------------------------------------------------------------------- */
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  default: Terminal,
+  destructive: AlertCircle,
+  success: CheckCircle2,
+  warning: AlertTriangle,
+  info: Info,
+}
+
+interface SmartAlertProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof alertVariants> {
+  title: string
+  description?: React.ReactNode // ReactNode permite passar strings ou JSX (links, bold, etc)
+  icon?: LucideIcon // Opcional: permite override manual
+}
+
+const SmartAlert = React.forwardRef<HTMLDivElement, SmartAlertProps>(
+  ({ className, variant = "default", title, description, icon: IconOverride, ...props }, ref) => {
+    
+    // Lógica: Usa o ícone passado via prop OU o ícone padrão do mapa
+    const IconComponent = IconOverride || ICON_MAP[variant || "default"] || ICON_MAP.default
+
+    return (
+      <Alert ref={ref} variant={variant} className={className} {...props}>
+        <IconComponent />
+        <AlertTitle>{title}</AlertTitle>
+        {description && <AlertDescription>{description}</AlertDescription>}
+      </Alert>
+    )
+  }
+)
+SmartAlert.displayName = "SmartAlert"
+
+export { Alert, AlertTitle, AlertDescription, SmartAlert }
 
 ==================================================================
 FILE: frontend\src\components\ui\avatar.tsx
 ==================================================================
 import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+
 import { cn } from "@/lib/utils"
 
-const Avatar = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
-      className
-    )}
-    {...props}
-  />
-))
+/* -------------------------------------------------------------------------- */
+/* 1. VARIANTES E ESTILOS                                                     */
+/* -------------------------------------------------------------------------- */
+
+const avatarVariants = cva(
+  "relative flex shrink-0 overflow-hidden rounded-full border border-border/10 shadow-sm transition-opacity", 
+  {
+    variants: {
+      size: {
+        xs: "h-6 w-6 text-[10px]", // Para tabelas densas
+        sm: "h-8 w-8 text-xs",     // Para headers compactos
+        default: "h-10 w-10 text-sm", // Padrão
+        lg: "h-14 w-14 text-base", // Para cartões de perfil
+        xl: "h-20 w-20 text-xl",   // Para páginas de perfil detalhadas
+      },
+    },
+    defaultVariants: {
+      size: "default",
+    },
+  }
+)
+
+/* -------------------------------------------------------------------------- */
+/* 2. PRIMITIVOS (MODERNIZADOS)                                               */
+/* -------------------------------------------------------------------------- */
+
+interface AvatarProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof avatarVariants> {}
+
+const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
+  ({ className, size, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(avatarVariants({ size }), className)}
+      {...props}
+    />
+  )
+)
 Avatar.displayName = "Avatar"
 
 const AvatarImage = React.forwardRef<
@@ -324,7 +397,9 @@ const AvatarImage = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <img
     ref={ref}
-    className={cn("aspect-square h-full w-full", className)}
+    // UX FIX: 'object-cover' impede distorção da imagem
+    // UI: 'aspect-square' garante a proporção 1:1
+    className={cn("aspect-square h-full w-full object-cover", className)}
     {...props}
   />
 ))
@@ -336,8 +411,10 @@ const AvatarFallback = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
+    // UI: bg-muted + text-muted-foreground cria um visual neutro e acessível
+    // Font-medium para garantir legibilidade das iniciais
     className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-muted",
+      "flex h-full w-full items-center justify-center rounded-full bg-muted font-medium text-muted-foreground animate-in fade-in duration-300",
       className
     )}
     {...props}
@@ -345,59 +422,273 @@ const AvatarFallback = React.forwardRef<
 ))
 AvatarFallback.displayName = "AvatarFallback"
 
-export { Avatar, AvatarImage, AvatarFallback }
+/* -------------------------------------------------------------------------- */
+/* 3. SMART COMPONENT (NOVO)                                                  */
+/* -------------------------------------------------------------------------- */
+
+interface SmartAvatarProps extends AvatarProps {
+  src?: string | null
+  alt?: string
+  name?: string // Usado para gerar iniciais se a imagem falhar
+  fallback?: string // Override manual das iniciais
+}
+
+const SmartAvatar = React.forwardRef<HTMLDivElement, SmartAvatarProps>(
+  ({ src, alt, name, fallback, className, size, ...props }, ref) => {
+    
+    // Helper para gerar iniciais (Ex: "João Silva" -> "JS")
+    // Se não houver nome, usa "??"
+    const initials = React.useMemo(() => {
+      if (fallback) return fallback
+      if (!name) return "??"
+      
+      return name
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    }, [name, fallback])
+
+    return (
+      <Avatar ref={ref} size={size} className={className} {...props}>
+        {/* Renderiza a imagem apenas se src existir */}
+        {src && <AvatarImage src={src} alt={alt || name || "Avatar"} />}
+        
+        {/* O Fallback do Radix (ou Shadcn) é inteligente: 
+            ele aparece automaticamente enquanto a imagem carrega ou se der erro. 
+            Aqui garantimos que ele tenha um conteúdo útil (iniciais). */}
+        <AvatarFallback>{initials}</AvatarFallback>
+      </Avatar>
+    )
+  }
+)
+SmartAvatar.displayName = "SmartAvatar"
+
+export { Avatar, AvatarImage, AvatarFallback, SmartAvatar }
 
 ==================================================================
 FILE: frontend\src\components\ui\badge.tsx
 ==================================================================
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+
 import { cn } from "@/lib/utils"
 
-export function Badge({ className, variant = "info", ...props }: any) {
-  const variants: any = {
-    info: "bg-primary text-white",
-    success: "bg-green-600 text-white",
-    warning: "bg-yellow-500 text-white",
-    danger: "bg-red-600 text-white",
-    muted: "bg-muted text-foreground",
+/* -------------------------------------------------------------------------- */
+/* DESIGN SYSTEM NOTES:                                                       */
+/* 1. Cores "Subtle" (ex: bg-emerald-500/15) são preferidas para status.      */
+/* 2. 'rounded-full' ajuda a diferenciar visualmente Badges de Buttons.       */
+/* 3. Adicionado aliases (destructive/secondary) para compatibilidade.        */
+/* -------------------------------------------------------------------------- */
+
+const badgeVariants = cva(
+  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  {
+    variants: {
+      variant: {
+        // --- STANDARD / COMPATIBILITY ---
+        default: 
+          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
+        
+        secondary: // Alias para 'muted' (padrão shadcn)
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        
+        destructive: // Alias para 'danger' (padrão shadcn)
+          "border-transparent bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:text-red-400",
+        
+        outline: 
+          "text-foreground",
+          
+        // --- SEMANTIC VARIANTS (Estilo 'Subtle') ---
+        
+        info: 
+          "border-transparent bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 dark:text-blue-400",
+        
+        success: 
+          "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400",
+        
+        warning: 
+          "border-transparent bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-400",
+        
+        danger: 
+          "border-transparent bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:text-red-400",
+          
+        muted: 
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
   }
+)
+
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof badgeVariants> {}
+
+function Badge({ className, variant, ...props }: BadgeProps) {
+  return (
+    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+  )
+}
+
+export { Badge, badgeVariants }
+
+==================================================================
+FILE: frontend\src\components\ui\breadcrumb.tsx
+==================================================================
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { ChevronRight, MoreHorizontal } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+const Breadcrumb = React.forwardRef<
+  HTMLElement,
+  React.ComponentPropsWithoutRef<"nav"> & {
+    separator?: React.ReactNode
+  }
+>(({ ...props }, ref) => <nav ref={ref} aria-label="breadcrumb" {...props} />)
+Breadcrumb.displayName = "Breadcrumb"
+
+const BreadcrumbList = React.forwardRef<
+  HTMLOListElement,
+  React.ComponentPropsWithoutRef<"ol">
+>(({ className, ...props }, ref) => (
+  <ol
+    ref={ref}
+    className={cn(
+      "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5",
+      className
+    )}
+    {...props}
+  />
+))
+BreadcrumbList.displayName = "BreadcrumbList"
+
+const BreadcrumbItem = React.forwardRef<
+  HTMLLIElement,
+  React.ComponentPropsWithoutRef<"li">
+>(({ className, ...props }, ref) => (
+  <li
+    ref={ref}
+    className={cn("inline-flex items-center gap-1.5", className)}
+    {...props}
+  />
+))
+BreadcrumbItem.displayName = "BreadcrumbItem"
+
+const BreadcrumbLink = React.forwardRef<
+  HTMLAnchorElement,
+  React.ComponentPropsWithoutRef<"a"> & {
+    asChild?: boolean
+  }
+>(({ asChild, className, ...props }, ref) => {
+  const Comp = asChild ? Slot : "a"
 
   return (
-    <span
-      className={cn(
-        "inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-md",
-        variants[variant],
-        className
-      )}
+    <Comp
+      ref={ref}
+      className={cn("transition-colors hover:text-foreground", className)}
       {...props}
     />
   )
+})
+BreadcrumbLink.displayName = "BreadcrumbLink"
+
+const BreadcrumbPage = React.forwardRef<
+  HTMLSpanElement,
+  React.ComponentPropsWithoutRef<"span">
+>(({ className, ...props }, ref) => (
+  <span
+    ref={ref}
+    role="link"
+    aria-disabled="true"
+    aria-current="page"
+    className={cn("font-normal text-foreground", className)}
+    {...props}
+  />
+))
+BreadcrumbPage.displayName = "BreadcrumbPage"
+
+const BreadcrumbSeparator = ({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<"li">) => (
+  <li
+    role="presentation"
+    aria-hidden="true"
+    className={cn("[&>svg]:w-3.5 [&>svg]:h-3.5", className)}
+    {...props}
+  >
+    {children ?? <ChevronRight />}
+  </li>
+)
+BreadcrumbSeparator.displayName = "BreadcrumbSeparator"
+
+const BreadcrumbEllipsis = ({
+  className,
+  ...props
+}: React.ComponentProps<"span">) => (
+  <span
+    role="presentation"
+    aria-hidden="true"
+    className={cn("flex h-9 w-9 items-center justify-center", className)}
+    {...props}
+  >
+    <MoreHorizontal className="h-4 w-4" />
+    <span className="sr-only">More</span>
+  </span>
+)
+BreadcrumbEllipsis.displayName = "BreadcrumbElipssis"
+
+export {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  BreadcrumbEllipsis,
 }
 
 
 ==================================================================
 FILE: frontend\src\components\ui\button.tsx
 ==================================================================
-// frontend/src/components/ui/button.tsx
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react" // Importação necessária para o loading
 
 import { cn } from "@/lib/utils"
 
+/* -------------------------------------------------------------------------- */
+/* UX & MOTION NOTES:                                                         */
+/* 1. active:scale-95 -> Cria sensação tátil de clique.                       */
+/* 2. gap-2 -> Garante espaçamento uniforme entre ícones e texto.             */
+/* 3. [&_svg]:pointer-events-none -> Evita bugs de clique em ícones.          */
+/* 4. [&_svg]:size-4 -> Padroniza o tamanho de qualquer ícone filho.          */
+/* -------------------------------------------------------------------------- */
+
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 active:scale-95",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default:
+          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground active:scale-100", // Ghost geralmente não escala ou escala menos
+        link: "text-primary underline-offset-4 hover:underline active:scale-100",
       },
       size: {
         default: "h-10 px-4 py-2",
@@ -417,17 +708,32 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  isLoading?: boolean // Nova prop para DX
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, isLoading = false, children, disabled, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        // A11y & Logic: Se estiver carregando, desabilita automaticamente
+        disabled={isLoading || disabled}
         {...props}
-      />
+      >
+        {/* Renderização Condicional do Spinner */}
+        {isLoading ? (
+          <>
+            <Loader2 className="animate-spin" />
+            {/* Opcional: Você pode esconder o children ou deixá-lo visível ao lado */}
+            {children}
+          </>
+        ) : (
+          children
+        )}
+      </Comp>
     )
   }
 )
@@ -435,22 +741,19 @@ Button.displayName = "Button"
 
 export { Button, buttonVariants }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\card.tsx
 ==================================================================
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-/**
- * CARD — GOV-BR Moderno
- * --------------------------------------------------
- * • Bordas suaves (radius baseado no theme)
- * • Sombra leve e consistente
- * • Transição suave para hover
- * • Correções de hierarquia tipográfica
- */
+/* -------------------------------------------------------------------------- */
+/* COMPONENTES DE CARD                                                        */
+/* -------------------------------------------------------------------------- */
 
+// 1. CARD BASE
+// Removemos o hover effect padrão para evitar "falsa aforância".
+// Se precisar de um card clicável, basta adicionar: "transition-all hover:shadow-md cursor-pointer" via className na instância.
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -459,7 +762,6 @@ const Card = React.forwardRef<
     ref={ref}
     className={cn(
       "rounded-xl border bg-card text-card-foreground shadow-sm",
-      "transition-all duration-200 hover:shadow-md hover:border-primary/40",
       className
     )}
     {...props}
@@ -467,22 +769,24 @@ const Card = React.forwardRef<
 ))
 Card.displayName = "Card"
 
+// 2. HEADER
+// Removemos o gradiente para um look mais clean e profissional.
+// O espaçamento (flex-col space-y-1.5) cuida da hierarquia entre Título e Descrição.
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      "flex flex-col space-y-1.5 p-6 pb-3",
-      "bg-gradient-to-b from-background to-muted/20 rounded-t-xl",
-      className
-    )}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
     {...props}
   />
 ))
 CardHeader.displayName = "CardHeader"
 
+// 3. TITLE
+// Mantivemos h3 como padrão semântico, mas permitimos override.
+// tracking-tight deixa o título mais compacto e moderno.
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
@@ -491,7 +795,6 @@ const CardTitle = React.forwardRef<
     ref={ref}
     className={cn(
       "text-lg font-semibold leading-none tracking-tight",
-      "text-foreground",
       className
     )}
     {...props}
@@ -499,34 +802,32 @@ const CardTitle = React.forwardRef<
 ))
 CardTitle.displayName = "CardTitle"
 
+// 4. DESCRIPTION
+// text-muted-foreground garante que o contraste seja acessível mas visualmente distinto do título.
 const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn(
-      "text-sm text-muted-foreground",
-      "leading-relaxed",
-      className
-    )}
+    className={cn("text-sm text-muted-foreground leading-relaxed", className)}
     {...props}
   />
 ))
 CardDescription.displayName = "CardDescription"
 
+// 5. CONTENT
+// p-6 padrão, mas pt-0 se houver header acima, para manter o ritmo vertical correto.
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("p-6 pt-0", className)}
-    {...props}
-  />
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
 ))
 CardContent.displayName = "CardContent"
 
+// 6. FOOTER
+// Flexbox pronto para alinhar botões à direita ou esquerda.
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -539,20 +840,11 @@ const CardFooter = React.forwardRef<
 ))
 CardFooter.displayName = "CardFooter"
 
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent
-}
-
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 
 ==================================================================
 FILE: frontend\src\components\ui\checkbox.tsx
 ==================================================================
-// frontend/src/components/ui/checkbox.tsx
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import { Check } from "lucide-react"
@@ -566,15 +858,37 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      // LAYOUT & DIMENSIONS
+      // Aumentado para h-5 w-5 (20px) para melhor hit-area
+      "peer h-5 w-5 shrink-0 rounded-md border shadow-sm",
+      
+      // COLORS & STATES
+      // Padrão: border-input (neutro). Checked: bg-primary + border-primary.
+      "border-input bg-background ring-offset-background transition-colors",
+      "data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=checked]:text-primary-foreground",
+      
+      // FOCUS & A11Y
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      
+      // DISABLED
+      "disabled:cursor-not-allowed disabled:opacity-50",
+      
       className
     )}
     {...props}
   >
     <CheckboxPrimitive.Indicator
-      className={cn("flex items-center justify-center text-current")}
+      className={cn(
+        "flex items-center justify-center text-current",
+        // MICRO-INTERAÇÃO: O ícone surge com um zoom rápido e suave
+        "animate-in zoom-in-50 duration-200"
+      )}
     >
-      <Check className="h-4 w-4" />
+      {/* Icon adjustments:
+         1. h-3.5 w-3.5: Um pouco menor que a caixa para dar respiro (whitespace).
+         2. strokeWidth={3.5}: Traço mais grosso para melhor leitura em fundo colorido.
+      */}
+      <Check className="h-3.5 w-3.5" strokeWidth={3.5} />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ))
@@ -593,6 +907,10 @@ import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 
+/* -------------------------------------------------------------------------- */
+/* 1. ROOT COMMAND                                                            */
+/* -------------------------------------------------------------------------- */
+
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>
@@ -608,17 +926,35 @@ const Command = React.forwardRef<
 ))
 Command.displayName = CommandPrimitive.displayName
 
+/* -------------------------------------------------------------------------- */
+/* 2. COMMAND DIALOG (MODAL WRAPPER)                                          */
+/* -------------------------------------------------------------------------- */
+
 const CommandDialog = ({ children, ...props }: DialogProps) => {
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden p-0">
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+      <DialogContent className="overflow-hidden p-0 shadow-lg">
+        <Command className={cn(
+          // UX FIX: Classes organizadas para facilitar manutenção.
+          // Ajustes para garantir que, dentro do modal, os itens sejam maiores (touch-friendly)
+          "[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
+          "[&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0",
+          "[&_[cmdk-group]]:px-2",
+          "[&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5", 
+          "[&_[cmdk-input]]:h-14", // Input maior no modal para destaque
+          "[&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3", // Itens com mais área de clique
+          "[&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
+        )}>
           {children}
         </Command>
       </DialogContent>
     </Dialog>
   )
 }
+
+/* -------------------------------------------------------------------------- */
+/* 3. INPUT                                                                   */
+/* -------------------------------------------------------------------------- */
 
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
@@ -628,16 +964,20 @@ const CommandInput = React.forwardRef<
     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
+      // UX: h-11 (44px) é um padrão melhor para inputs de busca principal
       className={cn(
-        "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}
     />
   </div>
 ))
-
 CommandInput.displayName = CommandPrimitive.Input.displayName
+
+/* -------------------------------------------------------------------------- */
+/* 4. LIST & EMPTY STATE                                                      */
+/* -------------------------------------------------------------------------- */
 
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
@@ -645,11 +985,11 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
+    // UX: Scrollbar estilizada ou oculta para visual mais limpo
     className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
     {...props}
   />
 ))
-
 CommandList.displayName = CommandPrimitive.List.displayName
 
 const CommandEmpty = React.forwardRef<
@@ -658,12 +998,15 @@ const CommandEmpty = React.forwardRef<
 >((props, ref) => (
   <CommandPrimitive.Empty
     ref={ref}
-    className="py-6 text-center text-sm"
+    className="py-6 text-center text-sm text-muted-foreground"
     {...props}
   />
 ))
-
 CommandEmpty.displayName = CommandPrimitive.Empty.displayName
+
+/* -------------------------------------------------------------------------- */
+/* 5. GROUPS & ITEMS                                                          */
+/* -------------------------------------------------------------------------- */
 
 const CommandGroup = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Group>,
@@ -678,7 +1021,6 @@ const CommandGroup = React.forwardRef<
     {...props}
   />
 ))
-
 CommandGroup.displayName = CommandPrimitive.Group.displayName
 
 const CommandSeparator = React.forwardRef<
@@ -700,13 +1042,22 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+      // Layout Base
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none",
+      // UI: Adicionado transition-colors para suavidade no hover/seleção
+      "transition-colors duration-200", 
+      // States
+      "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
+      "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+      // Icon sizing (Usei seletor genérico para pegar qualquer ícone Lucide)
+      "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+      // UX: Cursor pointer ajuda a indicar interatividade quando usado com mouse
+      "cursor-pointer",
       className
     )}
     {...props}
   />
 ))
-
 CommandItem.displayName = CommandPrimitive.Item.displayName
 
 const CommandShortcut = ({
@@ -737,11 +1088,9 @@ export {
   CommandSeparator,
 }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\dialog.tsx
 ==================================================================
-// frontend/src/components/ui/dialog.tsx
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
@@ -753,6 +1102,11 @@ const DialogTrigger = DialogPrimitive.Trigger
 const DialogPortal = DialogPrimitive.Portal
 const DialogClose = DialogPrimitive.Close
 
+/* -------------------------------------------------------------------------- */
+/* OVERLAY                                                                    */
+/* -------------------------------------------------------------------------- */
+// UX: bg-black/80 cria um contraste melhor que bg-background/80, 
+// focando totalmente a atenção do usuário no conteúdo do modal.
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -760,7 +1114,9 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm",
+      "data-[state=open]:animate-in data-[state=closed]:animate-out",
+      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -768,6 +1124,9 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
+/* -------------------------------------------------------------------------- */
+/* CONTENT                                                                    */
+/* -------------------------------------------------------------------------- */
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
@@ -777,21 +1136,42 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-card p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        // Layout & Position
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
+        // Visuals (Shadow-2xl para maior profundidade)
+        "border bg-background p-6 shadow-2xl duration-200 sm:rounded-lg",
+        // Animations (Zoom & Slide sutis)
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+        "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
         className
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+      
+      {/* Botão de Fechar: Maior área de toque e feedback visual */}
+      <DialogPrimitive.Close 
+        className={cn(
+          "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity",
+          "hover:opacity-100 hover:bg-accent hover:text-accent-foreground p-1", // UX Improvements
+          "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          "disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
+        )}
+      >
         <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">Fechar</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
+/* -------------------------------------------------------------------------- */
+/* HEADER & FOOTER                                                            */
+/* -------------------------------------------------------------------------- */
 const DialogHeader = ({
   className,
   ...props
@@ -820,6 +1200,9 @@ const DialogFooter = ({
 )
 DialogFooter.displayName = "DialogFooter"
 
+/* -------------------------------------------------------------------------- */
+/* TITLE & DESCRIPTION                                                        */
+/* -------------------------------------------------------------------------- */
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -841,7 +1224,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm text-muted-foreground leading-relaxed", className)}
     {...props}
   />
 ))
@@ -859,7 +1242,6 @@ export {
   DialogTitle,
   DialogDescription,
 }
-
 
 ==================================================================
 FILE: frontend\src\components\ui\dropdown-menu.tsx
@@ -1069,11 +1451,10 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\error-boundary.tsx
 ==================================================================
-// Removi o "React" do início, mantendo apenas os tipos e classes necessários
 import { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './button'; 
-import { Card, CardContent, CardHeader, CardTitle } from './card';
+import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 interface Props {
   children?: ReactNode;
@@ -1084,10 +1465,10 @@ interface State {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
   };
 
   public static getDerivedStateFromError(error: Error): State {
@@ -1102,34 +1483,60 @@ class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-          <Card className="w-full max-w-md shadow-lg border-red-100">
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+          <Card className="w-full max-w-md shadow-lg border-destructive/20">
             <CardHeader className="text-center pb-2">
-              <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
+              <div className="mx-auto w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
               </div>
-              <CardTitle className="text-xl text-gray-800">Ops! Algo deu errado.</CardTitle>
+              <CardTitle className="text-xl">Ops! Algo deu errado.</CardTitle>
+              <CardDescription>
+                Ocorreu um erro inesperado na execução da aplicação.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-gray-600">
-                Ocorreu um erro inesperado na aplicação. Nossa equipe foi notificada (via console).
-                Por favor, tente recarregar a página.
+            
+            <CardContent className="text-center space-y-6">
+              <p className="text-sm text-muted-foreground">
+                Nossa equipe técnica foi notificada automaticamente.
+                Você pode tentar recuperar a sessão ou recarregar a página.
               </p>
               
-              {/* Mostra o erro técnico apenas em desenvolvimento */}
-              {import.meta.env.DEV && this.state.error && (
-                <div className="bg-gray-100 p-2 rounded text-xs text-left overflow-auto max-h-32 text-red-800 font-mono">
-                  {this.state.error.toString()}
+              {/* Área de Debug (Apenas em Desenvolvimento) */}
+              {/* @ts-ignore: Ignorando verificação estrita de tipo para variável de ambiente no CI */}
+              {import.meta.env.MODE === 'development' && this.state.error && (
+                <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-md text-left overflow-auto max-h-40 border text-xs font-mono">
+                  <p className="text-destructive font-bold mb-1">Stack Trace:</p>
+                  <span className="text-slate-600 dark:text-slate-400">
+                    {this.state.error.toString()}
+                  </span>
                 </div>
               )}
 
-              <Button onClick={this.handleReload} className="w-full bg-blue-600 hover:bg-blue-700">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Recarregar Página
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+                <Button 
+                  onClick={this.handleReset} 
+                  variant="outline" 
+                  className="w-full sm:w-auto"
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Tentar Novamente
+                </Button>
+                
+                <Button 
+                  onClick={this.handleReload} 
+                  className="w-full sm:w-auto"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Recarregar Página
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1341,8 +1748,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <input
         type={type}
         className={cn(
-          // [CORREÇÃO] Trocado 'bg-white' por 'bg-background'
-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          // [CORREÇÃO] Alterado 'ring-offset-2' para 'ring-offset-0' para evitar corte em modais
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         ref={ref}
@@ -1656,8 +2063,8 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      // [CORREÇÃO] Trocado 'bg-white' por 'bg-background'
-      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+      // [CORREÇÃO] Alterado 'ring-offset-2' para 'ring-offset-0' para evitar corte em modais
+      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
       className
     )}
     {...props}
@@ -1678,7 +2085,6 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        // [CORREÇÃO] Trocado 'bg-white' por 'bg-popover' (padrão para dropdowns)
         "relative z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
@@ -2201,8 +2607,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <textarea
         className={cn(
-          // [CORREÇÃO] Trocado 'bg-white' por 'bg-background'
-          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          // [CORREÇÃO] Alterado 'ring-offset-2' para 'ring-offset-0' para evitar corte em modais
+          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         ref={ref}
@@ -2252,15 +2658,15 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 ==================================================================
 FILE: frontend\src\components\common\CommandMenu.tsx
 ==================================================================
+// frontend/src/components/layout/CommandMenu.tsx
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { 
   Calendar, Settings, LayoutDashboard, Users, PlusCircle, LogOut, 
-  AlertTriangle, Keyboard, FileText, Loader2, type LucideIcon
+  AlertTriangle, FileText, Loader2, type LucideIcon, Search
 } from "lucide-react"
 
-// Importando componentes separadamente para ter controle total (Correção do shouldFilter)
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { 
   Command, 
@@ -2276,6 +2682,7 @@ import {
 import { useAuth } from "@/hooks/useAuth"
 import { useModal } from "@/hooks/useModal"
 import { api } from "@/lib/api"
+import { useDebounce } from "@/hooks/useDebounce" // Assumindo que você tem ou criarei abaixo
 
 // --- TIPAGEM ---
 type CommandAction = {
@@ -2295,22 +2702,24 @@ type CommandSection = {
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
+  const debouncedQuery = useDebounce(query, 300) // Delay de 300ms
+  
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { openNewCaseModal } = useModal()
 
   // --- BUSCA GLOBAL (Server-Side) ---
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['search-cases-global', query],
+    queryKey: ['search-cases-global', debouncedQuery],
     queryFn: async () => {
-      if (!query || query.length < 3) return []
+      if (!debouncedQuery || debouncedQuery.length < 3) return []
       const res = await api.get('/cases', { 
-        params: { q: query, pageSize: 5, view: 'all' } 
+        params: { q: debouncedQuery, pageSize: 5, view: 'all' } 
       })
       return res.data.data || res.data.items || []
     },
-    enabled: open && query.length >= 3,
-    staleTime: 1000 * 60 * 5
+    enabled: open && debouncedQuery.length >= 3,
+    staleTime: 1000 * 60 * 2 // Cache por 2 minutos
   })
 
   // --- CONFIGURAÇÃO DE COMANDOS ---
@@ -2374,12 +2783,6 @@ export function CommandMenu() {
           roles: ['Gerente']
         },
         {
-          label: "Atalhos",
-          icon: Keyboard,
-          keywords: ["ajuda", "teclas"],
-          action: () => setOpen(true)
-        },
-        {
           label: "Sair do Sistema",
           icon: LogOut,
           keywords: ["logout", "deslogar"],
@@ -2396,10 +2799,12 @@ export function CommandMenu() {
         e.preventDefault()
         setOpen((open) => !open)
       }
+      // Atalho para Novo Caso (Ctrl+N)
       if (e.key === "n" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
          if (user && ['Agente_Social', 'Especialista', 'Gerente'].includes(user.cargo)) {
-            e.preventDefault()
-            openNewCaseModal()
+           e.preventDefault()
+           setOpen(false)
+           openNewCaseModal()
          }
       }
     }
@@ -2417,63 +2822,68 @@ export function CommandMenu() {
     return user && roles.includes(user.cargo)
   }
 
+  // Lógica para mostrar resultados da busca OU comandos padrão
+  const showSearchResults = query.length >= 3;
+
   return (
     <>
-      <p className="fixed bottom-4 right-4 text-xs text-muted-foreground hidden lg:flex items-center gap-2 bg-background/80 p-2 rounded border backdrop-blur-sm pointer-events-none z-50 shadow-sm print:hidden">
-        <span>Comandos</span>
-        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+      <p className="fixed bottom-4 right-4 text-xs text-muted-foreground hidden lg:flex items-center gap-2 bg-background/80 p-2 rounded-md border backdrop-blur-sm pointer-events-none z-50 shadow-sm print:hidden animate-in fade-in slide-in-from-bottom-2">
+        <span className="font-medium">Comandos</span>
+        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm">
           <span className="text-xs">⌘</span>K
         </kbd>
       </p>
 
-      {/* MODAL CUSTOMIZADO (Dialog + Command) para suportar shouldFilter */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="overflow-hidden p-0 shadow-lg max-w-[550px]">
+        <DialogContent className="overflow-hidden p-0 shadow-xl max-w-[550px] gap-0">
           <Command 
             className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
-            shouldFilter={false} // AQUI ESTÁ A MÁGICA PARA BUSCA NO SERVIDOR
+            shouldFilter={!showSearchResults} // Desativa filtro local quando busca remota está ativa
           >
-            <CommandInput 
-              placeholder="Busque por nome do caso ou digite um comando..." 
-              value={query}
-              onValueChange={setQuery}
-            />
+            <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <CommandInput 
+                placeholder="Busque por nome, CPF ou digite um comando..." 
+                value={query}
+                onValueChange={setQuery}
+                className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
             
-            <CommandList>
-              <CommandEmpty>
+            <CommandList className="max-h-[300px] overflow-y-auto overflow-x-hidden">
+              <CommandEmpty className="py-6 text-center text-sm">
                 {isSearching ? (
-                  <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Buscando...
+                  <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" /> 
+                    <span>Buscando prontuários...</span>
                   </div>
                 ) : (
-                  "Nenhum resultado encontrado."
+                  query.length > 0 ? "Nenhum resultado encontrado." : "Comece a digitar..."
                 )}
               </CommandEmpty>
 
-              {/* RESULTADOS DA BUSCA (API) */}
-              {searchResults && searchResults.length > 0 && (
-                <>
-                  <CommandGroup heading="Prontuários Encontrados">
-                    {searchResults.map((caso: any) => (
-                      <CommandItem
-                        key={caso.id}
-                        onSelect={() => runCommand(() => navigate(`/dashboard/cases/${caso.id}`))}
-                        value={caso.nomeCompleto}
-                      >
-                        <FileText className="mr-2 h-4 w-4 text-blue-500" />
-                        <div className="flex flex-col">
-                          <span>{caso.nomeCompleto}</span>
-                          <span className="text-[10px] text-muted-foreground">CPF: {caso.cpf}</span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                  <CommandSeparator />
-                </>
+              {/* MODO BUSCA: Exibe apenas resultados da API */}
+              {showSearchResults && searchResults && (
+                <CommandGroup heading="Prontuários Encontrados">
+                  {searchResults.map((caso: any) => (
+                    <CommandItem
+                      key={caso.id}
+                      onSelect={() => runCommand(() => navigate(`/dashboard/cases/${caso.id}`))}
+                      value={`${caso.nomeCompleto} ${caso.cpf}`} // Value composto para garantir match se o filtro estiver ativo
+                      className="aria-selected:bg-primary/10"
+                    >
+                      <FileText className="mr-2 h-4 w-4 text-primary" />
+                      <div className="flex flex-col">
+                        <span className="font-medium">{caso.nomeCompleto}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">CPF: {caso.cpf}</span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
               )}
               
-              {/* COMANDOS ESTÁTICOS (Só exibe se a busca não tiver prioridade) */}
-              {(!query || query.length < 3) && COMMAND_GROUPS.map((group, groupIndex) => {
+              {/* MODO COMANDOS: Exibe menus estáticos (se não houver busca ativa ou busca curta) */}
+              {!showSearchResults && COMMAND_GROUPS.map((group, groupIndex) => {
                 const authorizedItems = group.items.filter(item => canAccess(item.roles))
                 if (authorizedItems.length === 0) return null
 
@@ -2485,9 +2895,9 @@ export function CommandMenu() {
                         <CommandItem 
                           key={item.label} 
                           onSelect={() => runCommand(item.action)}
-                          value={item.label}
+                          value={item.label} // Importante para o filtro local funcionar
                         >
-                          <item.icon className="mr-2 h-4 w-4" />
+                          <item.icon className="mr-2 h-4 w-4 opacity-70" />
                           <span>{item.label}</span>
                           {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}
                         </CommandItem>
@@ -2508,73 +2918,134 @@ export function CommandMenu() {
 FILE: frontend\src\components\common\DataTableFilters.tsx
 ==================================================================
 // frontend/src/components/DataTableFilters.tsx
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import { 
+  X, Filter, AlertTriangle, Tag, Users, Fingerprint, Activity 
+} from "lucide-react"
 import { OPTIONS } from "@/constants/options"
 
+// Tipagem estrita dos filtros
+export interface FilterState {
+  status: string
+  urgencia: string
+  violacao: string
+  categoria: string
+  sexo: string
+}
+
 interface FiltersProps {
-  filters: {
-    status: string
-    urgencia: string
-    violacao: string
-    categoria: string
-    sexo: string
-  }
-  setFilters: (key: string, value: string) => void
+  filters: FilterState
+  setFilters: (key: keyof FilterState, value: string) => void
   onClear: () => void
 }
 
+// Helper para normalizar opções (converte string[] para {label, value}[])
+const normalizeOptions = (options: any[]) => {
+  return options.map(opt => {
+    if (typeof opt === 'string') return { label: opt, value: opt }
+    return opt // Assume que já é { label, value }
+  })
+}
+
 export function DataTableFilters({ filters, setFilters, onClear }: FiltersProps) {
-  const hasActiveFilters = Object.values(filters).some(val => val !== '' && val !== 'all')
+  
+  // Configuração Centralizada dos Filtros
+  const FILTER_CONFIG = [
+    {
+      key: 'status',
+      label: 'Status',
+      icon: Activity,
+      width: 'w-[160px]',
+      options: OPTIONS.status // Já é objeto {label, value}
+    },
+    {
+      key: 'urgencia',
+      label: 'Urgência',
+      icon: AlertTriangle,
+      width: 'w-[160px]',
+      options: normalizeOptions(OPTIONS.urgencia)
+    },
+    {
+      key: 'violacao',
+      label: 'Violação',
+      icon: Fingerprint,
+      width: 'w-[160px]',
+      options: normalizeOptions(OPTIONS.violacao)
+    },
+    {
+      key: 'categoria',
+      label: 'Categoria',
+      icon: Tag,
+      width: 'w-[150px]',
+      options: normalizeOptions(OPTIONS.categoria)
+    },
+    {
+      key: 'sexo',
+      label: 'Sexo',
+      icon: Users,
+      width: 'w-[130px]',
+      options: normalizeOptions(OPTIONS.sexo)
+    }
+  ] as const
+
+  // Verifica se há algum filtro ativo (diferente de '' ou 'all')
+  const activeFilterCount = Object.values(filters).filter(val => val && val !== 'all').length
+  const hasActiveFilters = activeFilterCount > 0
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-2">
+    <div className="flex flex-wrap items-center gap-2 mb-4 p-1">
       
-      <Select value={filters.status} onValueChange={(val) => setFilters('status', val)}>
-        <SelectTrigger className="w-[180px] h-9 bg-background"><SelectValue placeholder="Status" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos os Status</SelectItem>
-          {OPTIONS.status.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      {/* Label visual (Opcional, mas ajuda no contexto) */}
+      <div className="flex items-center text-sm font-medium text-muted-foreground mr-2">
+        <Filter className="mr-2 h-4 w-4" />
+        Filtros
+      </div>
 
-      <Select value={filters.urgencia} onValueChange={(val) => setFilters('urgencia', val)}>
-        <SelectTrigger className="w-[160px] h-9 bg-background"><SelectValue placeholder="Urgência" /></SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          <SelectItem value="all">Todas</SelectItem>
-          {OPTIONS.urgencia.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      {/* Loop de Renderização dos Selects */}
+      {FILTER_CONFIG.map((config) => (
+        <Select 
+          key={config.key} 
+          value={filters[config.key as keyof FilterState]} 
+          onValueChange={(val) => setFilters(config.key as keyof FilterState, val)}
+        >
+          <SelectTrigger className={`${config.width} h-9 bg-background border-dashed hover:border-solid transition-all`}>
+            <div className="flex items-center gap-2 truncate">
+              <config.icon className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder={config.label} />
+            </div>
+          </SelectTrigger>
+          <SelectContent className="max-h-[300px]">
+            <SelectItem value="all" className="text-muted-foreground font-medium">
+              Todos
+            </SelectItem>
+            <Separator className="my-1 opacity-50"/>
+            {config.options.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ))}
 
-      <Select value={filters.violacao} onValueChange={(val) => setFilters('violacao', val)}>
-        <SelectTrigger className="w-[160px] h-9 bg-background"><SelectValue placeholder="Violação" /></SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          <SelectItem value="all">Todas</SelectItem>
-          {OPTIONS.violacao.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
-        </SelectContent>
-      </Select>
-
-      <Select value={filters.categoria} onValueChange={(val) => setFilters('categoria', val)}>
-        <SelectTrigger className="w-[140px] h-9 bg-background"><SelectValue placeholder="Categoria" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todas</SelectItem>
-          {OPTIONS.categoria.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-        </SelectContent>
-      </Select>
-
-      <Select value={filters.sexo} onValueChange={(val) => setFilters('sexo', val)}>
-        <SelectTrigger className="w-[120px] h-9 bg-background"><SelectValue placeholder="Sexo" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos</SelectItem>
-          {OPTIONS.sexo.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-        </SelectContent>
-      </Select>
-
+      {/* Botão de Limpar (Só aparece se houver filtros) */}
       {hasActiveFilters && (
-        <Button variant="ghost" size="sm" onClick={onClear} className="h-9 px-2 text-muted-foreground hover:text-foreground">
-          <X className="mr-2 h-4 w-4" /> Limpar
-        </Button>
+        <>
+          <div className="h-6 w-px bg-border mx-2 hidden sm:block" /> {/* Separador vertical */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={onClear} 
+            className="h-9 px-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <X className="mr-2 h-4 w-4" /> 
+            Limpar ({activeFilterCount})
+          </Button>
+        </>
       )}
     </div>
   )
@@ -2592,6 +3063,13 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface PaginationProps {
   currentPage: number
@@ -2599,6 +3077,9 @@ interface PaginationProps {
   totalItems: number
   pageSize: number
   onPageChange: (page: number) => void
+  // [NOVO] Props opcionais para controle de densidade
+  onPageSizeChange?: (size: number) => void
+  pageSizeOptions?: number[]
 }
 
 export function Pagination({
@@ -2607,34 +3088,69 @@ export function Pagination({
   totalItems,
   pageSize,
   onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 20, 50, 100]
 }: PaginationProps) {
+  
   // --- SANITIZAÇÃO DOS VALORES ---
   const safeTotalPages = Math.max(1, totalPages || 1)
   const safePage = Math.max(1, Math.min(currentPage || 1, safeTotalPages))
+  
+  // Cálculo de índices para "Mostrando X-Y de Z"
+  const startItem = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1
+  const endItem = Math.min(safePage * pageSize, totalItems)
 
-  const firstItem = Math.min((safePage - 1) * pageSize + 1, totalItems)
-  const lastItem = Math.min(safePage * pageSize, totalItems)
-
-  if (safeTotalPages <= 1) return null
+  // Se não houver itens, não mostra nada (ou mostra um placeholder se preferir)
+  if (totalItems === 0 && safeTotalPages <= 1) return null
 
   return (
-    <div className="flex items-center justify-between px-2 w-full">
+    <div className="flex flex-col-reverse items-center justify-between gap-4 px-2 py-2 sm:flex-row w-full">
       
-      {/* Informação da tabela */}
-      <div className="flex-1 text-sm text-muted-foreground hidden sm:block">
-        Mostrando {firstItem}–{lastItem} de {totalItems} resultados
+      {/* Esquerda: Informação de Contagem */}
+      <div className="flex-1 text-sm text-muted-foreground">
+        {totalItems > 0 ? (
+          <span>
+            Mostrando <strong>{startItem}-{endItem}</strong> de <strong>{totalItems}</strong> resultados
+          </span>
+        ) : (
+          <span>Sem resultados</span>
+        )}
       </div>
 
-      <div className="flex items-center space-x-6 lg:space-x-8">
+      {/* Direita: Controles */}
+      <div className="flex flex-col-reverse items-center gap-4 sm:flex-row sm:gap-6 lg:gap-8">
         
-        {/* Status da página */}
+        {/* [NOVO] Seletor de Linhas por Página */}
+        {onPageSizeChange && (
+          <div className="flex items-center space-x-2">
+            <p className="text-sm font-medium hidden sm:block">Linhas por página</p>
+            <Select
+              value={`${pageSize}`}
+              onValueChange={(value) => {
+                onPageSizeChange(Number(value))
+              }}
+            >
+              <SelectTrigger className="h-8 w-[70px]">
+                <SelectValue placeholder={pageSize} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {pageSizeOptions.map((pageSize) => (
+                  <SelectItem key={pageSize} value={`${pageSize}`}>
+                    {pageSize}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Indicador de Página */}
         <div className="flex w-[100px] items-center justify-center text-sm font-medium">
           Página {safePage} de {safeTotalPages}
         </div>
 
-        {/* Controles */}
+        {/* Botões de Navegação */}
         <div className="flex items-center space-x-2">
-
           <Button
             variant="outline"
             className="hidden h-8 w-8 p-0 lg:flex"
@@ -2674,13 +3190,11 @@ export function Pagination({
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>
-
         </div>
       </div>
     </div>
   )
 }
-
 
 ==================================================================
 FILE: frontend\src\components\common\SavedFilters.tsx
@@ -2688,86 +3202,179 @@ FILE: frontend\src\components\common\SavedFilters.tsx
 // frontend/src/components/SavedFilters.tsx
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { Bookmark, Trash2, Save, Loader2 } from "lucide-react"
+import { Bookmark, Trash2, Save, Loader2, Star, FilterX } from "lucide-react"
 import { toast } from "sonner"
 
+import { api } from "@/lib/api"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 
+// --- TYPES ---
 interface SavedFiltersProps {
-  currentFilters: any
-  onApply: (filters: any) => void
+  currentFilters: Record<string, any>
+  onApply: (filters: Record<string, any>) => void
 }
 
-interface FilterItem { id: string; nome: string; config: any }
+interface FilterItem {
+  id: string
+  nome: string
+  config: Record<string, any>
+}
 
-export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
+// --- CUSTOM HOOK (Data Logic) ---
+function useSavedFilters() {
   const queryClient = useQueryClient()
-  const [isOpen, setIsOpen] = useState(false)
-  const [newName, setNewName] = useState("")
 
   const { data: filters = [], isLoading } = useQuery<FilterItem[]>({
     queryKey: ["saved-filters"],
     queryFn: async () => (await api.get("/filters")).data,
+    staleTime: 1000 * 60 * 5, // Cache de 5 min
   })
 
-  const { mutate: saveFilter, isPending: isSaving } = useMutation({
-    mutationFn: async () => {
-      const configToSave = Object.fromEntries(Object.entries(currentFilters).filter(([_, v]) => v !== "" && v !== "all"))
-      if (Object.keys(configToSave).length === 0) throw new Error("Selecione algum filtro.")
-      await api.post("/filters", { nome: newName, config: configToSave })
+  const saveMutation = useMutation({
+    mutationFn: async (payload: { nome: string; config: any }) => {
+      await api.post("/filters", payload)
     },
     onSuccess: () => {
-      toast.success("Salvo com sucesso!")
+      toast.success("Filtro salvo com sucesso!")
       queryClient.invalidateQueries({ queryKey: ["saved-filters"] })
-      setNewName("")
     },
-    onError: (err: any) => toast.error(err.message || "Erro ao salvar.")
+    onError: () => toast.error("Erro ao salvar filtro.")
   })
 
-  const { mutate: deleteFilter } = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/filters/${id}`),
     onSuccess: () => {
       toast.success("Filtro removido.")
       queryClient.invalidateQueries({ queryKey: ["saved-filters"] })
-    }
+    },
+    onError: () => toast.error("Erro ao remover.")
   })
+
+  return { filters, isLoading, saveMutation, deleteMutation }
+}
+
+// --- COMPONENTE PRINCIPAL ---
+export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [newName, setNewName] = useState("")
+  
+  const { filters, isLoading, saveMutation, deleteMutation } = useSavedFilters()
+
+  // Handler para Salvar
+  const handleSave = () => {
+    // 1. Limpa filtros vazios ou 'all'
+    const activeFilters = Object.fromEntries(
+      Object.entries(currentFilters).filter(([_, v]) => v !== "" && v !== "all" && v !== null)
+    )
+
+    // 2. Validações
+    if (!newName.trim()) return toast.warning("Digite um nome para o filtro.")
+    if (Object.keys(activeFilters).length === 0) return toast.warning("Aplique algum filtro antes de salvar.")
+
+    // 3. Salva
+    saveMutation.mutate(
+      { nome: newName, config: activeFilters },
+      { onSuccess: () => setNewName("") } // Limpa input no sucesso
+    )
+  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 border-dashed">
-          <Bookmark className="mr-2 h-4 w-4" /> Favoritos
+        <Button variant="outline" size="sm" className="h-9 border-dashed text-muted-foreground hover:text-foreground">
+          <Bookmark className="mr-2 h-4 w-4" /> 
+          Favoritos
         </Button>
       </PopoverTrigger>
       
-      <PopoverContent align="start" className="w-[300px] p-0">
-        <div className="p-4">
-          <h4 className="font-medium leading-none mb-2">Filtros Salvos</h4>
-          <p className="text-xs text-muted-foreground mb-4">Salve sua vista atual para acesso rápido.</p>
+      <PopoverContent align="start" className="w-[320px] p-0 shadow-lg">
+        {/* Cabeçalho e Input */}
+        <div className="p-4 bg-muted/10 space-y-3">
+          <div className="space-y-1">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> Filtros Salvos
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Salve a configuração atual para acesso rápido.
+            </p>
+          </div>
+          
           <div className="flex gap-2">
-            <Input placeholder="Nome..." value={newName} onChange={(e) => setNewName(e.target.value)} className="h-8 text-xs"/>
-            <Button size="sm" className="h-8 w-8 p-0" onClick={() => saveFilter()} disabled={!newName || isSaving}>
-              {isSaving ? <Loader2 className="h-3 w-3 animate-spin"/> : <Save className="h-3 w-3"/>}
+            <Input 
+              placeholder="Nome do filtro (ex: Casos Prioritários)" 
+              value={newName} 
+              onChange={(e) => setNewName(e.target.value)} 
+              className="h-8 text-xs bg-background"
+              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+            />
+            <Button 
+              size="sm" 
+              className="h-8 w-8 p-0 shrink-0" 
+              onClick={handleSave} 
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin"/> : <Save className="h-3.5 w-3.5"/>}
             </Button>
           </div>
         </div>
+
         <Separator />
-        <ScrollArea className="h-[200px] p-2">
-          {isLoading ? <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin"/></div> : filters.length === 0 ? <p className="text-xs text-center py-8 text-muted-foreground">Vazio.</p> : (
-            <div className="space-y-1">
-              {filters.map((f) => (
-                <div key={f.id} className="flex items-center justify-between group rounded-md px-2 py-1.5 hover:bg-muted transition-colors">
-                  <button className="flex-1 text-left text-sm truncate" onClick={() => { onApply(f.config); setIsOpen(false); toast.info(`Filtro "${f.nome}" aplicado.`) }}>{f.nome}</button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:text-destructive" onClick={(e) => { e.stopPropagation(); deleteFilter(f.id) }}><Trash2 className="h-3 w-3" /></Button>
+
+        {/* Lista de Filtros */}
+        <ScrollArea className="h-[220px]">
+          <div className="p-2 space-y-1">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
+                <Loader2 className="h-5 w-5 animate-spin"/>
+                <span className="text-xs">Carregando...</span>
+              </div>
+            ) : filters.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2 opacity-60">
+                <FilterX className="h-8 w-8 stroke-1"/>
+                <p className="text-xs">Nenhum filtro salvo.</p>
+              </div>
+            ) : (
+              filters.map((f) => (
+                <div 
+                  key={f.id} 
+                  className="flex items-center justify-between group rounded-md p-2 hover:bg-accent cursor-pointer transition-all border border-transparent hover:border-border"
+                  onClick={() => { 
+                    onApply(f.config)
+                    setIsOpen(false)
+                    toast.success(`Filtro "${f.nome}" aplicado!`)
+                  }}
+                >
+                  <div className="flex flex-col gap-0.5 overflow-hidden">
+                    <span className="text-sm font-medium truncate">{f.nome}</span>
+                    <span className="text-[10px] text-muted-foreground truncate">
+                      {Object.keys(f.config).length} critérios salvos
+                    </span>
+                  </div>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all" 
+                    disabled={deleteMutation.isPending}
+                    onClick={(e) => { 
+                      e.stopPropagation()
+                      deleteMutation.mutate(f.id) 
+                    }}
+                  >
+                    {deleteMutation.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin"/>
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </ScrollArea>
       </PopoverContent>
     </Popover>
@@ -2778,13 +3385,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
 FILE: frontend\src\components\common\theme-provider.tsx
 ==================================================================
 // frontend/src/components/theme-provider.tsx
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 
 type Theme = "dark" | "light" | "system"
 
@@ -2799,52 +3400,42 @@ interface ThemeProviderState {
   setTheme: (theme: Theme) => void
 }
 
-const ThemeContext = createContext<ThemeProviderState | undefined>(undefined)
+const initialState: ThemeProviderState = {
+  theme: "system",
+  setTheme: () => null,
+}
+
+const ThemeContext = createContext<ThemeProviderState>(initialState)
 
 export function ThemeProvider({
   children,
   defaultTheme = "system",
   storageKey = "vite-ui-theme",
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(defaultTheme)
+  
+  const [theme, setTheme] = useState<Theme>(() => {
+    return (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  })
 
-  // Carregar tema salvo (evita acessar localStorage no SSR)
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey) as Theme | null
-    if (stored) setTheme(stored)
-  }, [storageKey])
+    const root = window.document.documentElement
 
-  // Aplicar tema ao DOM
-  useLayoutEffect(() => {
-    const root = document.documentElement
     root.classList.remove("light", "dark")
 
     if (theme === "system") {
-      const systemPrefersDark = window.matchMedia(
-        "(prefers-color-scheme: dark)"
-      ).matches
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+        .matches
+        ? "dark"
+        : "light"
 
-      root.classList.add(systemPrefersDark ? "dark" : "light")
+      root.classList.add(systemTheme)
       return
     }
 
     root.classList.add(theme)
   }, [theme])
 
-  // Atualizar tema se usuário alterar tema do sistema
-  useEffect(() => {
-    if (theme !== "system") return
-
-    const media = window.matchMedia("(prefers-color-scheme: dark)")
-    const handler = () => {
-      setTheme("system") // força recalcular
-    }
-    media.addEventListener("change", handler)
-
-    return () => media.removeEventListener("change", handler)
-  }, [theme])
-
-  const value: ThemeProviderState = {
+  const value = {
     theme,
     setTheme: (newTheme: Theme) => {
       localStorage.setItem(storageKey, newTheme)
@@ -2852,6 +3443,7 @@ export function ThemeProvider({
     },
   }
 
+  // CORREÇÃO: Removido {...props} que causava o erro
   return (
     <ThemeContext.Provider value={value}>
       {children}
@@ -2859,20 +3451,20 @@ export function ThemeProvider({
   )
 }
 
-export function useTheme() {
+export const useTheme = () => {
   const context = useContext(ThemeContext)
-  if (!context) {
+
+  if (context === undefined)
     throw new Error("useTheme must be used within a ThemeProvider")
-  }
+
   return context
 }
-
 
 ==================================================================
 FILE: frontend\src\components\common\ThemeToggle.tsx
 ==================================================================
 // frontend/src/components/ThemeToggle.tsx
-import { Moon, Sun, Monitor } from "lucide-react"
+import { Moon, Sun, Monitor, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -2880,6 +3472,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+// Ajuste o caminho abaixo conforme onde você salvou o provider (ex: '@/components/theme-provider')
 import { useTheme } from "@/components/common/theme-provider"
 
 export function ThemeToggle() {
@@ -2888,74 +3481,72 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon"
-          className="relative transition-colors"
-          aria-label="Alternar tema"
-        >
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-transform duration-300 dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-transform duration-300 dark:rotate-0 dark:scale-100" />
+        <Button variant="outline" size="icon" className="relative">
+          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Alternar tema</span>
         </Button>
       </DropdownMenuTrigger>
-
-      <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuItem
+      
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem 
           onClick={() => setTheme("light")}
-          className={theme === "light" ? "font-semibold text-primary" : ""}
+          className="cursor-pointer"
         >
           <Sun className="mr-2 h-4 w-4" />
-          Claro
+          <span>Claro</span>
+          {theme === "light" && <Check className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
 
-        <DropdownMenuItem
+        <DropdownMenuItem 
           onClick={() => setTheme("dark")}
-          className={theme === "dark" ? "font-semibold text-primary" : ""}
+          className="cursor-pointer"
         >
           <Moon className="mr-2 h-4 w-4" />
-          Escuro
+          <span>Escuro</span>
+          {theme === "dark" && <Check className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
 
-        <DropdownMenuItem
+        <DropdownMenuItem 
           onClick={() => setTheme("system")}
-          className={theme === "system" ? "font-semibold text-primary" : ""}
+          className="cursor-pointer"
         >
           <Monitor className="mr-2 h-4 w-4" />
-          Sistema
+          <span>Sistema</span>
+          {theme === "system" && <Check className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
 
-
 ==================================================================
 FILE: frontend\src\components\common\WhatsAppButton.tsx
 ==================================================================
+// frontend/src/components/common/WhatsAppButton.tsx
 import React from "react"
 import { MessageCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
+
+import { Button, type ButtonProps } from "@/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { toast } from "sonner"
-import { cn } from "@/lib/utils" // Importante para mesclar classes
+import { cn } from "@/lib/utils"
 
-// Importa a lógica e o tipo do arquivo que você criou
 import { getWhatsAppLink, type MessageTemplate } from "@/utils/whatsapp"
 
-interface WhatsAppButtonProps {
-  phone: string
+// Estende as props do Button nativo do Shadcn para aceitar 'disabled', 'type', etc.
+interface WhatsAppButtonProps extends ButtonProps {
+  phone: string | null | undefined
   name?: string
   template?: MessageTemplate
-  data?: any
-  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
-  size?: "default" | "sm" | "lg" | "icon"
+  data?: Record<string, any> // Tipagem mais segura que 'any'
   label?: string
-  className?: string // [CORREÇÃO] Adicionada prop className para evitar erro de build TS2322
+  tooltipText?: string
 }
 
 export function WhatsAppButton({ 
@@ -2963,21 +3554,26 @@ export function WhatsAppButton({
   name, 
   template = 'geral', 
   data, 
-  variant = "outline", 
+  className,
+  variant = "outline",
   size = "sm",
   label,
-  className
+  tooltipText = "Conversar no WhatsApp",
+  ...props // Captura outras props (onClick opcional, disabled, etc.)
 }: WhatsAppButtonProps) {
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Impede que o clique propague para a linha da tabela ou card pai
     e.stopPropagation()
+
+    // Se houver um onClick passado via props, executa ele também
+    if (props.onClick) props.onClick(e)
 
     if (!phone) {
       toast.error("Telefone não cadastrado.")
       return
     }
 
-    // Usa a função do utilitário
     const link = getWhatsAppLink(phone, template, { nome: name, ...data })
     
     if (!link) {
@@ -2988,12 +3584,14 @@ export function WhatsAppButton({
     window.open(link, '_blank')
   }
 
-  if (!phone) return null
+  // Se não tiver telefone, renderizamos desabilitado ou null (dependendo da sua regra de negócio)
+  // Aqui optei por renderizar desabilitado para o usuário saber que a opção existe mas falta dados.
+  const isDisabled = !phone || props.disabled
 
-  // Estilos base padrão
-  const defaultStyles = variant === 'default' 
-    ? "bg-green-600 hover:bg-green-700 text-white border-transparent" 
-    : "text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+  // Definição de estilos baseados na variante para parecer com WhatsApp
+  const whatsappStyles = variant === 'default' 
+    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent" // Estilo Sólido
+    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200" // Estilo Outline/Ghost
 
   return (
     <TooltipProvider>
@@ -3002,16 +3600,21 @@ export function WhatsAppButton({
           <Button 
             variant={variant} 
             size={size} 
-            // Mescla os estilos padrão com o className recebido via prop
-            className={cn(defaultStyles, className)}
+            className={cn(
+              "transition-colors", 
+              !isDisabled && whatsappStyles, 
+              className
+            )}
             onClick={handleClick}
+            disabled={isDisabled}
+            {...props}
           >
-            <MessageCircle className={cn("h-4 w-4", label && "mr-2")} />
+            <MessageCircle className={cn("h-4 w-4 shrink-0", label ? "mr-2" : "")} />
             {label}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Enviar mensagem no WhatsApp</p>
+          <p>{isDisabled ? "Sem telefone registrado" : tooltipText}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

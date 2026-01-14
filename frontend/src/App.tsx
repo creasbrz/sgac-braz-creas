@@ -1,4 +1,4 @@
-import React from 'react' 
+import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
@@ -7,11 +7,12 @@ import { queryClient } from "./lib/react-query";
 import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
-import { PrivacyProvider } from "./contexts/PrivacyContext"; // [NOVO]
+import { PrivacyProvider } from "./contexts/PrivacyContext";
 import { ThemeProvider } from "./components/common/theme-provider";
 import ErrorBoundary from "./components/ui/error-boundary";
 
-import { ROUTE_PATHS, ROUTES } from "./constants/routes";
+// [CORREÇÃO] Importando do novo arquivo app-routes.ts
+import { ROUTE_PATHS, ROUTES } from "./constants/app-routes"; 
 import { ProtectedRoute } from "./ProtectedRoute";
 import { MainLayout } from "./components/layout/MainLayout";
 import { Login } from "./pages/Login";
@@ -36,7 +37,7 @@ import { WaitingList } from "./pages/WaitingList";
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isSessionLoading } = useAuthContext()
 
-  if (isSessionLoading) return null 
+  if (isSessionLoading) return null
   if (isAuthenticated) {
     return <Navigate to={ROUTES.WORKSPACE} replace />
   }
@@ -50,7 +51,6 @@ export function App() {
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
-              {/* [NOVO] Provider de Privacidade envolvendo a aplicação */}
               <PrivacyProvider>
                 <ModalProvider>
                   <SidebarProvider>

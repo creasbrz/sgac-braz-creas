@@ -1,21 +1,63 @@
-// frontend/src/components/modals/CreateGroupModal.tsx    
+// frontend/src/components/modals/CreateGroupModal.tsx
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { z } from 'zod'
 import { format, parseISO } from 'date-fns'
-import { Plus, Loader2, X } from 'lucide-react'
+import { 
+  Plus, Loader2, X, Calendar, Users, MapPin, 
+  FileText, Building2, CalendarClock 
+} from 'lucide-react'
 import { toast } from 'sonner'
 
+import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label' 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem, // Importante: deve ser usado dentro do render do FormField
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
-const ORGAOS_LIST = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT', 'Polícia Civil']
+const ORGAOS_LIST = [
+  'Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 
+  'CRAS', 'Defensoria Pública', 'MPDFT', 'Polícia Civil', 'CREAS'
+]
+
+const createGroupSchema = z.object({
+  tema: z.string().min(3, "O tema deve ter pelo menos 3 caracteres"),
+  tipo: z.string().min(1, "Selecione um tipo"),
+  local: z.string().optional(),
+  descricao: z.string().optional(),
+  orgaosEnvolvidos: z.array(z.string()).default([]),
+  datas: z.array(z.string()).min(1, "Adicione pelo menos uma data de realização")
+})
+
+type CreateGroupFormData = z.infer<typeof createGroupSchema>
 
 interface CreateGroupModalProps {
   isOpen: boolean
@@ -24,133 +66,261 @@ interface CreateGroupModalProps {
 
 export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps) {
   const queryClient = useQueryClient()
-
-  // Estados locais do formulário
-  const [newTheme, setNewTheme] = useState('')
-  const [newType, setNewType] = useState('OFICINA')
-  const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [tempDate, setTempDate] = useState('')
-  const [newLocal, setNewLocal] = useState('')
-  const [newDesc, setNewDesc] = useState('')
-  const [newOrgaos, setNewOrgaos] = useState<string[]>([])
 
-  const { mutate: createGroup, isPending: isCreating } = useMutation({
-    mutationFn: async () => {
-      await api.post('/groups', {
-        tema: newTheme,
-        tipo: newType,
-        datas: selectedDates,
-        local: newLocal,
-        descricao: newDesc,
-        orgaosEnvolvidos: newOrgaos
-      })
+  const form = useForm<CreateGroupFormData>({
+    resolver: zodResolver(createGroupSchema),
+    defaultValues: {
+      tema: '',
+      tipo: 'OFICINA',
+      local: '',
+      descricao: '',
+      orgaosEnvolvidos: [],
+      datas: []
+    }
+  })
+
+  const { mutate: createGroup, isPending } = useMutation({
+    mutationFn: async (data: CreateGroupFormData) => {
+      await api.post('/groups', data)
     },
     onSuccess: () => {
-      toast.success('Atividade(s) criada(s)!')
-      onOpenChange(false)
+      toast.success('Atividade criada com sucesso!')
       queryClient.invalidateQueries({ queryKey: ['groups'] })
-      resetForm()
+      handleClose()
     },
     onError: () => toast.error('Erro ao criar grupo.')
   })
 
-  const resetForm = () => {
-    setNewTheme('')
-    setSelectedDates([])
+  const handleClose = () => {
+    onOpenChange(false)
+    form.reset()
     setTempDate('')
-    setNewLocal('')
-    setNewDesc('')
-    setNewOrgaos([])
   }
 
-  const toggleOrgao = (orgao: string) => {
-    setNewOrgaos(prev => prev.includes(orgao) ? prev.filter(o => o !== orgao) : [...prev, orgao])
+  const onSubmit = (data: CreateGroupFormData) => {
+    createGroup(data)
   }
 
   const handleAddDate = () => {
-    if (tempDate && !selectedDates.includes(tempDate)) {
-      setSelectedDates(prev => [...prev, tempDate].sort()) 
+    if (!tempDate) return
+    
+    const currentDates = form.getValues('datas')
+    if (!currentDates.includes(tempDate)) {
+      const newDates = [...currentDates, tempDate].sort()
+      form.setValue('datas', newDates, { shouldValidate: true })
       setTempDate('')
+    } else {
+      toast.warning("Esta data já foi adicionada.")
     }
   }
 
   const handleRemoveDate = (dateToRemove: string) => {
-    setSelectedDates(prev => prev.filter(d => d !== dateToRemove))
+    const currentDates = form.getValues('datas')
+    const newDates = currentDates.filter(d => d !== dateToRemove)
+    form.setValue('datas', newDates, { shouldValidate: true })
+  }
+
+  const handleToggleOrgao = (orgao: string) => {
+    const current = form.getValues('orgaosEnvolvidos')
+    const updated = current.includes(orgao)
+      ? current.filter(o => o !== orgao)
+      : [...current, orgao]
+    form.setValue('orgaosEnvolvidos', updated)
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Nova Atividade Coletiva</DialogTitle></DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Tema / Nome da Atividade</Label>
-            <Input value={newTheme} onChange={e => setNewTheme(e.target.value)} placeholder="Ex: Oficina de Artes e Vínculos" />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={newType} onValueChange={setNewType}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OFICINA">Oficina</SelectItem>
-                  <SelectItem value="GRUPO_PAEFI">Grupo PAEFI</SelectItem>
-                  <SelectItem value="ACOLHIDA_COLETIVA">Acolhida Coletiva</SelectItem>
-                  <SelectItem value="REUNIAO_REDE">Reunião de Rede</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Local</Label>
-              <Input value={newLocal} onChange={e => setNewLocal(e.target.value)} placeholder="Ex: Sala 02" />
-            </div>
-          </div>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="p-6 pb-2 border-b bg-muted/5">
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            Nova Atividade Coletiva
+          </DialogTitle>
+          <DialogDescription>
+            Crie oficinas, grupos PAEFI ou reuniões de rede e defina o cronograma.
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-2 border p-3 rounded-md bg-muted/20">
-            <Label className="text-primary flex items-center gap-2">
-              Datas de Realização 
-              <span className="text-[10px] text-muted-foreground font-normal ml-auto">(Múltiplas datas = recorrente)</span>
-            </Label>
-            <div className="flex gap-2">
-              <Input type="datetime-local" value={tempDate} onChange={e => setTempDate(e.target.value)} className="flex-1"/>
-              <Button variant="secondary" onClick={handleAddDate} disabled={!tempDate}><Plus className="h-4 w-4" /></Button>
-            </div>
-            {selectedDates.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {selectedDates.map((date) => (
-                  <Badge key={date} variant="outline" className="pl-2 pr-1 py-1 gap-1 bg-background">
-                    {format(parseISO(date), "dd/MM HH:mm")}
-                    <button onClick={() => handleRemoveDate(date)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
+            <ScrollArea className="flex-1 p-6">
+              <div className="space-y-6">
+                
+                {/* DADOS BÁSICOS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="tema"
+                    render={({ field }) => (
+                      <FormItem className="col-span-1 md:col-span-2">
+                        <FormLabel>Tema / Nome da Atividade</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ex: Oficina de Vínculos Familiares" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-          <div className="space-y-2">
-            <Label>Descrição / Metodologia</Label>
-            <Textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Objetivos e metodologia..." className="h-20"/>
-          </div>
-          
-          <div className="space-y-2">
-            <Label>Órgãos Parceiros Envolvidos</Label>
-            <div className="grid grid-cols-2 gap-2 border p-3 rounded-md">
-              {ORGAOS_LIST.map(org => (
-                <div key={org} className="flex items-center space-x-2">
-                  <Checkbox id={org} checked={newOrgaos.includes(org)} onCheckedChange={() => toggleOrgao(org)} />
-                  <label htmlFor={org} className="text-sm cursor-pointer">{org}</label>
+                  <FormField
+                    control={form.control}
+                    name="tipo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Atividade</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="OFICINA">Oficina</SelectItem>
+                            <SelectItem value="GRUPO_PAEFI">Grupo PAEFI</SelectItem>
+                            <SelectItem value="ACOLHIDA_COLETIVA">Acolhida Coletiva</SelectItem>
+                            <SelectItem value="REUNIAO_REDE">Reunião de Rede</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="local"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Local
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ex: Sala Multiuso 01" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={() => createGroup()} disabled={isCreating || !newTheme || selectedDates.length === 0}>
-            {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Criar
-          </Button>
-        </DialogFooter>
+
+                {/* CRONOGRAMA */}
+                <div className="space-y-3 border rounded-lg p-4 bg-muted/10 border-dashed border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2 text-primary font-semibold">
+                      <CalendarClock className="h-4 w-4" /> Cronograma
+                    </Label>
+                    <span className="text-xs text-muted-foreground">Adicione datas recorrentes se necessário</span>
+                  </div>
+
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1 space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">Data e Hora</span>
+                      <Input 
+                        type="datetime-local" 
+                        value={tempDate} 
+                        onChange={e => setTempDate(e.target.value)}
+                        className="bg-background"
+                      />
+                    </div>
+                    <Button type="button" size="icon" onClick={handleAddDate} disabled={!tempDate}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* CORREÇÃO AQUI: FormField de datas usando FormItem */}
+                  <FormField
+                    control={form.control}
+                    name="datas"
+                    render={({ field }) => (
+                      <FormItem className="min-h-[40px]">
+                        {field.value.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {field.value.map((date) => (
+                              <Badge key={date} variant="secondary" className="pl-2 pr-1 py-1 gap-1 border bg-background">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {format(parseISO(date), "dd/MM 'às' HH:mm")}
+                                <button 
+                                  type="button"
+                                  onClick={() => handleRemoveDate(date)} 
+                                  className="ml-1 hover:bg-destructive hover:text-white rounded-full p-0.5 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic text-center py-2 opacity-60">
+                            Nenhuma data adicionada.
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* DETALHES E PARCEIROS */}
+                <div className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="descricao"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Metodologia / Objetivos
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Descreva os objetivos da atividade e a metodologia a ser aplicada..." 
+                            className="h-24 resize-none" 
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="space-y-3">
+                    <Label className="flex items-center gap-2">
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> Órgãos Parceiros
+                    </Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 border rounded-md bg-muted/5">
+                      {ORGAOS_LIST.map(org => (
+                        <div key={org} className="flex items-center space-x-2">
+                          <Checkbox 
+                            id={org} 
+                            checked={form.watch('orgaosEnvolvidos').includes(org)} 
+                            onCheckedChange={() => handleToggleOrgao(org)} 
+                          />
+                          <label 
+                            htmlFor={org} 
+                            className="text-sm cursor-pointer font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            {org}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </ScrollArea>
+
+            <DialogFooter className="p-4 border-t bg-muted/5">
+              <Button type="button" variant="ghost" onClick={handleClose}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+                Criar Atividade
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

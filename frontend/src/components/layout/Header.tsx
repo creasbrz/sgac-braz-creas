@@ -1,5 +1,5 @@
-import { useLocation } from "react-router-dom"
-import { LogOut, Slash, Eye, EyeOff, ChevronDown, Lock } from "lucide-react" 
+import { useLocation, Link } from "react-router-dom"
+import { LogOut, Eye, EyeOff, ChevronDown, Lock } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
 import { ThemeToggle } from "@/components/common/ThemeToggle"
@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button"
 import { MobileSidebar } from "./MobileSidebar"
 import { NotificationBell } from "./NotificationBell"
 import { ChangePasswordDialog } from "@/components/settings/ChangePasswordDialog"
-import { usePrivacy } from "@/contexts/PrivacyContext" // [NOVO]
+import { usePrivacy } from "@/contexts/PrivacyContext"
+// [CORREÇÃO] Caminho de importação ajustado para o novo arquivo
+import { ROUTE_PATHS } from "@/constants/app-routes" 
 
 import {
   DropdownMenu,
@@ -18,38 +20,43 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
 
-const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Painel Principal',
-  '/dashboard/cases': 'Gestão de Casos',
-  '/dashboard/cases/closed': 'Arquivo Morto (Finalizados)',
-  '/dashboard/agenda': 'Minha Agenda',
-  '/dashboard/reports': 'Relatórios Gerenciais',
-  '/dashboard/team-overview': 'Visão de Equipe',
-  '/dashboard/users': 'Controle de Usuários',
-  '/dashboard/audit': 'Auditoria do Sistema',
-  '/dashboard/groups': 'Grupos e Oficinas',
+// Mapeamento simples de nomes para exibição no Breadcrumb
+// (Pode ser movido para um arquivo separado se crescer muito)
+const ROUTE_LABELS: Record<string, string> = {
+  'dashboard': 'Painel Geral',
+  'workspace': 'Minha Mesa',
+  'cases': 'Casos',
+  'waiting': 'Fila de Espera',
+  'closed': 'Arquivo Morto',
+  'agenda': 'Agenda',
+  'groups': 'Grupos',
+  'reports': 'Relatórios',
+  'team': 'Gestão de Equipe',
+  'users': 'Usuários',
+  'audit': 'Auditoria',
+  'analytics': 'Análise Avançada'
 }
 
 export function Header() {
   const { user, logout } = useAuth()
   const location = useLocation()
-  const pathname = location.pathname
   
-  // [NOVO] Consumindo o contexto
+  // Consumindo o contexto de privacidade
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy()
 
-  let pageTitle = PAGE_TITLES[pathname]
-
-  if (!pageTitle) {
-    if (pathname.includes('/dashboard/cases/')) {
-      pageTitle = 'Prontuário Eletrônico' 
-    } else {
-      const parts = pathname.split('/')
-      const lastPart = parts[parts.length - 1]
-      pageTitle = lastPart ? lastPart.charAt(0).toUpperCase() + lastPart.slice(1) : 'SGAC'
-    }
-  }
+  // Lógica de Breadcrumbs Dinâmicos
+  const pathSegments = location.pathname.split('/').filter(Boolean)
+  // Remove o prefixo 'app' se existir, pois já é a raiz do layout autenticado
+  const displaySegments = pathSegments.filter(s => s !== 'app')
 
   const initials = user?.nome
     ? user.nome.split(' ').map((n:string) => n[0]).join('').substring(0, 2).toUpperCase()
@@ -61,14 +68,48 @@ export function Header() {
         <MobileSidebar />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-         <div className="flex items-center text-xs font-medium tracking-wide text-muted-foreground/60">
-            <span>SGAC</span>
-            <Slash className="h-3 w-3 mx-1 text-muted-foreground/30" />
-         </div>
-         <span className="text-base md:text-lg font-semibold text-foreground tracking-tight animate-in fade-in slide-in-from-left-2">
-            {pageTitle}
-         </span>
+      {/* [REFATORADO] Breadcrumbs para navegação clara */}
+      <div className="flex items-center">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+               <BreadcrumbLink asChild>
+                 <Link to={ROUTE_PATHS.WORKSPACE}>Início</Link>
+               </BreadcrumbLink>
+            </BreadcrumbItem>
+            
+            {displaySegments.length > 0 && <BreadcrumbSeparator />}
+
+            {displaySegments.map((segment, index) => {
+               const isLast = index === displaySegments.length - 1
+               
+               // Tenta pegar o nome amigável ou usa o próprio segmento formatado
+               const isUUID = /^[0-9a-fA-F-]{36}$/.test(segment);
+               const displayName = isUUID 
+                 ? 'Detalhes' 
+                 : (ROUTE_LABELS[segment] || segment.charAt(0).toUpperCase() + segment.slice(1));
+
+               // Reconstrói o caminho relativo
+               // Nota: Isso é simplificado. Em apps complexos, use matchRoutes do react-router
+               const href = `/app/${displaySegments.slice(0, index + 1).join('/')}`
+
+               return (
+                 <div key={href} className="flex items-center">
+                   {index > 0 && <BreadcrumbSeparator className="mx-2" />}
+                   <BreadcrumbItem>
+                     {isLast ? (
+                       <BreadcrumbPage className="font-semibold">{displayName}</BreadcrumbPage>
+                     ) : (
+                       <BreadcrumbLink asChild>
+                         <Link to={href}>{displayName}</Link>
+                       </BreadcrumbLink>
+                     )}
+                   </BreadcrumbItem>
+                 </div>
+               )
+            })}
+          </BreadcrumbList>
+        </Breadcrumb>
       </div>
 
       <div className="ml-auto flex items-center gap-4">
@@ -78,7 +119,7 @@ export function Header() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={togglePrivacyMode} // [NOVO] Toggle direto
+            onClick={togglePrivacyMode}
             className={`
               h-8 w-8 rounded-full transition-all duration-300
               ${isPrivacyMode 

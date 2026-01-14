@@ -1,27 +1,27 @@
+// frontend/src/components/common/WhatsAppButton.tsx
 import React from "react"
 import { MessageCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
+
+import { Button, type ButtonProps } from "@/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { toast } from "sonner"
-import { cn } from "@/lib/utils" // Importante para mesclar classes
+import { cn } from "@/lib/utils"
 
-// Importa a lógica e o tipo do arquivo que você criou
 import { getWhatsAppLink, type MessageTemplate } from "@/utils/whatsapp"
 
-interface WhatsAppButtonProps {
-  phone: string
+// Estende as props do Button nativo do Shadcn para aceitar 'disabled', 'type', etc.
+interface WhatsAppButtonProps extends ButtonProps {
+  phone: string | null | undefined
   name?: string
   template?: MessageTemplate
-  data?: any
-  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
-  size?: "default" | "sm" | "lg" | "icon"
+  data?: Record<string, any> // Tipagem mais segura que 'any'
   label?: string
-  className?: string // [CORREÇÃO] Adicionada prop className para evitar erro de build TS2322
+  tooltipText?: string
 }
 
 export function WhatsAppButton({ 
@@ -29,21 +29,26 @@ export function WhatsAppButton({
   name, 
   template = 'geral', 
   data, 
-  variant = "outline", 
+  className,
+  variant = "outline",
   size = "sm",
   label,
-  className
+  tooltipText = "Conversar no WhatsApp",
+  ...props // Captura outras props (onClick opcional, disabled, etc.)
 }: WhatsAppButtonProps) {
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Impede que o clique propague para a linha da tabela ou card pai
     e.stopPropagation()
+
+    // Se houver um onClick passado via props, executa ele também
+    if (props.onClick) props.onClick(e)
 
     if (!phone) {
       toast.error("Telefone não cadastrado.")
       return
     }
 
-    // Usa a função do utilitário
     const link = getWhatsAppLink(phone, template, { nome: name, ...data })
     
     if (!link) {
@@ -54,12 +59,14 @@ export function WhatsAppButton({
     window.open(link, '_blank')
   }
 
-  if (!phone) return null
+  // Se não tiver telefone, renderizamos desabilitado ou null (dependendo da sua regra de negócio)
+  // Aqui optei por renderizar desabilitado para o usuário saber que a opção existe mas falta dados.
+  const isDisabled = !phone || props.disabled
 
-  // Estilos base padrão
-  const defaultStyles = variant === 'default' 
-    ? "bg-green-600 hover:bg-green-700 text-white border-transparent" 
-    : "text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+  // Definição de estilos baseados na variante para parecer com WhatsApp
+  const whatsappStyles = variant === 'default' 
+    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent" // Estilo Sólido
+    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200" // Estilo Outline/Ghost
 
   return (
     <TooltipProvider>
@@ -68,16 +75,21 @@ export function WhatsAppButton({
           <Button 
             variant={variant} 
             size={size} 
-            // Mescla os estilos padrão com o className recebido via prop
-            className={cn(defaultStyles, className)}
+            className={cn(
+              "transition-colors", 
+              !isDisabled && whatsappStyles, 
+              className
+            )}
             onClick={handleClick}
+            disabled={isDisabled}
+            {...props}
           >
-            <MessageCircle className={cn("h-4 w-4", label && "mr-2")} />
+            <MessageCircle className={cn("h-4 w-4 shrink-0", label ? "mr-2" : "")} />
             {label}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Enviar mensagem no WhatsApp</p>
+          <p>{isDisabled ? "Sem telefone registrado" : tooltipText}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -1,5 +1,5 @@
 // frontend/src/components/ThemeToggle.tsx
-import { Moon, Sun, Monitor } from "lucide-react"
+import { Moon, Sun, Monitor, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+// Ajuste o caminho abaixo conforme onde você salvou o provider (ex: '@/components/theme-provider')
 import { useTheme } from "@/components/common/theme-provider"
 
 export function ThemeToggle() {
@@ -15,40 +16,39 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon"
-          className="relative transition-colors"
-          aria-label="Alternar tema"
-        >
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-transform duration-300 dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-transform duration-300 dark:rotate-0 dark:scale-100" />
+        <Button variant="outline" size="icon" className="relative">
+          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Alternar tema</span>
         </Button>
       </DropdownMenuTrigger>
-
-      <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuItem
+      
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem 
           onClick={() => setTheme("light")}
-          className={theme === "light" ? "font-semibold text-primary" : ""}
+          className="cursor-pointer"
         >
           <Sun className="mr-2 h-4 w-4" />
-          Claro
+          <span>Claro</span>
+          {theme === "light" && <Check className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
 
-        <DropdownMenuItem
+        <DropdownMenuItem 
           onClick={() => setTheme("dark")}
-          className={theme === "dark" ? "font-semibold text-primary" : ""}
+          className="cursor-pointer"
         >
           <Moon className="mr-2 h-4 w-4" />
-          Escuro
+          <span>Escuro</span>
+          {theme === "dark" && <Check className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
 
-        <DropdownMenuItem
+        <DropdownMenuItem 
           onClick={() => setTheme("system")}
-          className={theme === "system" ? "font-semibold text-primary" : ""}
+          className="cursor-pointer"
         >
           <Monitor className="mr-2 h-4 w-4" />
-          Sistema
+          <span>Sistema</span>
+          {theme === "system" && <Check className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

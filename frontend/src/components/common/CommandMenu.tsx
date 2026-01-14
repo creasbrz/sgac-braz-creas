@@ -1,12 +1,12 @@
+// frontend/src/components/layout/CommandMenu.tsx
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { 
   Calendar, Settings, LayoutDashboard, Users, PlusCircle, LogOut, 
-  AlertTriangle, Keyboard, FileText, Loader2, type LucideIcon
+  AlertTriangle, FileText, Loader2, type LucideIcon, Search
 } from "lucide-react"
 
-// Importando componentes separadamente para ter controle total (Correção do shouldFilter)
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { 
   Command, 
@@ -22,6 +22,7 @@ import {
 import { useAuth } from "@/hooks/useAuth"
 import { useModal } from "@/hooks/useModal"
 import { api } from "@/lib/api"
+import { useDebounce } from "@/hooks/useDebounce" // Assumindo que você tem ou criarei abaixo
 
 // --- TIPAGEM ---
 type CommandAction = {
@@ -41,22 +42,24 @@ type CommandSection = {
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
+  const debouncedQuery = useDebounce(query, 300) // Delay de 300ms
+  
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { openNewCaseModal } = useModal()
 
   // --- BUSCA GLOBAL (Server-Side) ---
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['search-cases-global', query],
+    queryKey: ['search-cases-global', debouncedQuery],
     queryFn: async () => {
-      if (!query || query.length < 3) return []
+      if (!debouncedQuery || debouncedQuery.length < 3) return []
       const res = await api.get('/cases', { 
-        params: { q: query, pageSize: 5, view: 'all' } 
+        params: { q: debouncedQuery, pageSize: 5, view: 'all' } 
       })
       return res.data.data || res.data.items || []
     },
-    enabled: open && query.length >= 3,
-    staleTime: 1000 * 60 * 5
+    enabled: open && debouncedQuery.length >= 3,
+    staleTime: 1000 * 60 * 2 // Cache por 2 minutos
   })
 
   // --- CONFIGURAÇÃO DE COMANDOS ---
@@ -120,12 +123,6 @@ export function CommandMenu() {
           roles: ['Gerente']
         },
         {
-          label: "Atalhos",
-          icon: Keyboard,
-          keywords: ["ajuda", "teclas"],
-          action: () => setOpen(true)
-        },
-        {
           label: "Sair do Sistema",
           icon: LogOut,
           keywords: ["logout", "deslogar"],
@@ -142,10 +139,12 @@ export function CommandMenu() {
         e.preventDefault()
         setOpen((open) => !open)
       }
+      // Atalho para Novo Caso (Ctrl+N)
       if (e.key === "n" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
          if (user && ['Agente_Social', 'Especialista', 'Gerente'].includes(user.cargo)) {
-            e.preventDefault()
-            openNewCaseModal()
+           e.preventDefault()
+           setOpen(false)
+           openNewCaseModal()
          }
       }
     }
@@ -163,63 +162,68 @@ export function CommandMenu() {
     return user && roles.includes(user.cargo)
   }
 
+  // Lógica para mostrar resultados da busca OU comandos padrão
+  const showSearchResults = query.length >= 3;
+
   return (
     <>
-      <p className="fixed bottom-4 right-4 text-xs text-muted-foreground hidden lg:flex items-center gap-2 bg-background/80 p-2 rounded border backdrop-blur-sm pointer-events-none z-50 shadow-sm print:hidden">
-        <span>Comandos</span>
-        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+      <p className="fixed bottom-4 right-4 text-xs text-muted-foreground hidden lg:flex items-center gap-2 bg-background/80 p-2 rounded-md border backdrop-blur-sm pointer-events-none z-50 shadow-sm print:hidden animate-in fade-in slide-in-from-bottom-2">
+        <span className="font-medium">Comandos</span>
+        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm">
           <span className="text-xs">⌘</span>K
         </kbd>
       </p>
 
-      {/* MODAL CUSTOMIZADO (Dialog + Command) para suportar shouldFilter */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="overflow-hidden p-0 shadow-lg max-w-[550px]">
+        <DialogContent className="overflow-hidden p-0 shadow-xl max-w-[550px] gap-0">
           <Command 
             className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
-            shouldFilter={false} // AQUI ESTÁ A MÁGICA PARA BUSCA NO SERVIDOR
+            shouldFilter={!showSearchResults} // Desativa filtro local quando busca remota está ativa
           >
-            <CommandInput 
-              placeholder="Busque por nome do caso ou digite um comando..." 
-              value={query}
-              onValueChange={setQuery}
-            />
+            <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <CommandInput 
+                placeholder="Busque por nome, CPF ou digite um comando..." 
+                value={query}
+                onValueChange={setQuery}
+                className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
             
-            <CommandList>
-              <CommandEmpty>
+            <CommandList className="max-h-[300px] overflow-y-auto overflow-x-hidden">
+              <CommandEmpty className="py-6 text-center text-sm">
                 {isSearching ? (
-                  <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Buscando...
+                  <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" /> 
+                    <span>Buscando prontuários...</span>
                   </div>
                 ) : (
-                  "Nenhum resultado encontrado."
+                  query.length > 0 ? "Nenhum resultado encontrado." : "Comece a digitar..."
                 )}
               </CommandEmpty>
 
-              {/* RESULTADOS DA BUSCA (API) */}
-              {searchResults && searchResults.length > 0 && (
-                <>
-                  <CommandGroup heading="Prontuários Encontrados">
-                    {searchResults.map((caso: any) => (
-                      <CommandItem
-                        key={caso.id}
-                        onSelect={() => runCommand(() => navigate(`/dashboard/cases/${caso.id}`))}
-                        value={caso.nomeCompleto}
-                      >
-                        <FileText className="mr-2 h-4 w-4 text-blue-500" />
-                        <div className="flex flex-col">
-                          <span>{caso.nomeCompleto}</span>
-                          <span className="text-[10px] text-muted-foreground">CPF: {caso.cpf}</span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                  <CommandSeparator />
-                </>
+              {/* MODO BUSCA: Exibe apenas resultados da API */}
+              {showSearchResults && searchResults && (
+                <CommandGroup heading="Prontuários Encontrados">
+                  {searchResults.map((caso: any) => (
+                    <CommandItem
+                      key={caso.id}
+                      onSelect={() => runCommand(() => navigate(`/dashboard/cases/${caso.id}`))}
+                      value={`${caso.nomeCompleto} ${caso.cpf}`} // Value composto para garantir match se o filtro estiver ativo
+                      className="aria-selected:bg-primary/10"
+                    >
+                      <FileText className="mr-2 h-4 w-4 text-primary" />
+                      <div className="flex flex-col">
+                        <span className="font-medium">{caso.nomeCompleto}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">CPF: {caso.cpf}</span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
               )}
               
-              {/* COMANDOS ESTÁTICOS (Só exibe se a busca não tiver prioridade) */}
-              {(!query || query.length < 3) && COMMAND_GROUPS.map((group, groupIndex) => {
+              {/* MODO COMANDOS: Exibe menus estáticos (se não houver busca ativa ou busca curta) */}
+              {!showSearchResults && COMMAND_GROUPS.map((group, groupIndex) => {
                 const authorizedItems = group.items.filter(item => canAccess(item.roles))
                 if (authorizedItems.length === 0) return null
 
@@ -231,9 +235,9 @@ export function CommandMenu() {
                         <CommandItem 
                           key={item.label} 
                           onSelect={() => runCommand(item.action)}
-                          value={item.label}
+                          value={item.label} // Importante para o filtro local funcionar
                         >
-                          <item.icon className="mr-2 h-4 w-4" />
+                          <item.icon className="mr-2 h-4 w-4 opacity-70" />
                           <span>{item.label}</span>
                           {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}
                         </CommandItem>

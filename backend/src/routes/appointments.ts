@@ -18,11 +18,16 @@ const calendarEventSchema = z.object({
   status: z.string()
 })
 
+// [CORREÇÃO] Schema atualizado para incluir ID do caso e Tipo
 const upcomingSchema = z.object({
   id: z.string(),
   titulo: z.string(),
   data: z.date(),
-  caso: z.object({ nomeCompleto: z.string() }).nullable().optional()
+  tipo: z.string().optional(),
+  caso: z.object({ 
+    id: z.string().uuid(), 
+    nomeCompleto: z.string() 
+  }).nullable().optional()
 })
 
 const createAppointmentSchema = z.object({
@@ -49,16 +54,30 @@ export async function appointmentRoutes(app: FastifyInstance) {
     }
   }, async (req, reply) => {
     const { sub: userId } = req.user as { sub: string }
+    
     const upcoming = await prisma.agendamento.findMany({
       where: { responsavelId: userId, data: { gte: new Date() } },
-      include: { caso: { select: { nomeCompleto: true } } },
+      include: { 
+        caso: { 
+          // [CORREÇÃO] Incluindo o ID do caso na busca
+          select: { 
+            id: true, 
+            nomeCompleto: true 
+          } 
+        } 
+      },
       orderBy: { data: 'asc' },
       take: 5
     })
-    return reply.send(upcoming)
+
+    // Mapeando para garantir que o tipo exista
+    return reply.send(upcoming.map(u => ({
+      ...u,
+      tipo: u.tipo || 'Atendimento'
+    })))
   })
 
-  // [GET] Calendário Principal (Correção do Erro casoId)
+  // [GET] Calendário Principal
   server.get('/appointments', {
     schema: {
       tags: ['Agenda'],
@@ -66,7 +85,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
       querystring: z.object({ 
         caseId: z.string().uuid().optional(), 
         start: z.coerce.date().optional(), 
-        end: z.coerce.date().optional(),   
+        end: z.coerce.date().optional(),    
       }),
       response: { 200: z.array(calendarEventSchema) }
     }
@@ -74,7 +93,6 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const { caseId, start, end } = req.query
     const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
-    // Smart Defaults
     const now = new Date()
     const queryStart = start || new Date(now.getFullYear(), now.getMonth(), 1)
     const queryEnd = end || new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -91,18 +109,15 @@ export async function appointmentRoutes(app: FastifyInstance) {
     }
 
     const [appointments, groups] = await Promise.all([
-      // 1. Agendamentos Individuais
       prisma.agendamento.findMany({
         where: whereClause,
         include: { caso: { select: { nomeCompleto: true } } }
       }),
       
-      // 2. Atividades de Grupo
       caseId 
         ? prisma.groupActivity.findMany({
             where: { 
               dataRealizacao: { gte: queryStart, lte: queryEnd }, 
-              // [CORREÇÃO AQUI] Usando 'casoId: caseId' explicitamente
               participantes: { some: { casoId: caseId } } 
             },
             include: { facilitador: { select: { nome: true } } }
@@ -118,8 +133,9 @@ export async function appointmentRoutes(app: FastifyInstance) {
         id: a.id,
         title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
         start: a.data,
+        end: null, // Ajuste para opcional
         type: 'INDIVIDUAL' as const,
-        resourceId: a.casoId,
+        resourceId: a.casoId || undefined,
         description: a.observacoes || '',
         status: 'SCHEDULED'
       })),
@@ -127,6 +143,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
         id: g.id,
         title: `[GRUPO] ${g.tema} (${g.tipo.replace('_', ' ')})`,
         start: g.dataRealizacao,
+        end: null,
         type: 'GRUPO' as const,
         resourceId: g.id,
         description: g.descricao || '',
@@ -151,7 +168,6 @@ export async function appointmentRoutes(app: FastifyInstance) {
       data: { ...data, responsavelId: userId }
     })
 
-    // Log (Fire and forget)
     prisma.caseLog.create({
       data: {
         casoId: data.casoId,

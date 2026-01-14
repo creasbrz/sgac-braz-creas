@@ -1,119 +1,197 @@
 /* frontend/src/components/agenda/calendar-custom.css */
 
+/* --- VARIÁVEIS E BASE --- */
 .fc {
-  /* Tokens de Cores */
-  --fc-border-color: hsl(var(--border));
-  
-  /* [AJUSTE] Aumentado levemente a opacidade para melhor contraste do dia atual */
-  --fc-today-bg-color: hsl(var(--accent) / 0.35);
-  
-  --fc-neutral-bg-color: hsl(var(--background));
-  --fc-list-event-hover-bg-color: hsl(var(--muted) / 0.5);
+  /* Integração com Design System (Shadcn/Tailwind) */
+  --fc-border-color: hsl(var(--border) / 0.6);
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--secondary));
+  --fc-list-event-hover-bg-color: hsl(var(--muted));
+  --fc-today-bg-color: transparent; /* Removemos o bg padrão para estilizar apenas o número */
   
   font-family: inherit;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* --- TOOLBAR --- */
+/* Arredondamento geral do container */
+.fc-theme-standard {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+}
+
+/* --- TOOLBAR (CABEÇALHO) --- */
+
+.fc .fc-toolbar {
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem !important;
+}
 
 .fc .fc-toolbar-title {
-  font-size: 1.25rem !important;
+  font-size: 1.5rem !important; /* text-2xl */
   font-weight: 700;
+  letter-spacing: -0.025em;
   color: hsl(var(--foreground));
   text-transform: capitalize;
-  /* [AJUSTE] Tracking negativo para títulos dá um ar mais "premium" */
-  letter-spacing: -0.02em;
 }
 
+/* Botões da Toolbar */
 .fc .fc-button {
-  background-color: transparent;
-  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--background));
+  border: 1px solid hsl(var(--input));
   color: hsl(var(--foreground));
   font-size: 0.875rem;
   font-weight: 500;
   text-transform: capitalize;
-  box-shadow: none !important;
-  /* [AJUSTE] Transição suave para interações */
-  transition: all 0.2s ease-in-out;
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* shadow-sm */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Hover mais perceptível */
+/* Hover e Focus */
 .fc .fc-button:hover {
-  background-color: hsl(var(--muted));
-  border-color: hsl(var(--foreground) / 0.2);
-  z-index: 1; /* Garante que a borda fique sobre os vizinhos */
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  border-color: hsl(var(--accent));
+  z-index: 1;
 }
 
-/* Foco para acessibilidade (Teclado) */
 .fc .fc-button:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
   z-index: 10;
 }
 
-/* Estado Ativo */
+/* Estado Ativo (Botão da View selecionada) */
 .fc .fc-button-primary:not(:disabled).fc-button-active {
   background-color: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
   border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
-/* --- EVENTOS --- */
-
-/* Reset total para usar nosso componente React */
-.fc-event {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  margin-bottom: 2px !important;
-  /* [AJUSTE] Indica clicabilidade */
-  cursor: pointer; 
+/* Botões de Ícone (Anterior/Próximo) */
+.fc .fc-prev-button, 
+.fc .fc-next-button {
+  padding: 0.25rem 0.5rem;
+  border: none; /* Estilo mais limpo para navegação */
+  background: transparent;
+  box-shadow: none;
 }
-
-/* Remove a borda de foco padrão do FC e usa a do componente interno */
-.fc-event:focus {
-  box-shadow: none !important; 
-}
-.fc-event:focus-visible {
-  outline: none !important; /* O foco será gerado pelo componente React interno */
+.fc .fc-prev-button:hover, 
+.fc .fc-next-button:hover {
+  background-color: hsl(var(--muted));
 }
 
 /* --- GRID E CÉLULAS --- */
 
-.fc-daygrid-day-number {
-  color: hsl(var(--muted-foreground));
-  font-size: 0.875rem;
-  padding: 8px;
-  /* [AJUSTE] Peso um pouco maior para legibilidade */
-  font-weight: 500; 
-  text-decoration: none !important;
-}
-
-.fc-daygrid-day-number:hover {
-  color: hsl(var(--foreground));
-  text-decoration: none !important;
-}
-
+/* Cabeçalho dos dias da semana (SEG, TER...) */
 .fc-col-header-cell-cushion {
   color: hsl(var(--muted-foreground));
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.75rem;
-  padding: 8px 0;
-  /* [AJUSTE] Espaçamento entre letras para rótulos em caixa alta */
-  letter-spacing: 0.05em; 
+  font-size: 0.75rem; /* text-xs */
+  padding: 12px 0;
+  letter-spacing: 0.05em;
   text-decoration: none !important;
 }
 
-/* --- VIEW DE LISTA --- */
-
-.fc-list-event:hover td {
-  background-color: var(--fc-list-event-hover-bg-color);
-  transition: background-color 0.15s ease;
+/* Número do dia */
+.fc-daygrid-day-number {
+  font-size: 0.875rem;
+  padding: 8px 12px;
+  color: hsl(var(--foreground));
+  text-decoration: none !important;
+  font-weight: 500;
+  border-radius: var(--radius);
+  margin: 4px;
+  transition: background-color 0.2s;
 }
 
-/* Acessibilidade na lista */
-.fc-list-event:focus-within td {
-  background-color: hsl(var(--muted) / 0.6);
-  /* Indicador visual lateral para foco */
-  box-shadow: inset 4px 0 0 hsl(var(--primary)); 
+.fc-daygrid-day-number:hover {
+  background-color: hsl(var(--muted));
+}
+
+/* Estilo moderno para o "Hoje" (Círculo/Badge) */
+.fc .fc-day-today .fc-daygrid-day-number {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: 9999px; /* Círculo perfeito */
+  padding: 4px 8px; /* Ajuste para centralizar visualmente */
+  min-width: 28px;
+  text-align: center;
+}
+
+/* Remove o highlight amarelo padrão do background do dia atual */
+.fc .fc-day-today {
+  background-color: hsl(var(--accent) / 0.1) !important;
+}
+
+/* --- EVENTOS (RESET) --- */
+
+/* Reseta estilos do FC para que o componente React controle tudo */
+.fc-h-event,
+.fc-v-event,
+.fc-daygrid-event,
+.fc-daygrid-dot-event {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 1px 4px !important; /* Pequeno respiro lateral */
+}
+
+/* Foco no evento (Acessibilidade) */
+.fc-event:focus-visible {
+  outline: none !important; 
+  /* O foco deve ser tratado dentro do componente React, 
+     mas podemos adicionar um ring global se necessário */
+}
+
+/* --- LIST VIEW (AGENDA) --- */
+
+.fc-list {
+  border: none !important;
+}
+
+.fc-list-day-cushion {
+  background-color: hsl(var(--muted) / 0.3) !important;
+}
+
+.fc-list-day-text,
+.fc-list-day-side-text {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  text-transform: capitalize;
+}
+
+.fc-list-event:hover td {
+  background-color: hsl(var(--muted) / 0.5) !important;
+  cursor: pointer;
+}
+
+.fc-list-event-dot {
+  border-width: 4px; /* Bolinha mais visível na lista */
+}
+
+/* --- RESPONSIVIDADE (MOBILE) --- */
+
+@media (max-width: 768px) {
+  .fc .fc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 1.25rem !important;
+    text-align: center;
+  }
+
+  /* Agrupa botões de navegação e hoje para centralizar */
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+  }
 }

@@ -1,135 +1,210 @@
-// frontend/src/components/case/tabs/OverviewTab.tsx
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { FileText, User, AlertTriangle, ExternalLink } from 'lucide-react' // [NOVO] Adicionado ExternalLink
+import { 
+  FileText, AlertTriangle, ExternalLink, 
+  Calendar, Tag, Hash, Shield, CheckCircle2, Clock 
+} from 'lucide-react'
 import { formatDateSafe } from '@/utils/formatters'
 import type { CaseDetailData } from '@/types/case'
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 
 /**
- * Componente responsável por exibir o resumo principal do caso.
- * Contém a ficha técnica, observações críticas e a equipe responsável.
+ * Componente auxiliar para exibir um campo de dado com ícone
  */
-export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
+function InfoField({ icon: Icon, label, value, className }: { icon: any, label: string, value: React.ReactNode, className?: string }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
+    <div className={cn("space-y-1.5", className)}>
+      <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+        <Icon className="h-3 w-3" /> {label}
+      </span>
+      <div className="font-medium text-sm text-foreground break-words bg-muted/30 p-2 rounded-md border border-muted/50 min-h-[40px] flex items-center">
+        {value || <span className="text-muted-foreground italic font-normal">Não informado</span>}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Componente para exibir membro da equipe com Avatar/Status
+ */
+function TeamMemberRow({ 
+  role, 
+  member, 
+  colorClass 
+}: { 
+  role: string, 
+  member?: { nome: string } | null, 
+  colorClass: string 
+}) {
+  const initial = member?.nome ? member.nome.charAt(0).toUpperCase() : "?"
+  const statusColor = member ? colorClass : "bg-muted text-muted-foreground"
+  
+  return (
+    <div className="flex items-center justify-between py-1">
+      <div className="flex flex-col">
+        <span className="text-[10px] uppercase font-bold text-muted-foreground">{role}</span>
+        <span className="text-sm font-medium">{member?.nome || "Pendente"}</span>
+      </div>
+      <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold border-2 border-background shadow-sm", statusColor)}>
+        {member ? initial : <Clock className="h-4 w-4" />}
+      </div>
+    </div>
+  )
+}
+
+export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
+  
+  // Lógica de renderização do SEI
+  const renderSeiValue = () => {
+    if (!caseData.numeroSei) return null;
+    
+    const content = (
+      <span className="font-mono font-medium flex items-center gap-1.5">
+        {caseData.numeroSei}
+        {caseData.linkSei && <ExternalLink className="h-3 w-3 opacity-50" />}
+      </span>
+    );
+
+    if (caseData.linkSei) {
+      return (
+        <a 
+          href={caseData.linkSei} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-primary hover:text-primary/80 hover:underline decoration-primary/30 underline-offset-4 transition-all block"
+          title="Abrir processo no SEI"
+        >
+          {content}
+        </a>
+      )
+    }
+    return content;
+  }
+
+  // Renderização das Violações como Badges (V3.1)
+  const renderViolations = () => {
+    const violations = Array.isArray(caseData.violacao) 
+      ? caseData.violacao 
+      : (caseData.violacao ? [caseData.violacao] : []);
+
+    if (violations.length === 0) return null;
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {violations.map((v) => (
+          <Badge 
+            key={v} 
+            variant="outline" 
+            className="bg-destructive/5 text-destructive border-destructive/20 px-2 py-0.5 text-xs font-medium hover:bg-destructive/10 transition-colors"
+          >
+            <AlertTriangle className="w-3 h-3 mr-1.5" />
+            {v}
+          </Badge>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       
       {/* --- COLUNA ESQUERDA (2/3): Detalhes Técnicos --- */}
-      <Card className="md:col-span-2 shadow-sm border-l-4 border-l-primary">
-        <CardHeader className="pb-2 bg-muted/10">
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" /> Ficha Técnica
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6 pt-4">
+      <div className="lg:col-span-2 space-y-6">
+        <Card className="shadow-sm border-l-[3px] border-l-primary h-full">
+          <CardHeader className="pb-3 border-b bg-muted/5">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" /> Ficha Técnica do Prontuário
+            </CardTitle>
+          </CardHeader>
           
-          {/* Grid de Informações Chave */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
-            <div>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-                Violação Principal
+          <CardContent className="pt-6 space-y-6">
+            {/* Seção de Violações Identificadas */}
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3" /> Violações de Direitos Detectadas
               </span>
-              <p className="font-medium p-2 bg-muted/30 rounded-md border border-muted/50">
-                {caseData.violacao}
-              </p>
-            </div>
-            <div>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-                Categoria
-              </span>
-              <p className="font-medium p-2 bg-muted/30 rounded-md border border-muted/50">
-                {caseData.categoria}
-              </p>
-            </div>
-            <div>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-                Data de Entrada
-              </span>
-              <p className="font-medium p-1">
-                {formatDateSafe(caseData.dataEntrada)}
-              </p>
+              <div className="bg-muted/20 p-3 rounded-lg border border-muted/50 min-h-[50px]">
+                {renderViolations() || (
+                   <span className="text-muted-foreground italic text-sm">Nenhuma violação selecionada</span>
+                )}
+              </div>
             </div>
 
-            {/* [ATUALIZAÇÃO] Lógica do Link SEI */}
-            <div>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-                Processo SEI
-              </span>
-              
-              {caseData.numeroSei ? (
-                caseData.linkSei ? (
-                  // Caso tenha número e link -> Torna clicável
-                  <a 
-                    href={caseData.linkSei} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="font-mono mt-1 text-primary font-bold hover:underline hover:text-blue-700 flex items-center gap-1.5 w-fit transition-colors"
-                    title="Clique para abrir o processo no SEI"
-                  >
-                    {caseData.numeroSei}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                ) : (
-                  // Caso tenha só número -> Texto simples
-                  <p className="font-mono mt-1 text-foreground/80 font-medium">
-                    {caseData.numeroSei}
+            {/* Grid de Informações Secundárias */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <InfoField 
+                icon={Tag} 
+                label="Categoria do Público" 
+                value={caseData.categoria} 
+              />
+              <InfoField 
+                icon={Calendar} 
+                label="Data de Entrada" 
+                value={formatDateSafe(caseData.dataEntrada)} 
+              />
+              <InfoField 
+                icon={Hash} 
+                label="Protocolo SEI" 
+                value={renderSeiValue()} 
+              />
+            </div>
+
+            {/* Área de Observações Críticas */}
+            {caseData.observacoes && (
+              <div className="mt-6">
+                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-lg p-4 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-400" />
+                  <h4 className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Notas Técnicas de Atenção
+                  </h4>
+                  <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                    {caseData.observacoes}
                   </p>
-                )
-              ) : (
-                // Caso não tenha nada
-                <p className="text-muted-foreground italic mt-1">Não informado</p>
-              )}
-            </div>
-          </div>
-
-          {/* Área de Observações (apenas se existir) */}
-          {caseData.observacoes && (
-            <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-lg mt-4">
-              <span className="flex items-center gap-2 text-xs font-bold text-amber-700 uppercase mb-2">
-                <AlertTriangle className="h-3 w-3" /> Observações Importantes
-              </span>
-              <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
-                {caseData.observacoes}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* --- COLUNA DIREITA (1/3): Equipe e Benefícios --- */}
       <div className="space-y-6">
         
-        {/* Card da Equipe */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <User className="h-4 w-4 text-primary" /> Referência Técnica
+        {/* Card da Equipe de Referência */}
+        <Card className="shadow-sm overflow-hidden">
+          <CardHeader className="pb-3 border-b bg-muted/5">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" /> Equipe de Referência
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Acolhida</span>
-              <div className="flex items-center gap-2">
-                {/* Indicador visual de status do técnico */}
-                <span className={`h-2 w-2 rounded-full ${caseData.agenteAcolhida ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="text-sm font-medium">{caseData.agenteAcolhida?.nome || "Pendente"}</span>
-              </div>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">ACOMPANHAMENTO</span>
-              <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${caseData.especialistaPAEFI ? 'bg-blue-500' : 'bg-gray-300'}`} />
-                <span className="text-sm font-medium">{caseData.especialistaPAEFI?.nome || "Aguardando"}</span>
-              </div>
-            </div>
+          <CardContent className="pt-4 space-y-3">
+             <TeamMemberRow 
+                role="Agente de Acolhida" 
+                member={caseData.agenteAcolhida} 
+                colorClass="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300" 
+             />
+             <Separator />
+             <TeamMemberRow 
+                role="Técnico PAEFI" 
+                member={caseData.especialistaPAEFI} 
+                colorClass="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
+             />
           </CardContent>
         </Card>
 
-        {/* Card de Benefícios */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Benefícios Ativos</CardTitle>
+        {/* Card de Benefícios e Transferência de Renda */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3 border-b bg-muted/5">
+            <CardTitle className="text-sm font-semibold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary" /> Benefícios Ativos
+              </div>
+              <Badge variant="outline" className="text-[10px] h-5">{caseData.beneficios?.length || 0}</Badge>
+            </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
             <div className="flex flex-wrap gap-2">
@@ -138,13 +213,15 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                   <Badge 
                     key={b} 
                     variant="secondary" 
-                    className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200"
+                    className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] py-0.5"
                   >
                     {b}
                   </Badge>
                 ))
               ) : (
-                <span className="text-xs text-muted-foreground italic">Nenhum benefício declarado.</span>
+                <div className="text-center w-full py-6 text-muted-foreground text-xs italic bg-muted/30 rounded-md border border-dashed">
+                  Nenhum benefício vinculado.
+                </div>
               )}
             </div>
           </CardContent>

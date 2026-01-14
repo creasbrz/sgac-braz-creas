@@ -1,28 +1,23 @@
-// frontend/src/constants/caseTransitions.ts
-import { type CaseStatusIdentifier } from './caseConstants'
+// frontend/src/constants/cases/caseTransitions.ts
+import { type CaseStatusType } from './definitions'
 import type { UserRole } from '@/types/user'
 
-const buttonStyles = {
-  success: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-  danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-  neutral: 'bg-muted text-muted-foreground hover:bg-muted/90',
-  accent: 'bg-purple-600 hover:bg-purple-700 text-white',
-  primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
-  info: 'bg-cyan-600 hover:bg-cyan-700 text-white',
-}
-
 export type ActionType = 'status' | 'assign' | 'close'
+
+// New type for Shadcn Button variants
+export type ActionVariant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
 
 export interface StatusAction {
   label: string
   type: ActionType
-  nextStatus?: CaseStatusIdentifier
+  nextStatus?: CaseStatusType
   allowedRoles: UserRole[]
-  style: string
+  // [NEW] Maps directly to Shadcn Button 'variant' prop
+  variant: ActionVariant 
 }
 
 export const caseTransitions: Partial<
-  Record<CaseStatusIdentifier, StatusAction[]>
+  Record<CaseStatusType, StatusAction[]>
 > = {
   AGUARDANDO_ACOLHIDA: [
     {
@@ -30,13 +25,13 @@ export const caseTransitions: Partial<
       type: 'status',
       nextStatus: 'EM_ACOLHIDA',
       allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.success,
+      variant: 'default', // Blue/Primary
     },
     {
       label: 'Desligamento Simplificado',
       type: 'close',
       allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.neutral,
+      variant: 'secondary', // Gray/Neutral
     },
   ],
   EM_ACOLHIDA: [
@@ -45,21 +40,21 @@ export const caseTransitions: Partial<
       type: 'status',
       nextStatus: 'AGUARDANDO_DISTRIBUICAO',
       allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.accent,
+      variant: 'default',
     },
     {
       label: 'Desligamento Simplificado',
       type: 'close',
       allowedRoles: ['Gerente', 'Agente_Social'],
-      style: buttonStyles.neutral,
+      variant: 'secondary',
     },
   ],
   AGUARDANDO_DISTRIBUICAO: [
     {
       label: 'Atribuir Especialista',
-      type: 'assign', // Abre modal de seleção
+      type: 'assign', // Triggers the assignment modal
       allowedRoles: ['Gerente'],
-      style: buttonStyles.primary,
+      variant: 'outline', // Distinct visual style for assignment
     },
   ],
   EM_ACOLHIDA_ESPECIALIZADA: [
@@ -68,21 +63,20 @@ export const caseTransitions: Partial<
       type: 'status',
       nextStatus: 'EM_ACOMPANHAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.success,
+      variant: 'default',
     },
-    // [NOVO] Permite pular direto para monitoramento se for caso leve
     {
       label: 'Inserir em Monitoramento',
       type: 'status',
       nextStatus: 'EM_MONITORAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.info,
+      variant: 'secondary',
     },
     {
       label: 'Encerrar após Escuta',
       type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.danger,
+      variant: 'destructive', // Red/Danger
     },
   ],
   EM_ACOMPANHAMENTO: [
@@ -91,13 +85,13 @@ export const caseTransitions: Partial<
       type: 'status',
       nextStatus: 'EM_MONITORAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.info,
+      variant: 'secondary',
     },
     {
       label: 'Desligar Acompanhamento',
       type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.danger,
+      variant: 'destructive',
     },
   ],
   EM_MONITORAMENTO: [
@@ -106,13 +100,13 @@ export const caseTransitions: Partial<
       type: 'status',
       nextStatus: 'EM_ACOMPANHAMENTO',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.success,
+      variant: 'default',
     },
     {
       label: 'Desligar (Fim Monitoramento)',
       type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
-      style: buttonStyles.danger,
+      variant: 'destructive',
     },
   ],
   DESLIGADO: [
@@ -121,17 +115,21 @@ export const caseTransitions: Partial<
       type: 'status',
       nextStatus: 'AGUARDANDO_ACOLHIDA',
       allowedRoles: ['Gerente'],
-      style: buttonStyles.primary,
+      variant: 'outline',
     },
   ],
 }
 
 export function getAvailableActions(
-  status: string | null | undefined, // [CORREÇÃO] Tipagem mais flexível para evitar erros
+  status: string | null | undefined,
   cargo: UserRole,
 ): StatusAction[] {
   if (!status) return []
-  const safeStatus = status as CaseStatusIdentifier
+  
+  // Cast safe because we handle the undefined check above, 
+  // but be aware that if 'status' is a string not in CaseStatusType, 
+  // it will just return undefined from the object lookup, which we handle with || [].
+  const safeStatus = status as CaseStatusType
   const possibleActions = caseTransitions[safeStatus] || []
   
   return possibleActions.filter(action => 

@@ -1,20 +1,44 @@
 // frontend/src/components/modals/CloseCaseModal.tsx
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertTriangle, FileX, MapPin, PenTool, Archive } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
 import { closeCaseFormSchema } from '@/schemas/caseSchemas'
-import { MOTIVOS_DESLIGAMENTO, DESTINOS_DESLIGAMENTO } from '@/constants/caseConstants' // [ATUALIZADO]
+import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases'
+import { ROUTES } from '@/constants/app-routes' // [CORREÇÃO] Usando rotas centralizadas
+
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 type CloseCaseFormData = z.infer<typeof closeCaseFormSchema>
 
@@ -26,17 +50,13 @@ interface CloseCaseModalProps {
 
 export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalProps) {
   const queryClient = useQueryClient()
-  const {
-    control,
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm<CloseCaseFormData>({
+  const navigate = useNavigate()
+
+  const form = useForm<CloseCaseFormData>({
     resolver: zodResolver(closeCaseFormSchema),
     defaultValues: {
       motivoDesligamento: '',
-      destinoDesligamento: '', // [NOVO]
+      destinoDesligamento: '',
       parecerFinal: '',
     },
   })
@@ -46,93 +66,149 @@ export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalP
       return await api.patch(`/cases/${caseId}/close`, data)
     },
     onSuccess: () => {
-      toast.success('Caso desligado com sucesso!')
+      toast.success('Caso desligado e arquivado com sucesso!')
+      
+      // Invalida queries
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
-      onOpenChange(false)
-      reset()
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      
+      handleClose()
+      
+      // [CORREÇÃO 5.1] Redireciona para a página de detalhes do caso (modo leitura/arquivo morto)
+      // Usando ROUTES.CASE_DETAIL garante consistência com o restante do app
+      navigate(ROUTES.CASE_DETAIL(caseId))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Falha ao desligar o caso.'))
     },
   })
 
-  const onSubmit: SubmitHandler<CloseCaseFormData> = (data) => closeCase(data)
+  const onSubmit = (data: CloseCaseFormData) => closeCase(data)
 
   const handleClose = () => {
     onOpenChange(false)
-    reset()
+    form.reset()
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Desligamento Qualificado</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <Archive className="h-5 w-5" />
+            Desligamento de Caso
+          </DialogTitle>
           <DialogDescription>
-            Registre o encerramento do acompanhamento e o destino da família.
+            Essa ação encerra o acompanhamento técnico (PAEFI). O prontuário ficará disponível apenas para consulta no Arquivo Morto.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          
-          <div className="space-y-2">
-            <Label htmlFor="motivoDesligamento">Motivo</Label>
-            <Controller
+
+        <Alert variant="destructive" className="my-2 bg-destructive/5 border-destructive/20 text-destructive-foreground">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Atenção</AlertTitle>
+          <AlertDescription>
+            Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
+          </AlertDescription>
+        </Alert>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-2">
+            
+            <FormField
+              control={form.control}
               name="motivoDesligamento"
-              control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id="motivoDesligamento">
-                    <SelectValue placeholder="Selecione um motivo..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MOTIVOS_DESLIGAMENTO.map((motivo) => (
-                      <SelectItem key={motivo} value={motivo}>{motivo.length > 60 ? motivo.slice(0,60)+'...' : motivo}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <FileX className="h-3.5 w-3.5 text-muted-foreground" />
+                    Motivo do Desligamento
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o motivo principal..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[250px]">
+                      {LISTA_MOTIVOS_DESLIGAMENTO.map((motivo) => (
+                        <SelectItem key={motivo} value={motivo} className="text-sm">
+                          {motivo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
               )}
             />
-            {errors.motivoDesligamento && <p className="text-sm text-destructive">{errors.motivoDesligamento.message}</p>}
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="destinoDesligamento">Destino / Encaminhamento Pós-Alta</Label>
-            <Controller
+            <FormField
+              control={form.control}
               name="destinoDesligamento"
-              control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger><SelectValue placeholder="Para onde foi encaminhado?" /></SelectTrigger>
-                  <SelectContent>
-                    {DESTINOS_DESLIGAMENTO.map((d) => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                    Destino / Encaminhamento
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Para onde a família foi encaminhada?" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {LISTA_DESTINOS.map((destino) => (
+                        <SelectItem key={destino} value={destino}>
+                          {destino}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
               )}
             />
-            {errors.destinoDesligamento && <p className="text-sm text-destructive">{errors.destinoDesligamento.message}</p>}
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="parecerFinal">Parecer Técnico Final</Label>
-            <Textarea
-              id="parecerFinal"
-              rows={5}
-              {...register('parecerFinal')}
-              placeholder="Resumo das intervenções e justificativa do desligamento..."
+            <FormField
+              control={form.control}
+              name="parecerFinal"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
+                    Parecer Técnico Final
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={5}
+                      className="resize-none"
+                      placeholder="Faça uma síntese das intervenções realizadas, resultados alcançados e justificativa técnica para o encerramento..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-            {errors.parecerFinal && <p className="text-sm text-destructive">{errors.parecerFinal.message}</p>}
-          </div>
 
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={handleClose}>Cancelar</Button>
-            <Button type="submit" variant="destructive" disabled={isPending}>
-              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Confirmar Desligamento
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
+                Cancelar
+              </Button>
+              <Button 
+                type="submit" 
+                variant="destructive" 
+                disabled={isPending}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />} 
+                Confirmar Desligamento
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

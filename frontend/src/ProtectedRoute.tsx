@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
-import { ROUTES } from './constants/routes'
+import { ROUTES } from './constants/app-routes'
 import { ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { UserRole } from '@/types/user'

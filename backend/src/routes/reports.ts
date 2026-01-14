@@ -3,11 +3,21 @@ import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { startOfMonth, endOfMonth, differenceInYears } from 'date-fns'
 import { Cargo, CaseStatus } from '@prisma/client'
+import { subMonths, format, differenceInDays } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+
+// --- Helpers ---
+const calculateUrgencyWeight = (urgencia: string | null): number => {
+  if (!urgencia) return 1;
+  const term = urgencia.trim();
+  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
+  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
+  if (['PCD', 'Idoso', 'Internação', 'Acolhimento'].includes(term)) return 2;
+  return 1;
+}
 
 // --- Schemas ---
-
 const teamOverviewResponseSchema = z.array(z.object({
   nome: z.string(),
   cargo: z.string(),
@@ -16,18 +26,9 @@ const teamOverviewResponseSchema = z.array(z.object({
     nomeCompleto: z.string(),
     status: z.string(),
     urgencia: z.string(),
-    violacao: z.string()
+    violacao: z.array(z.string())
   }))
 }))
-
-const rmaResponseSchema = z.object({
-  initialCount: z.number(),
-  newEntries: z.number(),
-  closedCases: z.number(),
-  finalCount: z.number(),
-  profileBySex: z.record(z.number()),
-  profileByAgeGroup: z.record(z.number())
-})
 
 export async function reportRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
@@ -35,11 +36,9 @@ export async function reportRoutes(app: FastifyInstance) {
   server.addHook('onRequest', async (request, reply) => {
     try {
       await request.jwtVerify()
-      const { cargo } = request.user as { cargo: string }
-      
-      if (cargo !== Cargo.Gerente) {
-        return reply.status(403).send({ message: 'Acesso negado. Apenas Gerência.' })
-      }
+      // [CORREÇÃO 2.1] Removida restrição de acesso por cargo para relatórios gerais
+      // const { cargo } = request.user as { cargo: string }
+      // if (cargo !== Cargo.Gerente && cargo !== Cargo.Auditor) { ... }
     } catch (err) {
       await reply.status(401).send({ message: 'Não autorizado.' })
     }
@@ -66,25 +65,24 @@ export async function reportRoutes(app: FastifyInstance) {
         orderBy: { cargo: 'asc' },
       })
 
-      // 2. Busca casos ativos de uma só vez (Evita N+1)
+      // 2. Busca casos ativos
       const activeCases = await prisma.case.findMany({
         where: {
           status: { not: CaseStatus.DESLIGADO },
         },
-        // SELECT MÍNIMO para performance
         select: {
           id: true, 
           nomeCompleto: true, 
           status: true,
           urgencia: true,
-          violacao: true,
+          violacao: true, 
           agenteAcolhidaId: true, 
           especialistaPAEFIId: true,
         },
         orderBy: { pesoUrgencia: 'desc' }
       })
 
-      // 3. Cruzamento em Memória (Rápido para < 5000 casos)
+      // 3. Cruzamento em Memória
       const overview = technicians.map((tech) => {
         const techCases = activeCases.filter((c) => {
           if (tech.cargo === Cargo.Agente_Social) {
@@ -105,7 +103,11 @@ export async function reportRoutes(app: FastifyInstance) {
         return {
           nome: tech.nome,
           cargo: tech.cargo === Cargo.Agente_Social ? 'Agente Social' : 'Especialista',
-          cases: techCases, // Retorna os objetos filtrados
+          cases: techCases.map(c => ({
+            ...c,
+            // Garante array caso venha null ou string antiga
+            violacao: Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao] : [])
+          })), 
         }
       })
 
@@ -117,105 +119,166 @@ export async function reportRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. [GET] Relatório Mensal de Atendimentos (RMA)
-  server.get('/reports/rma', {
+  // 2. [GET] Relatório de Desligamentos (Dismissals)
+  server.get('/reports/dismissals', {
     schema: {
       tags: ['Relatórios'],
-      summary: 'Dados para preenchimento do RMA (MDS)',
-      querystring: z.object({
-        month: z.string().regex(/^\d{4}-\d{2}$/, 'Formato inválido (YYYY-MM).'),
-      }),
-      response: {
-        200: rmaResponseSchema
-      }
+      summary: 'Estatísticas de casos desligados/arquivados',
+      querystring: z.object({ months: z.coerce.number().default(12) })
     }
   }, async (request, reply) => {
-    const { month } = request.query
-    const targetDate = new Date(month + '-01T00:00:00')
-    const firstDay = startOfMonth(targetDate)
-    const lastDay = endOfMonth(targetDate)
+    const { months } = request.query
+    const startDate = subMonths(new Date(), months)
 
     try {
-      // 1. Contagens Diretas (DB Count)
-      const [initialCount, newEntriesCount, closedCasesCount] = await Promise.all([
-        // B1: Saldo anterior (Ativos antes do mês começar e não desligados antes)
-        prisma.case.count({
-          where: {
-            status: CaseStatus.EM_ACOMPANHAMENTO,
-            dataInicioPAEFI: { lt: firstDay },
-            OR: [
-              { dataDesligamento: null },
-              { dataDesligamento: { gte: firstDay } },
-            ],
-          },
-        }),
-        // B2: Novos entrados no mês
-        prisma.case.count({
-          where: {
-            dataInicioPAEFI: { gte: firstDay, lte: lastDay },
-          },
-        }),
-        // B3: Desligados no mês
-        prisma.case.count({
-          where: {
-            status: CaseStatus.DESLIGADO,
-            dataDesligamento: { gte: firstDay, lte: lastDay },
-          },
-        })
-      ])
-
-      // 2. Perfil por Sexo (DB GroupBy)
-      const sexGroups = await prisma.case.groupBy({
-        by: ['sexo'],
+      const closedCases = await prisma.case.findMany({
         where: {
-          dataInicioPAEFI: { gte: firstDay, lte: lastDay },
+          status: CaseStatus.DESLIGADO,
+          dataDesligamento: { gte: startDate }
         },
-        _count: { sexo: true }
+        select: {
+          id: true,
+          motivoDesligamento: true,
+          destinoDesligamento: true,
+          dataDesligamento: true,
+          dataInicioPAEFI: true
+        }
       })
 
-      const profileBySex = {
-        masculino: sexGroups.find(g => g.sexo === 'Masculino')?._count.sexo || 0,
-        feminino: sexGroups.find(g => g.sexo === 'Feminino')?._count.sexo || 0,
-        outro: sexGroups.find(g => !['Masculino', 'Feminino'].includes(g.sexo))?._count.sexo || 0,
-      }
+      const motivosCount: Record<string, number> = {}
+      const destinosCount: Record<string, number> = {}
 
-      // 3. Perfil Etário (Híbrido: Select leve + Loop em memória)
-      const newEntriesAges = await prisma.case.findMany({
-        where: { dataInicioPAEFI: { gte: firstDay, lte: lastDay } },
-        select: { nascimento: true }
+      const processedList = closedCases.map(c => {
+        const mot = c.motivoDesligamento || 'Não informado'
+        const dest = c.destinoDesligamento || 'Não informado'
+        
+        motivosCount[mot] = (motivosCount[mot] || 0) + 1
+        destinosCount[dest] = (destinosCount[dest] || 0) + 1
+
+        let dias = 0;
+        if (c.dataInicioPAEFI && c.dataDesligamento) {
+            dias = differenceInDays(c.dataDesligamento, c.dataInicioPAEFI);
+        }
+
+        return {
+            ...c,
+            tempoAcompanhamento: dias
+        }
       })
-
-      const profileByAgeGroup: Record<string, number> = {
-        '0-6': 0, '7-12': 0, '13-17': 0,
-        '18-29': 0, '30-59': 0, '60+': 0,
-      }
-      
-      const now = new Date()
- 
-      for (const c of newEntriesAges) {
-        const age = differenceInYears(now, c.nascimento)
-        if (age <= 6) profileByAgeGroup['0-6']++
-        else if (age <= 12) profileByAgeGroup['7-12']++
-        else if (age <= 17) profileByAgeGroup['13-17']++
-        else if (age <= 29) profileByAgeGroup['18-29']++
-        else if (age <= 59) profileByAgeGroup['30-59']++
-        else profileByAgeGroup['60+']++
-      }
-
-      const finalCount = initialCount + newEntriesCount - closedCasesCount
 
       return reply.send({
-        initialCount,
-        newEntries: newEntriesCount,
-        closedCases: closedCasesCount,
-        finalCount,
-        profileBySex,
-        profileByAgeGroup,
+        total: closedCases.length,
+        byMotivo: Object.entries(motivosCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+        byDestino: Object.entries(destinosCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+        list: processedList.slice(0, 50)
+      })
+    } catch (error) {
+      console.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar relatório de desligamentos.' })
+    }
+  })
+
+  // 3. [GET] Vigilância Socioassistencial (Mapas e Gráficos)
+  server.get('/reports/vigilancia', {
+    schema: { tags: ['Relatórios'], summary: 'Dados para o Observatório (Mapa e Gráficos)' }
+  }, async (request, reply) => {
+    const today = new Date()
+    const sixMonthsAgo = subMonths(today, 6)
+
+    try {
+      // Busca ampla
+      const cases = await prisma.case.findMany({
+        where: {
+          OR: [
+            { createdAt: { gte: sixMonthsAgo } }, 
+            { dataDesligamento: { gte: sixMonthsAgo } },
+            { status: { not: CaseStatus.DESLIGADO } } 
+          ]
+        },
+        select: {
+          id: true, 
+          nomeCompleto: true, 
+          dataEntrada: true, 
+          dataDesligamento: true,
+          status: true, 
+          urgencia: true, 
+          violacao: true, 
+          categoria: true,
+          latitude: true, 
+          longitude: true, 
+          endereco_ra: true,
+          orgaoDemandante: true // [CORREÇÃO] Necessário para o gráfico de Rede
+        }
       })
 
+      // Evolução Temporal
+      const monthsMap = new Map()
+      for (let i = 5; i >= 0; i--) {
+        const d = subMonths(today, i)
+        const key = format(d, 'yyyy-MM')
+        monthsMap.set(key, { name: format(d, 'MMM/yy', { locale: ptBR }), novos: 0, desligados: 0 })
+      }
+      
+      const violationMap: Record<string, number> = {}
+      const originMap: Record<string, number> = {} // [CORREÇÃO] Mapa para Órgãos
+      const mapData: any[] = []
+
+      cases.forEach(c => {
+        // Evolução
+        const entryKey = format(c.dataEntrada, 'yyyy-MM')
+        if (monthsMap.has(entryKey)) monthsMap.get(entryKey).novos++
+        if (c.dataDesligamento) {
+          const exitKey = format(c.dataDesligamento, 'yyyy-MM')
+          if (monthsMap.has(exitKey)) monthsMap.get(exitKey).desligados++
+        }
+
+        // Mapa (Apenas Ativos com Geo)
+        if (c.status !== CaseStatus.DESLIGADO && c.latitude && c.longitude) {
+          mapData.push({
+            id: c.id, 
+            lat: c.latitude, 
+            lng: c.longitude, 
+            intensity: calculateUrgencyWeight(c.urgencia),
+            label: c.nomeCompleto, 
+            violacao: Array.isArray(c.violacao) ? c.violacao.join(', ') : c.violacao,
+            endereco: c.endereco_ra,
+            categoria: c.categoria 
+          })
+        }
+
+        // Contagem de Órgãos Demandantes (Todos os casos do período)
+        if (c.orgaoDemandante) {
+            const org = c.orgaoDemandante.trim()
+            originMap[org] = (originMap[org] || 0) + 1
+        }
+
+        // Violações (Apenas Ativos)
+        if (c.status !== CaseStatus.DESLIGADO) {
+          const violations = Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao] : [])
+          violations.forEach(v => {
+              v.split(',').forEach(subV => {
+                  const label = subV.trim()
+                  if(label) violationMap[label] = (violationMap[label] || 0) + 1
+              })
+          })
+        }
+      })
+
+      // Formata dados para o gráfico de Rede
+      const originData = Object.entries(originMap)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+
+      return reply.send({
+        evolutionData: Array.from(monthsMap.values()),
+        violationData: Object.entries(violationMap).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+        originData, // [CORREÇÃO] Retorna dados para o frontend
+        mapData,
+        totalActive: cases.filter(c => c.status !== CaseStatus.DESLIGADO).length
+      })
     } catch (error) {
-      console.error('Erro /reports/rma:', error)
-      return reply.status(500).send({ message: 'Erro interno no servidor.' })
+      console.error(error)
+      return reply.status(500).send({ message: 'Erro na vigilância.' })
     }
   })
 }

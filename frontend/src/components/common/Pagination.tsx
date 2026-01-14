@@ -7,6 +7,13 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface PaginationProps {
   currentPage: number
@@ -14,6 +21,9 @@ interface PaginationProps {
   totalItems: number
   pageSize: number
   onPageChange: (page: number) => void
+  // [NOVO] Props opcionais para controle de densidade
+  onPageSizeChange?: (size: number) => void
+  pageSizeOptions?: number[]
 }
 
 export function Pagination({
@@ -22,34 +32,69 @@ export function Pagination({
   totalItems,
   pageSize,
   onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 20, 50, 100]
 }: PaginationProps) {
+  
   // --- SANITIZAÇÃO DOS VALORES ---
   const safeTotalPages = Math.max(1, totalPages || 1)
   const safePage = Math.max(1, Math.min(currentPage || 1, safeTotalPages))
+  
+  // Cálculo de índices para "Mostrando X-Y de Z"
+  const startItem = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1
+  const endItem = Math.min(safePage * pageSize, totalItems)
 
-  const firstItem = Math.min((safePage - 1) * pageSize + 1, totalItems)
-  const lastItem = Math.min(safePage * pageSize, totalItems)
-
-  if (safeTotalPages <= 1) return null
+  // Se não houver itens, não mostra nada (ou mostra um placeholder se preferir)
+  if (totalItems === 0 && safeTotalPages <= 1) return null
 
   return (
-    <div className="flex items-center justify-between px-2 w-full">
+    <div className="flex flex-col-reverse items-center justify-between gap-4 px-2 py-2 sm:flex-row w-full">
       
-      {/* Informação da tabela */}
-      <div className="flex-1 text-sm text-muted-foreground hidden sm:block">
-        Mostrando {firstItem}–{lastItem} de {totalItems} resultados
+      {/* Esquerda: Informação de Contagem */}
+      <div className="flex-1 text-sm text-muted-foreground">
+        {totalItems > 0 ? (
+          <span>
+            Mostrando <strong>{startItem}-{endItem}</strong> de <strong>{totalItems}</strong> resultados
+          </span>
+        ) : (
+          <span>Sem resultados</span>
+        )}
       </div>
 
-      <div className="flex items-center space-x-6 lg:space-x-8">
+      {/* Direita: Controles */}
+      <div className="flex flex-col-reverse items-center gap-4 sm:flex-row sm:gap-6 lg:gap-8">
         
-        {/* Status da página */}
+        {/* [NOVO] Seletor de Linhas por Página */}
+        {onPageSizeChange && (
+          <div className="flex items-center space-x-2">
+            <p className="text-sm font-medium hidden sm:block">Linhas por página</p>
+            <Select
+              value={`${pageSize}`}
+              onValueChange={(value) => {
+                onPageSizeChange(Number(value))
+              }}
+            >
+              <SelectTrigger className="h-8 w-[70px]">
+                <SelectValue placeholder={pageSize} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                {pageSizeOptions.map((pageSize) => (
+                  <SelectItem key={pageSize} value={`${pageSize}`}>
+                    {pageSize}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Indicador de Página */}
         <div className="flex w-[100px] items-center justify-center text-sm font-medium">
           Página {safePage} de {safeTotalPages}
         </div>
 
-        {/* Controles */}
+        {/* Botões de Navegação */}
         <div className="flex items-center space-x-2">
-
           <Button
             variant="outline"
             className="hidden h-8 w-8 p-0 lg:flex"
@@ -89,7 +134,6 @@ export function Pagination({
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>
-
         </div>
       </div>
     </div>

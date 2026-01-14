@@ -7,31 +7,38 @@ import { CommandMenu } from "../common/CommandMenu"
 
 export function MainLayout() {
   return (
-    // [1] Ajuste de Background para melhor contraste em Dark Mode
-    <div className="flex h-screen w-full bg-muted/20 dark:bg-background overflow-hidden">
+    <div className="flex h-screen w-full bg-muted/10 dark:bg-background overflow-hidden text-foreground">
       
+      {/* [Acessibilidade] Link para pular navegação (aparece apenas no foco do teclado) */}
+      <a 
+        href="#main-content" 
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md shadow-lg"
+      >
+        Pular para o conteúdo principal
+      </a>
+
+      {/* Barra Lateral Fixa/Flex */}
       <Sidebar />
       
-      {/* [2] Transição otimizada (Performance) */}
-      <div className="flex flex-col flex-1 h-full min-w-0 transition-[width,margin] duration-300 ease-in-out relative">
+      {/* Área Principal */}
+      <div className="flex flex-col flex-1 h-full min-w-0 relative transition-all duration-300">
         <Header />
         
+        {/* Conteúdo com Scroll Independente */}
         <main 
           id="main-content"
-          className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pb-20 lg:pb-24 scroll-smooth focus:outline-none"
+          className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth focus:outline-none scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
         >
-          {/* [3] Animação suavizada e container centralizado */}
-          <div className="mx-auto max-w-[1600px] h-full space-y-6 animate-in fade-in duration-300">
+          {/* Container Centralizado e Responsivo */}
+          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8 pb-20 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <Outlet />
           </div>
         </main>
       </div>
       
-      {/* Componentes Globais (Overlay) */}
-      <div className="z-50">
-        <NewCaseModal />
-        <CommandMenu />
-      </div>
+      {/* Componentes Globais (Portals) */}
+      <NewCaseModal />
+      <CommandMenu />
     </div>
   )
 }

@@ -7,11 +7,11 @@ import { clsx } from "clsx"
 
 import { useAuth } from "@/hooks/useAuth"
 import { useModal } from "@/hooks/useModal"
-import { ROUTES } from "@/constants/routes"
+import { ROUTES } from "@/constants/app-routes"
 import { GdfLogo } from "./GdfLogo"
 import { Button } from "@/components/ui/button"
 // [CORREÇÃO] Voltamos a importar sua lista original
-import { navLinks } from "@/constants/navigation" 
+import { navLinks } from "@/constants/app-navigation" 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Separator } from "@/components/ui/separator"
 

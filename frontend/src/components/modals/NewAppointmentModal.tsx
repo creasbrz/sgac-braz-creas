@@ -1,16 +1,18 @@
-// frontend/src/components/NewAppointmentModal.tsx
-import { useEffect } from 'react'
+// frontend/src/components/agenda/NewAppointmentModal.tsx
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Calendar, Clock, Check, ChevronsUpDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
 import { Button } from '@/components/ui/button'
 import {
+  Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -27,19 +29,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
-interface CaseOption {
-  id: string
-  nomeCompleto: string
+// Tipos de atendimento (Cores)
+const TYPE_COLORS: Record<string, string> = {
+  'Atendimento': '#2563eb', // Azul
+  'Visita': '#16a34a',      // Verde
+  'Retorno': '#f97316',     // Laranja
+  'Reunião': '#9333ea',     // Roxo
+  'Outro': '#64748b'        // Cinza
 }
 
 // Schema do formulário
 const appointmentFormSchema = z.object({
   titulo: z.string().min(3, 'O título é muito curto.'),
+  tipo: z.string().default('Atendimento'),
   data: z.string().min(1, 'A data é obrigatória.'),
-  time: z
-    .string()
-    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Hora inválida.'),
+  time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Hora inválida.'),
   casoId: z.string().uuid('Selecione um caso válido.'),
   observacoes: z.string().optional(),
 })
@@ -47,34 +54,39 @@ const appointmentFormSchema = z.object({
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
 
 interface NewAppointmentModalProps {
+  open: boolean // [CORREÇÃO] Adicionada prop explícita 'open'
   onOpenChange: (isOpen: boolean) => void
   defaultCaseId?: string | null
+  defaultDate?: string
+  defaultTime?: string
 }
 
 export function NewAppointmentModal({
+  open,
   onOpenChange,
   defaultCaseId,
+  defaultDate,
+  defaultTime
 }: NewAppointmentModalProps) {
   const queryClient = useQueryClient()
+  
+  // Controle do Combobox
+  const [openCombobox, setOpenCombobox] = useState(false)
 
-  // Busca todos os casos (rota ajustada para trazer tudo)
-  const { data: casesResponse, isLoading: isLoadingCases } = useQuery<{
-    items: CaseOption[]
-  }>({
-    queryKey: ['cases', 'all'],
+  // Busca casos (Otimização: pageSize razoável, idealmente deveria ser paginado via API no combobox, mas vamos manter simples por enquanto)
+  const { data: casesResponse, isLoading: isLoadingCases } = useQuery({
+    queryKey: ['cases', 'select-list'],
     queryFn: async () => {
-      const response = await api.get('/cases', {
-        params: {
-          page: 1,
-          pageSize: 9999,
-        },
-      })
+      const response = await api.get('/cases', { params: { pageSize: 1000 } }) // Limite seguro
       return response.data
     },
-    staleTime: 60_000,
+    staleTime: 1000 * 60 * 5, // 5 min cache
   })
 
-  const cases = casesResponse?.items ?? []
+  const cases = useMemo(() => {
+    if (!casesResponse) return []
+    return Array.isArray(casesResponse) ? casesResponse : (casesResponse.data || casesResponse.items || [])
+  }, [casesResponse])
 
   const {
     control,
@@ -82,38 +94,41 @@ export function NewAppointmentModal({
     formState: { errors },
     reset,
     setValue,
+    watch
   } = useForm<AppointmentFormData>({
     resolver: zodResolver(appointmentFormSchema),
     defaultValues: {
       titulo: '',
-      data: '',
-      time: '',
+      tipo: 'Atendimento',
+      data: defaultDate || '',
+      time: defaultTime || '09:00',
       casoId: defaultCaseId ?? '',
       observacoes: '',
     },
   })
 
-  // Pré-seleciona automaticamente casoId quando passado
+  // Sincroniza props externas com o form
   useEffect(() => {
-    if (defaultCaseId) {
-      setValue('casoId', defaultCaseId)
+    if (open) {
+      if (defaultCaseId) setValue('casoId', defaultCaseId)
+      if (defaultDate) setValue('data', defaultDate)
+      if (defaultTime) setValue('time', defaultTime)
     }
-  }, [defaultCaseId, setValue])
+  }, [open, defaultCaseId, defaultDate, defaultTime, setValue])
 
   const { mutate: createAppointment, isPending } = useMutation({
     mutationFn: async (data: AppointmentFormData) => {
-      const [hours, minutes] = data.time.split(':').map(Number)
-      const appointmentDate = new Date(data.data + 'T00:00:00')
-      appointmentDate.setHours(hours, minutes, 0, 0)
+      // Formatação de data segura
+      const dateTimeString = `${data.data}T${data.time}:00`
+      const isoDate = new Date(dateTimeString).toISOString()
 
-      const payload = {
+      return await api.post('/appointments', {
         titulo: data.titulo,
+        tipo: data.tipo, // [NOVO] Enviando tipo
         casoId: data.casoId,
         observacoes: data.observacoes,
-        data: appointmentDate.toISOString(),
-      }
-
-      return await api.post('/appointments', payload)
+        data: isoDate,
+      })
     },
     onSuccess: () => {
       toast.success('Agendamento criado com sucesso!')
@@ -127,125 +142,174 @@ export function NewAppointmentModal({
     },
   })
 
-  const onSubmit: SubmitHandler<AppointmentFormData> = (data) => {
-    createAppointment(data)
-  }
+  // Helper para obter nome do caso selecionado no botão do combobox
+  const selectedCaseId = watch('casoId')
+  const selectedCaseName = cases.find((c: any) => c.id === selectedCaseId)?.nomeCompleto
 
   return (
-    <DialogContent className="sm:max-w-[500px]">
-      <DialogHeader>
-        <DialogTitle>Novo Agendamento</DialogTitle>
-        <DialogDescription>
-          Preencha os dados para criar um novo evento na sua agenda.
-        </DialogDescription>
-      </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Novo Agendamento</DialogTitle>
+          <DialogDescription>
+            Registre um novo atendimento individual ou visita.
+          </DialogDescription>
+        </DialogHeader>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        {/* Título */}
-        <div className="space-y-2">
-          <Label htmlFor="titulo">Título do Agendamento</Label>
-          <Controller
-            name="titulo"
-            control={control}
-            render={({ field }) => <Input id="titulo" {...field} />}
-          />
-          {errors.titulo && (
-            <p className="text-sm text-destructive">
-              {errors.titulo.message}
-            </p>
-          )}
-        </div>
-
-        {/* Data e Hora */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="data">Data</Label>
-            <Controller
-              name="data"
-              control={control}
-              render={({ field }) => <Input type="date" id="data" {...field} />}
-            />
-            {errors.data && (
-              <p className="text-sm text-destructive">{errors.data.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="time">Hora</Label>
-            <Controller
-              name="time"
-              control={control}
-              render={({ field }) => <Input type="time" id="time" {...field} />}
-            />
-            {errors.time && (
-              <p className="text-sm text-destructive">{errors.time.message}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Seleção do caso */}
-        <div className="space-y-2">
-          <Label htmlFor="casoId">Vincular ao Caso</Label>
-
-          <Controller
-            name="casoId"
-            control={control}
-            render={({ field }) => (
-              <Select
-                onValueChange={field.onChange}
-                value={field.value}
-                disabled={isLoadingCases || !!defaultCaseId}
-              >
-                <SelectTrigger id="casoId">
-                  <SelectValue
-                    placeholder={
-                      isLoadingCases ? 'Carregando casos...' : 'Selecione um caso...'
-                    }
-                  />
-                </SelectTrigger>
-
-                <SelectContent>
-                  {cases.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nomeCompleto}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-
-          {errors.casoId && (
-            <p className="text-sm text-destructive">{errors.casoId.message}</p>
-          )}
-        </div>
-
-        {/* Observações */}
-        <div className="space-y-2">
-          <Label htmlFor="observacoes">Observações (Opcional)</Label>
-          <Controller
-            name="observacoes"
-            control={control}
-            render={({ field }) => (
-              <Textarea
-                id="observacoes"
-                placeholder="Detalhes adicionais..."
-                className="min-h-[80px]"
-                {...field}
+        <form onSubmit={handleSubmit((data) => createAppointment(data))} className="space-y-5 py-2">
+          
+          {/* Título e Tipo */}
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="titulo">Título da Atividade</Label>
+              <Controller
+                name="titulo"
+                control={control}
+                render={({ field }) => <Input id="titulo" placeholder="Ex: Visita Domiciliar" {...field} />}
               />
-            )}
-          />
-        </div>
+              {errors.titulo && <p className="text-xs text-destructive">{errors.titulo.message}</p>}
+            </div>
 
-        <DialogFooter>
-          <Button type="submit" disabled={isPending}>
-            {isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Agendar
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Tipo</Label>
+                <Controller
+                  name="tipo"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(TYPE_COLORS).map(type => (
+                          <SelectItem key={type} value={type}>
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+                              {type}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
+              {/* Combobox de Caso (Substitui Select simples) */}
+              <div className="space-y-1.5">
+                <Label>Vincular Caso</Label>
+                <Controller
+                  name="casoId"
+                  control={control}
+                  render={({ field }) => (
+                    <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openCombobox}
+                          className={cn(
+                            "w-full justify-between font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                          disabled={!!defaultCaseId || isLoadingCases}
+                        >
+                          {selectedCaseName || "Selecione..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[200px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar nome..." />
+                          <CommandList>
+                            <CommandEmpty>Nenhum caso encontrado.</CommandEmpty>
+                            <CommandGroup>
+                              {cases.map((c: any) => (
+                                <CommandItem
+                                  key={c.id}
+                                  value={c.nomeCompleto}
+                                  onSelect={() => {
+                                    field.onChange(c.id)
+                                    setOpenCombobox(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      field.value === c.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {c.nomeCompleto}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+                {errors.casoId && <p className="text-xs text-destructive">{errors.casoId.message}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Data e Hora */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="data" className="flex items-center gap-2">
+                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" /> Data
+              </Label>
+              <Controller
+                name="data"
+                control={control}
+                render={({ field }) => <Input type="date" id="data" {...field} />}
+              />
+              {errors.data && <p className="text-xs text-destructive">{errors.data.message}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="time" className="flex items-center gap-2">
+                 <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Hora
+              </Label>
+              <Controller
+                name="time"
+                control={control}
+                render={({ field }) => <Input type="time" id="time" {...field} />}
+              />
+              {errors.time && <p className="text-xs text-destructive">{errors.time.message}</p>}
+            </div>
+          </div>
+
+          {/* Observações */}
+          <div className="space-y-1.5">
+            <Label htmlFor="observacoes">Observações (Opcional)</Label>
+            <Controller
+              name="observacoes"
+              control={control}
+              render={({ field }) => (
+                <Textarea
+                  id="observacoes"
+                  placeholder="Detalhes adicionais sobre o atendimento..."
+                  className="resize-none min-h-[80px]"
+                  {...field}
+                />
+              )}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" type="button" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar Agendamento
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

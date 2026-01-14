@@ -1,3 +1,4 @@
+// frontend/src/components/agenda/FullCalendarWidget.tsx
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
@@ -6,14 +7,14 @@ import listPlugin from '@fullcalendar/list'
 import ptBrLocale from '@fullcalendar/core/locales/pt-br'
 import { DatesSetArg } from '@fullcalendar/core'
 import { useRef } from 'react'
+import { cn } from '@/lib/utils' // Utility padrão shadcn
 import './calendar-custom.css'
 
-// [TIPAGEM] Definindo as props extendidas para evitar 'any'
 interface CalendarExtendedProps {
   nomeCompleto?: string
   telefone?: string
-  urgencia?: string
-  [key: string]: any // Flexibilidade para outros campos futuros
+  urgencia?: 'BAIXA' | 'MEDIA' | 'ALTA'
+  [key: string]: any
 }
 
 export interface CalendarEvent {
@@ -35,49 +36,62 @@ interface FullCalendarWidgetProps {
 export function FullCalendarWidget({ events, onDateClick, onEventClick, datesSet }: FullCalendarWidgetProps) {
   const calendarRef = useRef<FullCalendar>(null)
 
-  // Função que desenha o conteúdo de cada evento (Card Compacto)
+  // Renderização customizada inteligente
   const renderEventContent = (eventInfo: any) => {
     const { title, extendedProps, backgroundColor } = eventInfo.event
+    const viewType = eventInfo.view.type // 'dayGridMonth', 'timeGridWeek', 'listMonth'
     
-    // Fallback de cor caso venha vazio
+    const isList = viewType === 'listMonth'
+    const isWeek = viewType === 'timeGridWeek'
+    
+    // Cor segura
     const safeColor = backgroundColor || 'hsl(var(--primary))'
+    
+    // Se for Lista, deixamos o FullCalendar gerenciar o layout padrão que é bom
+    if (isList) {
+      return (
+        <div className="flex flex-col">
+          <span className="font-bold text-foreground">{title}</span>
+          <span className="text-xs text-muted-foreground">{extendedProps.nomeCompleto}</span>
+        </div>
+      )
+    }
 
+    // Para Grid (Mês/Semana)
     return (
       <div 
-        className="flex w-full overflow-hidden rounded-sm bg-card border shadow-sm text-xs leading-tight transition-colors hover:border-primary/40 hover:bg-accent/10 cursor-pointer"
-        title={`${title} - ${extendedProps.nomeCompleto || 'Sem nome'}`} // [UX] Tooltip nativo
+        className={cn(
+          "flex w-full overflow-hidden rounded-[3px] bg-card border shadow-sm text-xs leading-tight transition-all hover:brightness-95 cursor-pointer h-full",
+          extendedProps.urgencia === 'ALTA' && "border-red-500 border-l-[4px]" // Destaque para urgência
+        )}
+        style={{ borderLeftColor: extendedProps.urgencia !== 'ALTA' ? safeColor : undefined }}
+        title={`${title} - ${extendedProps.nomeCompleto || 'Sem nome'}`}
       >
-        {/* Faixa colorida lateral */}
-        <div 
-          className="w-1 shrink-0" 
-          style={{ backgroundColor: safeColor }} 
-        />
+        {/* Indicador lateral de cor (se não for urgente) */}
+        {extendedProps.urgencia !== 'ALTA' && (
+           <div className="w-1 shrink-0" style={{ backgroundColor: safeColor }} />
+        )}
         
-        {/* Conteúdo de Texto */}
-        <div className="p-1 flex-1 overflow-hidden text-foreground">
-          {/* Hora (se não for dia inteiro) */}
-          {eventInfo.timeText && (
-            <div className="font-mono text-[10px] text-muted-foreground mb-0.5">
-              {eventInfo.timeText}
-            </div>
-          )}
-          
-          {/* Título do Agendamento (Ex: Visita) */}
-          <div className="font-bold truncate">
-            {title}
+        <div className="p-1.5 flex-1 min-w-0 flex flex-col justify-center">
+          <div className="flex items-center gap-1.5">
+             {/* Hora só aparece se não for semana (pois semana já tem eixo Y de hora) */}
+             {!isWeek && eventInfo.timeText && (
+               <span className="font-mono text-[10px] opacity-70 shrink-0">{eventInfo.timeText}</span>
+             )}
+             <span className="font-semibold truncate text-foreground">{title}</span>
           </div>
           
-          {/* Nome do Usuário/Caso */}
-          <div className="truncate text-[10px] text-muted-foreground mt-0.5">
+          {/* Detalhes extras apenas se houver espaço (Semana ou Mês com poucos eventos) */}
+          <span className="truncate text-[10px] text-muted-foreground/80 mt-0.5 font-medium">
             {extendedProps.nomeCompleto || 'Sem nome'}
-          </div>
+          </span>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full w-full bg-card rounded-xl shadow-sm border border-border overflow-hidden p-2">
+    <div className="h-[calc(100vh-140px)] min-h-[500px] w-full bg-background rounded-xl shadow-sm border border-border overflow-hidden p-2 md:p-4">
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
@@ -93,28 +107,37 @@ export function FullCalendarWidget({ events, onDateClick, onEventClick, datesSet
           month: 'Mês',
           week: 'Semana',
           day: 'Dia',
-          list: 'Lista'
+          list: 'Agenda'
         }}
         events={events}
         dateClick={(info) => onDateClick(info.date)}
         eventClick={(info) => onEventClick(info)}
-        datesSet={datesSet} // Hook essencial para lazy loading ou filtros
+        datesSet={datesSet}
         eventContent={renderEventContent}
         height="100%"
-        dayMaxEvents={3} // Limite de eventos visíveis
-        dayMaxEventRows={3} // Garante consistência vertical
+        dayMaxEvents={3}
+        moreLinkContent={(args) => `+${args.num} mais`} // Tradução do link "more"
         editable={false}
         selectable={true}
         selectMirror={true}
         allDaySlot={false}
         slotMinTime="07:00:00"
         slotMaxTime="19:00:00"
-        nowIndicator={true} // Linha vermelha no horário atual
+        slotLabelFormat={{
+          hour: '2-digit',
+          minute: '2-digit',
+          omitZeroMinute: false,
+          meridiem: false
+        }}
+        nowIndicator={true}
         eventTimeFormat={{
           hour: '2-digit',
           minute: '2-digit',
           meridiem: false
         }}
+        // Estilização global das células
+        dayCellClassNames="hover:bg-accent/5 transition-colors cursor-pointer"
+        viewClassNames="bg-background"
       />
     </div>
   )

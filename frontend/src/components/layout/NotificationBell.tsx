@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ROUTES } from '@/constants/routes'
+import { ROUTES } from '@/constants/app-routes'
 
 // Interface que espelha o retorno do Backend
 interface AlertRaw {

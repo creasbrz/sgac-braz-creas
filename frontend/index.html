@@ -3,52 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <title>SGAC-BRAZ | Gestão CREAS</title>
+    <meta name="description" content="Sistema de Gestão de Atendimentos do CREAS Brazlândia - SEDES/DF." />
+    <meta name="application-name" content="SGAC-BRAZ" />
+    <meta name="author" content="SEDES/DF" />
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="format-detection" content="telephone=no" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SGAC-BRAZ" />
+    <meta property="og:description" content="Gestão de Atendimentos CREAS Brazlândia." />
+    <meta property="og:image" content="/og-image.png" /> <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" /> <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-    <!-- Cor padrão GOV-BR moderna -->
-    <meta name="theme-color" content="#0A5BD7" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f6f8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a" />
 
-    <meta
-      name="description"
-      content="Sistema de Gestão de Atendimentos do CREAS Brazlândia - SEDES/DF."
-    />
-
-    <title>SGAC-BRAZ</title>
-
-    <!-- Fonte moderna e leve -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
+    <link 
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" 
+      rel="stylesheet" 
     />
 
     <style>
-      /* Fundo inicial para evitar flash branco */
-      html {
-        background-color: #f5f6f8;
-      }
-      html.dark {
-        background-color: #0f172a;
+      :root {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        line-height: 1.5;
+        font-weight: 400;
+        
+        color-scheme: light dark;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
 
       body {
-        font-family: "Inter", sans-serif;
         margin: 0;
         padding: 0;
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
+        min-height: 100vh;
+        /* Cores de fallback enquanto o CSS do React não carrega */
+        background-color: #f5f6f8; 
+        color: #0f172a;
+      }
+
+      html.dark body {
+        background-color: #020817; /* Cor background padrão do Shadcn Dark */
+        color: #f8fafc;
       }
     </style>
+
+    <script>
+      (function() {
+        try {
+          var storageKey = "vite-ui-theme";
+          var theme = localStorage.getItem(storageKey);
+          var supportDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          
+          if (theme === "dark" || (!theme && supportDarkMode) || (theme === "system" && supportDarkMode)) {
+            document.documentElement.classList.add("dark");
+          } else {
+            document.documentElement.classList.remove("dark");
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
 
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    
+    <noscript>Você precisa habilitar o JavaScript para executar este app.</noscript>
   </body>
 </html>

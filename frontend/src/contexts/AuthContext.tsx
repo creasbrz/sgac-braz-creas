@@ -5,7 +5,7 @@ import { jwtDecode } from 'jwt-decode'
 import { Loader2 } from 'lucide-react'
 import { getErrorMessage } from '@/utils/error'
 import { api } from '@/lib/api'
-import { ROUTES } from '@/constants/routes'
+import { ROUTES } from '@/constants/app-routes'
 import { STORAGE_KEYS } from '@/constants/storage'
 import type { User, UserRole } from '@/types/user'
 

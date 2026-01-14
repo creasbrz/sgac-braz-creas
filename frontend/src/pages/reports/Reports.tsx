@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RmaTab } from './RmaTab'
 import { ObservatoryTab } from './ObservatoryTab'
 import { TeamProductionTab } from './TeamProductionTab'
-import { DismissalAnalytics } from './DismissalAnalytics' // [NOVO] Importação do relatório
+import { DismissalAnalytics } from './DismissalAnalytics'
 import { cn } from '@/lib/utils'
 
 export function Reports() {
@@ -37,7 +37,7 @@ export function Reports() {
         
         {/* NAVEGAÇÃO (TABS) */}
         <div className="flex justify-center md:justify-start">
-          {/* [AJUSTE] Grid adaptado para 4 abas (2x2 no mobile, 4x1 no desktop) */}
+          {/* Grid adaptado para 4 abas */}
           <TabsList className="grid w-full md:w-[850px] grid-cols-2 md:grid-cols-4 bg-muted/60 p-1 rounded-lg shadow-inner h-auto">
             <TabsTrigger value="rma" className={tabTriggerClass}>
               <FileText className="h-4 w-4"/> 
@@ -57,7 +57,6 @@ export function Reports() {
               <span className="sm:hidden">Obs.</span>
             </TabsTrigger>
 
-            {/* [NOVO] Aba de Desligamentos */}
             <TabsTrigger value="dismissals" className={tabTriggerClass}>
               <PieChart className="h-4 w-4"/> 
               <span className="hidden sm:inline">Desligamentos</span>
@@ -79,7 +78,6 @@ export function Reports() {
           <ObservatoryTab />
         </TabsContent>
 
-        {/* [NOVO] Conteúdo de Desligamentos */}
         <TabsContent value="dismissals" className="space-y-6 outline-none focus-visible:ring-0 animate-in slide-in-from-bottom-2 duration-500">
           <DismissalAnalytics />
         </TabsContent>

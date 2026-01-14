@@ -1,31 +1,74 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Users, ArrowRight, AlertCircle, Clock, Calendar, UserCheck } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
+import { 
+  Users, ArrowRight, AlertCircle, Clock, Calendar, 
+  UserCheck, LucideIcon, Briefcase 
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { ROUTES } from '@/constants/routes'
-import { Badge } from '@/components/ui/badge'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { motion } from 'framer-motion'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 
-const AgentStatCard = ({ title, value, icon: Icon, colorClass, borderClass, bgClass, description }: any) => (
-  <Card className={`overflow-hidden shadow-sm hover:shadow-md transition-all relative border-l-4 ${borderClass} bg-card`}>
-    <div className="p-5 flex items-start justify-between">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">{title}</p>
-        <div className="text-3xl font-bold text-foreground">{value || 0}</div>
-        <p className="text-xs text-muted-foreground mt-1 font-medium">{description}</p>
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
+import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
+
+import { ROUTES } from '@/constants/app-routes'
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// --- TYPES ---
+interface StatCardProps {
+  title: string
+  value: number | string
+  description?: string
+  icon: LucideIcon
+  variant?: 'purple' | 'blue' | 'emerald' | 'default'
+}
+
+interface CaseItem {
+  id: string
+  nomeCompleto: string
+  urgencia: string
+  dataEntrada: string
+}
+
+// --- COMPONENTS ---
+
+const AgentStatCard = ({ title, value, icon: Icon, description, variant = 'default' }: StatCardProps) => {
+  const variants = {
+    default: "text-primary bg-primary/10 border-primary/20",
+    purple: "text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800",
+    blue: "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+    emerald: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+  }
+
+  const activeStyle = variants[variant]
+
+  return (
+    <Card className="overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border-border/60 group">
+      <div className="p-6 flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">{title}</p>
+          <div className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{value}</div>
+          {description && (
+            <p className="text-xs text-muted-foreground font-medium pt-1 line-clamp-1">{description}</p>
+          )}
+        </div>
+        <div className={cn("p-3 rounded-xl transition-colors border", activeStyle)}>
+          <Icon className="w-5 h-5" />
+        </div>
       </div>
-      <div className={`p-3 rounded-lg ${bgClass}`}>
-        <Icon className={`w-6 h-6 ${colorClass}`} />
-      </div>
-    </div>
-  </Card>
-)
+    </Card>
+  )
+}
 
 export function SocialAgentDashboard() {
   const { data: summary, isLoading, isError } = useQuery({
@@ -42,111 +85,177 @@ export function SocialAgentDashboard() {
     }
   })
 
-  if (isError) return <div className="p-4 border border-destructive/50 bg-destructive/10 text-destructive rounded-md">Erro ao carregar dados.</div>
-  
+  // --- LOADING STATES ---
   if (isLoading) return (
-    <div className="space-y-6">
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-xl"/>)}</div>
-       <div className="grid lg:grid-cols-3 gap-6"><Skeleton className="h-64 lg:col-span-2"/><Skeleton className="h-64"/></div>
+    <div className="space-y-6 p-1 animate-pulse">
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+         {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full"/>)}
+       </div>
+       <div className="grid lg:grid-cols-3 gap-6">
+         <Skeleton className="h-[400px] lg:col-span-2 rounded-xl"/>
+         <Skeleton className="h-[400px] rounded-xl"/>
+       </div>
     </div>
   )
 
+  // --- ERROR STATE ---
+  if (isError) return (
+    <div className="flex flex-col items-center justify-center h-64 p-6 text-center border border-dashed rounded-lg bg-muted/30">
+      <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+      <p className="text-sm font-medium text-destructive">Não foi possível carregar o painel.</p>
+    </div>
+  )
+
+  // Container Animation Variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { 
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
+    }
+  }
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 }
+  }
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-8 p-1"
+    >
       
-      {/* 1. KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <AgentStatCard 
-          title="Para Iniciar" 
-          value={summary?.detailedStats?.meusAguardando} 
-          icon={AlertCircle} 
-          colorClass="text-purple-600 dark:text-purple-400" 
-          bgClass="bg-purple-100 dark:bg-purple-900/30"
-          borderClass="border-purple-600 dark:border-purple-500"
-          description="Sua fila de entrada" 
-        />
+      {/* 1. KPIs SECTION */}
+      <section aria-label="Métricas Principais">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <motion.div variants={itemVariants}>
+            <AgentStatCard 
+              title="Para Iniciar" 
+              value={summary?.detailedStats?.meusAguardando || 0} 
+              icon={Briefcase} 
+              variant="purple"
+              description="Casos na sua fila de entrada" 
+            />
+          </motion.div>
 
-        <AgentStatCard 
-          title="Em Acolhida" 
-          value={summary?.detailedStats?.meusEmAtendimento} 
-          icon={Users} 
-          colorClass="text-blue-600 dark:text-blue-400" 
-          bgClass="bg-blue-100 dark:bg-blue-900/30"
-          borderClass="border-blue-600 dark:border-blue-500"
-          description="Em andamento" 
-        />
+          <motion.div variants={itemVariants}>
+            <AgentStatCard 
+              title="Em Acolhida" 
+              value={summary?.detailedStats?.meusEmAtendimento || 0} 
+              icon={Users} 
+              variant="blue"
+              description="Atendimentos em andamento" 
+            />
+          </motion.div>
 
-        <AgentStatCard 
-          title="Hoje" 
-          value={summary?.appointments?.length} 
-          icon={Calendar} 
-          colorClass="text-emerald-600 dark:text-emerald-400" 
-          bgClass="bg-emerald-100 dark:bg-emerald-900/30"
-          borderClass="border-emerald-600 dark:border-emerald-500"
-          description="Compromissos agendados" 
-        />
-      </div>
+          <motion.div variants={itemVariants}>
+            <AgentStatCard 
+              title="Compromissos Hoje" 
+              value={summary?.appointments?.length || 0} 
+              icon={Calendar} 
+              variant="emerald"
+              description="Agendados para o dia" 
+            />
+          </motion.div>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
-        {/* 2. Agenda (Ocupa 2 colunas) */}
-        <div className="lg:col-span-2">
-          {/* [OTIMIZAÇÃO] Passando dados do summary para evitar fetch extra */}
-          {/* Limitamos a 5 itens e usamos "Hoje" pois vem do workspace summary */}
+        {/* 2. AGENDA (Maior prioridade visual) */}
+        <motion.div variants={itemVariants} className="lg:col-span-2 h-full">
           <UpcomingAppointments 
              data={summary?.appointments?.slice(0, 5)} 
-             title="Agenda de Hoje"
+             title="Minha Agenda do Dia"
+             enableScroll={false}
+             className="h-full min-h-[400px]" // Garante altura consistente
           />
-        </div>
+        </motion.div>
 
-        {/* 3. Minha Fila de Espera */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <Card className="h-full shadow-sm flex flex-col bg-card border-l-4 border-l-purple-500">
-            <CardHeader className="pb-3 border-b border-border/50">
-              <CardTitle className="text-lg flex items-center gap-2 text-purple-700 dark:text-purple-400">
-                <Clock className="h-5 w-5" /> Minha Fila
-              </CardTitle>
-              <CardDescription>Aguardando sua ação.</CardDescription>
+        {/* 3. MINHA FILA DE AÇÃO */}
+        <motion.div variants={itemVariants} className="h-full">
+          <Card className="h-full flex flex-col shadow-sm border-border/60 bg-card">
+            <CardHeader className="pb-3 border-b bg-muted/20">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-bold flex items-center gap-2 text-foreground">
+                  <div className="p-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-md">
+                    <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" /> 
+                  </div>
+                  Minha Fila
+                </CardTitle>
+                <Badge variant="outline" className="text-xs font-normal">
+                  {waitingList?.length || 0} aguardando
+                </Badge>
+              </div>
+              <CardDescription className="line-clamp-1">
+                Usuários aguardando sua primeira escuta.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 flex-1 pt-4">
+
+            <CardContent className="flex-1 p-0 overflow-hidden">
               {waitingList && waitingList.length > 0 ? (
-                waitingList.slice(0, 5).map((c: any) => (
-                  <Link key={c.id} to={ROUTES.CASE_DETAIL(c.id)}>
-                    <div className="p-3 border rounded-lg bg-background hover:bg-muted/50 hover:border-purple-300 dark:hover:border-purple-800 transition-all flex justify-between items-center group cursor-pointer shadow-sm">
-                      <div className="overflow-hidden">
-                        <p className="font-medium truncate text-sm text-foreground">{c.nomeCompleto}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                          <Badge variant="secondary" className="h-5 text-[10px] px-1 bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800">
-                             {c.urgencia || 'Normal'}
-                          </Badge>
-                          <span className="text-[11px]">
-                             há {formatDistanceToNow(new Date(c.dataEntrada), { locale: ptBR })}
-                          </span>
+                <ul className="divide-y divide-border/50">
+                  {waitingList.slice(0, 5).map((c: CaseItem) => (
+                    <li key={c.id}>
+                      <Link to={ROUTES.CASE_DETAIL(c.id)} className="block group">
+                        <div className="p-4 hover:bg-muted/40 transition-colors flex items-center justify-between gap-4">
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                                {c.nomeCompleto}
+                              </p>
+                              {c.urgencia && (
+                                <span className={cn(
+                                  "text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border",
+                                  c.urgencia === 'GRAVISSIMA' ? "bg-red-100 text-red-700 border-red-200" :
+                                  c.urgencia === 'MUITO_GRAVE' ? "bg-orange-100 text-orange-700 border-orange-200" :
+                                  "bg-slate-100 text-slate-600 border-slate-200"
+                                )}>
+                                  {c.urgencia}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Clock className="h-3 w-3" />
+                                <span>
+                                  aguardando há {formatDistanceToNow(new Date(c.dataEntrada), { locale: ptBR })}
+                                </span>
+                            </div>
+                          </div>
+                          
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
+                            <ArrowRight className="h-4 w-4" />
+                            <span className="sr-only">Ver caso</span>
+                          </Button>
                         </div>
-                      </div>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground group-hover:text-primary">
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </Link>
-                ))
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <div className="text-center py-12 text-muted-foreground bg-muted/10 rounded-lg border border-dashed text-sm">
-                   <UserCheck className="h-8 w-8 mx-auto mb-2 opacity-20"/>
-                   Sua fila está vazia.
+                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-muted-foreground gap-3">
+                   <div className="p-4 bg-muted/50 rounded-full">
+                     <UserCheck className="h-8 w-8 opacity-40"/>
+                   </div>
+                   <p className="text-sm font-medium">Sua fila está vazia</p>
                 </div>
               )}
             </CardContent>
-            <div className="p-4 mt-auto border-t border-border/50">
-              <Link to={ROUTES.WAITING_LIST}>
-                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white shadow-sm font-semibold">
-                   Iniciar Atendimentos
+
+            <CardFooter className="p-4 border-t bg-muted/5">
+              <Link to={ROUTES.WAITING_LIST} className="w-full">
+                <Button className="w-full gap-2 shadow-sm" variant="default">
+                   <Briefcase className="h-4 w-4" />
+                   Iniciar Triagem
                 </Button>
               </Link>
-            </div>
+            </CardFooter>
           </Card>
         </motion.div>
       </div>
-    </div>
+    </motion.div>
   )
 }

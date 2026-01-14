@@ -1,64 +1,31 @@
 // frontend/src/constants/options.ts
+import { STATUS_CONFIG } from './cases/styles'
+import { URGENCIA_NIVEIS, LISTA_VIOLACOES, LISTA_DESTINOS } from './cases/definitions'
+
+// Achatar a lista de urgências para usar em dropdowns simples
+const FLAT_URGENCIA = [
+  ...URGENCIA_NIVEIS.GRAVISSIMA,
+  ...URGENCIA_NIVEIS.MUITO_GRAVE,
+  ...URGENCIA_NIVEIS.GRAVE,
+  ...URGENCIA_NIVEIS.LEVE
+]
 
 export const OPTIONS = {
-  sexo: [
-    'Masculino',
-    'Feminino',
-    'Outro',
-    'Não Informado'
-  ],
-
-  urgencia: [
-    'Convive com agressor',
-    'Idoso 80+',
-    'Primeira infância',
-    'Risco de morte',
-    'Risco de reincidência',
-    'Sofre ameaça',
-    'Risco de desabrigo',
-    'Criança/Adolescente',
-    'PCD',
-    'Idoso',
-    'Internação',
-    'Acolhimento',
-    'Gestante/Lactante',
-    'Sem risco imediato',
-    'Visita periódica'
-  ],
-
-  violacao: [
-    'Abandono',
-    'Negligência',
-    'Afastamento do convívio familiar',
-    'Cumprimento de medidas socioeducativas',
-    'Descumprimento de condicionalidade do PBF',
-    'Discriminação',
-    'Situação de rua',
-    'Trabalho infantil',
-    'Violência física e/ou psicológica',
-    'Violência sexual',
-    'Outros'
-  ],
-
+  sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
+  
+  // Fontes de verdade
+  urgencia: FLAT_URGENCIA,
+  violacao: LISTA_VIOLACOES,
+  destinos: LISTA_DESTINOS, // [ADICIONADO] Para o modal de desligamento
+  
   categoria: [
-    'Mulher',
-    'POP RUA',
-    'LGBTQIA+',
-    'Migrante',
-    'Idoso',
-    'Criança/adolescente',
-    'PCD',
-    'Álcool/drogas',
-    'Família em vulnerabilidade'
+    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 
+    'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'
   ],
 
-  status: [
-    { value: 'AGUARDANDO_ACOLHIDA', label: 'Aguardando Acolhida' },
-    { value: 'EM_ACOLHIDA', label: 'Em Acolhida' },
-    { value: 'AGUARDANDO_DISTRIBUICAO', label: 'Aguardando Distribuição' },
-    { value: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Especializada' },
-    { value: 'EM_ACOMPANHAMENTO', label: 'Em Acompanhamento' },
-    { value: 'EM_MONITORAMENTO', label: 'Em Monitoramento' },
-    { value: 'DESLIGADO', label: 'Desligado' },
-  ]
+  // Formata para { value, label } para componentes de Select
+  status: Object.entries(STATUS_CONFIG).map(([key, config]) => ({
+    value: key,
+    label: config.label
+  }))
 }

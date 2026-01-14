@@ -26,6 +26,6 @@
       "@/*": ["./src/*"] //
     }
   },
-  "include": ["src"], //
+  "include": ["src", "../backend/src/utils/geocoding.ts"], //
   "references": [{ "path": "./tsconfig.node.json" }] //
 }

@@ -4,7 +4,7 @@ import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'node:path'
-import fs from 'node:fs'
+import { fileURLToPath } from 'node:url' // Necessário para ESM
 import { 
   serializerCompiler, 
   validatorCompiler, 
@@ -14,7 +14,7 @@ import {
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 
-// Rotas
+// Import de TODAS as rotas
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
@@ -34,92 +34,123 @@ import { deliverablesRoutes } from './routes/deliverables'
 import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
+import { rmaRoutes } from './routes/rma'
+
+// --- CONFIGURAÇÃO DE AMBIENTE ---
+// Recria __dirname para ES Modules
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const isDev = process.env.NODE_ENV !== 'production'
 
 const app = fastify({
   logger: {
-    transport: {
-      target: 'pino-pretty',
-      options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
-    },
+    // Pino-pretty apenas em DEV para não impactar performance em PROD
+    transport: isDev
+      ? {
+          target: 'pino-pretty',
+          options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
+        }
+      : undefined,
   },
 }).withTypeProvider<ZodTypeProvider>()
 
 // --- PLUGINS GLOBAIS ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
-app.register(cors, { origin: true })
-app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret' })
-app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
+// [IMPORTANTE] CORS
+app.register(cors, { 
+  origin: true, // Em produção, considere restringir para o domínio do frontend
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition'] 
+})
+
+app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret' })
+app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }) // 10MB limit
+
+// Documentação Swagger
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS API', version: '7.2.0' },
+    info: { title: 'CREAS API - SUAS', version: '7.2.0' },
     components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
   },
   transform: jsonSchemaTransform,
 })
 app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
+// Decorator Auth
 app.decorate('authenticate', async (request: any, reply: any) => {
-  try { await request.jwtVerify() } catch (err) { reply.send(err) }
+  try { 
+    await request.jwtVerify() 
+  } catch (err) { 
+    reply.status(401).send({ message: 'Não autorizado', code: 'UNAUTHORIZED' }) 
+  }
 })
 
-// --- REGISTRO DE ROTAS CORRIGIDO ---
-// Criamos um grupo '/api'. Dentro dele, registramos as rotas SEM adicionar prefixo extra.
-// Como os arquivos já tem '/cases', '/users', etc., o resultado final será '/api/cases'.
+// --- REGISTRO DE ROTAS ---
 app.register(async (api) => {
-  api.register(authRoutes)         // -> /api/login
-  api.register(caseRoutes)         // -> /api/cases
-  api.register(userRoutes)         // -> /api/users
-  api.register(evolutionRoutes)    // -> /api/evolutions
-  api.register(pafRoutes)          // -> /api/paf
-  api.register(statsRoutes)        // -> /api/stats
-  api.register(appointmentRoutes)  // -> /api/appointments
-  api.register(reportRoutes)       // -> /api/reports
-  api.register(alertRoutes)        // -> /api/alerts
-  api.register(auditRoutes)        // -> /api/audit
-  api.register(attachmentRoutes)   // -> /api/attachments
-  api.register(importRoutes)       // -> /api/import
-  api.register(filterRoutes)       // -> /api/filters
-  api.register(referralRoutes)     // -> /api/referrals
-  api.register(familyRoutes)       // -> /api/family
-  api.register(deliverablesRoutes) // -> /api/deliverables
-  api.register(groupRoutes)        // -> /api/groups
-  api.register(workspaceRoutes)    // -> /api/workspace
-  api.register(waitingListRoutes)  // -> /api/waiting-list
+  api.register(authRoutes)
+  api.register(caseRoutes)
+  api.register(userRoutes)
+  api.register(evolutionRoutes)
+  api.register(pafRoutes)
+  api.register(statsRoutes)
+  api.register(appointmentRoutes)
+  api.register(reportRoutes)
+  api.register(alertRoutes)
+  api.register(auditRoutes)
+  api.register(attachmentRoutes)
+  api.register(importRoutes)
+  api.register(filterRoutes)
+  api.register(referralRoutes)
+  api.register(familyRoutes)
+  api.register(deliverablesRoutes)
+  api.register(groupRoutes)
+  api.register(workspaceRoutes)
+  api.register(waitingListRoutes)
+  api.register(rmaRoutes)
   
-  // Dashboard é especial (alias). Se statsRoutes define /stats, e colocarmos prefixo /dashboard...
-  // ficaria /api/dashboard/stats. Vamos deixar assim por compatibilidade.
+  // Dashboard específico (cuidado com duplicidade se statsRoutes já tiver rotas base)
   api.register(statsRoutes, { prefix: '/dashboard' })
 
 }, { prefix: '/api' })
 
-// --- SERVIR FRONTEND ---
+// --- SERVIR FRONTEND (SPA) ---
+// Caminho robusto para o build do Vite
 const frontendDist = path.join(__dirname, '../../frontend/dist')
+
 app.register(fastifyStatic, {
   root: frontendDist,
   prefix: '/',
-  wildcard: false,
+  wildcard: false, // Importante: Desativa wildcard automático para tratarmos manualmente o SPA
 })
 
+// Handler SPA e API 404
 app.setNotFoundHandler((req, reply) => {
+  // Se for rota de API, retorna JSON 404
   if (req.raw.url && req.raw.url.startsWith('/api')) {
-    return reply.status(404).send({ message: `Rota não encontrada: ${req.raw.url}` })
+    return reply.status(404).send({ 
+      error: 'Not Found',
+      message: `Rota não encontrada: ${req.raw.url}` 
+    })
   }
+  
+  // Se for navegação do browser (React Router), serve o index.html
   return reply.sendFile('index.html')
 })
 
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 3333
-    const host = '0.0.0.0'
+    const host = '0.0.0.0' // Obrigatório para Render/Docker
     
-    // Imprime rotas para confirmar a correção
     await app.ready()
-    console.log(app.printRoutes()) 
-
     await app.listen({ port, host })
+    
     console.log(`🚀 HTTP Server running on http://${host}:${port}`)
+    console.log(`📂 Serving frontend from: ${frontendDist}`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)

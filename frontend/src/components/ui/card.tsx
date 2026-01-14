@@ -1,15 +1,13 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-/**
- * CARD — GOV-BR Moderno
- * --------------------------------------------------
- * • Bordas suaves (radius baseado no theme)
- * • Sombra leve e consistente
- * • Transição suave para hover
- * • Correções de hierarquia tipográfica
- */
+/* -------------------------------------------------------------------------- */
+/* COMPONENTES DE CARD                                                        */
+/* -------------------------------------------------------------------------- */
 
+// 1. CARD BASE
+// Removemos o hover effect padrão para evitar "falsa aforância".
+// Se precisar de um card clicável, basta adicionar: "transition-all hover:shadow-md cursor-pointer" via className na instância.
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -18,7 +16,6 @@ const Card = React.forwardRef<
     ref={ref}
     className={cn(
       "rounded-xl border bg-card text-card-foreground shadow-sm",
-      "transition-all duration-200 hover:shadow-md hover:border-primary/40",
       className
     )}
     {...props}
@@ -26,22 +23,24 @@ const Card = React.forwardRef<
 ))
 Card.displayName = "Card"
 
+// 2. HEADER
+// Removemos o gradiente para um look mais clean e profissional.
+// O espaçamento (flex-col space-y-1.5) cuida da hierarquia entre Título e Descrição.
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      "flex flex-col space-y-1.5 p-6 pb-3",
-      "bg-gradient-to-b from-background to-muted/20 rounded-t-xl",
-      className
-    )}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
     {...props}
   />
 ))
 CardHeader.displayName = "CardHeader"
 
+// 3. TITLE
+// Mantivemos h3 como padrão semântico, mas permitimos override.
+// tracking-tight deixa o título mais compacto e moderno.
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
@@ -50,7 +49,6 @@ const CardTitle = React.forwardRef<
     ref={ref}
     className={cn(
       "text-lg font-semibold leading-none tracking-tight",
-      "text-foreground",
       className
     )}
     {...props}
@@ -58,34 +56,32 @@ const CardTitle = React.forwardRef<
 ))
 CardTitle.displayName = "CardTitle"
 
+// 4. DESCRIPTION
+// text-muted-foreground garante que o contraste seja acessível mas visualmente distinto do título.
 const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn(
-      "text-sm text-muted-foreground",
-      "leading-relaxed",
-      className
-    )}
+    className={cn("text-sm text-muted-foreground leading-relaxed", className)}
     {...props}
   />
 ))
 CardDescription.displayName = "CardDescription"
 
+// 5. CONTENT
+// p-6 padrão, mas pt-0 se houver header acima, para manter o ritmo vertical correto.
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("p-6 pt-0", className)}
-    {...props}
-  />
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
 ))
 CardContent.displayName = "CardContent"
 
+// 6. FOOTER
+// Flexbox pronto para alinhar botões à direita ou esquerda.
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -98,11 +94,4 @@ const CardFooter = React.forwardRef<
 ))
 CardFooter.displayName = "CardFooter"
 
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent
-}
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }

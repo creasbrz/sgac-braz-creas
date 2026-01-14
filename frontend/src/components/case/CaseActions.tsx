@@ -1,8 +1,9 @@
-// frontend/src/components/case/CaseActions.tsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { MoreVertical, UserPlus, ArrowRightLeft, Power, Loader2 } from 'lucide-react'
+import { 
+  MoreHorizontal, UserPlus, ArrowRight, CheckCircle2, XCircle, Loader2, Power, AlertTriangle 
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
@@ -27,10 +28,12 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-import { getAvailableActions, type StatusAction } from '@/constants/caseTransitions'
+import { getAvailableActions, type StatusAction } from '@/constants/cases/transitions'
+import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases/definitions'
+
 import { AssignSpecialistModal } from '@/components/modals/AssignSpecialistModal'
-import { MOTIVOS_DESLIGAMENTO, DESTINOS_DESLIGAMENTO } from '@/constants/caseConstants'
 
 interface CaseActionsProps {
   caseId: string
@@ -43,19 +46,17 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  // Modais
+  // Estados dos Modais
   const [isAssignOpen, setIsAssignOpen] = useState(false)
   const [isCloseOpen, setIsCloseOpen] = useState(false)
-  
-  // Confirmação de Mudança de Status Simples
   const [pendingStatusAction, setPendingStatusAction] = useState<StatusAction | null>(null)
 
-  // Dados do formulário de desligamento
+  // Estados do Form de Desligamento
   const [closeReason, setCloseReason] = useState('')
   const [closeDestination, setCloseDestination] = useState('')
   const [closeParecer, setCloseParecer] = useState('')
 
-  // 1. Mutação para Mudar Status (Simples)
+  // 1. Mutação: Alterar Status
   const { mutate: changeStatus, isPending: isChanging } = useMutation({
     mutationFn: async (newStatus: string) => {
       await api.patch(`/cases/${caseId}/status`, { status: newStatus })
@@ -63,13 +64,13 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
     onSuccess: () => {
       toast.success('Status atualizado com sucesso!')
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
-      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      queryClient.invalidateQueries({ queryKey: ['cases'] }) 
       setPendingStatusAction(null)
     },
     onError: () => toast.error('Erro ao atualizar status.')
   })
 
-  // 2. Mutação para Desligar
+  // 2. Mutação: Desligar Caso
   const { mutate: closeCase, isPending: isClosing } = useMutation({
     mutationFn: async () => {
       await api.patch(`/cases/${caseId}/close`, {
@@ -79,116 +80,141 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
       })
     },
     onSuccess: () => {
-      toast.success('Caso desligado com sucesso.')
+      toast.success('Caso desligado e arquivado.')
       setIsCloseOpen(false)
+      
+      // Invalida cache para atualizar UI
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       queryClient.invalidateQueries({ queryKey: ['cases'] })
-      navigate('/cases')
+      
+      // [CORREÇÃO] Redireciona para o próprio caso (que agora estará "somente leitura"),
+      // ao invés de ir para a lista geral.
+      navigate(`/app/cases/${caseId}`) 
     },
     onError: () => toast.error('Erro ao desligar caso.')
   })
 
-  // Ações disponíveis baseadas no cargo e status
   const actions = user ? getAvailableActions(status, user.cargo) : []
-
-  const handleActionClick = (action: StatusAction) => {
-    if (action.type === 'assign') {
-      setIsAssignOpen(true)
-    } else if (action.type === 'close') {
-      setIsCloseOpen(true)
-    } else if (action.type === 'status' && action.nextStatus) {
-      setPendingStatusAction(action)
-    }
-  }
-
   if (!actions.length) return null
 
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="default" className="gap-2 shadow-sm">
-            Gerenciar <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>Ações Disponíveis</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {actions.map((action, idx) => (
-            <DropdownMenuItem 
-              key={idx} 
-              onClick={() => handleActionClick(action)}
-              className="cursor-pointer gap-2 py-2"
-            >
-              {action.type === 'assign' && <UserPlus className="h-4 w-4 text-blue-500" />}
-              {action.type === 'status' && <ArrowRightLeft className="h-4 w-4 text-emerald-500" />}
-              {action.type === 'close' && <Power className="h-4 w-4 text-red-500" />}
-              {action.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+  // Handler centralizado
+  const handleAction = (action: StatusAction) => {
+    if (action.type === 'assign') setIsAssignOpen(true)
+    else if (action.type === 'close') setIsCloseOpen(true)
+    else if (action.type === 'status' && action.nextStatus) setPendingStatusAction(action)
+  }
 
-      {/* Modal de Atribuição */}
+  const primaryAction = actions.find(a => a.variant === 'default' || a.type === 'status')
+  const secondaryActions = actions.filter(a => a !== primaryAction)
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Ação Principal em Destaque */}
+      {primaryAction && (
+        <Button 
+          onClick={() => handleAction(primaryAction)}
+          className="shadow-sm font-medium"
+          variant={primaryAction.variant}
+        >
+          {primaryAction.type === 'status' && <ArrowRight className="mr-2 h-4 w-4" />}
+          {primaryAction.type === 'assign' && <UserPlus className="mr-2 h-4 w-4" />}
+          {primaryAction.label}
+        </Button>
+      )}
+
+      {/* Menu de Ações Secundárias */}
+      {secondaryActions.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="shadow-sm">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Outras Ações</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {secondaryActions.map((action, idx) => (
+              <DropdownMenuItem 
+                key={idx} 
+                onClick={() => handleAction(action)}
+                className={`cursor-pointer gap-2 ${action.variant === 'destructive' ? 'text-destructive focus:text-destructive' : ''}`}
+              >
+                {action.type === 'assign' && <UserPlus className="h-4 w-4" />}
+                {action.type === 'status' && <CheckCircle2 className="h-4 w-4" />}
+                {action.type === 'close' && <Power className="h-4 w-4" />}
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {/* --- MODAIS --- */}
+
       <AssignSpecialistModal 
         isOpen={isAssignOpen} 
         onOpenChange={setIsAssignOpen} 
         caseId={caseId} 
       />
 
-      {/* Modal de Confirmação de Mudança de Status */}
-      <Dialog open={!!pendingStatusAction} onOpenChange={(open) => !open && setPendingStatusAction(null)}>
+      {/* Modal de Transição de Status */}
+      <Dialog open={!!pendingStatusAction} onOpenChange={(o) => !o && setPendingStatusAction(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmar Transição</DialogTitle>
+            <DialogTitle>Alterar Status do Caso</DialogTitle>
             <DialogDescription>
-              Deseja alterar o status para <strong>{pendingStatusAction?.label}</strong>?
+              Tem certeza que deseja mover este caso para <strong>{pendingStatusAction?.label}</strong>?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingStatusAction(null)}>Cancelar</Button>
+            <Button variant="ghost" onClick={() => setPendingStatusAction(null)}>Cancelar</Button>
             <Button 
               onClick={() => pendingStatusAction?.nextStatus && changeStatus(pendingStatusAction.nextStatus)}
               disabled={isChanging}
             >
-              {isChanging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirmar
+              {isChanging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Confirmar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Desligamento */}
+      {/* Modal de Desligamento (Critical) */}
       <Dialog open={isCloseOpen} onOpenChange={setIsCloseOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Desligamento do Caso</DialogTitle>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <XCircle className="h-5 w-5" /> Desligamento do Caso
+            </DialogTitle>
             <DialogDescription>
-              Preencha os dados finais para encerrar o acompanhamento.
+              Esta ação encerra o ciclo de atendimento. O caso será arquivado.
             </DialogDescription>
           </DialogHeader>
           
-          <div className="grid gap-4 py-4">
+          <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Atenção</AlertTitle>
+            <AlertDescription>
+              Certifique-se de que todos os relatórios e encaminhamentos foram concluídos antes de prosseguir.
+            </AlertDescription>
+          </Alert>
+
+          <div className="grid gap-4 py-2">
             <div className="space-y-2">
               <Label>Motivo do Desligamento</Label>
               <Select onValueChange={setCloseReason}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecione o motivo principal..." /></SelectTrigger>
                 <SelectContent>
-                  {MOTIVOS_DESLIGAMENTO.map(m => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
+                  {LISTA_MOTIVOS_DESLIGAMENTO.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label>Destino / Encaminhamento Final</Label>
+              <Label>Destino / Encaminhamento</Label>
               <Select onValueChange={setCloseDestination}>
-                <SelectTrigger><SelectValue placeholder="Para onde foi encaminhado?" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Para onde o usuário foi encaminhado?" /></SelectTrigger>
                 <SelectContent>
-                  {DESTINOS_DESLIGAMENTO.map(d => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                  ))}
+                  {LISTA_DESTINOS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -198,25 +224,24 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
               <Textarea 
                 value={closeParecer} 
                 onChange={e => setCloseParecer(e.target.value)} 
-                placeholder="Resumo final do caso..." 
-                className="h-24"
+                placeholder="Breve resumo do caso e justificativa do encerramento..." 
+                className="h-24 resize-none"
               />
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsCloseOpen(false)}>Cancelar</Button>
             <Button 
               variant="destructive" 
               onClick={() => closeCase()} 
               disabled={!closeReason || !closeParecer || isClosing}
             >
-              {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirmar Desligamento
+              {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Encerrar Caso
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

@@ -1,60 +1,60 @@
 import { useMemo } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  PieChart, Pie, Cell, LabelList
+  XAxis, YAxis, CartesianGrid, 
+  PieChart, Pie, Label, BarChart, Bar, LabelList
 } from 'recharts'
-import { TrendingUp, AlertTriangle, PieChart as PieIcon, Activity, UserPlus, CheckCircle2 } from 'lucide-react'
+import { 
+  TrendingUp, AlertTriangle, PieChart as PieIcon, 
+  Activity, UserPlus, CheckCircle2} from 'lucide-react'
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent, 
+  ChartLegend, 
+  ChartLegendContent 
+} from "@/components/ui/chart"
+
 import type { ObservatoryData } from '@/utils/pdfGenerator'
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
 
-function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+// --- UTILS ---
 
-const COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#f97316', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1']
+// --- CHART CONFIGURATIONS ---
+const evolutionChartConfig = {
+  novos: {
+    label: "Novos Casos",
+    color: "hsl(var(--chart-1))", // Blue/Primary
+  },
+  desligados: {
+    label: "Desligamentos",
+    color: "hsl(var(--chart-2))", // Emerald/Green
+  },
+} satisfies ChartConfig
 
-// Componente de Card de Métrica (KPI)
-function MetricCard({ title, value, icon: Icon, colorClass, bgClass }: any) {
-  return (
-    <Card className={cn("border-l-4 shadow-sm hover:shadow-md transition-shadow", colorClass.replace('text-', 'border-l-'))}>
-      <CardContent className="p-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-          <h3 className={cn("text-2xl font-bold mt-1", colorClass)}>{value}</h3>
-        </div>
-        <div className={cn("p-3 rounded-full", bgClass)}>
-          <Icon className={cn("h-5 w-5", colorClass)} />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// Tooltip Customizado Unificado
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-popover border border-border shadow-md rounded-lg p-3 text-popover-foreground text-xs">
-        <p className="font-semibold mb-1">{label}</p>
-        {payload.map((entry: any, idx: number) => (
-          <div key={idx} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-            <span className="capitalize">{entry.name}:</span>
-            <span className="font-mono font-bold">{entry.value}</span>
-          </div>
-        ))}
-      </div>
-    )
+const urgencyChartConfig = {
+  value: {
+    label: "Quantidade",
+    // Cores serão definidas dinamicamente no render
   }
-  return null
-}
+} satisfies ChartConfig
+
+const violationChartConfig = {
+  value: {
+    label: "Ocorrências",
+  }
+} satisfies ChartConfig
 
 export function OverviewSection({ data }: { data: ObservatoryData }) {
+  
+  // Helper para cor de urgência (mantendo lógica de negócio)
   const getUrgencyColor = (weight: number) => {
-    if (weight >= 4) return '#ef4444'; // Red
-    if (weight === 3) return '#f97316'; // Orange
-    if (weight === 2) return '#eab308'; // Yellow
-    return '#22c55e'; // Green
+    if (weight >= 4) return 'hsl(var(--destructive))'; // Red
+    if (weight === 3) return 'hsl(var(--chart-4))'; // Orange
+    if (weight === 2) return 'hsl(var(--chart-3))'; // Yellow/Amber
+    return 'hsl(var(--chart-2))'; // Green
   }
 
   // Cálculos Básicos
@@ -62,191 +62,190 @@ export function OverviewSection({ data }: { data: ObservatoryData }) {
   const totalDesligados = useMemo(() => data.efficiencyData.totalClosed, [data])
   const totalRiscoAlto = useMemo(() => data.urgencyData.filter((u) => u.weight >= 3).reduce((acc, c) => acc + c.value, 0), [data])
   
-  // [MODIFICADO] Lógica Avançada de Processamento para Tipificação
-  // Separa strings compostas ("Violação A, Violação B") em contagens individuais
+  // Processamento de Violações (Split & Count)
   const pieData = useMemo(() => {
     const rawCounts: Record<string, number> = {}
 
     data.violationData.forEach((item) => {
-      // 1. Divide por vírgula se houver múltiplas
       const categories = item.name.split(',').map(s => s.trim())
-      
-      // 2. Itera e soma individualmente
       categories.forEach(cat => {
-        if (cat) {
-          // Soma o valor do item para cada categoria encontrada
-          // (Ex: se item.value é 1 e tem 3 categorias, soma 1 para cada uma)
-          rawCounts[cat] = (rawCounts[cat] || 0) + item.value
-        }
+        if (cat) rawCounts[cat] = (rawCounts[cat] || 0) + item.value
       })
     })
 
-    // 3. Reconstrói o array de dados
-    const processedData = Object.entries(rawCounts).map(([name, value]) => ({ name, value }))
-
-    // 4. Ordenação e Agrupamento (Lógica original)
-    const sorted = processedData.sort((a, b) => b.value - a.value)
+    const processedData = Object.entries(rawCounts)
+      .map(([name, value], index) => ({ 
+        name, 
+        value,
+        fill: `hsl(var(--chart-${(index % 5) + 1}))` // Cores cíclicas do tema
+      }))
+      .sort((a, b) => b.value - a.value)
     
-    if (sorted.length <= 5) return sorted
+    if (processedData.length <= 5) return processedData
     
-    const top5 = sorted.slice(0, 5)
-    const outros = sorted.slice(5).reduce((acc, curr) => acc + curr.value, 0)
-    return [...top5, { name: 'Outros', value: outros }]
+    const top5 = processedData.slice(0, 5)
+    const outrosVal = processedData.slice(5).reduce((acc, curr) => acc + curr.value, 0)
+    
+    return [...top5, { name: 'Outros', value: outrosVal, fill: 'hsl(var(--muted))' }]
   }, [data])
 
-  // Recalcula a principal demanda baseada nos dados processados, não nos brutos
   const principalDemanda = pieData.length > 0 ? pieData[0].name : 'N/A'
+  const totalViolations = pieData.reduce((acc, curr) => acc + curr.value, 0)
+
+  // Dados de Urgência com Cores
+  const urgencyData = useMemo(() => 
+    data.urgencyData.map(d => ({
+      ...d,
+      fill: getUrgencyColor(d.weight)
+    })), 
+  [data.urgencyData])
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
       
-      {/* 1. KPIs (Key Performance Indicators) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard 
+      {/* 1. KPIs */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <DashboardStatCard 
           title="Novos Casos (6 Meses)" 
           value={totalNovos} 
           icon={UserPlus} 
-          colorClass="text-blue-600" 
-          bgClass="bg-blue-100 dark:bg-blue-900/20" 
+          variant="blue" 
         />
-        <MetricCard 
+        <DashboardStatCard 
           title="Casos Desligados" 
           value={totalDesligados} 
           icon={CheckCircle2} 
-          colorClass="text-emerald-600" 
-          bgClass="bg-emerald-100 dark:bg-emerald-900/20" 
+          variant="green" 
         />
-        <MetricCard 
+        <DashboardStatCard 
           title="Alto Risco Ativo" 
           value={totalRiscoAlto} 
           icon={AlertTriangle} 
-          colorClass="text-red-600" 
-          bgClass="bg-red-100 dark:bg-red-900/20" 
+          variant="rose" 
         />
-        <MetricCard 
+        <DashboardStatCard 
           title="Principal Demanda" 
-          value={<span className="text-lg truncate block max-w-[150px]" title={principalDemanda}>{principalDemanda}</span>} 
+          value={principalDemanda} 
           icon={Activity} 
-          colorClass="text-purple-600" 
-          bgClass="bg-purple-100 dark:bg-purple-900/20" 
+          variant="purple" 
+          description="Violação mais recorrente"
+          // Pequeno ajuste para texto longo se necessário
+          className="text-xl" 
         />
-      </div>
+      </section>
 
-      {/* 2. Gráficos Principais */}
+      {/* 2. GRÁFICOS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Gráfico de Fluxo (Entradas x Saídas) */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2">
+        {/* Fluxo de Atendimento (Bar Chart) */}
+        <Card className="shadow-sm border-border/60">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <TrendingUp className="h-4 w-4 text-blue-500"/> Fluxo de Atendimento
+              <TrendingUp className="h-4 w-4 text-primary"/> Fluxo de Atendimento
             </CardTitle>
             <CardDescription>Comparativo mensal de entradas e saídas.</CardDescription>
           </CardHeader>
-          <CardContent className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.evolutionData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5}/>
+          <CardContent>
+            <ChartContainer config={evolutionChartConfig} className="aspect-[16/9] w-full max-h-[350px]">
+              <BarChart accessibilityLayer data={data.evolutionData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
                 <XAxis 
                   dataKey="name" 
-                  fontSize={11} 
                   tickLine={false} 
                   axisLine={false} 
-                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                  dy={10}
+                  tickMargin={10} 
+                  fontSize={12}
                 />
-                <YAxis 
-                  allowDecimals={false} 
-                  fontSize={11} 
-                  tickLine={false} 
-                  axisLine={false}
-                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted)/0.2)' }} />
-                <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }}/>
-                <Bar dataKey="novos" name="Novos Casos" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
-                <Bar dataKey="desligados" name="Desligamentos" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                <ChartTooltip cursor={{fill: 'hsl(var(--muted)/0.2)'}} content={<ChartTooltipContent indicator="dashed" />} />
+                <ChartLegend content={<ChartLegendContent />} />
+                
+                <Bar dataKey="novos" fill="var(--color-novos)" radius={[4, 4, 0, 0]} barSize={24} />
+                <Bar dataKey="desligados" fill="var(--color-desligados)" radius={[4, 4, 0, 0]} barSize={24} />
               </BarChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
-        {/* Matriz de Risco */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2">
+        {/* Matriz de Risco (Vertical Bar) */}
+        <Card className="shadow-sm border-border/60">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <AlertTriangle className="h-4 w-4 text-orange-500"/> Matriz de Risco
             </CardTitle>
             <CardDescription>Distribuição dos casos ativos por gravidade.</CardDescription>
           </CardHeader>
-          <CardContent className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.urgencyData} layout="vertical" margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" opacity={0.5}/>
-                <XAxis type="number" hide />
+          <CardContent>
+            <ChartContainer config={urgencyChartConfig} className="aspect-[16/9] w-full max-h-[350px]">
+              <BarChart accessibilityLayer data={urgencyData} layout="vertical" margin={{ left: 0, right: 40 }}>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4} />
                 <YAxis 
                   dataKey="name" 
                   type="category" 
                   width={100} 
-                  fontSize={11} 
                   tickLine={false} 
-                  axisLine={false}
-                  tick={{ fill: 'hsl(var(--foreground))', fontWeight: 500 }}
+                  axisLine={false} 
+                  fontSize={12}
+                  tick={{fontWeight: 500}} 
                 />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }}/>
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24} name="Quantidade">
-                  <LabelList dataKey="value" position="right" fontSize={11} fontWeight="bold" fill="hsl(var(--foreground))" />
-                  {data.urgencyData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={getUrgencyColor(entry.weight)} />
-                  ))}
+                <XAxis type="number" hide />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                  <LabelList 
+                    dataKey="value" 
+                    position="right" 
+                    className="fill-foreground font-bold text-xs" 
+                  />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
-        {/* Tipificação das Violações */}
-        <Card className="lg:col-span-2 shadow-sm">
-          <CardHeader className="pb-2">
+        {/* Tipificação das Violações (Donut) */}
+        <Card className="lg:col-span-2 shadow-sm border-border/60">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <PieIcon className="h-4 w-4 text-purple-500"/> Tipificação das Violações
             </CardTitle>
             <CardDescription>Principais naturezas de violação identificadas (Contagem individual).</CardDescription>
           </CardHeader>
-          <CardContent className="h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie 
-                  data={pieData} 
-                  cx="50%" 
-                  cy="50%" 
-                  innerRadius={80} 
-                  outerRadius={110} 
-                  paddingAngle={2} 
-                  dataKey="value"
-                  stroke="hsl(var(--background))"
-                  strokeWidth={2}
-                >
-                  <LabelList 
-                    dataKey="name" 
-                    position="outside" 
-                    fontSize={11} 
-                    fill="hsl(var(--muted-foreground))" 
-                    stroke="none" 
-                    offset={20}
+          <CardContent>
+            <div className="h-[350px] w-full">
+              <ChartContainer config={violationChartConfig} className="mx-auto aspect-square max-h-[350px]">
+                <PieChart>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                  <Pie 
+                    data={pieData} 
+                    dataKey="value" 
+                    nameKey="name" 
+                    innerRadius={60} 
+                    strokeWidth={4}
+                  >
+                    <Label 
+                      content={({ viewBox }) => {
+                        if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                          return (
+                            <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
+                                {totalViolations}
+                              </tspan>
+                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
+                                OCORRÊNCIAS
+                              </tspan>
+                            </text>
+                          )
+                        }
+                      }}
+                    />
+                  </Pie>
+                  <ChartLegend 
+                    content={<ChartLegendContent nameKey="name" />} 
+                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
                   />
-                  {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  layout="vertical" 
-                  verticalAlign="middle" 
-                  align="right"
-                  iconType="circle"
-                  wrapperStyle={{ fontSize: '12px', right: 0 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+                </PieChart>
+              </ChartContainer>
+            </div>
           </CardContent>
         </Card>
 

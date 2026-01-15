@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
+import { MapPin, Filter, X } from 'lucide-react'
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { MapPin, Filter } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { TerritoryMap, type MapPoint } from '@/components/analytics/TerritoryMap'
 
 interface TerritorySectionProps {
@@ -13,13 +15,13 @@ export function TerritorySection({ mapData }: TerritorySectionProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [selectedIntensity, setSelectedIntensity] = useState<string>('all')
 
-  // 1. Extrair categorias ÚNICAS para o filtro (Evita erro de chaves duplicadas)
+  // Deduplicate categories
   const categories = useMemo(() => {
     const allCats = mapData.map(p => p.categoria).filter(Boolean) as string[]
-    return Array.from(new Set(allCats)).sort() // Remove duplicatas
+    return Array.from(new Set(allCats)).sort()
   }, [mapData])
 
-  // 2. Filtrar dados do mapa
+  // Filter data
   const filteredData = useMemo(() => {
     return mapData.filter(point => {
       const matchCat = selectedCategory === 'all' || point.categoria === selectedCategory
@@ -28,12 +30,19 @@ export function TerritorySection({ mapData }: TerritorySectionProps) {
     })
   }, [mapData, selectedCategory, selectedIntensity])
 
+  const hasActiveFilters = selectedCategory !== 'all' || selectedIntensity !== 'all'
+
+  const clearFilters = () => {
+    setSelectedCategory('all')
+    setSelectedIntensity('all')
+  }
+
   return (
-    <Card className="flex flex-col h-[600px] border shadow-sm">
-      <CardHeader className="pb-4 border-b bg-muted/20">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <Card className="flex flex-col h-[600px] border shadow-sm overflow-hidden">
+      <CardHeader className="pb-4 border-b bg-muted/20 px-6 py-4">
+        <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-lg">
+            <CardTitle className="flex items-center gap-2 text-lg font-bold">
               <MapPin className="h-5 w-5 text-primary" />
               Territorialização
             </CardTitle>
@@ -42,14 +51,16 @@ export function TerritorySection({ mapData }: TerritorySectionProps) {
             </CardDescription>
           </div>
           
-          {/* Filtros */}
-          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-2 bg-background border rounded-md px-2 py-1 shadow-sm">
-              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          {/* Controls Bar */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 p-1 bg-background/50 border rounded-lg shadow-sm">
+              <div className="px-2 text-muted-foreground">
+                <Filter className="h-3.5 w-3.5" />
+              </div>
               
-              {/* Filtro de Categoria (Dedupicado) */}
+              {/* Category Filter */}
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="h-7 w-[130px] border-none shadow-none bg-transparent focus:ring-0 text-xs">
+                <SelectTrigger className="h-8 w-[160px] border-0 focus:ring-0 shadow-none bg-transparent">
                   <SelectValue placeholder="Categoria" />
                 </SelectTrigger>
                 <SelectContent>
@@ -60,11 +71,11 @@ export function TerritorySection({ mapData }: TerritorySectionProps) {
                 </SelectContent>
               </Select>
 
-              <div className="w-px h-4 bg-border mx-1" />
+              <div className="w-px h-4 bg-border" />
 
-              {/* Filtro de Risco */}
+              {/* Risk Filter */}
               <Select value={selectedIntensity} onValueChange={setSelectedIntensity}>
-                <SelectTrigger className="h-7 w-[110px] border-none shadow-none bg-transparent focus:ring-0 text-xs">
+                <SelectTrigger className="h-8 w-[130px] border-0 focus:ring-0 shadow-none bg-transparent">
                   <SelectValue placeholder="Risco" />
                 </SelectTrigger>
                 <SelectContent>
@@ -76,8 +87,19 @@ export function TerritorySection({ mapData }: TerritorySectionProps) {
                 </SelectContent>
               </Select>
             </div>
+
+            {hasActiveFilters && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={clearFilters}
+                className="h-8 px-2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5 mr-1" /> Limpar
+              </Button>
+            )}
             
-            <Badge variant="outline" className="h-9 px-3 bg-background">
+            <Badge variant="secondary" className="h-8 px-3 font-normal text-muted-foreground">
               Total: {mapData.length}
             </Badge>
           </div>
@@ -86,6 +108,19 @@ export function TerritorySection({ mapData }: TerritorySectionProps) {
       
       <CardContent className="p-0 flex-1 relative">
         <TerritoryMap data={filteredData} />
+        
+        {/* Empty State Overlay */}
+        {filteredData.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10">
+            <div className="text-center p-6 bg-background rounded-xl border shadow-lg">
+              <MapPin className="h-8 w-8 mx-auto text-muted-foreground mb-2 opacity-50" />
+              <p className="text-sm font-medium">Nenhum caso encontrado nesta área/filtro.</p>
+              <Button variant="link" size="sm" onClick={clearFilters} className="mt-2 h-auto p-0">
+                Limpar filtros
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

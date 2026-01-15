@@ -1,38 +1,60 @@
-// frontend/src/components/analytics/sections/SocialSection.tsx
 import { useMemo } from 'react'
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend, LabelList 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, PieChart, Pie, Label
 } from 'recharts'
 import { Users, BarChart3 } from 'lucide-react'
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent, 
+  ChartLegend, 
+  ChartLegendContent 
+} from "@/components/ui/chart"
+
 import type { ObservatoryData } from '@/utils/pdfGenerator'
 
-// --- TOOLTIP CUSTOMIZADO ---
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-popover border border-border shadow-md rounded-lg p-2 text-popover-foreground text-xs">
-        <p className="font-semibold mb-1">{payload[0].name}</p>
-        <p>Total: <span className="font-bold">{payload[0].value}</span></p>
-      </div>
-    )
-  }
-  return null
-}
+// --- CHART CONFIG ---
+const ageChartConfig = {
+  value: {
+    label: "Usuários",
+    color: "hsl(var(--chart-1))", // Primary/Blue
+  },
+} satisfies ChartConfig
 
+const genderChartConfig = {
+  value: {
+    label: "Usuários",
+  },
+  male: {
+    label: "Masculino",
+    color: "hsl(var(--chart-1))", // Blue
+  },
+  female: {
+    label: "Feminino",
+    color: "hsl(var(--chart-3))", // Pink/Rose
+  },
+  other: {
+    label: "Outros/NI",
+    color: "hsl(var(--muted-foreground))", // Gray
+  }
+} satisfies ChartConfig
+
+// --- MAIN COMPONENT ---
 export function SocialSection({ data }: { data: ObservatoryData }) {
 
-  // Lógica para garantir cores semânticas independente da ordem dos dados
-  const sexDataWithColors = useMemo(() => {
+  // Process Gender Data with Theming
+  const sexData = useMemo(() => {
     return data.sexData.map(item => {
-      let color = '#94a3b8' // Cinza (Outros/Indefinido)
       const name = item.name.toLowerCase()
+      let fill = "var(--color-other)" // Default fallback
       
-      if (name.includes('masculino') || name.startsWith('m')) color = '#3b82f6' // Blue-500
-      if (name.includes('feminino') || name.startsWith('f')) color = '#ec4899' // Pink-500
+      if (name.includes('masculino') || name.startsWith('m')) fill = "var(--color-male)"
+      else if (name.includes('feminino') || name.startsWith('f')) fill = "var(--color-female)"
       
-      return { ...item, fill: color }
+      return { ...item, fill }
     })
   }, [data.sexData])
 
@@ -41,61 +63,61 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       
-      {/* GRÁFICO 1: FAIXA ETÁRIA */}
-      <Card className="shadow-sm hover:shadow-md transition-shadow">
+      {/* 1. FAIXA ETÁRIA (Bar Chart Horizontal) */}
+      <Card className="shadow-sm border-border/60 flex flex-col">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-purple-500"/> Faixa Etária
+            <BarChart3 className="h-5 w-5 text-primary"/> Faixa Etária
           </CardTitle>
           <CardDescription>Distribuição dos usuários por idade.</CardDescription>
         </CardHeader>
-        <CardContent className="h-[350px]">
+        <CardContent className="flex-1 min-h-[350px]">
           {data.ageData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ChartContainer config={ageChartConfig} className="w-full h-full">
               <BarChart 
+                accessibilityLayer
                 data={data.ageData} 
                 layout="vertical" 
-                margin={{ left: 10, right: 30, top: 10, bottom: 0 }}
+                margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
               >
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} horizontal={false}/>
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4}/>
                 <XAxis type="number" hide />
                 <YAxis 
                   dataKey="name" 
                   type="category" 
                   width={100} 
-                  fontSize={11} 
                   tickLine={false} 
-                  axisLine={false}
-                  tick={{ fill: 'hsl(var(--foreground))', fontWeight: 500 }}
+                  axisLine={false} 
+                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
                 />
-                <Tooltip content={<CustomTooltip />} cursor={{fill: 'transparent'}} />
+                <ChartTooltip 
+                  cursor={{fill: 'hsl(var(--muted)/0.2)'}} 
+                  content={<ChartTooltipContent indicator="dashed" />} 
+                />
                 <Bar 
                   dataKey="value" 
-                  name="Total" 
-                  fill="#8b5cf6" 
+                  fill="var(--color-value)" 
                   radius={[0, 4, 4, 0]} 
                   barSize={24}
                 >
                   <LabelList 
                     dataKey="value" 
                     position="right" 
-                    fontSize={11} 
-                    fontWeight="bold" 
-                    fill="hsl(var(--foreground))" 
+                    className="fill-foreground font-bold text-xs" 
                   />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
               Sem dados de idade disponíveis.
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* GRÁFICO 2: DISTRIBUIÇÃO POR SEXO */}
-      <Card className="shadow-sm hover:shadow-md transition-shadow">
+      {/* 2. GÊNERO (Donut Chart) */}
+      <Card className="shadow-sm border-border/60 flex flex-col">
         <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
             <div>
@@ -104,41 +126,49 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
               </CardTitle>
               <CardDescription>Perfil demográfico.</CardDescription>
             </div>
-            <div className="text-right">
-               <span className="text-2xl font-bold block">{totalUsers}</span>
+            <div className="text-right bg-muted/20 px-3 py-1 rounded-lg border border-border/30">
+               <span className="text-2xl font-bold block leading-none tabular-nums">{totalUsers}</span>
                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total</span>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="h-[350px]">
-          {sexDataWithColors.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+        <CardContent className="flex-1 min-h-[350px]">
+          {sexData.length > 0 ? (
+            <ChartContainer config={genderChartConfig} className="mx-auto aspect-square max-h-[350px]">
               <PieChart>
+                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                 <Pie 
-                  data={sexDataWithColors} 
-                  innerRadius={70} // Estilo Donut
-                  outerRadius={100} 
-                  paddingAngle={2}
+                  data={sexData} 
                   dataKey="value" 
-                  stroke="hsl(var(--card))"
-                  strokeWidth={2}
+                  nameKey="name" 
+                  innerRadius={70} 
+                  strokeWidth={4}
                 >
-                  {sexDataWithColors.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
+                  <Label 
+                    content={({ viewBox }) => {
+                      if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                        return (
+                          <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                            <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
+                              {totalUsers}
+                            </tspan>
+                            <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
+                              USUÁRIOS
+                            </tspan>
+                          </text>
+                        )
+                      }
+                    }}
+                  />
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  verticalAlign="middle" 
-                  align="right" 
-                  layout="vertical"
-                  iconType="circle"
-                  wrapperStyle={{ fontSize: '12px' }}
+                <ChartLegend 
+                  content={<ChartLegendContent nameKey="name" />} 
+                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
                 />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
               Sem dados de gênero disponíveis.
             </div>
           )}

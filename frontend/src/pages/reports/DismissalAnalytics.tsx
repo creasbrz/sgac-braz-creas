@@ -1,27 +1,49 @@
-// frontend/src/components/reports/DismissalAnalytics.tsx
 import { useState, useMemo } from 'react'
 import { useQuery } from "@tanstack/react-query"
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, LabelList
 } from "recharts"
-import { FileX, CheckCircle2, Ban, Download, AlertCircle, MapPin } from "lucide-react"
+import { FileX, CheckCircle2, Ban, Download, MapPin, PieChart as PieIcon } from "lucide-react"
+
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { AlertDescription } from '@/components/ui/alert'
+import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent, 
+  ChartLegend, 
+  ChartLegendContent 
+} from "@/components/ui/chart"
+
 import { api } from "@/lib/api"
 import { generateDismissalPDF } from "@/utils/pdfGenerator"
 
-const COLORS = ["#10b981", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#64748b", "#ec4899", "#14b8a6"]
-
+// --- TYPES ---
 interface DismissalData {
   total: number
   byMotivo: { name: string; value: number }[]
   byDestino: { name: string; value: number }[]
   list: any[]
 }
+
+// --- CHART CONFIG ---
+const reasonChartConfig = {
+  value: {
+    label: "Casos",
+  },
+} satisfies ChartConfig
+
+const destinationChartConfig = {
+  value: {
+    label: "Encaminhamentos",
+    color: "hsl(var(--chart-2))", // Emerald/Green theme
+  },
+} satisfies ChartConfig
 
 export function DismissalAnalytics() {
   const [months, setMonths] = useState(12)
@@ -35,19 +57,20 @@ export function DismissalAnalytics() {
     retry: 1
   })
 
+  // Stats Calculation
   const stats = useMemo(() => {
     if (!data || data.total === 0) return { successRate: 0, evasionRate: 0 }
 
     const total = data.total
 
     const successCount = data.byMotivo
-      .filter(m => m.name.includes('Minimização') || m.name.includes('Autonomia'))
+      .filter(m => m.name.toLowerCase().includes('minimização') || m.name.toLowerCase().includes('autonomia'))
       .reduce((acc, curr) => acc + curr.value, 0)
 
     const evasionCount = data.byMotivo
       .filter(m => 
-        m.name.includes('Recusa') || 
-        m.name.includes('não localizado')
+        m.name.toLowerCase().includes('recusa') || 
+        m.name.toLowerCase().includes('não localizado')
       )
       .reduce((acc, curr) => acc + curr.value, 0)
 
@@ -55,6 +78,15 @@ export function DismissalAnalytics() {
       successRate: Math.round((successCount / total) * 100),
       evasionRate: Math.round((evasionCount / total) * 100)
     }
+  }, [data])
+
+  // Chart Data Processing (Colors)
+  const reasonData = useMemo(() => {
+    if (!data?.byMotivo) return []
+    return data.byMotivo.map((item, index) => ({
+      ...item,
+      fill: `hsl(var(--chart-${(index % 5) + 1}))`
+    }))
   }, [data])
 
   const handleExport = () => {
@@ -72,8 +104,11 @@ export function DismissalAnalytics() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="flex justify-end"><Skeleton className="h-9 w-40" /></div>
+      <div className="space-y-6 p-1">
+        <div className="flex justify-between items-center">
+           <Skeleton className="h-8 w-48" />
+           <Skeleton className="h-9 w-32" />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -89,29 +124,29 @@ export function DismissalAnalytics() {
 
   if (isError || !data) {
     return (
-      <Alert variant="destructive" className="my-6">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Erro na Análise</AlertTitle>
-        <AlertDescription>
-          Não foi possível carregar os dados. 
-          <Button variant="link" className="p-0 h-auto ml-1 text-destructive underline" onClick={() => refetch()}>
+      <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed rounded-xl bg-destructive/5 text-destructive animate-in fade-in">
+        <div className="text-center p-4">
+          <AlertDescription className="font-medium mb-4 block">
+            Erro na Análise
+          </AlertDescription>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
             Tentar novamente
           </Button>
-        </AlertDescription>
-      </Alert>
+        </div>
+      </div>
     )
   }
 
   if (data.total === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[50vh] space-y-4 text-center border-2 border-dashed rounded-xl bg-muted/5">
-        <div className="p-4 bg-muted rounded-full">
-          <FileX className="h-8 w-8 text-muted-foreground" />
+      <div className="flex flex-col items-center justify-center h-[50vh] space-y-4 text-center border-2 border-dashed rounded-xl bg-muted/10 animate-in fade-in">
+        <div className="p-4 bg-muted/50 rounded-full">
+          <FileX className="h-10 w-10 text-muted-foreground opacity-50" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-foreground">Nenhum desligamento registrado</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Não há registros históricos para o período selecionado.
+          <h3 className="text-lg font-semibold text-foreground">Nenhum desligamento</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+            Não há registros de casos encerrados para o período de {months} meses.
           </p>
         </div>
         <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
@@ -128,16 +163,17 @@ export function DismissalAnalytics() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500">
       
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* HEADER & CONTROLS */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-6">
         <div>
-            <h2 className="text-lg font-semibold tracking-tight">Indicadores de Desligamento</h2>
-            <p className="text-sm text-muted-foreground">Análise qualitativa dos encerramentos de casos.</p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Indicadores de Desligamento</h2>
+            <p className="text-sm text-muted-foreground mt-1">Análise qualitativa dos encerramentos e destinos.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
             <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-                <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectTrigger className="w-full sm:w-[140px] h-9">
                     <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent>
@@ -147,121 +183,121 @@ export function DismissalAnalytics() {
                     <SelectItem value="60">5 anos</SelectItem>
                 </SelectContent>
             </Select>
-            <Button variant="outline" onClick={handleExport} className="gap-2">
+            <Button variant="outline" size="sm" onClick={handleExport} className="gap-2 h-9">
                 <Download className="h-4 w-4"/>
-                <span className="hidden sm:inline">Exportar PDF</span>
+                <span className="hidden sm:inline">PDF</span>
             </Button>
         </div>
       </div>
 
+      {/* 1. KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Desligamentos</CardTitle>
-            <FileX className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.total}</div>
-            <p className="text-xs text-muted-foreground">Casos encerrados no período</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Sucesso (Autonomia)</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{stats.successRate}%</div>
-            <p className="text-xs text-muted-foreground">Minimização de riscos alcançada</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Evasão</CardTitle>
-            <Ban className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.evasionRate}%</div>
-            <p className="text-xs text-muted-foreground">Recusa ou não localização</p>
-          </CardContent>
-        </Card>
+        <DashboardStatCard 
+          title="Total de Desligamentos" 
+          value={data.total} 
+          description="Casos encerrados no período"
+          icon={FileX} 
+          variant="default" 
+        />
+        <DashboardStatCard 
+          title="Taxa de Sucesso" 
+          value={`${stats.successRate}%`} 
+          description="Autonomia alcançada"
+          icon={CheckCircle2} 
+          variant="green" 
+        />
+        <DashboardStatCard 
+          title="Taxa de Evasão" 
+          value={`${stats.evasionRate}%`} 
+          description="Recusa ou não localizado"
+          icon={Ban} 
+          variant="rose" 
+        />
       </div>
 
+      {/* 2. CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        <Card className="flex flex-col">
-          <CardHeader>
-            <CardTitle>Motivos do Desligamento</CardTitle>
-            <CardDescription>Distribuição proporcional por causa registrada</CardDescription>
+        {/* Motivos (Pie Chart) */}
+        <Card className="flex flex-col shadow-sm border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <PieIcon className="h-4 w-4 text-primary"/> Motivos do Desligamento
+            </CardTitle>
+            <CardDescription>Distribuição proporcional por causa.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ChartContainer config={reasonChartConfig} className="mx-auto aspect-square max-h-[350px]">
               <PieChart>
+                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                 <Pie
-                  data={data.byMotivo}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={100}
-                  paddingAngle={2}
+                  data={reasonData}
                   dataKey="value"
-                  // CORREÇÃO: Removido cálculo de x, y, cx, cy não usados
+                  nameKey="name"
+                  innerRadius={60}
+                  strokeWidth={4}
+                  labelLine={false}
                   label={({ percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
-                >
-                  {data.byMotivo.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    itemStyle={{ fontSize: '12px' }}
                 />
-                <Legend 
-                    layout="vertical" 
-                    verticalAlign="middle" 
-                    align="right"
-                    wrapperStyle={{ fontSize: '11px', maxWidth: '40%' }}
+                <ChartLegend 
+                  content={<ChartLegendContent nameKey="name" />} 
+                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
                 />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
-        <Card className="flex flex-col">
-          <CardHeader>
+        {/* Destinos (Bar Chart Horizontal) */}
+        <Card className="flex flex-col shadow-sm border-border/60">
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
                 <div>
-                    <CardTitle>Destinos Pós-Alta</CardTitle>
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-emerald-500"/> Destinos Pós-Alta
+                    </CardTitle>
                     <CardDescription>Encaminhamentos realizados.</CardDescription>
                 </div>
-                <MapPin className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent className="flex-1 min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.byDestino} layout="vertical" margin={{ left: 5, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} strokeOpacity={0.5} />
+            <ChartContainer config={destinationChartConfig} className="w-full h-full">
+              <BarChart 
+                accessibilityLayer
+                data={data.byDestino} 
+                layout="vertical" 
+                margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
+              >
+                <CartesianGrid horizontal={true} vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
                 <XAxis type="number" hide />
                 <YAxis 
                     dataKey="name" 
                     type="category" 
-                    width={140} 
-                    tick={{ fontSize: 10, fill: '#64748b' }} 
-                    interval={0}
+                    width={130} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
+                    // Truncate
+                    tickFormatter={(val) => val.length > 20 ? `${val.slice(0, 20)}...` : val}
                 />
-                <Tooltip 
-                    cursor={{ fill: 'transparent' }} 
-                    contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                <ChartTooltip 
+                    cursor={{fill: 'hsl(var(--muted)/0.2)', radius: 4}} 
+                    content={<ChartTooltipContent indicator="dashed" />} 
                 />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
-                    {data.byDestino.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
-                    ))}
+                <Bar 
+                  dataKey="value" 
+                  fill="var(--color-value)" 
+                  radius={[0, 4, 4, 0]} 
+                  barSize={24}
+                >
+                  <LabelList 
+                    dataKey="value" 
+                    position="right" 
+                    className="fill-foreground font-bold text-xs" 
+                  />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>

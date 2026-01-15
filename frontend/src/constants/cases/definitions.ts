@@ -22,8 +22,8 @@ export const URGENCIA_NIVEIS = {
 
 export const LISTA_VIOLACOES = [
   'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
-  'Violência física', 'Violência psicológica', 'Violência sexual',
-  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial',
+  'Violência física', 'Violência psicológica', 'Abuso sexual', 'Exploração sexual',
+  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial', 'Tráficos de seres humanos',
   'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
 ]
 

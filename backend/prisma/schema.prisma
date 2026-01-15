@@ -313,6 +313,7 @@ model MembroFamilia {
   id          String    @id @default(uuid())
   nome        String
   parentesco  String
+  
   idade       Int?
   cpf         String?
   nascimento  DateTime?
@@ -320,6 +321,10 @@ model MembroFamilia {
   ocupacao    String?
   renda       Decimal?  @db.Decimal(10, 2)
   observacoes String?
+  
+  // [NOVO] Permite registrar violações individuais para o RMA B.6
+  violacao    String[]  @default([])
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   

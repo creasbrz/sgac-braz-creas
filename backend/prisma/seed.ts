@@ -17,16 +17,19 @@ const TEAM_DATA = [
   { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
 ]
 
-// --- LISTAS DE NEGÓCIO ---
+// --- 2. LISTAS DE NEGÓCIO (Alinhadas com definitions.ts) ---
+
+// Flattened from URGENCIA_NIVEIS
 const LISTA_URGENCIAS = [
-  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
+  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual',
   'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
   'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
   'Sem risco imediato', 'Visita periódica'
 ]
 
+// Alinhado com LISTA_VIOLACOES do frontend
 const LISTA_VIOLACOES = [
-  'Abandono', 'Negligência', 'Afastamento do convívio familiar',
+  'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
   'Violência física', 'Violência psicológica', 'Violência sexual',
   'Tráfico de seres humanos', 'Abuso financeiro/patrimonial',
   'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
@@ -50,8 +53,9 @@ const TRANSFERENCIA_RENDA = [
 
 const LISTA_MOTIVOS_DESLIGAMENTO = [
   'Transferência de território', 'Falecimento do(a) usuário(a)',
-  'Recusa do atendimento por parte do(a) usuário(a)', 'Usuário(a) não localizado(a)',
-  'Usuário(a) acolhido(a)', 'Minimização dos riscos', 'Não pertencente à demanda do CREAS'
+  'Recusa do atendimento por parte do(a) usuário(a)', 'Usuário(a) não localizado(a) após tentativas exaustivas',
+  'Usuário(a) acolhido(a)', 'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
+  'Minimização dos riscos (Autonomia)', 'Situação não pertencente à demanda do CREAS'
 ]
 
 const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT']
@@ -91,16 +95,16 @@ const generateCoords = () => {
 }
 
 const calculateUrgencyWeight = (u: string) => {
-  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(u)) return 4;
+  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual'].includes(u)) return 4;
   if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
   if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(u)) return 2;
   return 1;
 }
 
 async function main() {
-  console.log('🌱 [SEED V8.0 - GEO + NOVOS CAMPOS] Iniciando...')
+  console.log('🌱 [SEED V9.0 - RMA READY] Iniciando...')
 
-  // 1. Limpeza Segura (Ordem Reversa)
+  // 1. Limpeza Segura (Ordem Reversa para integridade referencial)
   try {
     console.log('🧹 Limpando banco de dados...')
     await prisma.groupAttendance.deleteMany()
@@ -142,7 +146,7 @@ async function main() {
 
   // 3. Casos
   const NUM_CASES = 150
-  console.log(`📂 Gerando ${NUM_CASES} casos simulados com GEO...`)
+  console.log(`📂 Gerando ${NUM_CASES} casos simulados com dados de RMA...`)
 
   for (let i = 0; i < NUM_CASES; i++) {
     const dataEntrada = faker.date.past({ years: 1 })
@@ -183,6 +187,7 @@ async function main() {
     }
 
     const urgencia = faker.helpers.arrayElement(LISTA_URGENCIAS)
+    const category = faker.helpers.arrayElement(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente'])
 
     // --- CRIAÇÃO DO CASO (V3.0) ---
     const newCase = await prisma.case.create({
@@ -193,34 +198,30 @@ async function main() {
         nascimento: faker.date.birthdate({ min: 14, max: 85, mode: 'age' }),
         sexo: faker.helpers.arrayElement(['Masculino', 'Feminino']),
         
-        // Novo formato de contatos (JSON válido)
         contatos: [
             { numero: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`, tipo: "Pessoal" },
             { numero: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`, tipo: "Recado", nome: "Vizinha" }
         ],
 
-        // Novo formato de endereço
         endereco_logradouro: `Quadra ${randInt(1, 50)} Conjunto ${String.fromCharCode(65 + randInt(0, 20))} Casa ${randInt(1, 40)}`,
         endereco_ra: faker.helpers.arrayElement(REGIOES_ADMINISTRATIVAS),
         endereco_cidade: 'Brasília',
         endereco_uf: 'DF',
         endereco_cep: '72700-000',
         
-        // Mapa de Calor
         latitude: coords.lat,
         longitude: coords.lng,
         
         urgencia,
         pesoUrgencia: calculateUrgencyWeight(urgencia),
-        // [AJUSTE] Gera Array de Strings para adequar ao Schema e testar lógica de multiplas violações
+        // [RMA] Violações do Titular (Array de strings)
         violacao: faker.helpers.arrayElements(LISTA_VIOLACOES, randInt(1, 2)),
-        categoria: faker.helpers.arrayElement(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente']),
+        categoria: category,
         
         origem,
         dataEntrada,
         orgaoDemandante: origem === CaseOrigin.ESPONTANEA ? 'Demanda Espontânea' : faker.helpers.arrayElement(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS', 'Conselho Tutelar']),
         numeroSei: `00431-${faker.string.numeric(8)}/2025`,
-        // [AJUSTE] Benefícios como array de strings
         beneficios: faker.helpers.arrayElements(TRANSFERENCIA_RENDA, randInt(0, 2)), 
         
         status,
@@ -238,7 +239,7 @@ async function main() {
 
     // Log Inicial
     await prisma.caseLog.create({
-        data: { casoId: newCase.id, autorId: criador.id, acao: LogAction.CRIACAO, descricao: 'Caso criado via Seed.', createdAt: dataEntrada }
+      data: { casoId: newCase.id, autorId: criador.id, acao: LogAction.CRIACAO, descricao: 'Caso criado via Seed.', createdAt: dataEntrada }
     })
 
     // Evoluções
@@ -265,8 +266,7 @@ async function main() {
             data: {
                 casoId: newCase.id,
                 autorId: especialistaResp.id,
-                // Ajuste para pegar a primeira violação se houver mais de uma
-                diagnostico: `Situação de risco: ${urgencia}. Violação: ${newCase.violacao.join(', ')}`,
+                diagnostico: `Situação de risco: ${urgencia}. Violações: ${newCase.violacao.join(', ')}`,
                 objetivos: faker.helpers.arrayElement(PAF_OBJETIVOS),
                 estrategias: "Visitas mensais, encaminhamento para CRAS e BPC.",
                 deadline: addDays(dataEntrada, 180),
@@ -290,35 +290,6 @@ async function main() {
        })
     }
 
-    if (status !== CaseStatus.DESLIGADO && Math.random() > 0.4) {
-       await prisma.agendamento.create({
-         data: {
-           titulo: faker.helpers.arrayElement(['Atendimento Psicossocial', 'Renovação de PIA', 'Visita Domiciliar', 'Reunião de Rede']),
-           data: faker.date.soon({ days: 15 }), 
-           casoId: newCase.id,
-           responsavelId: responsavelAgendamento.id,
-           observacoes: 'Confirmar presença por telefone.'
-         }
-       })
-    }
-
-    // Benefícios (ServiceDeliverable)
-    if (status !== CaseStatus.AGUARDANDO_ACOLHIDA && Math.random() > 0.2) {
-        const numEventuais = randInt(1, 3)
-        for (let j = 0; j < numEventuais; j++) {
-           await prisma.serviceDeliverable.create({
-             data: {
-               casoId: newCase.id,
-               responsavelId: agenteResp?.id || criador.id,
-               tipo: faker.helpers.arrayElement(BENEFICIOS_EVENTUAIS),
-               status: faker.helpers.arrayElement(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE']),
-               dataSolicitacao: subDays(new Date(), randInt(1, 180)),
-               observacoes: 'Concessão para segurança alimentar.'
-             }
-           })
-        }
-    }
-
     // Encaminhamentos
     if (Math.random() > 0.4) {
       const autorEnc = especialistaResp || agenteResp
@@ -329,7 +300,7 @@ async function main() {
                 data: {
                 casoId: newCase.id,
                 autorId: autorEnc.id,
-                tipo: faker.helpers.arrayElement(['Saúde', 'Jurídico', 'Educação']),
+                tipo: faker.helpers.arrayElement(['Saúde', 'Jurídico', 'Educação', 'Assistência Social']),
                 instituicao: faker.helpers.arrayElement(ORGAOS_REDE),
                 motivo: "Necessidade identificada em atendimento.",
                 status: faker.helpers.arrayElement(['PENDENTE', 'CONCLUIDO']),
@@ -340,9 +311,13 @@ async function main() {
       }
     }
 
-    // Membros Família
+    // --- MEMBROS DA FAMÍLIA (COM VIOLAÇÕES PARA O RMA) ---
     const numMembros = randInt(1, 4)
     for (let m = 0; m < numMembros; m++) {
+      // 30% de chance de um membro ter violação cadastrada (para alimentar a tabela B.6 do RMA)
+      const hasViolation = Math.random() > 0.7;
+      const memberViolations = hasViolation ? faker.helpers.arrayElements(LISTA_VIOLACOES, 1) : [];
+
       await prisma.membroFamilia.create({
         data: {
           casoId: newCase.id,
@@ -350,7 +325,9 @@ async function main() {
           parentesco: faker.helpers.arrayElement(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)']),
           idade: randInt(2, 90),
           cpf: Math.random() > 0.3 ? generateCPF() : null,
-          renda: new Prisma.Decimal(randInt(0, 1412)) 
+          renda: new Prisma.Decimal(randInt(0, 1412)),
+          // [RMA FIX] Populando violações nos membros
+          violacao: memberViolations
         }
       })
     }
@@ -380,7 +357,7 @@ async function main() {
     }
   }
 
-  // 5. Grupos e Oficinas
+  // 5. Grupos e Oficinas (Alimentar Bloco II - M.2)
   console.log('\n👥 Criando Grupos...')
   const NUM_GROUPS = 15
   for (let i = 0; i < NUM_GROUPS; i++) {
@@ -412,7 +389,7 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Seed V8.0 COMPLETO!')
+  console.log('\n✅ Seed V9.0 COMPLETO!')
 }
 
 main()

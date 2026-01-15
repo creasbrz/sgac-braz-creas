@@ -1,3 +1,4 @@
+// frontend/src/components/case/CaseForm.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useFieldArray, useFormContext } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,39 +28,7 @@ import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 import { REGIOES_ADMINISTRATIVAS } from '@/constants/locations'
-
-// --- CONSTANTES DE OPÇÕES ---
-const LISTS = {
-  sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
-  tipoContato: ['Pessoal', 'Residencial', 'Trabalho', 'Vizinho', 'Parente', 'Outro'],
-  urgencia: [
-    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte',
-    'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
-    'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
-    'Sem risco imediato', 'Visita periódica'
-  ],
-  violacao: [
-    'Abandono', 'Negligência', 'Afastamento do convívio familiar',
-    'Cumprimento de medidas socioeducativas', 'Descumprimento de condicionalidade do PBF',
-    'Discriminação', 'Situação de rua', 'Trabalho infantil',
-    'Violência física e/ou psicológica', 'Violência sexual', 'Outros'
-  ],
-  categoria: [
-    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'
-  ],
-  origem: [
-    { id: 'ESPONTANEA', label: 'Demanda Espontânea (Balcão)' },
-    { id: 'DOCUMENTAL', label: 'Demanda Documental (SEI/Ofício)' },
-    { id: 'REFERENCIADA', label: 'Encaminhamento de Rede' },
-    { id: 'BUSCA_ATIVA', label: 'Busca Ativa' }
-  ],
-  transferenciaRenda: [
-    'PROGRAMA BOLSA FAMÍLIA (PBF)', 
-    'PROGRAMA DF SOCIAL', 
-    'PROGRAMA CARTÃO GÁS', 
-    'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
-  ]
-}
+import { OPTIONS } from '@/constants/options' // [CORREÇÃO] Importação Centralizada
 
 const MASKS = {
   CPF: '000.000.000-00',
@@ -126,7 +95,8 @@ function PersonalDataSection() {
             <FormItem><FormLabel>Sexo *</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                <SelectContent>{LISTS.sexo.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                {/* [CORREÇÃO] Usando OPTIONS */}
+                <SelectContent>{OPTIONS.sexo.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
@@ -183,7 +153,8 @@ function ContactSection() {
                     {index === 0 && <FormLabel className="text-xs">Tipo</FormLabel>}
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{LISTS.tipoContato.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      {/* [CORREÇÃO] Usando OPTIONS */}
+                      <SelectContent>{OPTIONS.tipoContato.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormItem>
                 )}/>
@@ -243,7 +214,6 @@ function AddressSection() {
         setValue('endereco.uf', data.uf)
         setValue('endereco.cidade', data.localidade)
 
-        // Tenta preencher a RA se o bairro bater com a lista
         if (REGIOES_ADMINISTRATIVAS.includes(data.bairro)) {
             setValue('endereco.ra', data.bairro)
         }
@@ -357,7 +327,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             <FormItem><FormLabel>Origem</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                <SelectContent>{LISTS.origem.map(o => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
+                {/* [CORREÇÃO] Usando OPTIONS */}
+                <SelectContent>{OPTIONS.origem.map(o => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
@@ -372,7 +343,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             <FormItem><FormLabel>Urgência/Risco</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                <SelectContent className="max-h-[200px]">{LISTS.urgencia.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                {/* [CORREÇÃO] Usando OPTIONS */}
+                <SelectContent className="max-h-[200px]">{OPTIONS.urgencia.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
@@ -382,21 +354,22 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             <FormItem><FormLabel>Categoria (Público)</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                <SelectContent>{LISTS.categoria.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                {/* [CORREÇÃO] Usando OPTIONS */}
+                <SelectContent>{OPTIONS.categoria.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
           )}/>
         </div>
 
-        {/* --- CORREÇÃO: USAR LABEL (NÃO FormLabel) PARA TÍTULOS --- */}
         <div className="space-y-3">
           <Label className="text-base font-semibold">Violações de Direitos Identificadas *</Label>
           <p className="text-[11px] text-muted-foreground -mt-2 italic">Marque todas as situações identificadas no atendimento inicial.</p>
           <FormField control={control} name="violacao" render={({ field }) => (
             <FormItem>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-inner">
-                {LISTS.violacao.map(v => (
+                {/* [CORREÇÃO] Usando OPTIONS */}
+                {OPTIONS.violacao.map(v => (
                   <div key={v} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
                       <Checkbox 
@@ -421,7 +394,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           <FormField control={control} name="beneficios" render={({ field }) => (
             <FormItem>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {LISTS.transferenciaRenda.map(item => (
+                {/* [CORREÇÃO] Usando OPTIONS */}
+                {OPTIONS.transferenciaRenda.map(item => (
                   <div key={item} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
                       <Checkbox checked={field.value?.includes(item)} onCheckedChange={(checked) => {
@@ -478,8 +452,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   )
 }
 
-// --- COMPONENTE PRINCIPAL ---
-
 interface CaseFormProps {
   onCaseCreated?: () => void
   initialData?: any
@@ -509,7 +481,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         ? initialData.endereco 
         : (typeof initialData.endereco === 'string' ? { ...defaultValues.endereco, logradouro: initialData.endereco } : defaultValues.endereco),
       
-      // Sincronização de Violações (Garante que seja Array)
       violacao: Array.isArray(initialData.violacao) 
         ? initialData.violacao 
         : (initialData.violacao ? [initialData.violacao] : []),

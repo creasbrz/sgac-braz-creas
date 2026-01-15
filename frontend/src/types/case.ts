@@ -15,7 +15,7 @@ export interface ServiceDeliverable {
   dataSolicitacao: string
   dataEntrega?: string | null
   observacoes?: string | null
-  responsavel?: { nome: string } // Pode ser opcional dependendo do backend
+  responsavel?: { nome: string }
 }
 
 export interface FamilyMember {
@@ -27,8 +27,10 @@ export interface FamilyMember {
   nascimento?: string | null
   telefone?: string | null
   ocupacao?: string | null
-  renda?: number | null
+  renda?: number | string | null
   observacoes?: string | null
+  // [NOVO] Campo necessário para o RMA (Bloco C)
+  violacao?: string[]
   createdAt: string
 }
 
@@ -115,11 +117,11 @@ export interface CaseDetailData {
   sexo: string
   
   // --- VERSÃO 2.0 (Novos Campos) ---
-  contatos?: Contact[] // Array de contatos estruturados
-  telefone?: string | null // Mantido para legado
+  contatos?: Contact[] 
+  telefone?: string | null // Legacy fallback
   
   // Endereço Detalhado
-  endereco?: string | null // Mantido para legado
+  endereco?: string | null // Legacy fallback
   endereco_logradouro?: string
   endereco_complemento?: string
   endereco_bairro?: string
@@ -137,7 +139,8 @@ export interface CaseDetailData {
   // Dados Técnicos
   dataEntrada: string
   urgencia: string
-  violacao: string
+  // [ATUALIZADO] Array de strings conforme schema.prisma
+  violacao: string[] 
   categoria: string
   orgaoDemandante: string
   origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA' | string
@@ -178,7 +181,8 @@ export interface CaseSummary {
   status: string
   dataEntrada: string
   urgencia: string
-  violacao?: string
+  // [ATUALIZADO] Array de strings para consistência
+  violacao?: string[] 
   sexo?: string
   
   // Endereço e Contato resumidos para listas

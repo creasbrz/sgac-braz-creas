@@ -1,17 +1,17 @@
 {
   "name": "sgac-braz-root",
-  "version": "7.5.1",
+  "version": "7.5.2",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "install-all": "npm install --prefix frontend --include=dev && npm install --prefix backend --include=dev",
+    "install-all": "npm install --prefix frontend && npm install --prefix backend",
     "build": "npm run build --prefix frontend && npm run build --prefix backend",
-    "start": "npm start --prefix backend",
+    "start": "npm run db:migrate --prefix backend && npm start --prefix backend",
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
   },
   "devDependencies": {
     "concurrently": "^8.0.0"
-  },
-  "engines": {
-    "node": ">=18"
   }
 }

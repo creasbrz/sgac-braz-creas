@@ -1,9 +1,11 @@
+// frontend/src/components/case/tabs/OverviewTab.tsx
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { 
   FileText, AlertTriangle, ExternalLink, 
-  Calendar, Tag, Hash, Shield, CheckCircle2, Clock 
+  Calendar, Tag, Hash, Shield, CheckCircle2, Clock, 
+  Wallet, Briefcase // [NOVO] Ícones
 } from 'lucide-react'
 import { formatDateSafe } from '@/utils/formatters'
 import type { CaseDetailData } from '@/types/case'
@@ -150,6 +152,21 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                 icon={Hash} 
                 label="Protocolo SEI" 
                 value={renderSeiValue()} 
+              />
+            </div>
+
+            {/* [NOVO] Grid Socioeconômico do Titular */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+              <InfoField 
+                icon={Briefcase} 
+                label="Ocupação Atual" 
+                value={caseData.ocupacao} 
+              />
+              <InfoField 
+                icon={Wallet} 
+                label="Renda Individual" 
+                value={caseData.renda ? caseData.renda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null} 
+                className="text-emerald-700 font-medium"
               />
             </div>
 

@@ -1,3 +1,4 @@
+// frontend/src/pages/CaseDetail.tsx
 import { useState, Suspense, lazy } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
@@ -228,7 +229,7 @@ export function CaseDetail() {
                 </TabsContent>
                 
                 <TabsContent value="evolutions" className="mt-0"><CaseEvolutions caseId={id!} /></TabsContent>
-                <TabsContent value="family" className="mt-0"><FamilyTab caseId={id!} /></TabsContent>
+                <TabsContent value="family" className="mt-0"><FamilyTab caseId={id!} titularRenda={Number(caseData.renda) || 0} /></TabsContent>
                 
                 {/* [CORREÇÃO] Conteúdo PAF reinserido */}
                 <TabsContent value="paf" className="mt-0 animate-in fade-in">

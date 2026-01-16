@@ -1,4 +1,5 @@
 // backend/src/utils/geocoding.ts
+import { cache } from '../lib/cache'
 
 interface GeoResult {
   lat: number
@@ -6,77 +7,78 @@ interface GeoResult {
   display_name?: string
 }
 
-// Cache em memória simples para evitar bans do Nominatim
-// Formato: Map<"endereco_normalizado", {data, timestamp}>
-const geoCache = new Map<string, { data: GeoResult, timestamp: number }>()
-const CACHE_TTL = 1000 * 60 * 60 * 24 * 30 // 30 dias de cache (endereços raramente mudam)
+// Interface para tipar a resposta do Nominatim
+interface NominatimResponse {
+  lat: string
+  lon: string
+  display_name: string
+  [key: string]: any
+}
 
-// Pequeno delay para evitar Rate Limiting (1 req/seg é o limite seguro do Nominatim)
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const GEO_CACHE_TTL = 1000 * 60 * 60 * 24 * 30 // 30 dias (endereços são estáticos)
+
+// Delay para respeitar o Rate Limit do Nominatim (Max 1 req/seg)
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export async function geocodeAddress(
   logradouro: string, 
   ra: string, 
   cidade: string = 'Brasília'
 ): Promise<GeoResult | null> {
-  // 1. Normalização e Verificação de Cache
-  if (!logradouro || !ra) return null;
+  // 1. Validação Básica
+  if (!logradouro || !ra) return null
 
-  const cacheKey = `${logradouro.trim().toLowerCase()}|${ra.trim().toLowerCase()}|${cidade.trim().toLowerCase()}`;
-  const cached = geoCache.get(cacheKey);
-
+  // 2. Normalização e Cache (Usando CacheService centralizado para segurança de memória)
+  // Prefixo 'geo:' evita colisão com outros caches do sistema
+  const cacheKey = `geo:${logradouro.trim().toLowerCase()}|${ra.trim().toLowerCase()}|${cidade.trim().toLowerCase()}`
+  
+  const cached = cache.get<GeoResult>(cacheKey)
   if (cached) {
-    const isExpired = (Date.now() - cached.timestamp) > CACHE_TTL;
-    if (!isExpired) {
-      // console.log(`📍 GeoCache Hit: ${logradouro}`); // Descomente para debug
-      return cached.data;
-    }
-    geoCache.delete(cacheKey);
+    // console.log(`📍 GeoCache Hit: ${cacheKey}`) // Debug
+    return cached
   }
 
   try {
-    // 2. Construção da Query
-    // Adiciona "Distrito Federal" explicitamente para evitar ambiguidade
-    const query = `${logradouro}, ${ra}, ${cidade}, Distrito Federal, Brazil`;
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+    // 3. Construção da Query
+    // Adiciona contexto explícito para melhorar precisão
+    const query = `${logradouro}, ${ra}, ${cidade}, Distrito Federal, Brazil`
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`
 
-    // Delay preventivo antes da chamada externa
-    await delay(1100); 
+    // Rate Limiting (Essencial para não ser banido pelo OSM)
+    await delay(1100) 
 
-    // 3. Requisição
+    // 4. Requisição Externa
     const response = await fetch(url, {
       headers: {
-        // User-Agent descritivo é OBRIGATÓRIO para não ser bloqueado
+        // User-Agent específico é OBRIGATÓRIO pela política de uso do Nominatim
         'User-Agent': 'SistemaCreasBrazlandia/2.1 (admin@creas.df.gov.br)' 
       }
-    });
+    })
 
     if (!response.ok) {
-      console.warn(`GeoError [${response.status}]: ${response.statusText}`);
-      return null;
+      console.warn(`[GeoCoding] Erro na API externa [${response.status}]: ${response.statusText}`)
+      return null
     }
 
-    const data = await response.json() as any[];
+    const data = await response.json() as NominatimResponse[]
 
     if (data && data.length > 0) {
       const result: GeoResult = {
         lat: parseFloat(data[0].lat),
         lng: parseFloat(data[0].lon),
         display_name: data[0].display_name
-      };
+      }
 
-      // 4. Salva no Cache
-      geoCache.set(cacheKey, {
-        data: result,
-        timestamp: Date.now()
-      });
+      // 5. Salva no Cache Centralizado (com TTL longo)
+      cache.set(cacheKey, result, GEO_CACHE_TTL)
 
-      return result;
+      return result
     }
 
-    return null;
+    return null
   } catch (error) {
-    console.error('Erro crítico no serviço de geocodificação:', error);
-    return null; // Falha silenciosa segura
+    // Log de erro sem travar a aplicação (Feature não-crítica)
+    console.error('[GeoCoding] Erro crítico ao buscar coordenadas:', error)
+    return null 
   }
 }

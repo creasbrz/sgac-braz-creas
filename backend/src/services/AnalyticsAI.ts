@@ -12,7 +12,8 @@ export interface Insight {
 export class AnalyticsAI {
   
   /**
-   * Gera insights baseados em análise estatística dos dados reais do CREAS
+   * Gera insights automáticos baseados em análise estatística dos dados.
+   * Utiliza janelas de tempo móveis para detectar tendências.
    */
   static async generateInsights(monthsToCheck = 3): Promise<Insight[]> {
     const insights: Insight[] = []
@@ -20,7 +21,8 @@ export class AnalyticsAI {
     const currentMonthStart = startOfMonth(today)
     const lastMonthStart = startOfMonth(subMonths(today, 1))
 
-    // 1. TENDÊNCIA DE DEMANDA
+    // 1. TENDÊNCIA DE DEMANDA (Comparativo Mês Atual vs Mês Anterior)
+    // Execução paralela para otimizar tempo de resposta do endpoint
     const [currentMonthCases, lastMonthCases] = await Promise.all([
       prisma.case.count({ where: { dataEntrada: { gte: currentMonthStart } } }),
       prisma.case.count({ where: { dataEntrada: { gte: lastMonthStart, lt: currentMonthStart } } })
@@ -45,6 +47,7 @@ export class AnalyticsAI {
     }
 
     // 2. RISCO DE ABANDONO (Casos sem Evolução > 30 dias)
+    // Verifica casos ativos que não possuem nenhuma evolução registrada no último mês
     const stalledCases = await prisma.case.count({
       where: {
         status: { not: CaseStatus.DESLIGADO },
@@ -70,7 +73,8 @@ export class AnalyticsAI {
       })
     }
 
-    // 3. PADRÃO DE VIOLAÇÃO
+    // 3. PADRÃO DE VIOLAÇÃO (Moda Estatística)
+    // Agrupa pela combinação exata de violações no array
     const topViolations = await prisma.case.groupBy({
       by: ['violacao'],
       where: { 
@@ -83,14 +87,20 @@ export class AnalyticsAI {
 
     if (topViolations.length > 0) {
       const top = topViolations[0]
+      // Como 'violacao' é String[], unimos para exibição amigável
+      const violacaoLabel = Array.isArray(top.violacao) 
+        ? top.violacao.join(', ') 
+        : String(top.violacao)
+
       insights.push({
         type: 'info',
         title: 'Padrão de Violação',
-        description: `A violação "${top.violacao}" representa a maior incidência do período (${top._count.violacao} casos).`
+        description: `A tipologia "${violacaoLabel}" representa a maior incidência do período (${top._count.violacao} casos).`
       })
     }
 
     // 4. ÍNDICE DE BUSCA ATIVA
+    // Analisa proatividade da equipe baseada em registros de agenda
     const visitsCount = await prisma.agendamento.count({
       where: {
         data: { gte: subMonths(today, 1) },
@@ -109,10 +119,11 @@ export class AnalyticsAI {
       })
     }
 
-    // Ordena por prioridade (Warning > Success > Info)
+    // Ordenação por Prioridade (Warning > Success > Info)
+    const priorityMap = { warning: 0, success: 1, info: 2 }
+    
     return insights.sort((a, b) => {
-      const priority = { warning: 0, success: 1, info: 2 }
-      return priority[a.type] - priority[b.type]
-    }).slice(0, 3)
+      return priorityMap[a.type] - priorityMap[b.type]
+    }).slice(0, 3) // Retorna apenas os top 3 insights
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "sgac-braz-backend",
-  "version": "7.5.2",
+  "version": "7.6.0",
   "description": "Backend para o Sistema de Gestão de Atendimentos do CREAS Brazlândia",
   "main": "dist/server.js",
   "engines": {
@@ -51,7 +51,8 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^9.3.0",
-    "@types/node": "^22.10.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.19.7",
     "pino-pretty": "^13.0.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",

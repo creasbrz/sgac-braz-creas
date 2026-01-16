@@ -1,47 +1,54 @@
+// frontend/src/schemas/caseSchemas.ts
 import { z } from 'zod'
+import { OCUPACOES_ROL } from '@/constants/options' // [CORREÇÃO] Importando
 
-// --- SUB-SCHEMAS (Novas Estruturas) ---
+// --- SUB-SCHEMAS ---
 
-// Item 1: Contato Estruturado
 const contactSchema = z.object({
   numero: z.string().min(8, 'Número inválido (mínimo 8 dígitos).'),
   tipo: z.enum(["Pessoal", "Residencial", "Trabalho", "Vizinho", "Parente", "Outro"], {
     errorMap: () => ({ message: "Selecione o tipo de contato." })
   }),
-  nome: z.string().optional(), // Ex: Nome da vizinha que dá recado
+  nome: z.string().optional(),
   observacao: z.string().optional(),
 })
 
-// Item 2: Endereço Detalhado (Padrão DF)
 const addressSchema = z.object({
-  ra: z.string().min(1, 'Selecione a Região Administrativa.'), // Campo Obrigatório
+  ra: z.string().min(1, 'Selecione a Região Administrativa.'),
   logradouro: z.string().min(3, 'O logradouro é obrigatório (Qd, Rua, Av).'),
   complemento: z.string().optional(),
-  bairro: z.string().optional(), // Geralmente redundante com RA no DF, mas útil
+  bairro: z.string().optional(),
   cidade: z.string().default("Brasília"),
   uf: z.string().default("DF"),
-  cep: z.string().optional(), // Pode adicionar validação de regex se quiser: /^\d{5}-\d{3}$/
+  cep: z.string().optional(),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable(),
 })
 
-// --- SCHEMA PRINCIPAL DE CRIAÇÃO ---
+// --- SCHEMA PRINCIPAL ---
 
 export const createCaseFormSchema = z.object({
-  // Identificação
+  // 1. Identificação
   nomeCompleto: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
-  nomeSocial: z.string().optional(), // Novo campo de inclusão
-  cpf: z.string().min(11, 'CPF inválido.'), // Idealmente usar biblioteca de validação de CPF
+  nomeSocial: z.string().optional(),
+  cpf: z.string().min(11, 'CPF inválido.'),
   nascimento: z.string().refine((val) => val.length > 0, 'Data de nascimento obrigatória.'),
   sexo: z.string().min(1, 'Selecione o sexo.'),
 
-  // Novos Campos Estruturados
+  // [CORREÇÃO] Usando o Rol importado
+  ocupacao: z.enum(OCUPACOES_ROL).or(z.string()).optional(),
+  
+  renda: z.coerce.number().optional().default(0),
+
+  // 2. Contatos e Endereço
   contatos: z.array(contactSchema).min(1, "Adicione pelo menos um telefone de contato."),
   endereco: addressSchema,
 
-  // Item 3: Responsável Legal (Opcional no schema, obrigatório visualmente se < 18 anos)
+  // 3. Responsável Legal
   responsavelLegal: z.string().optional(),
   parentescoResponsavel: z.string().optional(),
 
-  // Dados Técnicos
+  // 4. Dados Técnicos
   dataEntrada: z.string().refine((val) => val.length > 0, 'Data de entrada obrigatória.'),
   urgencia: z.string().min(1, 'Selecione a urgência.'),
   violacao: z.array(z.string()).min(1, 'Selecione ao menos uma violação.'),
@@ -51,21 +58,19 @@ export const createCaseFormSchema = z.object({
     errorMap: () => ({ message: "Selecione a origem do caso." })
   }),
 
-  // Agente: Pode vir vazio inicialmente se não distribuído
-  agenteAcolhidaId: z.string().uuid().optional().or(z.literal('')),
+  // 5. Relacionamentos
+  agenteAcolhidaId: z.string().optional().or(z.literal('')),
 
-  // Campos Opcionais / Strings vazias permitidas
+  // 6. Administrativo
   numeroSei: z.string().optional(),
-  linkSei: z.string().optional(), // Poderia usar .url() se quiser validar formato estrito
+  linkSei: z.string().optional(),
   observacoes: z.string().optional(),
-
-  // Array obrigatório (inicia como [])
   beneficios: z.array(z.string()).default([]),
 })
 
 export type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
 
-// --- OUTROS SCHEMAS (Mantidos do original) ---
+// --- OUTROS SCHEMAS ---
 
 export const pafFormSchema = z.object({
   diagnostico: z.string().min(10, 'O diagnóstico deve ser mais detalhado.'),
@@ -76,6 +81,7 @@ export const pafFormSchema = z.object({
 
 export const evolutionFormSchema = z.object({
   conteudo: z.string().min(5, 'A evolução deve ter pelo menos 5 caracteres.'),
+  sigilo: z.boolean().default(false)
 })
 
 export const closeCaseFormSchema = z.object({

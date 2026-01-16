@@ -2,9 +2,8 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
-import { startOfDay, endOfDay, subDays } from 'date-fns'
 import { Cargo, LogAction } from '@prisma/client'
+import { AuditService } from '../services/AuditService'
 
 // --- Schemas ---
 
@@ -23,7 +22,7 @@ const logResponseSchema = z.object({
   caso: z.object({
     id: z.string(),
     nomeCompleto: z.string()
-  }).nullable().optional() // Pode ser null se o caso foi deletado fisicamente (raro) ou log de sistema
+  }).nullable().optional()
 })
 
 const auditQuerySchema = z.object({
@@ -71,77 +70,28 @@ export async function auditRoutes(app: FastifyInstance) {
       }
     }
   }, async (request, reply) => {
-    const { page, pageSize, search, autorId, acao, periodo } = request.query
-
-    // Construção Dinâmica do WHERE
-    const where: any = {}
-
-    // 1. Filtro de Texto
-    if (search) {
-      where.OR = [
-        { descricao: { contains: search, mode: 'insensitive' } },
-        { autor: { nome: { contains: search, mode: 'insensitive' } } },
-        { caso: { nomeCompleto: { contains: search, mode: 'insensitive' } } }
-      ]
-    }
-
-    // 2. Filtros Específicos
-    if (autorId && autorId !== 'all') where.autorId = autorId
-    if (acao) where.acao = acao
-
-    // 3. Filtro de Data
-    const hoje = new Date()
-    if (periodo === 'hoje') {
-      where.createdAt = { gte: startOfDay(hoje), lte: endOfDay(hoje) }
-    } else if (periodo === '7dias') {
-      where.createdAt = { gte: startOfDay(subDays(hoje, 7)) }
-    } else if (periodo === '30dias') {
-      where.createdAt = { gte: startOfDay(subDays(hoje, 30)) }
-    }
+    const filters = request.query
 
     try {
-      const [total, items] = await Promise.all([
-        prisma.caseLog.count({ where }),
-        prisma.caseLog.findMany({
-          where,
-          take: pageSize,
-          skip: (page - 1) * pageSize,
-          orderBy: { createdAt: 'desc' },
-          // SELECT Otimizado
-          select: {
-            id: true,
-            acao: true,
-            descricao: true,
-            createdAt: true,
-            valorAnterior: true,
-            valorNovo: true,
-            autor: { 
-              select: { nome: true, cargo: true, email: true } 
-            },
-            caso: { 
-              select: { id: true, nomeCompleto: true } 
-            }
-          }
-        })
-      ])
+      const { total, items } = await AuditService.listLogs(filters)
 
       return reply.send({
         data: items,
         meta: {
-          page,
-          pageSize,
+          page: filters.page,
+          pageSize: filters.pageSize,
           total,
-          totalPages: Math.ceil(total / pageSize)
+          totalPages: Math.ceil(total / filters.pageSize)
         }
       })
 
     } catch (error) {
-      console.error('Erro na auditoria:', error)
+      request.log.error(error)
       return reply.status(500).send({ message: 'Erro ao processar logs de auditoria.' })
     }
   })
 
-  // 2. [GET] Estatísticas Rápidas (Audit Dashboard)
+  // 2. [GET] Estatísticas Rápidas
   server.get('/audit/stats', {
     schema: {
       tags: ['Auditoria'],
@@ -154,18 +104,7 @@ export async function auditRoutes(app: FastifyInstance) {
       }
     }
   }, async (request, reply) => {
-    const todayStart = startOfDay(new Date())
-    
-    const stats = await prisma.caseLog.groupBy({
-      by: ['acao'],
-      where: {
-        createdAt: { gte: todayStart }
-      },
-      _count: {
-        _all: true
-      }
-    })
-
+    const stats = await AuditService.getDailyStats()
     return reply.send(stats)
   })
 }

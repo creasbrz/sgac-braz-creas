@@ -1,109 +1,98 @@
 // backend/src/routes/family.ts
 import { type FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
-import { LogAction } from '@prisma/client'
+import { FamilyService } from '../services/FamilyService'
+
+// --- Schemas ---
+
+const familyMemberResponseSchema = z.object({
+  id: z.string(),
+  nome: z.string(),
+  parentesco: z.string(),
+  idade: z.number().nullable().optional(),
+  cpf: z.string().nullable().optional(),
+  nascimento: z.date().nullable().optional(),
+  telefone: z.string().nullable().optional(),
+  ocupacao: z.string().nullable().optional(),
+  renda: z.number().nullable().optional(), // Agora garantimos que é number
+  observacoes: z.string().nullable().optional(),
+  violacao: z.array(z.string()).optional()
+})
+
+const createMemberBodySchema = z.object({
+  nome: z.string().min(2),
+  parentesco: z.string().min(2),
+  idade: z.number().int().nonnegative().optional(),
+  cpf: z.string().optional().nullable(),
+  nascimento: z.coerce.date().optional().nullable(),
+  telefone: z.string().optional().nullable(),
+  ocupacao: z.string().optional(),
+  renda: z.number().nonnegative().optional(),
+  observacoes: z.string().optional()
+})
 
 export async function familyRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
   
-  app.addHook('onRequest', async (req, reply) => {
+  server.addHook('onRequest', async (req, reply) => {
     try { await req.jwtVerify() } catch { return reply.status(401).send() }
   })
 
+  // [GET] Listar família
+  server.get('/cases/:caseId/family', {
+    schema: {
+      tags: ['Família'],
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(familyMemberResponseSchema) }
+    }
+  }, async (req, reply) => {
+    const { caseId } = req.params
+    const members = await FamilyService.list(caseId)
+    return reply.send(members)
+  })
+
   // [POST] Adicionar membro da família
-  app.post('/cases/:caseId/family', async (req, reply) => {
-    const paramsSchema = z.object({ caseId: z.string().uuid() })
-    const bodySchema = z.object({
-      nome: z.string().min(2),
-      parentesco: z.string().min(2),
-      idade: z.number().int().nonnegative().optional(),
-      cpf: z.string().optional().nullable(),
-      nascimento: z.coerce.date().optional().nullable(),
-      telefone: z.string().optional().nullable(),
-      ocupacao: z.string().optional(),
-      renda: z.number().nonnegative().optional(),
-      observacoes: z.string().optional()
-    })
+  server.post('/cases/:caseId/family', {
+    schema: {
+      tags: ['Família'],
+      params: z.object({ caseId: z.string().uuid() }),
+      body: createMemberBodySchema,
+      response: { 201: familyMemberResponseSchema }
+    }
+  }, async (req, reply) => {
+    const { caseId } = req.params
+    const { sub: userId } = req.user as { sub: string }
 
     try {
-      const { caseId } = paramsSchema.parse(req.params)
-      const data = bodySchema.parse(req.body)
-      const userId = (req.user as any).sub
-
-      const cpfLimpo = data.cpf ? data.cpf.replace(/\D/g, '') : null
-      const telefoneLimpo = data.telefone ? data.telefone.replace(/\D/g, '') : null
-
-      const member = await prisma.membroFamilia.create({
-        data: {
-          ...data,
-          cpf: cpfLimpo,
-          telefone: telefoneLimpo,
-          casoId: caseId
-        }
+      const member = await FamilyService.add({
+        caseId,
+        userId,
+        ...req.body
       })
-
-      // Log
-      await prisma.caseLog.create({
-        data: {
-          casoId: caseId,
-          autorId: userId,
-          acao: LogAction.MEMBRO_FAMILIA_ADICIONADO,
-          descricao: `Adicionou familiar: ${data.nome} (${data.parentesco})`
-        }
-      })
-
-      // [CORREÇÃO] Converter Decimal para Number antes de enviar
-      return reply.status(201).send({
-        ...member,
-        renda: member.renda ? Number(member.renda) : null
-      })
-
+      return reply.status(201).send(member)
     } catch (error) {
-      console.error(error)
+      req.log.error(error)
       return reply.status(500).send({ message: 'Erro ao adicionar familiar.' })
     }
   })
 
-  // [GET] Listar família
-  app.get('/cases/:caseId/family', async (req, reply) => {
-    const { caseId } = z.object({ caseId: z.string().uuid() }).parse(req.params)
-    
-    const members = await prisma.membroFamilia.findMany({
-      where: { casoId: caseId },
-      orderBy: { createdAt: 'asc' } 
-    })
-
-    // [CORREÇÃO CRÍTICA] Converter Decimal para Number para evitar erro 500
-    const serializedMembers = members.map(m => ({
-      ...m,
-      renda: m.renda ? Number(m.renda) : null
-    }))
-
-    return reply.send(serializedMembers)
-  })
-
   // [DELETE] Remover familiar
-  app.delete('/family/:id', async (req, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
-    const userId = (req.user as any).sub
+  server.delete('/family/:id', {
+    schema: {
+      tags: ['Família'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, async (req, reply) => {
+    const { id } = req.params
+    const { sub: userId } = req.user as { sub: string }
     
     try {
-      const member = await prisma.membroFamilia.findUnique({ where: { id } })
-      if (!member) return reply.status(404).send()
-
-      await prisma.membroFamilia.delete({ where: { id } })
-
-      await prisma.caseLog.create({
-        data: {
-          casoId: member.casoId,
-          autorId: userId,
-          acao: LogAction.OUTRO,
-          descricao: `Removeu familiar: ${member.nome}`
-        }
-      })
-      
+      await FamilyService.remove(id, userId)
       return reply.status(204).send()
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send()
       return reply.status(500).send()
     }
   })

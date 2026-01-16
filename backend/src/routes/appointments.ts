@@ -2,27 +2,25 @@
 import { type FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
-import { LogAction, Cargo } from '@prisma/client'
+import { AppointmentService } from '../services/AppointmentService'
 
-// --- Schemas ---
+// --- Schemas (Apenas os de I/O da API) ---
 
 const calendarEventSchema = z.object({
   id: z.string(),
   title: z.string(),
-  start: z.date(),
-  end: z.date().nullable().optional(),
+  start: z.coerce.date(), // coerce garante que strings ISO virem Date
+  end: z.coerce.date().nullable().optional(),
   type: z.enum(['INDIVIDUAL', 'GRUPO']),
   resourceId: z.string().optional(),
   description: z.string().optional(),
   status: z.string()
 })
 
-// [CORREÇÃO] Schema atualizado para incluir ID do caso e Tipo
 const upcomingSchema = z.object({
   id: z.string(),
   titulo: z.string(),
-  data: z.date(),
+  data: z.coerce.date(),
   tipo: z.string().optional(),
   caso: z.object({ 
     id: z.string().uuid(), 
@@ -41,6 +39,7 @@ const createAppointmentSchema = z.object({
 export async function appointmentRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
   
+  // Middleware de Auth
   server.addHook('onRequest', async (req, reply) => {
     try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
@@ -54,27 +53,8 @@ export async function appointmentRoutes(app: FastifyInstance) {
     }
   }, async (req, reply) => {
     const { sub: userId } = req.user as { sub: string }
-    
-    const upcoming = await prisma.agendamento.findMany({
-      where: { responsavelId: userId, data: { gte: new Date() } },
-      include: { 
-        caso: { 
-          // [CORREÇÃO] Incluindo o ID do caso na busca
-          select: { 
-            id: true, 
-            nomeCompleto: true 
-          } 
-        } 
-      },
-      orderBy: { data: 'asc' },
-      take: 5
-    })
-
-    // Mapeando para garantir que o tipo exista
-    return reply.send(upcoming.map(u => ({
-      ...u,
-      tipo: u.tipo || 'Atendimento'
-    })))
+    const upcoming = await AppointmentService.getUpcoming(userId)
+    return reply.send(upcoming)
   })
 
   // [GET] Calendário Principal
@@ -93,65 +73,20 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const { caseId, start, end } = req.query
     const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
+    // Define defaults se não enviado (Mês atual)
     const now = new Date()
     const queryStart = start || new Date(now.getFullYear(), now.getMonth(), 1)
     const queryEnd = end || new Date(now.getFullYear(), now.getMonth() + 1, 0)
 
-    const whereClause: any = { data: { gte: queryStart, lte: queryEnd } }
+    const events = await AppointmentService.getCalendarEvents(
+      userId, 
+      cargo, 
+      queryStart, 
+      queryEnd, 
+      caseId
+    )
 
-    if (caseId) {
-      whereClause.casoId = caseId
-    } else if (cargo !== Cargo.Gerente) {
-      whereClause.OR = [
-        { responsavelId: userId },
-        { caso: { OR: [{ agenteAcolhidaId: userId }, { especialistaPAEFIId: userId }] } }
-      ]
-    }
-
-    const [appointments, groups] = await Promise.all([
-      prisma.agendamento.findMany({
-        where: whereClause,
-        include: { caso: { select: { nomeCompleto: true } } }
-      }),
-      
-      caseId 
-        ? prisma.groupActivity.findMany({
-            where: { 
-              dataRealizacao: { gte: queryStart, lte: queryEnd }, 
-              participantes: { some: { casoId: caseId } } 
-            },
-            include: { facilitador: { select: { nome: true } } }
-          })
-        : prisma.groupActivity.findMany({
-            where: { dataRealizacao: { gte: queryStart, lte: queryEnd } },
-            include: { facilitador: { select: { nome: true } } }
-          })
-    ])
-
-    const normalized = [
-      ...appointments.map(a => ({
-        id: a.id,
-        title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
-        start: a.data,
-        end: null, // Ajuste para opcional
-        type: 'INDIVIDUAL' as const,
-        resourceId: a.casoId || undefined,
-        description: a.observacoes || '',
-        status: 'SCHEDULED'
-      })),
-      ...groups.map(g => ({
-        id: g.id,
-        title: `[GRUPO] ${g.tema} (${g.tipo.replace('_', ' ')})`,
-        start: g.dataRealizacao,
-        end: null,
-        type: 'GRUPO' as const,
-        resourceId: g.id,
-        description: g.descricao || '',
-        status: 'SCHEDULED'
-      }))
-    ]
-
-    return reply.send(normalized.sort((a, b) => a.start.getTime() - b.start.getTime()))
+    return reply.send(events)
   })
 
   // [POST] Criar
@@ -162,21 +97,10 @@ export async function appointmentRoutes(app: FastifyInstance) {
     }
   }, async (req, reply) => {
     const data = req.body
-    const userId = (req.user as any).sub
+    const { sub: userId } = req.user as { sub: string }
 
-    const agendamento = await prisma.agendamento.create({
-      data: { ...data, responsavelId: userId }
-    })
-
-    prisma.caseLog.create({
-      data: {
-        casoId: data.casoId,
-        autorId: userId,
-        acao: LogAction.AGENDAMENTO_CRIADO,
-        descricao: `Agendamento: ${data.titulo}`
-      }
-    }).catch(console.error)
-
+    const agendamento = await AppointmentService.create(userId, data)
+    
     return reply.status(201).send(agendamento)
   })
 
@@ -192,18 +116,15 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const data = req.body
     const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
-    const existing = await prisma.agendamento.findUnique({ where: { id } })
-    
-    if (!existing || (existing.responsavelId !== userId && cargo !== Cargo.Gerente)) {
-      return reply.status(403).send({ message: 'Sem permissão.' })
+    try {
+      const updated = await AppointmentService.update(id, userId, cargo, data)
+      if (!updated) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
+      
+      return reply.send(updated)
+    } catch (err: any) {
+      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão para editar este agendamento.' })
+      throw err
     }
-
-    const updated = await prisma.agendamento.update({
-      where: { id },
-      data
-    })
-
-    return reply.send(updated)
   })
 
   // [DELETE] Remover
@@ -216,13 +137,14 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const { id } = req.params
     const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
-    const existing = await prisma.agendamento.findUnique({ where: { id } })
-    
-    if (!existing || (existing.responsavelId !== userId && cargo !== Cargo.Gerente)) {
-      return reply.status(403).send({ message: 'Sem permissão.' })
+    try {
+      const deleted = await AppointmentService.delete(id, userId, cargo)
+      if (!deleted) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
+      
+      return reply.status(204).send()
+    } catch (err: any) {
+      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão para remover este agendamento.' })
+      throw err
     }
-
-    await prisma.agendamento.delete({ where: { id } })
-    return reply.status(204).send()
   })
 }

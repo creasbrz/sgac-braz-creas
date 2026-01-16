@@ -10,7 +10,7 @@ import { differenceInYears } from 'date-fns'
 
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, InputProps } from '@/components/ui/input' // [NOVO] Importando InputProps
 import { MaskedInput } from '@/components/ui/masked-input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -28,7 +28,46 @@ import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 import { REGIOES_ADMINISTRATIVAS } from '@/constants/locations'
-import { OPTIONS } from '@/constants/options' // [CORREÇÃO] Importação Centralizada
+import { OPTIONS } from '@/constants/options'
+
+// --- MÁSCARA MONETÁRIA (NOVO COMPONENTE INTERNO) ---
+
+interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
+  value: number
+  onChange: (value: number) => void
+}
+
+function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
+  const [displayValue, setDisplayValue] = useState('')
+
+  useEffect(() => {
+    const formatted = new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    }).format(value || 0)
+    
+    setDisplayValue(formatted)
+  }, [value])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/\D/g, '')
+    const numberValue = Number(rawValue) / 100
+    onChange(numberValue)
+  }
+
+  return (
+    <Input
+      {...props}
+      value={displayValue}
+      onChange={handleChange}
+      className={className}
+      placeholder="R$ 0,00"
+    />
+  )
+}
+
+// --- CONSTANTES LOCAIS ---
 
 const MASKS = {
   CPF: '000.000.000-00',
@@ -42,6 +81,7 @@ const getLocalDateOnly = (date = new Date()) =>
 
 const defaultValues: CreateCaseFormData = {
   nomeCompleto: '', nomeSocial: '', cpf: '', nascimento: '', sexo: '', 
+  ocupacao: '', renda: 0, 
   contatos: [{ numero: '', tipo: 'Pessoal', nome: '' }],
   endereco: { ra: '', logradouro: '', complemento: '', bairro: '', cidade: 'Brasília', uf: 'DF', cep: '' },
   responsavelLegal: '', parentescoResponsavel: '',
@@ -70,6 +110,7 @@ function PersonalDataSection() {
         </CardTitle>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-12 gap-4">
+        
         <div className="md:col-span-6">
           <FormField control={control} name="nomeCompleto" render={({ field }) => (
             <FormItem><FormLabel>Nome Civil Completo *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
@@ -80,6 +121,7 @@ function PersonalDataSection() {
             <FormItem><FormLabel>Nome Social (Opcional)</FormLabel><FormControl><Input {...field} placeholder="Como prefere ser chamado" /></FormControl><FormMessage /></FormItem>
           )}/>
         </div>
+
         <div className="md:col-span-4">
           <FormField control={control} name="cpf" render={({ field }) => (
             <FormItem><FormLabel>CPF *</FormLabel><FormControl><MaskedInput mask={MASKS.CPF} placeholder="000.000.000-00" {...field} /></FormControl><FormMessage /></FormItem>
@@ -95,9 +137,40 @@ function PersonalDataSection() {
             <FormItem><FormLabel>Sexo *</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                {/* [CORREÇÃO] Usando OPTIONS */}
                 <SelectContent>{OPTIONS.sexo.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}/>
+        </div>
+
+        {/* [ATUALIZADO] Ocupação e Renda (Com MoneyInput) */}
+        <div className="md:col-span-6">
+          <FormField control={control} name="ocupacao" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Ocupação Atual</FormLabel>
+              <Select value={field.value || ""} onValueChange={field.onChange}>
+                <FormControl><SelectTrigger><SelectValue placeholder="Selecione a ocupação" /></SelectTrigger></FormControl>
+                <SelectContent>
+                  {/* [CORREÇÃO] Usando constante importada */}
+                  {OPTIONS.ocupacao.map(op => <SelectItem key={op} value={op}>{op}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}/>
+        </div>
+        <div className="md:col-span-6">
+          <FormField control={control} name="renda" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Renda Individual</FormLabel>
+              <FormControl>
+                {/* [NOVO] Componente de máscara monetária */}
+                <MoneyInput 
+                  value={field.value} 
+                  onChange={field.onChange} 
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}/>
@@ -153,7 +226,6 @@ function ContactSection() {
                     {index === 0 && <FormLabel className="text-xs">Tipo</FormLabel>}
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                      {/* [CORREÇÃO] Usando OPTIONS */}
                       <SelectContent>{OPTIONS.tipoContato.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormItem>
@@ -303,7 +375,6 @@ function AddressSection() {
 function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: any[], isLoadingAgents: boolean, isEditing: boolean }) {
   const { control, watch, setValue } = useFormContext<CreateCaseFormData>()
   
-  // EFEITO PARA PREENCHER ÓRGÃO DEMANDANTE
   const origem = watch('origem')
   useEffect(() => {
     if (origem === 'ESPONTANEA') {
@@ -327,7 +398,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             <FormItem><FormLabel>Origem</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                {/* [CORREÇÃO] Usando OPTIONS */}
                 <SelectContent>{OPTIONS.origem.map(o => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
@@ -343,7 +413,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             <FormItem><FormLabel>Urgência/Risco</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                {/* [CORREÇÃO] Usando OPTIONS */}
                 <SelectContent className="max-h-[200px]">{OPTIONS.urgencia.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
@@ -354,7 +423,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             <FormItem><FormLabel>Categoria (Público)</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                {/* [CORREÇÃO] Usando OPTIONS */}
                 <SelectContent>{OPTIONS.categoria.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
@@ -368,7 +436,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           <FormField control={control} name="violacao" render={({ field }) => (
             <FormItem>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-inner">
-                {/* [CORREÇÃO] Usando OPTIONS */}
                 {OPTIONS.violacao.map(v => (
                   <div key={v} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
@@ -394,7 +461,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           <FormField control={control} name="beneficios" render={({ field }) => (
             <FormItem>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* [CORREÇÃO] Usando OPTIONS */}
                 {OPTIONS.transferenciaRenda.map(item => (
                   <div key={item} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
@@ -485,6 +551,10 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         ? initialData.violacao 
         : (initialData.violacao ? [initialData.violacao] : []),
 
+      // Normalização dos campos novos caso venham nulos do banco
+      ocupacao: initialData.ocupacao || '',
+      renda: initialData.renda ? Number(initialData.renda) : 0,
+
       beneficios: initialData.beneficios || [],
       numeroSei: initialData.numeroSei || '',
       linkSei: initialData.linkSei || '',
@@ -510,7 +580,10 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         contatos: data.contatos.map(c => ({ ...c, numero: c.numero.replace(/\D/g, '') })),
         numeroSei: data.numeroSei || null,
         linkSei: data.linkSei || null,
-        observacoes: data.observacoes || null
+        observacoes: data.observacoes || null,
+        // Garantir envio correto de renda e ocupação
+        ocupacao: data.ocupacao || null,
+        renda: Number(data.renda),
       }
 
       return isEditing && caseId

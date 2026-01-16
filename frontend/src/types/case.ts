@@ -1,11 +1,36 @@
 // frontend/src/types/case.ts
+// --- TIPOS AUXILIARES (ENUMS & UNIONS) ---
+
+export type CaseStatus = 
+  | 'AGUARDANDO_ACOLHIDA' 
+  | 'EM_ACOLHIDA' 
+  | 'AGUARDANDO_DISTRIBUICAO' 
+  | 'EM_ACOLHIDA_ESPECIALIZADA' 
+  | 'EM_ACOMPANHAMENTO' 
+  | 'EM_MONITORAMENTO' 
+  | 'DESLIGADO';
+
+export type CaseOrigin = 
+  | 'ESPONTANEA' 
+  | 'DOCUMENTAL' 
+  | 'REFERENCIADA' 
+  | 'BUSCA_ATIVA';
+
+export type ContactType = 'Pessoal' | 'Residencial' | 'Trabalho' | 'Vizinho' | 'Parente' | 'Outro';
+
 // --- SUB-INTERFACES ---
 
 export interface Contact {
   numero: string
-  tipo: 'Pessoal' | 'Residencial' | 'Trabalho' | 'Vizinho' | 'Parente' | 'Outro'
+  tipo: ContactType
   nome?: string
   observacao?: string
+}
+
+export interface EconomicData {
+  rendaTotal: number
+  numeroPessoas: number
+  rendaPerCapita: number
 }
 
 export interface ServiceDeliverable {
@@ -26,10 +51,13 @@ export interface FamilyMember {
   cpf?: string | null
   nascimento?: string | null
   telefone?: string | null
+  
+  // Dados Sócio-econômicos do Familiar
   ocupacao?: string | null
   renda?: number | string | null
+  
   observacoes?: string | null
-  // [NOVO] Campo necessário para o RMA (Bloco C)
+  // RMA (Bloco C)
   violacao?: string[]
   createdAt: string
 }
@@ -109,54 +137,60 @@ export interface CaseDetailData {
   createdAt: string
   updatedAt: string
 
-  // Identificação
+  // 1. Identificação
   nomeCompleto: string
   nomeSocial?: string | null
   cpf: string
   nascimento: string
   sexo: string
   
-  // --- VERSÃO 2.0 (Novos Campos) ---
+  // [NOVOS CAMPOS] Sócio-econômico do Titular
+  ocupacao?: string | null
+  renda?: number | null
+  
+  // [NOVO] Objeto calculado pelo backend
+  dadosEconomicos?: EconomicData
+
+  // 2. Contatos e Endereço
   contatos?: Contact[] 
   telefone?: string | null // Legacy fallback
   
   // Endereço Detalhado
   endereco?: string | null // Legacy fallback
-  endereco_logradouro?: string
-  endereco_complemento?: string
-  endereco_bairro?: string
-  endereco_cidade?: string
-  endereco_uf?: string
-  endereco_cep?: string
-  endereco_ra?: string
-  latitude?: number
-  longitude?: number
+  endereco_logradouro?: string | null
+  endereco_complemento?: string | null
+  endereco_bairro?: string | null
+  endereco_cidade?: string | null
+  endereco_uf?: string | null
+  endereco_cep?: string | null
+  endereco_ra?: string | null
+  latitude?: number | null
+  longitude?: number | null
 
-  // Responsável (Menores)
+  // 3. Responsável (Menores)
   responsavelLegal?: string | null
   parentescoResponsavel?: string | null
 
-  // Dados Técnicos
+  // 4. Dados Técnicos
   dataEntrada: string
   urgencia: string
-  // [ATUALIZADO] Array de strings conforme schema.prisma
   violacao: string[] 
   categoria: string
   orgaoDemandante: string
-  origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA' | string
-  status: string
+  origem: CaseOrigin
+  status: CaseStatus
 
-  // Administrativo
+  // 5. Administrativo
   numeroSei: string | null
   linkSei: string | null
   observacoes: string | null
   
-  // Relacionamentos (Objetos)
+  // 6. Relacionamentos (Objetos)
   criadoPor: { nome: string }
   agenteAcolhida: { id: string, nome: string } | null
   especialistaPAEFI: { id: string, nome: string } | null
 
-  // Listas (Includes do Prisma)
+  // 7. Listas (Includes do Prisma)
   beneficios: string[] 
   logs: CaseLog[]
   familia?: FamilyMember[]
@@ -166,7 +200,7 @@ export interface CaseDetailData {
   anexos?: CaseAttachment[]
   paf?: PafData | null
 
-  // Desligamento
+  // 8. Desligamento
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
@@ -178,10 +212,9 @@ export interface CaseSummary {
   id: string
   nomeCompleto: string
   cpf: string
-  status: string
+  status: CaseStatus
   dataEntrada: string
   urgencia: string
-  // [ATUALIZADO] Array de strings para consistência
   violacao?: string[] 
   sexo?: string
   

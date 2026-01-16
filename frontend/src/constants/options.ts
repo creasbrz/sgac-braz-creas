@@ -2,7 +2,22 @@
 import { STATUS_CONFIG } from './cases/styles'
 import { URGENCIA_NIVEIS, LISTA_VIOLACOES, LISTA_DESTINOS } from './cases/definitions'
 
-// Achatar a lista de urgências para dropdowns
+// --- CONSTANTES EXPORTADAS (Fontes de Verdade) ---
+
+// [IMPORTANTE] 'as const' é obrigatório para funcionar no Zod Enum
+export const OCUPACOES_ROL = [
+  'Não trabalha',
+  'Estudante',
+  'Do lar',
+  'Aposentado/Pensionista',
+  'Autônomo/Informal',
+  'Trabalhador Assalariado (CLT)',
+  'Trabalhador Assalariado (Sem Carteira)',
+  'BPC/LOAS',
+  'Desempregado',
+  'Outro'
+] as const;
+
 const FLAT_URGENCIA = [
   ...URGENCIA_NIVEIS.GRAVISSIMA,
   ...URGENCIA_NIVEIS.MUITO_GRAVE,
@@ -10,12 +25,16 @@ const FLAT_URGENCIA = [
   ...URGENCIA_NIVEIS.LEVE
 ]
 
+// --- OBJETO DE OPÇÕES PARA UI ---
+
 export const OPTIONS = {
   sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
   
   tipoContato: ['Pessoal', 'Residencial', 'Trabalho', 'Vizinho', 'Parente', 'Outro'],
   
-  // Fontes de verdade (definitions.ts)
+  // Reutiliza a constante, mas transformando em array mutável para o Select do UI se necessário
+  ocupacao: [...OCUPACOES_ROL], 
+
   urgencia: FLAT_URGENCIA,
   violacao: LISTA_VIOLACOES,
   destinos: LISTA_DESTINOS,
@@ -39,7 +58,6 @@ export const OPTIONS = {
     'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
   ],
 
-  // Formata para { value, label } para componentes de Select
   status: Object.entries(STATUS_CONFIG).map(([key, config]) => ({
     value: key,
     label: config.label

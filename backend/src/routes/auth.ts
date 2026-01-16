@@ -2,16 +2,15 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
-import bcrypt from 'bcryptjs'
 import { Cargo } from '@prisma/client'
+import { AuthService } from '../services/AuthService'
 
 export async function authRoutes(app: FastifyInstance) {
-  // Tipagem forte para garantir inferência do Zod
   const server = app.withTypeProvider<ZodTypeProvider>()
 
-  // --- Schemas Reutilizáveis ---
-  // Schema de resposta do usuário (para não vazar senha)
+  // --- Schemas ---
+  
+  // Schema de resposta seguro (sem senha)
   const userResponseSchema = z.object({
     id: z.string().uuid(),
     nome: z.string(),
@@ -19,7 +18,7 @@ export async function authRoutes(app: FastifyInstance) {
     cargo: z.nativeEnum(Cargo),
     matricula: z.string().nullable().optional(),
     ativo: z.boolean(),
-    createdAt: z.date().optional() // Opcional pois o create retorna, mas o /me pode formatar
+    createdAt: z.date().optional()
   })
 
   // [POST] Registro
@@ -28,42 +27,33 @@ export async function authRoutes(app: FastifyInstance) {
       tags: ['Autenticação'],
       summary: 'Registrar um novo usuário no sistema',
       body: z.object({
-        nome: z.string().min(3, 'Nome deve ter no mínimo 3 caracteres'),
+        nome: z.string().min(3, 'Nome muito curto'),
         email: z.string().email('E-mail inválido'),
         senha: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
-        // Transformação para lidar com possíveis inputs legados ou do frontend
-        cargo: z.string().transform((val) => {
-          if (val === 'Agente Social') return Cargo.Agente_Social
-          return val as Cargo
-        }),
+        // Aceita string do Enum ou tenta mapear strings soltas se necessário
+        cargo: z.nativeEnum(Cargo).or(
+            z.string().transform((val) => {
+                if (val === 'Agente Social') return Cargo.Agente_Social
+                return val as Cargo
+            })
+        ),
         matricula: z.string().optional()
       }),
       response: {
-        201: userResponseSchema // Filtra automaticamente a senha
+        201: userResponseSchema
       }
     }
   }, async (request, reply) => {
-    const { nome, email, senha, cargo, matricula } = request.body
-
-    const userExists = await prisma.user.findUnique({ where: { email } })
-    if (userExists) {
-      return reply.status(409).send({ message: 'Email já registrado.' })
+    try {
+      // Service cuida do hash e criação
+      const user = await AuthService.register(request.body)
+      return reply.status(201).send(user)
+    } catch (error: any) {
+      if (error.message === 'EMAIL_ALREADY_EXISTS') {
+        return reply.status(409).send({ message: 'Email já registrado.' })
+      }
+      throw error // Erro 500 genérico capturado pelo Global Handler
     }
-
-    const hashedPassword = await bcrypt.hash(senha, 10) // Aumentei salt para 10 (padrão de segurança atual)
-
-    const user = await prisma.user.create({
-      data: {
-        nome,
-        email,
-        senha: hashedPassword,
-        cargo,
-        matricula,
-        ativo: true
-      },
-    })
-
-    return reply.status(201).send(user)
   })
 
   // [POST] Login
@@ -84,18 +74,15 @@ export async function authRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { email, senha } = request.body
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    // Service valida senha e status (ativo/inativo)
+    const user = await AuthService.validateCredentials(email, senha)
     
-    // Boa prática de segurança: Mensagem genérica para dificultar enumeração de usuários
-    if (!user || !user.ativo) {
+    // Mensagem genérica por segurança
+    if (!user) {
       return reply.status(401).send({ message: 'Credenciais inválidas ou usuário desativado.' })
     }
 
-    const isPasswordCorrect = await bcrypt.compare(senha, user.senha)
-    if (!isPasswordCorrect) {
-      return reply.status(401).send({ message: 'Credenciais inválidas ou usuário desativado.' })
-    }
-
+    // Geração do Token JWT (Responsabilidade do Controller/Fastify)
     const token = app.jwt.sign(
       { nome: user.nome, cargo: user.cargo, email: user.email },
       { sub: user.id, expiresIn: '7d' }
@@ -110,18 +97,14 @@ export async function authRoutes(app: FastifyInstance) {
     schema: {
       tags: ['Autenticação'],
       summary: 'Obter dados do usuário logado',
-      security: [{ bearerAuth: [] }], // Adiciona o cadeado no Swagger
+      security: [{ bearerAuth: [] }],
       response: {
         200: userResponseSchema
       }
     }
   }, async (request, reply) => {
     const userId = request.user.sub
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      // Não precisamos de 'select' manual aqui, pois o userResponseSchema já filtra a senha na saída
-    })
+    const user = await AuthService.getUserProfile(userId)
 
     if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' })
     if (!user.ativo) return reply.status(401).send({ message: 'Usuário desativado.' })

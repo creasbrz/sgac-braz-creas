@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { 
-  Users, PlusCircle, Trash2, Wallet, Briefcase, User, Phone, 
+  Users, PlusCircle, Trash2, Wallet, Briefcase, User, 
   Loader2, Calendar, MoreHorizontal, AlertCircle, ShieldAlert 
 } from 'lucide-react'
 import { IMaskInput } from 'react-imask'
@@ -27,12 +27,16 @@ import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { formatDateSafe, formatCPF, formatPhone } from '@/utils/formatters'
-import { OPTIONS } from '@/constants/options' // [CORREÇÃO] Usando opções centralizadas
+import { formatDateSafe, formatCPF } from '@/utils/formatters'
+import { OPTIONS } from '@/constants/options'
 
 import type { FamilyMember } from '@/types/case'
 
-interface FamilyTabProps { caseId: string }
+// [NOVO] Prop para receber a renda do titular do componente pai
+interface FamilyTabProps { 
+  caseId: string;
+  titularRenda?: number; // Opcional, vindo do CaseDetailData
+}
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 
@@ -46,7 +50,7 @@ const MaskedInput = ({ className, ...props }: any) => (
   />
 )
 
-export function FamilyTab({ caseId }: FamilyTabProps) {
+export function FamilyTab({ caseId, titularRenda = 0 }: FamilyTabProps) {
   const queryClient = useQueryClient()
   const [isAddOpen, setIsAddOpen] = useState(false)
 
@@ -59,7 +63,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
   const [cpf, setCpf] = useState('')
   const [nascimento, setNascimento] = useState('')
   const [telefone, setTelefone] = useState('')
-  const [violacoes, setViolacoes] = useState<string[]>([]) // [NOVO]
+  const [violacoes, setViolacoes] = useState<string[]>([])
 
   const { data: members = [], isLoading } = useQuery<FamilyMember[]>({
     queryKey: ['family', caseId],
@@ -72,7 +76,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
         nome, parentesco, ocupacao, cpf: cpf || null, nascimento: nascimento || null, telefone: telefone || null,
         idade: idade ? parseInt(idade) : undefined,
         renda: renda ? parseFloat(renda.replace(',', '.')) : undefined,
-        violacao: violacoes // [NOVO] Enviando violações
+        violacao: violacoes
       })
     },
     onSuccess: () => {
@@ -80,6 +84,8 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
       setIsAddOpen(false)
       resetForm()
       queryClient.invalidateQueries({ queryKey: ['family', caseId] })
+      // [IMPORTANTE] Invalidar o caso principal para atualizar a renda per capita global se ela estivesse lá
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] })
     },
     onError: () => toast.error("Erro ao adicionar.")
   })
@@ -89,6 +95,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
     onSuccess: () => {
       toast.success("Familiar removido.")
       queryClient.invalidateQueries({ queryKey: ['family', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] })
     }
   })
 
@@ -102,8 +109,16 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
     else setViolacoes(prev => prev.filter(item => item !== v))
   }
 
-  const totalRenda = members.reduce((acc, m) => acc + (Number(m.renda) || 0), 0)
-  const perCapita = members.length > 0 ? totalRenda / members.length : 0
+  // --- CÁLCULO DE RENDA DINÂMICO (FRONTEND) ---
+  const rendaFamiliares = members.reduce((acc, m) => acc + (Number(m.renda) || 0), 0)
+  
+  // Total = Titular + Familiares
+  const rendaTotal = Number(titularRenda) + rendaFamiliares
+  
+  // Pessoas = 1 (Titular) + N (Familiares)
+  const totalPessoas = 1 + members.length
+  
+  const perCapita = totalPessoas > 0 ? rendaTotal / totalPessoas : 0
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -115,7 +130,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
             <Users className="h-5 w-5 text-primary" /> Composição Familiar
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestão de vínculos e cálculo de renda per capita.
+            Gestão de vínculos e cálculo de renda per capita (incluindo titular).
           </p>
         </div>
 
@@ -124,12 +139,12 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
             <div className="flex flex-col">
               <span className="text-[10px] uppercase font-bold text-muted-foreground">Renda Total</span>
               <span className="font-bold text-emerald-600 text-base">
-                {totalRenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                {rendaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </span>
             </div>
             <div className="h-8 w-px bg-border/60" />
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground">Per Capita</span>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground">Per Capita ({totalPessoas} pessoas)</span>
               <span className="font-medium text-base text-foreground">
                 {perCapita.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </span>
@@ -145,19 +160,19 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
       <div className="rounded-xl border bg-card overflow-hidden shadow-sm">
         {isLoading && (
            <div className="p-8 text-center flex flex-col items-center justify-center text-muted-foreground">
-              <Loader2 className="h-8 w-8 animate-spin mb-2 text-primary/50" />
-              <p>Carregando família...</p>
+             <Loader2 className="h-8 w-8 animate-spin mb-2 text-primary/50" />
+             <p>Carregando família...</p>
            </div>
         )}
 
         {!isLoading && members.length === 0 && (
            <div className="p-12 text-center flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
-              <div className="bg-muted p-4 rounded-full mb-4">
-                 <Users className="h-8 w-8 opacity-50" />
-              </div>
-              <h3 className="font-medium text-foreground">Nenhum familiar cadastrado</h3>
-              <p className="text-sm max-w-sm mt-1 mb-4">Adicione as pessoas que compõem o núcleo familiar.</p>
-              <Button variant="outline" onClick={() => setIsAddOpen(true)}>Adicionar o primeiro</Button>
+             <div className="bg-muted p-4 rounded-full mb-4">
+                <Users className="h-8 w-8 opacity-50" />
+             </div>
+             <h3 className="font-medium text-foreground">Apenas o titular cadastrado</h3>
+             <p className="text-sm max-w-sm mt-1 mb-4">Adicione outros membros para compor o cálculo familiar.</p>
+             <Button variant="outline" onClick={() => setIsAddOpen(true)}>Adicionar Familiar</Button>
            </div>
         )}
 
@@ -170,7 +185,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                     <TableHead className="w-[200px]">Membro</TableHead>
                     <TableHead>Vínculo</TableHead>
                     <TableHead>Dados Pessoais</TableHead>
-                    <TableHead>Contato</TableHead>
+                    <TableHead>Ocupação</TableHead>
                     <TableHead>Violações (RMA)</TableHead>
                     <TableHead className="text-right">Renda</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
@@ -182,7 +197,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                       <TableCell>
                         <div className="flex items-center gap-3">
                            <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                              {m.nome.charAt(0).toUpperCase()}
+                             {m.nome.charAt(0).toUpperCase()}
                            </div>
                            <div className="flex flex-col">
                              <span className="font-medium text-foreground">{m.nome}</span>
@@ -206,10 +221,8 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {m.telefone ? (
-                          <span className="flex items-center gap-1.5 text-sm">
-                            <Phone className="h-3.5 w-3.5 text-muted-foreground" /> {formatPhone(m.telefone)}
-                          </span>
+                        {m.ocupacao ? (
+                          <span className="text-sm">{m.ocupacao}</span>
                         ) : <span className="text-muted-foreground/50 text-xs">-</span>}
                       </TableCell>
                       <TableCell>
@@ -225,7 +238,7 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                       <TableCell className="text-right font-mono text-sm font-medium">
                         {Number(m.renda) > 0 ? (
                            <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                              {Number(m.renda).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                             {Number(m.renda).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                            </span>
                         ) : <span className="text-muted-foreground opacity-50">-</span>}
                       </TableCell>
@@ -248,8 +261,6 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                 </TableBody>
               </Table>
             </div>
-            
-            {/* Mobile View Omitted for Brevity - Similar Structure */}
           </div>
         )}
       </div>
@@ -311,7 +322,12 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Ocupação</Label>
-                    <Input value={ocupacao} onChange={e => setOcupacao(e.target.value)} placeholder="Ex: Estudante, Autônomo" />
+                    <Select value={ocupacao} onValueChange={setOcupacao}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {OPTIONS.ocupacao.map(op => <SelectItem key={op} value={op}>{op}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Renda Mensal (R$)</Label>
@@ -342,18 +358,18 @@ export function FamilyTab({ caseId }: FamilyTabProps) {
                </h4>
                <ScrollArea className="h-[120px] rounded-md border p-2 bg-red-50/10">
                  <div className="grid grid-cols-1 gap-2">
-                    {OPTIONS.violacao.map(v => (
-                      <div key={v} className="flex items-center space-x-2">
-                        <Checkbox 
-                          id={`v-${v}`} 
-                          checked={violacoes.includes(v)}
-                          onCheckedChange={(c) => handleViolationChange(v, c as boolean)}
-                        />
-                        <label htmlFor={`v-${v}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                          {v}
-                        </label>
-                      </div>
-                    ))}
+                   {OPTIONS.violacao.map(v => (
+                     <div key={v} className="flex items-center space-x-2">
+                       <Checkbox 
+                         id={`v-${v}`} 
+                         checked={violacoes.includes(v)}
+                         onCheckedChange={(c) => handleViolationChange(v, c as boolean)}
+                       />
+                       <label htmlFor={`v-${v}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                         {v}
+                       </label>
+                     </div>
+                   ))}
                  </div>
                </ScrollArea>
             </div>

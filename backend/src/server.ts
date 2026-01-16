@@ -1,10 +1,11 @@
-import fastify from 'fastify'
+// backend/src/server.ts
+import fastify, { FastifyRequest, FastifyReply } from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url' // Necessário para ESM
+import { fileURLToPath } from 'node:url'
 import { 
   serializerCompiler, 
   validatorCompiler, 
@@ -14,7 +15,10 @@ import {
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 
-// Import de TODAS as rotas
+// [NOVO] Importação do Error Handler
+import { errorHandler } from './lib/errorHandler'
+
+// Importação das Rotas
 import { authRoutes } from './routes/auth'
 import { caseRoutes } from './routes/cases'
 import { userRoutes } from './routes/users'
@@ -36,56 +40,76 @@ import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
 import { rmaRoutes } from './routes/rma'
 
-// --- CONFIGURAÇÃO DE AMBIENTE ---
-// Recria __dirname para ES Modules
+// --- CONFIGURAÇÃO DE AMBIENTE (ESM) ---
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
 const isDev = process.env.NODE_ENV !== 'production'
 
 const app = fastify({
   logger: {
-    // Pino-pretty apenas em DEV para não impactar performance em PROD
     transport: isDev
       ? {
           target: 'pino-pretty',
           options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
         }
       : undefined,
+    level: isDev ? 'debug' : 'info'
   },
+  connectionTimeout: 30000 
 }).withTypeProvider<ZodTypeProvider>()
 
-// --- PLUGINS GLOBAIS ---
+// --- PLUGINS DE VALIDAÇÃO (ZOD) ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
 
-// [IMPORTANTE] CORS
+// --- GLOBAL ERROR HANDLER ---
+// [MODIFICADO] Usa a função extraída
+app.setErrorHandler(errorHandler)
+
+// --- MIDDLEWARES ---
 app.register(cors, { 
-  origin: true, // Em produção, considere restringir para o domínio do frontend
+  origin: true, 
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['Content-Disposition'] 
 })
 
-app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-secret' })
-app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }) // 10MB limit
+app.register(jwt, { 
+  secret: process.env.JWT_SECRET || 'dev-secret-change-in-prod' 
+})
 
-// Documentação Swagger
+app.register(multipart, { 
+  limits: { fileSize: 10 * 1024 * 1024 },
+  attachFieldsToBody: true 
+})
+
+// --- DOCUMENTAÇÃO (SWAGGER) ---
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS API - SUAS', version: '7.2.0' },
-    components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
+    info: { title: 'CREAS Brazlândia API', version: '7.5.0' },
+    components: { 
+      securitySchemes: { 
+        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } 
+      } 
+    },
   },
   transform: jsonSchemaTransform,
 })
-app.register(fastifySwaggerUi, { routePrefix: '/docs' })
 
-// Decorator Auth
-app.decorate('authenticate', async (request: any, reply: any) => {
+app.register(fastifySwaggerUi, { 
+  routePrefix: '/docs',
+  uiConfig: {
+    docExpansion: 'none',
+    deepLinking: false
+  }
+})
+
+// --- DECORATORS ---
+app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
   try { 
     await request.jwtVerify() 
   } catch (err) { 
-    reply.status(401).send({ message: 'Não autorizado', code: 'UNAUTHORIZED' }) 
+    reply.status(401).send({ message: 'Acesso não autorizado', code: 'UNAUTHORIZED' }) 
   }
 })
 
@@ -112,45 +136,42 @@ app.register(async (api) => {
   api.register(waitingListRoutes)
   api.register(rmaRoutes)
   
-  // Dashboard específico (cuidado com duplicidade se statsRoutes já tiver rotas base)
   api.register(statsRoutes, { prefix: '/dashboard' })
 
 }, { prefix: '/api' })
 
-// --- SERVIR FRONTEND (SPA) ---
-// Caminho robusto para o build do Vite
+// --- SERVIR FRONTEND ---
 const frontendDist = path.join(__dirname, '../../frontend/dist')
 
 app.register(fastifyStatic, {
   root: frontendDist,
   prefix: '/',
-  wildcard: false, // Importante: Desativa wildcard automático para tratarmos manualmente o SPA
+  wildcard: false,
+  preCompressed: true
 })
 
-// Handler SPA e API 404
 app.setNotFoundHandler((req, reply) => {
-  // Se for rota de API, retorna JSON 404
   if (req.raw.url && req.raw.url.startsWith('/api')) {
     return reply.status(404).send({ 
       error: 'Not Found',
-      message: `Rota não encontrada: ${req.raw.url}` 
+      message: `Endpoint não encontrado: ${req.raw.url}` 
     })
   }
-  
-  // Se for navegação do browser (React Router), serve o index.html
   return reply.sendFile('index.html')
 })
 
+// --- INICIALIZAÇÃO ---
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 3333
-    const host = '0.0.0.0' // Obrigatório para Render/Docker
+    const host = '0.0.0.0' 
     
     await app.ready()
     await app.listen({ port, host })
     
-    console.log(`🚀 HTTP Server running on http://${host}:${port}`)
-    console.log(`📂 Serving frontend from: ${frontendDist}`)
+    console.log(`🚀 Server running on http://${host}:${port}`)
+    console.log(`📂 Static files path: ${frontendDist}`)
+    console.log(`📚 Documentation: http://${host}:${port}/docs`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)

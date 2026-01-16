@@ -22,6 +22,7 @@ ESTRUTURA GERAL (Backend):
 ├── prisma
 ├── scripts
 ├── src
+├── tsup.config.ts
 
 
 
@@ -31,7 +32,7 @@ FILE: frontend\package.json
 ==================================================================
 {
   "name": "frontend",
-  "version": "7.1.3",
+  "version": "7.5.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -91,7 +92,7 @@ FILE: frontend\package.json
     "react-imask": "^7.6.1",
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.28.0",
-    "recharts": "^2.15.0",
+    "recharts": "^2.15.4",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss": "^3.4.16",
@@ -2010,7 +2011,7 @@ export interface ServiceDeliverable {
   dataSolicitacao: string
   dataEntrega?: string | null
   observacoes?: string | null
-  responsavel?: { nome: string } // Pode ser opcional dependendo do backend
+  responsavel?: { nome: string }
 }
 
 export interface FamilyMember {
@@ -2022,8 +2023,10 @@ export interface FamilyMember {
   nascimento?: string | null
   telefone?: string | null
   ocupacao?: string | null
-  renda?: number | null
+  renda?: number | string | null
   observacoes?: string | null
+  // [NOVO] Campo necessário para o RMA (Bloco C)
+  violacao?: string[]
   createdAt: string
 }
 
@@ -2110,11 +2113,11 @@ export interface CaseDetailData {
   sexo: string
   
   // --- VERSÃO 2.0 (Novos Campos) ---
-  contatos?: Contact[] // Array de contatos estruturados
-  telefone?: string | null // Mantido para legado
+  contatos?: Contact[] 
+  telefone?: string | null // Legacy fallback
   
   // Endereço Detalhado
-  endereco?: string | null // Mantido para legado
+  endereco?: string | null // Legacy fallback
   endereco_logradouro?: string
   endereco_complemento?: string
   endereco_bairro?: string
@@ -2132,7 +2135,8 @@ export interface CaseDetailData {
   // Dados Técnicos
   dataEntrada: string
   urgencia: string
-  violacao: string
+  // [ATUALIZADO] Array de strings conforme schema.prisma
+  violacao: string[] 
   categoria: string
   orgaoDemandante: string
   origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA' | string
@@ -2173,7 +2177,8 @@ export interface CaseSummary {
   status: string
   dataEntrada: string
   urgencia: string
-  violacao?: string
+  // [ATUALIZADO] Array de strings para consistência
+  violacao?: string[] 
   sexo?: string
   
   // Endereço e Contato resumidos para listas
@@ -2235,6 +2240,85 @@ declare module 'pdfmake/build/pdfmake' {
 declare module 'pdfmake/build/vfs_fonts' {
     const pdfFonts: any;
     export = pdfFonts;
+}
+
+==================================================================
+FILE: frontend\src\types\rma.ts
+==================================================================
+// frontend/src/types/rma.ts
+
+// Estrutura genérica que suporta todas as faixas etárias do formulário
+export interface AgeBreakdown {
+  masculino: {
+    a0_6?: number;   // Específico Bloco C
+    a7_12?: number;  // Específico Bloco C
+    a0_12?: number;  // Geral
+    a13_15?: number; // Específico Trabalho Infantil
+    a13_17?: number; // Geral Adolescente
+    a18_59?: number; // Adulto
+    a60_mais?: number; // Idoso
+  };
+  feminino: {
+    a0_6?: number;
+    a7_12?: number;
+    a0_12?: number;
+    a13_15?: number;
+    a13_17?: number;
+    a18_59?: number;
+    a60_mais?: number;
+  };
+  total: number;
+}
+
+export interface RmaFullData {
+  bloco1: {
+    // A - Volume
+    a1_familias_paefi: number;
+    a2_novos_casos: number;
+    
+    // B - Perfil Novos
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
+    b6_vitimas_novos: AgeBreakdown; // Tabela B.6
+    b7_mse: number;
+    
+    // C - Crianças/Adolescentes (Novos)
+    c1_violencia_intrafamiliar: AgeBreakdown;
+    c2_abuso_sexual: AgeBreakdown;
+    c3_exploracao_sexual: AgeBreakdown;
+    c4_negligencia: AgeBreakdown;
+    c5_trabalho_infantil: AgeBreakdown;
+    
+    // D - Idosos
+    d1_violencia_fisica_psico: number;
+    d2_negligencia: number;
+    
+    // E - PCD
+    e1_violencia_intrafamiliar: AgeBreakdown;
+    e2_negligencia: AgeBreakdown;
+    
+    // F - Mulheres
+    f1_violencia_intrafamiliar: number;
+    
+    // G - Tráfico
+    g1_trafico: AgeBreakdown;
+    
+    // H - Discriminação
+    h1_discriminacao: number;
+    
+    // I - Pop Rua
+    i1_situacao_rua: AgeBreakdown;
+  };
+  
+  bloco2: {
+    m1_atendimentos_individualizados: number;
+    m2_atendimentos_grupo: number;
+    m3_encaminhamentos_cras: number;
+    m4_visitas_domiciliares: number;
+  };
 }
 
 ==================================================================
@@ -2527,8 +2611,8 @@ export const URGENCIA_NIVEIS = {
 
 export const LISTA_VIOLACOES = [
   'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
-  'Violência física', 'Violência psicológica', 'Violência sexual',
-  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial',
+  'Violência física', 'Violência psicológica', 'Abuso sexual', 'Exploração sexual',
+  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial', 'Tráficos de seres humanos',
   'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
 ]
 
@@ -2802,7 +2886,7 @@ FILE: frontend\src\constants\options.ts
 import { STATUS_CONFIG } from './cases/styles'
 import { URGENCIA_NIVEIS, LISTA_VIOLACOES, LISTA_DESTINOS } from './cases/definitions'
 
-// Achatar a lista de urgências para usar em dropdowns simples
+// Achatar a lista de urgências para dropdowns
 const FLAT_URGENCIA = [
   ...URGENCIA_NIVEIS.GRAVISSIMA,
   ...URGENCIA_NIVEIS.MUITO_GRAVE,
@@ -2813,14 +2897,30 @@ const FLAT_URGENCIA = [
 export const OPTIONS = {
   sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
   
-  // Fontes de verdade
+  tipoContato: ['Pessoal', 'Residencial', 'Trabalho', 'Vizinho', 'Parente', 'Outro'],
+  
+  // Fontes de verdade (definitions.ts)
   urgencia: FLAT_URGENCIA,
   violacao: LISTA_VIOLACOES,
-  destinos: LISTA_DESTINOS, // [ADICIONADO] Para o modal de desligamento
+  destinos: LISTA_DESTINOS,
   
   categoria: [
     'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 
     'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'
+  ],
+
+  origem: [
+    { id: 'ESPONTANEA', label: 'Demanda Espontânea (Balcão)' },
+    { id: 'DOCUMENTAL', label: 'Demanda Documental (SEI/Ofício)' },
+    { id: 'REFERENCIADA', label: 'Encaminhamento de Rede' },
+    { id: 'BUSCA_ATIVA', label: 'Busca Ativa' }
+  ],
+
+  transferenciaRenda: [
+    'PROGRAMA BOLSA FAMÍLIA (PBF)', 
+    'PROGRAMA DF SOCIAL', 
+    'PROGRAMA CARTÃO GÁS', 
+    'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
   ],
 
   // Formata para { value, label } para componentes de Select
@@ -2964,10 +3064,13 @@ FILE: frontend\src\styles\index.css
 @tailwind utilities;
 
 /* -------------------------------------------------------------------------- */
-/* CONFIGURAÇÃO BASE                          */
+/* CONFIGURAÇÃO BASE                                                          */
 /* -------------------------------------------------------------------------- */
 @layer base {
   :root {
+    /* Ajuda o browser a renderizar inputs nativos (date, time) corretamente */
+    color-scheme: light; 
+
     /* --- CORES PRINCIPAIS (Light Mode) --- */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -2978,7 +3081,7 @@ FILE: frontend\src\styles\index.css
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    /* Azul Institucional (Gov Like) */
+    /* Azul Institucional */
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
 
@@ -3000,14 +3103,14 @@ FILE: frontend\src\styles\index.css
 
     --radius: 0.5rem;
 
-    /* --- CHART COLORS (Para gráficos Recharts) --- */
+    /* --- CHART COLORS --- */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
 
-    /* --- SIDEBAR (Para isolar o tema da navegação) --- */
+    /* --- SIDEBAR --- */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -3020,6 +3123,9 @@ FILE: frontend\src\styles\index.css
 
   /* --- DARK MODE --- */
   .dark {
+    /* Ajuda o browser a renderizar inputs nativos corretamente no escuro */
+    color-scheme: dark;
+
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
@@ -3048,14 +3154,12 @@ FILE: frontend\src\styles\index.css
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
 
-    /* Chart Dark */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
 
-    /* Sidebar Dark */
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -3078,16 +3182,13 @@ FILE: frontend\src\styles\index.css
 }
 
 /* -------------------------------------------------------------------------- */
-/* SCROLLBARS                                 */
+/* UTILITIES & SCROLLBARS                                                     */
 /* -------------------------------------------------------------------------- */
-
 @layer utilities {
-  /* Classe utilitária para scrollbar fina (usada no MainLayout) */
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
-  
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -3100,7 +3201,7 @@ FILE: frontend\src\styles\index.css
   }
 }
 
-/* Fallback Global para Webkit (Chrome/Edge/Safari) */
+/* Fallback Global */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -3113,36 +3214,29 @@ FILE: frontend\src\styles\index.css
 }
 
 /* -------------------------------------------------------------------------- */
-/* MODO PRIVACIDADE (BLUR)                          */
+/* PRIVACY MODE                                                               */
 /* -------------------------------------------------------------------------- */
-
-/* Aplica blur em elementos sensíveis quando a classe .privacy-mode está no body.
-   Adicione a classe .privacy-mask manualmente em componentes específicos se necessário.
-*/
 body.privacy-mode .privacy-mask,
 body.privacy-mode h1,
 body.privacy-mode h2,
 body.privacy-mode h3,
 body.privacy-mode h4,
-body.privacy-mode .font-medium, /* Geralmente nomes de usuários */
-body.privacy-mode td:first-child, /* Geralmente nomes em tabelas */
-body.privacy-mode td:nth-child(2) /* Geralmente CPFs ou dados secundários */
-{
+body.privacy-mode .font-medium,
+body.privacy-mode td:first-child,
+body.privacy-mode td:nth-child(2) {
   filter: blur(5px);
   user-select: none;
   transition: filter 0.2s ease-in-out;
   cursor: default;
 }
 
-/* Exceções explícitas */
 body.privacy-mode .privacy-exempt {
   filter: none !important;
 }
 
-/* Recurso "Peek": Passar o mouse revela o dado momentaneamente */
 body.privacy-mode .privacy-mask:hover,
 body.privacy-mode h1:hover,
 body.privacy-mode td:first-child:hover {
   filter: blur(0);
-  transition-delay: 0.1s; /* Pequeno delay para evitar flashes acidentais */
+  transition-delay: 0.1s;
 }

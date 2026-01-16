@@ -74,9 +74,9 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relacionamentos
-  casosCriados      Case[]               @relation("Criador")
-  casosAcolhida     Case[]               @relation("AgenteAcolhida")
-  casosPAEFI        Case[]               @relation("EspecialistaPAEFI")
+  casosCriados      Case[]                @relation("Criador")
+  casosAcolhida     Case[]                @relation("AgenteAcolhida")
+  casosPAEFI        Case[]                @relation("EspecialistaPAEFI")
   evolucoes         Evolucao[]
   pafs              Paf[]
   pafVersions       PafVersion[]
@@ -90,9 +90,9 @@ model User {
 }
 
 model Case {
-  id                   String   @id @default(uuid())
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   
   // 1. Identificação
   nomeCompleto         String
@@ -100,10 +100,13 @@ model Case {
   cpf                  String   @unique
   nascimento           DateTime
   sexo                 String
+  
+  // [NOVOS CAMPOS] Dados Socioeconômicos do Titular
+  ocupacao String?  
+  renda    Decimal? @db.Decimal(10, 2) 
 
   // 2. Contato (Versão 2.0 - Flexível)
-  // Armazena array: [{ numero: "...", tipo: "Pessoal", nome: "Mãe" }]
-  contatos     Json?
+  contatos      Json?
 
   // 3. Endereço e Localização (Versão 2.0 e 3.0)
   endereco_logradouro  String?
@@ -112,14 +115,14 @@ model Case {
   endereco_cidade      String? @default("Brasília")
   endereco_uf          String? @default("DF")
   endereco_cep         String?
-  endereco_ra          String? // Essencial para filtros regionais
+  endereco_ra          String? 
   
   // Geolocalização (V3.0 - Mapa de Calor)
   latitude             Float?
   longitude            Float?
 
   // 4. Responsável (Menores/Incapazes)
-  responsavelLegal      String?
+  responsavelLegal       String?
   parentescoResponsavel String?
 
   // 5. Dados Técnicos da Demanda
@@ -136,27 +139,27 @@ model Case {
   linkSei     String?
   observacoes String?
   status      CaseStatus @default(AGUARDANDO_ACOLHIDA)
-  beneficios  String[]   @default([]) // Cache simples de benefícios ativos
+  beneficios  String[]   @default([]) 
 
   // 7. Gestão de Equipe (Relacionamentos)
-  criadoPorId         String
-  criadoPor           User   @relation("Criador", fields: [criadoPorId], references: [id])
+  criadoPorId          String
+  criadoPor            User   @relation("Criador", fields: [criadoPorId], references: [id])
   
-  agenteAcolhidaId    String?
-  agenteAcolhida      User?  @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
+  agenteAcolhidaId     String?
+  agenteAcolhida       User?  @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
   
   especialistaPAEFIId String?
-  especialistaPAEFI   User?  @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
+  especialistaPAEFI    User?  @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
 
   // 8. Desligamento
-  dataInicioPAEFI     DateTime?
-  dataDesligamento    DateTime?
-  motivoDesligamento  String?
+  dataInicioPAEFI      DateTime?
+  dataDesligamento     DateTime?
+  motivoDesligamento   String?
   destinoDesligamento String?
-  parecerFinal        String?
+  parecerFinal         String?
   
   // Soft Delete
-  deletado     Boolean   @default(false)
+  deletado      Boolean   @default(false)
   dataDeletado DateTime?
 
   // 9. Relacionamentos Detalhados
@@ -170,14 +173,14 @@ model Case {
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
 
-  // Índices para Dashboard e Pesquisa Rápida
+  // Índices
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
   @@index([agenteAcolhidaId])
   @@index([especialistaPAEFIId])
   @@index([violacao])
-  @@index([endereco_ra]) // Novo índice para filtros regionais
+  @@index([endereco_ra]) 
 
   @@map("cases")
 }
@@ -322,7 +325,6 @@ model MembroFamilia {
   renda       Decimal?  @db.Decimal(10, 2)
   observacoes String?
   
-  // [NOVO] Permite registrar violações individuais para o RMA B.6
   violacao    String[]  @default([])
 
   createdAt   DateTime  @default(now())
@@ -350,21 +352,21 @@ model ServiceDeliverable {
 }
 
 model GroupActivity {
-  id                  String            @id @default(uuid())
-  tema                String
-  tipo                GroupType
-  dataRealizacao      DateTime
-  local               String?
-  descricao           String?
-  orgaosEnvolvidos    String[]          @default([])
+  id                 String             @id @default(uuid())
+  tema               String
+  tipo               GroupType
+  dataRealizacao     DateTime
+  local              String?
+  descricao          String?
+  orgaosEnvolvidos   String[]           @default([])
   attendanceConfirmed Boolean           @default(false)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  facilitadorId       String
-  facilitador         User              @relation(fields: [facilitadorId], references: [id])
+  facilitadorId      String
+  facilitador        User               @relation(fields: [facilitadorId], references: [id])
   
-  participantes       GroupAttendance[]
+  participantes      GroupAttendance[]
 }
 
 model GroupAttendance {

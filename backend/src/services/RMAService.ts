@@ -1,128 +1,221 @@
 // backend/src/services/RMAService.ts
 import { differenceInYears } from 'date-fns'
+import { Case } from '@prisma/client' // Importando tipagem do Prisma
 
-// Interface que espelha o Formulário Oficial
-export interface RMAResult {
-  bloco1: {
-    A1_total_acompanhamento: number;
-    A2_novos_casos: number;
-    B1_bolsa_familia: number;
-    B2_bpc: number;
-    B3_trabalho_infantil: number;
-    B4_acolhimento: number;
-    B5_drogas: number;
-    B7_mse: number;
+// --- Interfaces de Dados do RMA (Espelho do Formulário Oficial) ---
+
+export interface AgeBreakdown {
+  masculino: {
+    a0_12: number; a13_17: number; a18_59: number; a60_mais: number
   };
-  violacoes_identificadas: {
-    crianca_adolescente: {
-      fisica_psico: number; // C.1
-      exploracao_sexual: number; // C.2
-      abuso_sexual: number; // C.3
-      negligencia_abandono: number; // C.4
-      trabalho_infantil: number; // C.5
-    };
-    idoso: {
-      fisica_psico_patrimonial: number; // D.1
-      negligencia_abandono: number; // D.2
-    };
-    pcd: {
-      total: number; // E.1
-    };
-    mulher: {
-      violencia_domestica: number; // F.1
-    };
-  }
+  feminino: {
+    a0_12: number; a13_17: number; a18_59: number; a60_mais: number
+  };
+  total: number;
 }
 
-export class RMAService {
-  /**
-   * Processa uma lista de casos e gera a matriz do RMA
-   * @param cases Lista de casos (prisma.case.findMany)
-   * @param refDate Data de referência para cálculo de idade
-   */
-  static calculate(cases: any[], refDate: Date = new Date()): RMAResult {
-    const result: RMAResult = {
-      bloco1: { A1_total_acompanhamento: 0, A2_novos_casos: 0, B1_bolsa_familia: 0, B2_bpc: 0, B3_trabalho_infantil: 0, B4_acolhimento: 0, B5_drogas: 0, B7_mse: 0 },
-      violacoes_identificadas: {
-        crianca_adolescente: { fisica_psico: 0, exploracao_sexual: 0, abuso_sexual: 0, negligencia_abandono: 0, trabalho_infantil: 0 },
-        idoso: { fisica_psico_patrimonial: 0, negligencia_abandono: 0 },
-        pcd: { total: 0 },
-        mulher: { violencia_domestica: 0 }
-      }
+export interface ChildBreakdown {
+  masculino: { a0_6: number; a7_12: number; a13_17: number };
+  feminino: { a0_6: number; a7_12: number; a13_17: number };
+  total: number;
+}
+
+export interface RMAResult {
+  bloco1: {
+    // Bloco A - Volume
+    a1_total_acompanhamento: number;
+    a2_novos_casos: number;
+    
+    // Bloco B - Perfil
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
+    b6_vitimas: AgeBreakdown; // Tabela B.6 (Demografia Geral)
+    b7_mse: number;
+
+    // Bloco C - Crianças e Adolescentes (Detalhado)
+    c1_infamiliar: ChildBreakdown;
+    c2_abuso: ChildBreakdown;
+    c3_exploracao: ChildBreakdown;
+    c4_negligencia: ChildBreakdown;
+    c5_trabalho_infantil: { // Específico C.5
+      masculino: { a0_12: number; a13_15: number };
+      feminino: { a0_12: number; a13_15: number };
+      total: number;
     };
 
-    cases.forEach(c => {
-      // 1. Dados Demográficos
-      const age = differenceInYears(refDate, new Date(c.nascimento));
-      const isChild = age < 18;
-      const isElderly = age >= 60;
-      const isWoman = c.sexo === 'Feminino';
-      const isPCD = c.categoria === 'PCD' || c.pcd === true; // Ajuste conforme seu schema
+    // Bloco D - Idosos
+    d1_violencia: number;
+    d2_negligencia: number;
 
-      // 2. Normalização das Violações (Garante Array)
-      const violations: string[] = Array.isArray(c.violacao) 
-        ? c.violacao 
-        : (c.violacao ? [c.violacao] : []);
+    // Bloco E - PCD
+    e1_violencia: AgeBreakdown;
+    e2_negligencia: AgeBreakdown;
 
-      // --- BLOCO I (Volumes e Perfil de Novos) ---
-      // Assumindo que a lista 'cases' já foi filtrada por data no Controller
-      
-      // Contagem de Novos Casos (A.2) - Lógica deve ser feita no controller ou aqui checando dataEntrada
-      // Aqui assumimos que estamos processando o "retrato" do mês
-      
-      // Perfil (B.1 a B.7) - Baseado em Benefícios e Violações
-      const benefits = c.beneficios || [];
-      if (benefits.includes('PROGRAMA BOLSA FAMÍLIA (PBF)')) result.bloco1.B1_bolsa_familia++;
-      if (benefits.includes('BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)')) result.bloco1.B2_bpc++;
-      
-      // B.3 - Trabalho Infantil (Independente da idade, conta a FAMÍLIA)
-      if (violations.some(v => v.includes('Trabalho infantil'))) result.bloco1.B3_trabalho_infantil++;
-      
-      // B.5 - Drogas
-      if (c.categoria === 'Álcool/drogas' || violations.some(v => v.includes('drogas'))) result.bloco1.B5_drogas++;
+    // Bloco F - Mulheres
+    f1_mulheres: number;
 
-      // --- MAPEAMENTO DE VIOLAÇÕES (C a F) ---
-      // Uma pessoa pode somar em múltiplas linhas aqui
-      
-      violations.forEach(v => {
-        const violation = v.toLowerCase();
+    // Bloco G - Tráfico
+    g1_trafico: AgeBreakdown;
 
-        // CRIANÇA/ADOLESCENTE (Bloco C)
-        if (isChild) {
-          if (violation.includes('física') || violation.includes('psicológica')) result.violacoes_identificadas.crianca_adolescente.fisica_psico++;
-          if (violation.includes('exploração sexual')) result.violacoes_identificadas.crianca_adolescente.exploracao_sexual++;
-          if (violation.includes('abuso sexual') || violation.includes('violência sexual')) result.violacoes_identificadas.crianca_adolescente.abuso_sexual++;
-          if (violation.includes('negligência') || violation.includes('abandono')) result.violacoes_identificadas.crianca_adolescente.negligencia_abandono++;
-          if (violation.includes('trabalho infantil')) result.violacoes_identificadas.crianca_adolescente.trabalho_infantil++;
-        }
+    // Bloco H - Discriminação
+    h1_discriminacao: number;
 
-        // IDOSO (Bloco D)
-        if (isElderly) {
-          if (violation.includes('física') || violation.includes('psicológica') || violation.includes('patrimonial')) 
-            result.violacoes_identificadas.idoso.fisica_psico_patrimonial++;
-          if (violation.includes('negligência') || violation.includes('abandono')) 
-            result.violacoes_identificadas.idoso.negligencia_abandono++;
-        }
+    // Bloco I - Pop Rua
+    i1_rua: AgeBreakdown;
+  };
+  // Bloco II (Produção) é preenchido na rota com queries de outras tabelas
+}
 
-        // PCD (Bloco E)
-        if (isPCD) {
-           // O RMA pede violações contra PCD em geral
-           result.violacoes_identificadas.pcd.total++;
-        }
+// --- Helpers de Inicialização ---
+const initAgeBreakdown = (): AgeBreakdown => ({
+  masculino: { a0_12: 0, a13_17: 0, a18_59: 0, a60_mais: 0 },
+  feminino: { a0_12: 0, a13_17: 0, a18_59: 0, a60_mais: 0 },
+  total: 0
+})
 
-        // MULHER (Bloco F)
-        if (isWoman && !isChild) { // Geralmente adultas, mas depende da interpretação do município
-           // Mapear se a violação tem característica doméstica ou se convive com agressor
-           if (violation.includes('física') || violation.includes('psicológica') || c.urgencia.includes('Convive com agressor')) {
-             result.violacoes_identificadas.mulher.violencia_domestica++;
-           }
-        }
-      });
-    });
+const initChildBreakdown = (): ChildBreakdown => ({
+  masculino: { a0_6: 0, a7_12: 0, a13_17: 0 },
+  feminino: { a0_6: 0, a7_12: 0, a13_17: 0 },
+  total: 0
+})
 
-    // Totais calculados
-    result.bloco1.A1_total_acompanhamento = cases.length; 
+export class RMAService {
+  
+  /**
+   * Processa a lista de casos e calcula a matriz completa do RMA.
+   * A lógica foi centralizada aqui para limpar o controller/rota.
+   */
+  static calculate(
+    activeCases: (Case & { violacao?: string[] | null, beneficios?: string[] | null, categoria?: string | null })[], 
+    newCases: Case[], 
+    refDate: Date = new Date()
+  ): RMAResult {
     
-    return result;
+    // Inicializa estrutura zerada
+    const stats: RMAResult = {
+      bloco1: {
+        a1_total_acompanhamento: activeCases.length,
+        a2_novos_casos: newCases.length,
+        b1_bolsa_familia: 0, b2_bpc: 0, b3_trabalho_infantil: 0, b4_acolhimento: 0, b5_drogas: 0, b7_mse: 0,
+        b6_vitimas: initAgeBreakdown(),
+        c1_infamiliar: initChildBreakdown(),
+        c2_abuso: initChildBreakdown(),
+        c3_exploracao: initChildBreakdown(),
+        c4_negligencia: initChildBreakdown(),
+        c5_trabalho_infantil: { masculino: { a0_12: 0, a13_15: 0 }, feminino: { a0_12: 0, a13_15: 0 }, total: 0 },
+        d1_violencia: 0, d2_negligencia: 0,
+        e1_violencia: initAgeBreakdown(), e2_negligencia: initAgeBreakdown(),
+        f1_mulheres: 0,
+        g1_trafico: initAgeBreakdown(),
+        h1_discriminacao: 0,
+        i1_rua: initAgeBreakdown()
+      }
+    }
+
+    // Processa APENAS os NOVOS casos para o perfil (Regra do RMA: Perfil refere-se às entradas do mês)
+    // Nota: Dependendo da interpretação municipal, pode-se usar activeCases aqui. 
+    // O padrão SUAS geralmente pede perfil dos "Casos inseridos no PAEFI no mês de referência" para o Bloco B em diante.
+    // SE for necessário perfil do estoque inteiro, troque `newCases` por `activeCases` abaixo.
+    const casesToAnalyze = newCases; 
+
+    for (const c of casesToAnalyze) {
+      // 1. Dados Básicos Normalizados
+      const age = differenceInYears(refDate, new Date(c.nascimento))
+      const sex = (c.sexo && c.sexo.toLowerCase().startsWith('f')) ? 'feminino' : 'masculino'
+      
+      const violacoes = Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao] : [])
+      const violacoesStr = violacoes.join(' ').toLowerCase()
+      
+      const beneficios = Array.isArray(c.beneficios) ? c.beneficios : (c.beneficios ? [c.beneficios] : [])
+      const beneficiosStr = beneficios.join(' ').toLowerCase()
+
+      // Flags de Grupo
+      const isChild = age < 18
+      const isElderly = age >= 60
+      const isWoman = sex === 'feminino' && age >= 18 && age <= 59
+      const isPCD = c.categoria === 'PCD' || (c.categoria && c.categoria.toLowerCase().includes('deficiência'))
+      
+      // --- Helpers de Incremento ---
+      const incStandard = (target: AgeBreakdown) => {
+        target.total++
+        if (age <= 12) target[sex].a0_12++
+        else if (age <= 17) target[sex].a13_17++
+        else if (age <= 59) target[sex].a18_59++
+        else target[sex].a60_mais++
+      }
+
+      const incChild = (target: ChildBreakdown) => {
+        target.total++
+        if (age <= 6) target[sex].a0_6++
+        else if (age <= 12) target[sex].a7_12++
+        else if (age <= 17) target[sex].a13_17++
+      }
+
+      // --- BLOCO B: Perfil Geral ---
+      if (beneficiosStr.includes('bolsa família') || beneficiosStr.includes('pbf')) stats.bloco1.b1_bolsa_familia++
+      if (beneficiosStr.includes('bpc')) stats.bloco1.b2_bpc++
+      if (violacoesStr.includes('trabalho infantil')) stats.bloco1.b3_trabalho_infantil++
+      if (isChild && c.urgencia.toLowerCase().includes('acolhimento')) stats.bloco1.b4_acolhimento++
+      if (isChild && (c.categoria?.toLowerCase().includes('drogas') || violacoesStr.includes('drogas'))) stats.bloco1.b5_drogas++
+      if (violacoesStr.includes('medidas socioeducativas') || violacoesStr.includes('mse')) stats.bloco1.b7_mse++
+
+      // B.6 - Demografia das Vítimas (Todos os novos casos contam aqui)
+      incStandard(stats.bloco1.b6_vitimas)
+
+      // --- BLOCO C: Crianças e Adolescentes ---
+      if (isChild) {
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica')) incChild(stats.bloco1.c1_infamiliar)
+        if (violacoesStr.includes('abuso sexual') || violacoesStr.includes('violência sexual')) incChild(stats.bloco1.c2_abuso)
+        if (violacoesStr.includes('exploração sexual')) incChild(stats.bloco1.c3_exploracao)
+        if (violacoesStr.includes('negligência') || violacoesStr.includes('abandono')) incChild(stats.bloco1.c4_negligencia)
+        
+        // C.5 Trabalho Infantil (Regra Específica de idade: até 15 anos vs 16-17 não conta aqui para algumas tabelas, mas vamos seguir o padrão do formulário)
+        if (violacoesStr.includes('trabalho infantil') && age <= 15) {
+          stats.bloco1.c5_trabalho_infantil.total++
+          if (age <= 12) stats.bloco1.c5_trabalho_infantil[sex].a0_12++
+          else stats.bloco1.c5_trabalho_infantil[sex].a13_15++
+        }
+      }
+
+      // --- BLOCO D: Idosos ---
+      if (isElderly) {
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica') || violacoesStr.includes('sexual') || violacoesStr.includes('patrimonial')) {
+          stats.bloco1.d1_violencia++
+        }
+        if (violacoesStr.includes('negligência') || violacoesStr.includes('abandono')) {
+          stats.bloco1.d2_negligencia++
+        }
+      }
+
+      // --- BLOCO E: PCD ---
+      if (isPCD) {
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica') || violacoesStr.includes('sexual')) incStandard(stats.bloco1.e1_violencia)
+        if (violacoesStr.includes('negligência') || violacoesStr.includes('abandono')) incStandard(stats.bloco1.e2_negligencia)
+      }
+
+      // --- BLOCO F: Mulheres ---
+      if (isWoman) {
+        // Violência doméstica ou convívio com agressor
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica') || violacoesStr.includes('sexual') || c.urgencia.toLowerCase().includes('agressor')) {
+          stats.bloco1.f1_mulheres++
+        }
+      }
+
+      // --- BLOCO G: Tráfico ---
+      if (violacoesStr.includes('tráfico')) incStandard(stats.bloco1.g1_trafico)
+
+      // --- BLOCO H: Discriminação ---
+      if (violacoesStr.includes('discriminação') || c.categoria === 'LGBTQIA+') stats.bloco1.h1_discriminacao++
+
+      // --- BLOCO I: População em Situação de Rua ---
+      if (c.categoria === 'POP RUA' || c.categoria?.toLowerCase().includes('rua') || violacoesStr.includes('rua')) {
+        incStandard(stats.bloco1.i1_rua)
+      }
+    }
+
+    return stats
   }
 }

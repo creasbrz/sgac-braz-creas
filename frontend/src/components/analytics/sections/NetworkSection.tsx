@@ -1,3 +1,4 @@
+// frontend/src/components/analytics/sections/NetworkSection.tsx
 import { useMemo } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
@@ -139,7 +140,8 @@ function NetworkChartWidget({
                   dataKey="value" 
                   position="right" 
                   className="fill-foreground font-bold text-xs" 
-                  formatter={(val: number) => val > 0 ? val : ''}
+                  // [CORREÇÃO] Tipagem 'any' para satisfazer Recharts v3
+                  formatter={(val: any) => val > 0 ? val : ''}
                 />
               </Bar>
             </BarChart>

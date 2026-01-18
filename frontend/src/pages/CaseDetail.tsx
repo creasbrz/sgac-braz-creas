@@ -5,8 +5,8 @@ import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, FileText, AlertTriangle,
   Paperclip, LayoutDashboard, Edit, ShieldCheck, Network, 
-  Users, PackageCheck, Printer, User, Loader2, ClipboardList
-} from "lucide-react" // [ADD ClipboardList]
+  Users, PackageCheck, User, Loader2, ClipboardList
+} from "lucide-react" 
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -20,7 +20,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { CaseStatusBadge } from "@/components/case/CaseStatusBadge"
 import { isValidBrazilianPhone } from "@/utils/phone"
 import { formatCPF } from '@/utils/formatters'
-import { generateCasePDF } from '@/utils/pdfGenerator'
+
+// [CORREÇÃO] Importando o template recém-criado
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { CaseDoc } from '@/components/reports/templates/CaseDoc'
 
 // Componentes de Conteúdo (Abas)
 import { OverviewTab } from '@/components/case/tabs/OverviewTab'
@@ -28,7 +31,7 @@ import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
 import { FamilyTab } from '@/components/case/tabs/FamilyTab'
 import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
 import { AppointmentsTab } from "@/components/case/tabs/AppointmentsTab"
-import { PafTab } from "@/components/case/tabs/PafTab" // [CORREÇÃO] Importação Restaurada
+import { PafTab } from "@/components/case/tabs/PafTab"
 
 // Componentes de Layout
 import { CaseWorkflow } from "@/components/case/CaseWorkflow"
@@ -40,7 +43,7 @@ import { CaseActions } from "@/components/case/CaseActions"
 // Lazy Loading
 const CaseForm = lazy(() => import("@/components/case/CaseForm").then(module => ({ default: module.CaseForm })))
 const HistoryTab = lazy(() => import("@/components/case/tabs/HistoryTab").then(module => ({ default: module.CaseHistory })))
-const CaseEvolutions = lazy(() => import("@/components/case/CaseEvolutions").then(module => ({ default: module.CaseEvolutions })))
+const CaseEvolutions = lazy(() => import("@/components/case/tabs/EvolutionsTab").then(module => ({ default: module.EvolutionsTab })))
 
 import type { CaseDetailData } from '@/types/case'
 
@@ -55,7 +58,7 @@ function TabSkeleton() {
   )
 }
 
-// Header Minimalista
+// Header Minimalista com Botão PDF Atualizado
 function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: () => void }) {
   return (
     <div className="flex flex-col gap-4 pt-2">
@@ -64,9 +67,16 @@ function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit:
           <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
         </Button>
         <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => generateCasePDF(caseData)} className="h-8 text-xs">
-              <Printer className="mr-2 h-3.5 w-3.5" /> PDF
-            </Button>
+            
+            {/* [CORREÇÃO] Removido className, apenas props suportadas */}
+            <PDFDownloadButton 
+              document={<CaseDoc data={caseData} />}
+              fileName={`Prontuario_${caseData.nomeCompleto.replace(/\s+/g, '_')}.pdf`}
+              label="PDF"
+              variant="outline"
+              size="sm"
+            />
+            
             <Button variant="default" size="sm" onClick={onEdit} className="h-8 text-xs">
                <Edit className="mr-2 h-3.5 w-3.5" /> Editar
             </Button>
@@ -107,7 +117,7 @@ function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit:
   )
 }
 
-// Sidebar Lateral
+// Sidebar Lateral (Mantido inalterado)
 function SidebarInfo({ caseData }: { caseData: CaseDetailData }) {
   return (
     <div className="space-y-6">
@@ -192,7 +202,6 @@ export function CaseDetail() {
               { id: 'evolutions', label: 'Evoluções', icon: FileText },
               { id: 'family', label: 'Família', icon: Users },
               
-              // [CORREÇÃO] Aba PAF reinserida
               { id: 'paf', label: 'Plano (PAF)', icon: ClipboardList },
               
               { id: 'appointments', label: 'Agenda', icon: Calendar },
@@ -231,7 +240,6 @@ export function CaseDetail() {
                 <TabsContent value="evolutions" className="mt-0"><CaseEvolutions caseId={id!} /></TabsContent>
                 <TabsContent value="family" className="mt-0"><FamilyTab caseId={id!} titularRenda={Number(caseData.renda) || 0} /></TabsContent>
                 
-                {/* [CORREÇÃO] Conteúdo PAF reinserido */}
                 <TabsContent value="paf" className="mt-0 animate-in fade-in">
                   <PafTab caseData={caseData} />
                 </TabsContent>

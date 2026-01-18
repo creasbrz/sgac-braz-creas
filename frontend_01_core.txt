@@ -22,6 +22,7 @@ ESTRUTURA GERAL (Backend):
 ├── prisma
 ├── scripts
 ├── src
+├── tsconfig.json
 ├── tsup.config.ts
 
 
@@ -32,7 +33,7 @@ FILE: frontend\package.json
 ==================================================================
 {
   "name": "frontend",
-  "version": "7.5.1",
+  "version": "7.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -62,9 +63,9 @@ FILE: frontend\package.json
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.4",
+    "@react-pdf/renderer": "^4.3.2",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-query-devtools": "^5.62.0",
-    "@types/node": "^22.10.1",
     "@types/pdfmake": "^0.2.9",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -104,6 +105,7 @@ FILE: frontend\package.json
   "devDependencies": {
     "@eslint/js": "^9.16.0",
     "@types/leaflet": "^1.9.21",
+    "@types/node": "^25.0.9",
     "eslint": "^9.16.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
@@ -639,6 +641,7 @@ export const formatDateSafe = (dateInput?: string | null | Date) => {
 ==================================================================
 FILE: frontend\src\utils\pdfGenerator.ts
 ==================================================================
+// frontend/src/utils/pdfGenerator.ts
 import pdfMake from "pdfmake/build/pdfmake"
 import pdfFonts from "pdfmake/build/vfs_fonts"
 import { format } from "date-fns"
@@ -1995,13 +1998,38 @@ export interface UpcomingAppointment {
 FILE: frontend\src\types\case.ts
 ==================================================================
 // frontend/src/types/case.ts
+// --- TIPOS AUXILIARES (ENUMS & UNIONS) ---
+
+export type CaseStatus = 
+  | 'AGUARDANDO_ACOLHIDA' 
+  | 'EM_ACOLHIDA' 
+  | 'AGUARDANDO_DISTRIBUICAO' 
+  | 'EM_ACOLHIDA_ESPECIALIZADA' 
+  | 'EM_ACOMPANHAMENTO' 
+  | 'EM_MONITORAMENTO' 
+  | 'DESLIGADO';
+
+export type CaseOrigin = 
+  | 'ESPONTANEA' 
+  | 'DOCUMENTAL' 
+  | 'REFERENCIADA' 
+  | 'BUSCA_ATIVA';
+
+export type ContactType = 'Pessoal' | 'Residencial' | 'Trabalho' | 'Vizinho' | 'Parente' | 'Outro';
+
 // --- SUB-INTERFACES ---
 
 export interface Contact {
   numero: string
-  tipo: 'Pessoal' | 'Residencial' | 'Trabalho' | 'Vizinho' | 'Parente' | 'Outro'
+  tipo: ContactType
   nome?: string
   observacao?: string
+}
+
+export interface EconomicData {
+  rendaTotal: number
+  numeroPessoas: number
+  rendaPerCapita: number
 }
 
 export interface ServiceDeliverable {
@@ -2022,10 +2050,13 @@ export interface FamilyMember {
   cpf?: string | null
   nascimento?: string | null
   telefone?: string | null
+  
+  // Dados Sócio-econômicos do Familiar
   ocupacao?: string | null
   renda?: number | string | null
+  
   observacoes?: string | null
-  // [NOVO] Campo necessário para o RMA (Bloco C)
+  // RMA (Bloco C)
   violacao?: string[]
   createdAt: string
 }
@@ -2105,54 +2136,60 @@ export interface CaseDetailData {
   createdAt: string
   updatedAt: string
 
-  // Identificação
+  // 1. Identificação
   nomeCompleto: string
   nomeSocial?: string | null
   cpf: string
   nascimento: string
   sexo: string
   
-  // --- VERSÃO 2.0 (Novos Campos) ---
+  // [NOVOS CAMPOS] Sócio-econômico do Titular
+  ocupacao?: string | null
+  renda?: number | null
+  
+  // [NOVO] Objeto calculado pelo backend
+  dadosEconomicos?: EconomicData
+
+  // 2. Contatos e Endereço
   contatos?: Contact[] 
   telefone?: string | null // Legacy fallback
   
   // Endereço Detalhado
   endereco?: string | null // Legacy fallback
-  endereco_logradouro?: string
-  endereco_complemento?: string
-  endereco_bairro?: string
-  endereco_cidade?: string
-  endereco_uf?: string
-  endereco_cep?: string
-  endereco_ra?: string
-  latitude?: number
-  longitude?: number
+  endereco_logradouro?: string | null
+  endereco_complemento?: string | null
+  endereco_bairro?: string | null
+  endereco_cidade?: string | null
+  endereco_uf?: string | null
+  endereco_cep?: string | null
+  endereco_ra?: string | null
+  latitude?: number | null
+  longitude?: number | null
 
-  // Responsável (Menores)
+  // 3. Responsável (Menores)
   responsavelLegal?: string | null
   parentescoResponsavel?: string | null
 
-  // Dados Técnicos
+  // 4. Dados Técnicos
   dataEntrada: string
   urgencia: string
-  // [ATUALIZADO] Array de strings conforme schema.prisma
   violacao: string[] 
   categoria: string
   orgaoDemandante: string
-  origem: 'ESPONTANEA' | 'DOCUMENTAL' | 'REFERENCIADA' | 'BUSCA_ATIVA' | string
-  status: string
+  origem: CaseOrigin
+  status: CaseStatus
 
-  // Administrativo
+  // 5. Administrativo
   numeroSei: string | null
   linkSei: string | null
   observacoes: string | null
   
-  // Relacionamentos (Objetos)
+  // 6. Relacionamentos (Objetos)
   criadoPor: { nome: string }
   agenteAcolhida: { id: string, nome: string } | null
   especialistaPAEFI: { id: string, nome: string } | null
 
-  // Listas (Includes do Prisma)
+  // 7. Listas (Includes do Prisma)
   beneficios: string[] 
   logs: CaseLog[]
   familia?: FamilyMember[]
@@ -2162,7 +2199,7 @@ export interface CaseDetailData {
   anexos?: CaseAttachment[]
   paf?: PafData | null
 
-  // Desligamento
+  // 8. Desligamento
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
@@ -2174,10 +2211,9 @@ export interface CaseSummary {
   id: string
   nomeCompleto: string
   cpf: string
-  status: string
+  status: CaseStatus
   dataEntrada: string
   urgencia: string
-  // [ATUALIZADO] Array de strings para consistência
   violacao?: string[] 
   sexo?: string
   
@@ -2886,7 +2922,22 @@ FILE: frontend\src\constants\options.ts
 import { STATUS_CONFIG } from './cases/styles'
 import { URGENCIA_NIVEIS, LISTA_VIOLACOES, LISTA_DESTINOS } from './cases/definitions'
 
-// Achatar a lista de urgências para dropdowns
+// --- CONSTANTES EXPORTADAS (Fontes de Verdade) ---
+
+// [IMPORTANTE] 'as const' é obrigatório para funcionar no Zod Enum
+export const OCUPACOES_ROL = [
+  'Não trabalha',
+  'Estudante',
+  'Do lar',
+  'Aposentado/Pensionista',
+  'Autônomo/Informal',
+  'Trabalhador Assalariado (CLT)',
+  'Trabalhador Assalariado (Sem Carteira)',
+  'BPC/LOAS',
+  'Desempregado',
+  'Outro'
+] as const;
+
 const FLAT_URGENCIA = [
   ...URGENCIA_NIVEIS.GRAVISSIMA,
   ...URGENCIA_NIVEIS.MUITO_GRAVE,
@@ -2894,12 +2945,16 @@ const FLAT_URGENCIA = [
   ...URGENCIA_NIVEIS.LEVE
 ]
 
+// --- OBJETO DE OPÇÕES PARA UI ---
+
 export const OPTIONS = {
   sexo: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
   
   tipoContato: ['Pessoal', 'Residencial', 'Trabalho', 'Vizinho', 'Parente', 'Outro'],
   
-  // Fontes de verdade (definitions.ts)
+  // Reutiliza a constante, mas transformando em array mutável para o Select do UI se necessário
+  ocupacao: [...OCUPACOES_ROL], 
+
   urgencia: FLAT_URGENCIA,
   violacao: LISTA_VIOLACOES,
   destinos: LISTA_DESTINOS,
@@ -2923,7 +2978,6 @@ export const OPTIONS = {
     'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
   ],
 
-  // Formata para { value, label } para componentes de Select
   status: Object.entries(STATUS_CONFIG).map(([key, config]) => ({
     value: key,
     label: config.label
@@ -2943,50 +2997,57 @@ export const STORAGE_KEYS = {
 ==================================================================
 FILE: frontend\src\schemas\caseSchemas.ts
 ==================================================================
+// frontend/src/schemas/caseSchemas.ts
 import { z } from 'zod'
+import { OCUPACOES_ROL } from '@/constants/options' // [CORREÇÃO] Importando
 
-// --- SUB-SCHEMAS (Novas Estruturas) ---
+// --- SUB-SCHEMAS ---
 
-// Item 1: Contato Estruturado
 const contactSchema = z.object({
   numero: z.string().min(8, 'Número inválido (mínimo 8 dígitos).'),
   tipo: z.enum(["Pessoal", "Residencial", "Trabalho", "Vizinho", "Parente", "Outro"], {
     errorMap: () => ({ message: "Selecione o tipo de contato." })
   }),
-  nome: z.string().optional(), // Ex: Nome da vizinha que dá recado
+  nome: z.string().optional(),
   observacao: z.string().optional(),
 })
 
-// Item 2: Endereço Detalhado (Padrão DF)
 const addressSchema = z.object({
-  ra: z.string().min(1, 'Selecione a Região Administrativa.'), // Campo Obrigatório
+  ra: z.string().min(1, 'Selecione a Região Administrativa.'),
   logradouro: z.string().min(3, 'O logradouro é obrigatório (Qd, Rua, Av).'),
   complemento: z.string().optional(),
-  bairro: z.string().optional(), // Geralmente redundante com RA no DF, mas útil
+  bairro: z.string().optional(),
   cidade: z.string().default("Brasília"),
   uf: z.string().default("DF"),
-  cep: z.string().optional(), // Pode adicionar validação de regex se quiser: /^\d{5}-\d{3}$/
+  cep: z.string().optional(),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable(),
 })
 
-// --- SCHEMA PRINCIPAL DE CRIAÇÃO ---
+// --- SCHEMA PRINCIPAL ---
 
 export const createCaseFormSchema = z.object({
-  // Identificação
+  // 1. Identificação
   nomeCompleto: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
-  nomeSocial: z.string().optional(), // Novo campo de inclusão
-  cpf: z.string().min(11, 'CPF inválido.'), // Idealmente usar biblioteca de validação de CPF
+  nomeSocial: z.string().optional(),
+  cpf: z.string().min(11, 'CPF inválido.'),
   nascimento: z.string().refine((val) => val.length > 0, 'Data de nascimento obrigatória.'),
   sexo: z.string().min(1, 'Selecione o sexo.'),
 
-  // Novos Campos Estruturados
+  // [CORREÇÃO] Usando o Rol importado
+  ocupacao: z.enum(OCUPACOES_ROL).or(z.string()).optional(),
+  
+  renda: z.coerce.number().optional().default(0),
+
+  // 2. Contatos e Endereço
   contatos: z.array(contactSchema).min(1, "Adicione pelo menos um telefone de contato."),
   endereco: addressSchema,
 
-  // Item 3: Responsável Legal (Opcional no schema, obrigatório visualmente se < 18 anos)
+  // 3. Responsável Legal
   responsavelLegal: z.string().optional(),
   parentescoResponsavel: z.string().optional(),
 
-  // Dados Técnicos
+  // 4. Dados Técnicos
   dataEntrada: z.string().refine((val) => val.length > 0, 'Data de entrada obrigatória.'),
   urgencia: z.string().min(1, 'Selecione a urgência.'),
   violacao: z.array(z.string()).min(1, 'Selecione ao menos uma violação.'),
@@ -2996,21 +3057,19 @@ export const createCaseFormSchema = z.object({
     errorMap: () => ({ message: "Selecione a origem do caso." })
   }),
 
-  // Agente: Pode vir vazio inicialmente se não distribuído
-  agenteAcolhidaId: z.string().uuid().optional().or(z.literal('')),
+  // 5. Relacionamentos
+  agenteAcolhidaId: z.string().optional().or(z.literal('')),
 
-  // Campos Opcionais / Strings vazias permitidas
+  // 6. Administrativo
   numeroSei: z.string().optional(),
-  linkSei: z.string().optional(), // Poderia usar .url() se quiser validar formato estrito
+  linkSei: z.string().optional(),
   observacoes: z.string().optional(),
-
-  // Array obrigatório (inicia como [])
   beneficios: z.array(z.string()).default([]),
 })
 
 export type CreateCaseFormData = z.infer<typeof createCaseFormSchema>
 
-// --- OUTROS SCHEMAS (Mantidos do original) ---
+// --- OUTROS SCHEMAS ---
 
 export const pafFormSchema = z.object({
   diagnostico: z.string().min(10, 'O diagnóstico deve ser mais detalhado.'),
@@ -3021,6 +3080,7 @@ export const pafFormSchema = z.object({
 
 export const evolutionFormSchema = z.object({
   conteudo: z.string().min(5, 'A evolução deve ter pelo menos 5 caracteres.'),
+  sigilo: z.boolean().default(false)
 })
 
 export const closeCaseFormSchema = z.object({

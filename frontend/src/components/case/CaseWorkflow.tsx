@@ -1,22 +1,29 @@
+// frontend/src/components/case/CaseWorkflow.tsx
 import { clsx } from "clsx"
 import { CheckCircle2, Circle } from "lucide-react"
+// [1] Importamos as constantes de definição
+import { CASE_STATUS } from "@/constants/cases/definitions"
 
 interface CaseWorkflowProps {
   status: string
 }
 
 export function CaseWorkflow({ status }: CaseWorkflowProps) {
+  // [2] Usamos as constantes para garantir que os IDs sejam idênticos ao resto do sistema
   const steps = [
-    { id: 'AGUARDANDO_ACOLHIDA', label: 'Triagem' },
-    { id: 'EM_ACOLHIDA', label: 'Acolhida' },
-    { id: 'AGUARDANDO_DISTRIBUICAO', label: 'Distribuição' },
-    { id: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Esp.' },
-    { id: 'EM_ACOMPANHAMENTO', label: 'Acompanhamento' },
-    { id: 'EM_MONITORAMENTO', label: 'Monitoramento' },
-    { id: 'DESLIGADO', label: 'Finalizado' }
+    { id: CASE_STATUS.AGUARDANDO_ACOLHIDA, label: 'Triagem' },
+    { id: CASE_STATUS.EM_ACOLHIDA, label: 'Acolhida' },
+    { id: CASE_STATUS.AGUARDANDO_DISTRIBUICAO, label: 'Distribuição' },
+    { id: CASE_STATUS.EM_ACOLHIDA_ESPECIALIZADA, label: 'Acolhida Esp.' },
+    { id: CASE_STATUS.EM_ACOMPANHAMENTO, label: 'Acompanhamento' },
+    { id: CASE_STATUS.EM_MONITORAMENTO, label: 'Monitoramento' },
+    { id: CASE_STATUS.DESLIGADO, label: 'Finalizado' }
   ]
 
+  // A lógica permanece a mesma, mas agora é type-safe
   const currentIndex = steps.findIndex(s => s.id === status)
+  
+  // Se o status não for encontrado (ex: status novo não mapeado), assume o início ou trata erro
   const activeIndex = currentIndex === -1 ? 0 : currentIndex
 
   return (
@@ -25,10 +32,8 @@ export function CaseWorkflow({ status }: CaseWorkflowProps) {
         <div className="relative">
           
           {/* --- LINHAS DE PROGRESSO (TRACKS) --- */}
-          {/* Fundo Cinza */}
           <div className="absolute top-4 left-0 w-full h-0.5 bg-muted -z-10 rounded-full" />
           
-          {/* Progresso Colorido */}
           <div 
             className="absolute top-4 left-0 h-0.5 bg-primary transition-all duration-1000 ease-in-out -z-10 rounded-full" 
             style={{ width: `${(activeIndex / (steps.length - 1)) * 100}%` }}
@@ -67,7 +72,6 @@ export function CaseWorkflow({ status }: CaseWorkflowProps) {
                     <span className={clsx(
                       "text-[9px] sm:text-[10px] font-bold uppercase tracking-tighter sm:tracking-wider leading-tight block transition-all duration-300",
                       isCurrent ? "text-primary scale-105" : "text-muted-foreground/60",
-                      // Mobile: Esconde labels inativas para evitar sobreposição
                       !isCurrent && "hidden md:block" 
                     )}>
                       {step.label}

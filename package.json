@@ -1,6 +1,6 @@
 {
   "name": "sgac-braz-root",
-  "version": "7.6.0",
+  "version": "7.6.5",
   "private": true,
   "engines": {
     "node": ">=20.0.0"

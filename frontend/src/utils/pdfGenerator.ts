@@ -1,3 +1,4 @@
+// frontend/src/utils/pdfGenerator.ts
 import pdfMake from "pdfmake/build/pdfmake"
 import pdfFonts from "pdfmake/build/vfs_fonts"
 import { format } from "date-fns"

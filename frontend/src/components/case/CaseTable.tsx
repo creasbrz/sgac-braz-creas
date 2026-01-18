@@ -1,3 +1,4 @@
+// frontend/src/components/case/CaseTable.tsx
 import { useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -62,11 +63,11 @@ interface PaginatedCasesResponse {
 
 interface CaseTableProps { 
   endpoint: '/cases' | '/cases/closed'
-  title?: string // Opcional agora
-  description?: string // Opcional agora
+  title?: string
+  description?: string
   defaultView?: 'my' | 'all'
   queryParams?: Record<string, string | undefined>
-  className?: string // [NOVO] Para customização visual pelo pai
+  className?: string
 }
 
 type SortDirection = 'asc' | 'desc'
@@ -213,7 +214,8 @@ export function CaseTable({
   const [searchParams, setSearchParams] = useSearchParams()
   const currentPage = Number(searchParams.get('page') ?? '1')
   
-  const [isExporting] = useState(false)
+  // [CORREÇÃO] Adicionado o setter setIsExporting
+  const [isExporting, setIsExporting] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [sorting, setSorting] = useState<SortingState | null>(null)
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS)
@@ -271,9 +273,33 @@ export function CaseTable({
 
   const handlePageChange = (page: number) => setSearchParams(prev => { prev.set('page', String(page)); return prev })
 
-  const handleExport = async () => { console.log('Exporting...') }
+  // [CORREÇÃO] Implementação real da exportação via Blob
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
+      const response = await api.get('/cases/export', {
+        responseType: 'blob', // Importante para arquivos binários
+      })
 
-  // Lógica de visualização baseada no Endpoint (Ativo vs Arquivo)
+      // Criar URL temporária para download
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      
+      // Limpeza
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Erro ao exportar:', error)
+      // Aqui você pode adicionar um toast de erro se disponível
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const isArchiveMode = endpoint === '/cases/closed'
   const showImportExport = !isArchiveMode && user?.cargo === 'Gerente'
 
@@ -293,7 +319,6 @@ export function CaseTable({
   return (
     <div className={cn("flex h-full flex-col space-y-6 animate-in fade-in duration-500", className)}>
       
-      {/* Header (Opcional, pois pode vir do pai) */}
       {(title || description || showImportExport) && (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           {(title || description) && (
@@ -309,16 +334,22 @@ export function CaseTable({
                 <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> 
                 <span className="hidden sm:inline">Importar</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting} className="h-9 gap-2">
-                <FileDown className="h-4 w-4" /> 
-                <span className="hidden sm:inline">Exportar</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleExport} 
+                disabled={isExporting} 
+                className="h-9 gap-2"
+              >
+                {/* Ícone animado ou estático dependendo do estado */}
+                <FileDown className={cn("h-4 w-4", isExporting && "animate-bounce")} /> 
+                <span className="hidden sm:inline">{isExporting ? 'Exportando...' : 'Exportar'}</span>
               </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* Filtros */}
       <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
         <DataTableFilters filters={activeFilters} setFilters={handleFilterChange} onClear={clearFilters} />
         <div className="mt-2 flex justify-end xl:mt-0">
@@ -326,7 +357,6 @@ export function CaseTable({
         </div>
       </div>
 
-      {/* Tabela */}
       <div className="flex-1 rounded-md border bg-card shadow-sm overflow-hidden flex flex-col">
         <div className="flex-1 overflow-auto relative">
           <Table>
@@ -336,7 +366,6 @@ export function CaseTable({
                 <SortableColumn label="Sexo" field="sexo" sorting={sorting} onToggle={toggleSort} align="center" className="w-[80px]" />
                 <TableHead className="w-[130px] whitespace-nowrap">CPF</TableHead>
                 
-                {/* Colunas Dinâmicas baseadas no Modo */}
                 {!isArchiveMode && (
                   <>
                     <SortableColumn label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-[140px]" />
@@ -354,10 +383,8 @@ export function CaseTable({
                 />
                 
                 {isArchiveMode && <TableHead className="whitespace-nowrap w-[150px]">Motivo</TableHead>}
-                
                 <TableHead className="whitespace-nowrap w-[150px]">Responsável</TableHead>
                 
-                {/* Status só faz sentido se não for arquivo morto (que é tudo desligado) */}
                 {!isArchiveMode && (
                    <SortableColumn label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-[140px]" />
                 )}
@@ -444,7 +471,6 @@ export function CaseTable({
                     )}
 
                     <TableCell className="text-xs font-medium text-foreground/80 align-top pt-3.5">
-                      {/* Lógica para mostrar técnico responsável baseado no status */}
                       {item.status === 'EM_ACOMPANHAMENTO' || (isArchiveMode && item.especialistaPAEFI) 
                         ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? '-' 
                         : item.agenteAcolhida?.nome?.split(' ')[0] ?? '-'

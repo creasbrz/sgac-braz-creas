@@ -1,6 +1,6 @@
 # Estrutura do Projeto
 
-> Gerado em: 10/01/2026, 11:25:57
+> Gerado em: 17/01/2026, 10:21:35
 
 Esta é a estrutura de diretórios do projeto, ignorando pastas de dependências (node_modules) e build.
 
@@ -13,18 +13,22 @@ root
 │   │   ├── migration-scripts
 │   │   │   └── backfill-paefi-dates.ts
 │   │   ├── migrations
-│   │   │   ├── 20260109015241_init_final
+│   │   │   ├── 20260112145440_init_v9_full_fix
 │   │   │   │   └── migration.sql
-│   │   │   ├── 20260109025205_add_tipo_agendamento
+│   │   │   ├── 20260115162752_update_rma
+│   │   │   │   └── migration.sql
+│   │   │   ├── 20260116194337_add_renda_ocupacao_case
 │   │   │   │   └── migration.sql
 │   │   │   └── migration_lock.toml
 │   │   ├── schema.prisma
+│   │   ├── seed-users.ts
 │   │   └── seed.ts
 │   ├── scripts
 │   │   └── backup.ts
 │   ├── src
 │   │   ├── lib
 │   │   │   ├── cache.ts
+│   │   │   ├── errorHandler.ts
 │   │   │   └── prisma.ts
 │   │   ├── routes
 │   │   │   ├── alerts.ts
@@ -42,29 +46,44 @@ root
 │   │   │   ├── paf.ts
 │   │   │   ├── referrals.ts
 │   │   │   ├── reports.ts
+│   │   │   ├── rma.ts
 │   │   │   ├── stats.ts
 │   │   │   ├── users.ts
 │   │   │   ├── waitingList.ts
 │   │   │   └── workspace.ts
+│   │   ├── schemas
+│   │   │   └── caseSchema.ts
 │   │   ├── services
-│   │   │   └── AnalyticsAI.ts
+│   │   │   ├── AlertService.ts
+│   │   │   ├── AnalyticsAI.ts
+│   │   │   ├── AppointmentService.ts
+│   │   │   ├── AttachmentService.ts
+│   │   │   ├── AuditService.ts
+│   │   │   ├── AuthService.ts
+│   │   │   ├── CaseService.ts
+│   │   │   ├── DeliverableService.ts
+│   │   │   ├── EvolutionService.ts
+│   │   │   ├── ExportService.ts
+│   │   │   ├── FamilyService.ts
+│   │   │   ├── GroupService.ts
+│   │   │   ├── ImportService.ts
+│   │   │   ├── PafService.ts
+│   │   │   ├── ReferralService.ts
+│   │   │   ├── ReportService.ts
+│   │   │   ├── RMAService.ts
+│   │   │   ├── StatsService.ts
+│   │   │   ├── UserService.ts
+│   │   │   ├── WaitingListService.ts
+│   │   │   └── WorkspaceService.ts
+│   │   ├── utils
+│   │   │   └── geocoding.ts
 │   │   └── server.ts
 │   ├── uploads
-│   │   ├── 1764179328989-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764182484968-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764183756612-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764183937666-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764184076301-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764184735799-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764184853469-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764184993208-Lucid_Origin_A_conceptual_photograph_of_a_lone_human_silhouett_3.jpg
-│   │   ├── 1764185117855-Lucid_Origin_Cinematic_shot_of_a_marble_statue_of_Marcus_Aurel_1.jpg
-│   │   ├── 1764185151714-Lucid_Origin_Cinematic_shot_of_a_marble_statue_of_Marcus_Aurel_1.jpg
-│   │   ├── 1764782299280-SEI_147064112_Despacho.pdf
-│   │   └── 79a21aab-7a88-4d39-9241-ff91a3d276d3.pdf
 │   ├── .env
 │   ├── .gitignore
-│   └── package.json
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── tsup.config.ts
 ├── frontend
 │   ├── public
 │   │   ├── apple-touch-icon.png
@@ -80,32 +99,39 @@ root
 │   │   │   └── react.svg
 │   │   ├── components
 │   │   │   ├── agenda
-│   │   │   │   ├── AppointmentCard.tsx
 │   │   │   │   ├── calendar-custom.css
 │   │   │   │   ├── FullCalendarWidget.tsx
 │   │   │   │   └── UpcomingAppointments.tsx
 │   │   │   ├── analytics
+│   │   │   │   ├── sections
+│   │   │   │   │   ├── NetworkSection.tsx
+│   │   │   │   │   ├── OverviewSection.tsx
+│   │   │   │   │   ├── PerformanceSection.tsx
+│   │   │   │   │   ├── SocialSection.tsx
+│   │   │   │   │   └── TerritorySection.tsx
 │   │   │   │   └── TerritoryMap.tsx
 │   │   │   ├── case
 │   │   │   │   ├── tabs
+│   │   │   │   │   ├── AppointmentsTab.tsx
+│   │   │   │   │   ├── AttachmentsTab.tsx
 │   │   │   │   │   ├── DeliverablesTab.tsx
 │   │   │   │   │   ├── FamilyTab.tsx
+│   │   │   │   │   ├── HistoryTab.tsx
 │   │   │   │   │   ├── OverviewTab.tsx
+│   │   │   │   │   ├── PafTab.tsx
 │   │   │   │   │   └── ReferralsTab.tsx
 │   │   │   │   ├── CaseActions.tsx
-│   │   │   │   ├── CaseAttachments.tsx
+│   │   │   │   ├── CaseAddressCard.tsx
+│   │   │   │   ├── CaseContactList.tsx
 │   │   │   │   ├── CaseEvolutions.tsx
 │   │   │   │   ├── CaseFilters.tsx
 │   │   │   │   ├── CaseForm.tsx
-│   │   │   │   ├── CaseHistory.tsx
 │   │   │   │   ├── CaseKanban.tsx
 │   │   │   │   ├── CaseStatusBadge.tsx
 │   │   │   │   ├── CaseTable.tsx
+│   │   │   │   ├── CaseWorkflow.tsx
 │   │   │   │   ├── DetailField.tsx
-│   │   │   │   ├── DetailSkeleton.tsx
-│   │   │   │   ├── EvolutionsSection.tsx
-│   │   │   │   ├── PafHistoryModal.tsx
-│   │   │   │   └── PafSection.tsx
+│   │   │   │   └── DetailSkeleton.tsx
 │   │   │   ├── common
 │   │   │   │   ├── CommandMenu.tsx
 │   │   │   │   ├── DataTableFilters.tsx
@@ -133,7 +159,8 @@ root
 │   │   │   │   ├── GroupDetailsModal.tsx
 │   │   │   │   ├── ImportCasesModal.tsx
 │   │   │   │   ├── NewAppointmentModal.tsx
-│   │   │   │   └── NewCaseModal.tsx
+│   │   │   │   ├── NewCaseModal.tsx
+│   │   │   │   └── PafHistoryModal.tsx
 │   │   │   ├── settings
 │   │   │   │   ├── ChangePasswordDialog.tsx
 │   │   │   │   └── NewUserDialog.tsx
@@ -143,8 +170,10 @@ root
 │   │   │   │   ├── alert.tsx
 │   │   │   │   ├── avatar.tsx
 │   │   │   │   ├── badge.tsx
+│   │   │   │   ├── breadcrumb.tsx
 │   │   │   │   ├── button.tsx
 │   │   │   │   ├── card.tsx
+│   │   │   │   ├── chart.tsx
 │   │   │   │   ├── checkbox.tsx
 │   │   │   │   ├── command.tsx
 │   │   │   │   ├── dialog.tsx
@@ -172,12 +201,15 @@ root
 │   │   │   └── workspace
 │   │   │       └── SharedComponents.tsx
 │   │   ├── constants
-│   │   │   ├── caseConstants.ts
-│   │   │   ├── caseStatus.ts
-│   │   │   ├── caseTransitions.ts
-│   │   │   ├── navigation.ts
+│   │   │   ├── cases
+│   │   │   │   ├── definitions.ts
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── styles.ts
+│   │   │   │   └── transitions.ts
+│   │   │   ├── app-navigation.ts
+│   │   │   ├── app-routes.ts
+│   │   │   ├── locations.ts
 │   │   │   ├── options.ts
-│   │   │   ├── routes.ts
 │   │   │   └── storage.ts
 │   │   ├── contexts
 │   │   │   ├── AuthContext.tsx
@@ -234,6 +266,7 @@ root
 │   │   │   ├── case.ts
 │   │   │   ├── group.ts
 │   │   │   ├── pdfmake.d.ts
+│   │   │   ├── rma.ts
 │   │   │   ├── user.ts
 │   │   │   └── workspace.ts
 │   │   ├── utils
@@ -260,13 +293,16 @@ root
 │   ├── tsconfig.json
 │   ├── tsconfig.node.json
 │   └── vite.config.ts
+├── .gitignore
 ├── backend_complete.txt
 ├── frontend_01_core.txt
-├── frontend_02_components.txt
-├── frontend_03_pages.txt
+├── frontend_02_ui_base.txt
+├── frontend_03_features.txt
+├── frontend_04_pages.txt
 ├── gerar_txt_pastas.js
 ├── package.json
 ├── PROJECT_STRUCTURE.md
 ├── README-DEPLOY.md
-└── README.md
+├── README.md
+└── render.yaml
 ```

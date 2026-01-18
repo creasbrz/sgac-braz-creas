@@ -1,14 +1,9 @@
-// frontend/src/types/case.ts
-// --- TIPOS AUXILIARES (ENUMS & UNIONS) ---
+import { CaseStatusType } from '@/constants/cases/definitions'
 
-export type CaseStatus = 
-  | 'AGUARDANDO_ACOLHIDA' 
-  | 'EM_ACOLHIDA' 
-  | 'AGUARDANDO_DISTRIBUICAO' 
-  | 'EM_ACOLHIDA_ESPECIALIZADA' 
-  | 'EM_ACOMPANHAMENTO' 
-  | 'EM_MONITORAMENTO' 
-  | 'DESLIGADO';
+// --- TIPOS AUXILIARES ---
+
+// [REFATORADO] Agora usamos o tipo que vem do arquivo de definições (SSoT)
+export type CaseStatus = CaseStatusType;
 
 export type CaseOrigin = 
   | 'ESPONTANEA' 
@@ -51,13 +46,9 @@ export interface FamilyMember {
   cpf?: string | null
   nascimento?: string | null
   telefone?: string | null
-  
-  // Dados Sócio-econômicos do Familiar
   ocupacao?: string | null
   renda?: number | string | null
-  
   observacoes?: string | null
-  // RMA (Bloco C)
   violacao?: string[]
   createdAt: string
 }
@@ -144,19 +135,17 @@ export interface CaseDetailData {
   nascimento: string
   sexo: string
   
-  // [NOVOS CAMPOS] Sócio-econômico do Titular
+  // Sócio-econômico do Titular
   ocupacao?: string | null
   renda?: number | null
-  
-  // [NOVO] Objeto calculado pelo backend
   dadosEconomicos?: EconomicData
 
   // 2. Contatos e Endereço
   contatos?: Contact[] 
-  telefone?: string | null // Legacy fallback
+  telefone?: string | null 
   
   // Endereço Detalhado
-  endereco?: string | null // Legacy fallback
+  endereco?: string | null 
   endereco_logradouro?: string | null
   endereco_complemento?: string | null
   endereco_bairro?: string | null
@@ -217,17 +206,166 @@ export interface CaseSummary {
   urgencia: string
   violacao?: string[] 
   sexo?: string
-  
-  // Endereço e Contato resumidos para listas
   endereco?: string | null
   endereco_ra?: string | null
   contatos?: Contact[]
   telefone?: string | null
-
   dataDesligamento?: string | null
   motivoDesligamento?: string | null
   destinoDesligamento?: string | null
-  
   agenteAcolhida: { nome: string } | null
   especialistaPAEFI: { nome: string } | null
+}
+
+// --- INTERFACES DE RELATÓRIOS (PDF & DASHBOARDS) ---
+
+export interface StatData {
+  name: string
+  value: number
+}
+
+// Interface específica para Urgência que inclui o peso
+export interface UrgencyStatData extends StatData {
+  weight: number
+}
+
+// --- ESTRUTURAS DO RMA OFICIAL ---
+
+export interface AgeBreakdown {
+  masculino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
+  feminino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
+  total: number;
+}
+
+export interface ChildBreakdown {
+  masculino: { a0_6: number; a7_12: number; a13_17: number };
+  feminino: { a0_6: number; a7_12: number; a13_17: number };
+  total: number;
+}
+
+export interface ChildLaborBreakdown {
+  masculino: { a0_12: number; a13_15: number };
+  feminino: { a0_12: number; a13_15: number };
+  total: number;
+}
+
+export interface RmaReportData {
+  periodo?: string; // Campo auxiliar para exibição no PDF
+  bloco1: {
+    // A - Volume
+    a1_total_acompanhamento: number;
+    a2_novos_casos: number;
+    
+    // B - Perfil
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
+    b6_vitimas: AgeBreakdown; // Tabela B.6 (Demografia Geral)
+    b7_mse: number;
+
+    // C - Crianças
+    c1_infamiliar: ChildBreakdown;
+    c2_abuso: ChildBreakdown;
+    c3_exploracao: ChildBreakdown;
+    c4_negligencia: ChildBreakdown;
+    c5_trabalho_infantil: ChildLaborBreakdown;
+
+    // D - Idosos
+    d1_violencia: number;
+    d2_negligencia: number;
+
+    // E - PCD
+    e1_violencia: AgeBreakdown;
+    e2_negligencia: AgeBreakdown;
+
+    // F - Mulheres
+    f1_mulheres: number;
+
+    // G - Tráfico
+    g1_trafico: AgeBreakdown;
+
+    // H - Discriminação
+    h1_discriminacao: number;
+
+    // I - Pop Rua
+    i1_rua: AgeBreakdown;
+  };
+  bloco2: {
+    m1_individual: number;
+    m2_grupo: number;
+    m3_cras: number;
+    m4_visitas: number;
+  };
+}
+
+// --- OUTROS RELATÓRIOS ---
+
+export interface ManagementReportData {
+  periodo: string
+  stats: { ativos: number; acolhidas: number; paefi: number; novos: number; desligados: number }
+  cargaHoraria: { agentes: StatData[]; especialistas: StatData[] }
+  vigilancia?: { violacoes: StatData[]; demografia: StatData[]; territorio?: StatData[] }
+}
+
+export interface ObservatoryData {
+  evolutionData: { name: string; novos: number; desligados: number }[]
+  violationData: StatData[]
+  urgencyData: UrgencyStatData[] 
+  originData: StatData[]
+  networkData: StatData[]
+  benefitsData: StatData[]
+  collectiveData: { 
+    totalGroups: number;
+    totalParticipants: number;
+    avgAttendance: number;
+  }
+  efficiencyData: { 
+    avgPermanence: number; 
+    avgWaitTime: number; 
+    retentionRate: number; 
+    totalClosed: number 
+  }
+  ageData: StatData[]
+  sexData: StatData[]
+}
+
+export interface DismissalReportData {
+  periodo: string
+  total: number
+  successRate: number
+  evasionRate: number
+  byReason: StatData[]
+  monthlyTrend: StatData[]
+}
+
+export interface InsightData {
+  type: 'success' | 'warning' | 'info';
+  title: string;
+  description: string;
+}
+
+export interface AnalyticsReportData {
+  periodo: number; // Quantidade de meses (ex: 3, 6, 12)
+  kpis: {
+    tempoMedio: number;
+    ativosPaefi: number;
+    previsaoNovos: number | null;
+  };
+  insights: InsightData[];
+  fluxo: {
+    name: string;
+    novos: number;
+    fechados: number;
+  }[];
+  violacoes: {
+    name: string;
+    value: number;
+    percent: number;
+  }[];
+  produtividade: {
+    name: string;
+    value: number;
+  }[];
 }

@@ -1,13 +1,13 @@
 // frontend/src/pages/reports/ObservatoryTab.tsx
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Download, AlertTriangle } from 'lucide-react'
-import { generateObservatoryPDF, type ObservatoryData } from '@/utils/pdfGenerator'
+import { AlertTriangle } from 'lucide-react'
+import { format } from 'date-fns'
 
-import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MapPoint } from '@/components/analytics/TerritoryMap'
+import type { ObservatoryData, UrgencyStatData } from '@/types/case'
 
 // Importando as Seções Isoladas
 import { OverviewSection } from '@/components/analytics/sections/OverviewSection'
@@ -16,21 +16,45 @@ import { PerformanceSection } from '@/components/analytics/sections/PerformanceS
 import { SocialSection } from '@/components/analytics/sections/SocialSection'
 import { TerritorySection } from '@/components/analytics/sections/TerritorySection'
 
+// Imports de PDF
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { ObservatoryDoc } from '@/components/reports/templates/ObservatoryDoc'
+
 export function ObservatoryTab() {
   const { data, isLoading, isError } = useQuery<ObservatoryData & { mapData: MapPoint[] }>({
     queryKey: ['vigilancia'],
     queryFn: async () => {
       const res = await api.get('/stats/vigilancia')
-      return res.data
+      const rawData = res.data
+
+      // [CORREÇÃO] Sanitização dos dados para garantir conformidade com a interface ObservatoryData
+      // Isso evita erros se o backend omitir campos opcionais
+      const sanitizedData: ObservatoryData & { mapData: MapPoint[] } = {
+        ...rawData,
+        collectiveData: {
+          totalGroups: rawData.collectiveData?.totalGroups || 0,
+          totalParticipants: rawData.collectiveData?.totalParticipants || 0,
+          avgAttendance: rawData.collectiveData?.avgAttendance || 0,
+        },
+        efficiencyData: {
+          avgPermanence: rawData.efficiencyData?.avgPermanence || 0,
+          avgWaitTime: rawData.efficiencyData?.avgWaitTime || 0,
+          retentionRate: rawData.efficiencyData?.retentionRate || 0,
+          totalClosed: rawData.efficiencyData?.totalClosed || 0,
+        },
+        urgencyData: (rawData.urgencyData || []).map((u: any): UrgencyStatData => ({
+          name: u.name,
+          value: u.value,
+          weight: u.weight ?? 1 // Valor padrão se weight vier nulo
+        })),
+        mapData: rawData.mapData || []
+      }
+
+      return sanitizedData
     },
     staleTime: 1000 * 60 * 5,
     retry: 1
   })
-
-  const handleDownloadPDF = () => {
-    if (!data) return
-    generateObservatoryPDF(data)
-  }
 
   if (isLoading) return (
     <div className="space-y-6">
@@ -52,9 +76,13 @@ export function ObservatoryTab() {
       
       {/* Toolbar */}
       <div className="flex justify-end bg-muted/20 p-2 rounded-lg border border-border/50">
-        <Button variant="outline" size="sm" onClick={handleDownloadPDF} className="gap-2 border-slate-300 dark:border-slate-700 bg-background hover:bg-muted">
-          <Download className="h-4 w-4" /> Exportar PDF do Observatório
-        </Button>
+        <PDFDownloadButton 
+          document={<ObservatoryDoc data={data} />}
+          fileName={`Observatorio_Social_${format(new Date(), 'yyyyMMdd')}.pdf`}
+          label="Exportar PDF do Observatório"
+          variant="outline"
+          size="sm"
+        />
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">

@@ -1,9 +1,10 @@
+// frontend/src/pages/reports/DismissalAnalytics.tsx
 import { useState, useMemo } from 'react'
 import { useQuery } from "@tanstack/react-query"
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, LabelList
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, LabelList, Cell, Label
 } from "recharts"
-import { FileX, CheckCircle2, Ban, Download, MapPin, PieChart as PieIcon } from "lucide-react"
+import { FileX, CheckCircle2, Ban, MapPin, PieChart as PieIcon, AlertTriangle } from "lucide-react"
 
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -21,15 +22,11 @@ import {
 } from "@/components/ui/chart"
 
 import { api } from "@/lib/api"
-import { generateDismissalPDF } from "@/utils/pdfGenerator"
 
-// --- TYPES ---
-interface DismissalData {
-  total: number
-  byMotivo: { name: string; value: number }[]
-  byDestino: { name: string; value: number }[]
-  list: any[]
-}
+// Imports de PDF e Tipos
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { DismissalDoc } from '@/components/reports/templates/DismissalDoc'
+import type { DismissalReportData } from '@/types/case'
 
 // --- CHART CONFIG ---
 const reasonChartConfig = {
@@ -45,10 +42,19 @@ const destinationChartConfig = {
   },
 } satisfies ChartConfig
 
+// Interface interna da Resposta da API
+interface DismissalApiResponse {
+  total: number
+  byMotivo: { name: string; value: number }[]
+  byDestino: { name: string; value: number }[]
+  list: any[]
+}
+
 export function DismissalAnalytics() {
   const [months, setMonths] = useState(12)
 
-  const { data, isLoading, isError, refetch } = useQuery<DismissalData>({
+  // 1. Busca os dados brutos da API
+  const { data, isLoading, isError, refetch } = useQuery<DismissalApiResponse>({
     queryKey: ["reports", "dismissals", months],
     queryFn: async () => {
       const response = await api.get("/reports/dismissals", { params: { months } })
@@ -57,7 +63,7 @@ export function DismissalAnalytics() {
     retry: 1
   })
 
-  // Stats Calculation
+  // 2. Calcula Estatísticas
   const stats = useMemo(() => {
     if (!data || data.total === 0) return { successRate: 0, evasionRate: 0 }
 
@@ -80,7 +86,20 @@ export function DismissalAnalytics() {
     }
   }, [data])
 
-  // Chart Data Processing (Colors)
+  // 3. Prepara dados para o PDF
+  const pdfData: DismissalReportData | null = useMemo(() => {
+    if (!data) return null;
+    return {
+      periodo: `Últimos ${months} meses`,
+      total: data.total,
+      successRate: stats.successRate,
+      evasionRate: stats.evasionRate,
+      byReason: data.byMotivo || [],   
+      monthlyTrend: data.byDestino || [] 
+    }
+  }, [data, months, stats]);
+
+  // 4. Processamento de Cores para Gráficos
   const reasonData = useMemo(() => {
     if (!data?.byMotivo) return []
     return data.byMotivo.map((item, index) => ({
@@ -88,19 +107,6 @@ export function DismissalAnalytics() {
       fill: `hsl(var(--chart-${(index % 5) + 1}))`
     }))
   }, [data])
-
-  const handleExport = () => {
-    if (!data) return
-    
-    generateDismissalPDF({
-      periodo: `Últimos ${months} meses`,
-      total: data.total,
-      successRate: stats.successRate,
-      evasionRate: stats.evasionRate,
-      byReason: data.byMotivo,
-      monthlyTrend: data.byDestino 
-    })
-  }
 
   if (isLoading) {
     return (
@@ -126,6 +132,7 @@ export function DismissalAnalytics() {
     return (
       <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed rounded-xl bg-destructive/5 text-destructive animate-in fade-in">
         <div className="text-center p-4">
+          <AlertTriangle className="h-10 w-10 mx-auto mb-2 opacity-50" />
           <AlertDescription className="font-medium mb-4 block">
             Erro na Análise
           </AlertDescription>
@@ -171,7 +178,7 @@ export function DismissalAnalytics() {
             <h2 className="text-2xl font-bold tracking-tight text-foreground">Indicadores de Desligamento</h2>
             <p className="text-sm text-muted-foreground mt-1">Análise qualitativa dos encerramentos e destinos.</p>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
                 <SelectTrigger className="w-full sm:w-[140px] h-9">
                     <SelectValue placeholder="Período" />
@@ -183,10 +190,19 @@ export function DismissalAnalytics() {
                     <SelectItem value="60">5 anos</SelectItem>
                 </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={handleExport} className="gap-2 h-9">
-                <Download className="h-4 w-4"/>
-                <span className="hidden sm:inline">PDF</span>
-            </Button>
+            
+            {/* Botão de PDF */}
+            {pdfData && (
+              <div className="flex">
+                  <PDFDownloadButton 
+                    document={<DismissalDoc data={pdfData} />}
+                    fileName={`Desligamentos_${months}meses.pdf`}
+                    label="Exportar PDF"
+                    variant="outline"
+                    size="sm"
+                  />
+              </div>
+            )}
         </div>
       </div>
 
@@ -218,7 +234,7 @@ export function DismissalAnalytics() {
       {/* 2. CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Motivos (Pie Chart) */}
+        {/* Motivos (Pie Chart - Modernizado) */}
         <Card className="flex flex-col shadow-sm border-border/60">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -234,14 +250,38 @@ export function DismissalAnalytics() {
                   data={reasonData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={60}
-                  strokeWidth={4}
-                  labelLine={false}
-                  label={({ percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
-                />
+                  innerRadius={80} // Donut Style
+                  strokeWidth={3}
+                  stroke="hsl(var(--card))" // Borda na cor do card para separar
+                  paddingAngle={1}
+                >
+                  {/* Cores Personalizadas */}
+                  {reasonData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                  
+                  {/* Label Central */}
+                  <Label 
+                    content={({ viewBox }) => {
+                      if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                        return (
+                          <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                            <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-4xl font-bold tracking-tight">
+                              {data.total}
+                            </tspan>
+                            <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs font-semibold uppercase tracking-wider">
+                              CASOS
+                            </tspan>
+                          </text>
+                        )
+                      }
+                    }}
+                  />
+                </Pie>
+                {/* [CORREÇÃO] Adicionado payload={[]} para satisfazer o TypeScript no Recharts v3 */}
                 <ChartLegend 
-                  content={<ChartLegendContent nameKey="name" />} 
-                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
+                  content={<ChartLegendContent nameKey="name" payload={[]} />} 
+                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-auto [&>*]:justify-center" 
                 />
               </PieChart>
             </ChartContainer>

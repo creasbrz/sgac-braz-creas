@@ -1,15 +1,15 @@
+// frontend/src/components/modals/GroupDetailsModal.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { 
   Users, CheckCircle2, Loader2, UserPlus, X, 
-  Printer, FileText, Calendar, AlertCircle, Check, ChevronsUpDown, Clock 
+  Calendar, AlertCircle, Check, ChevronsUpDown, Clock 
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { generateGroupAttendancePDF } from '@/utils/pdfGenerator'
 import type { GroupActivity } from '@/types/group'
 
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,10 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover"
+
+// [NOVO] Imports de PDF
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { GroupAttendanceDoc } from '@/components/reports/templates/GroupAttendanceDoc'
 
 // --- TYPES ---
 interface GroupDetailsModalProps {
@@ -110,12 +114,6 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
     )
   }
 
-  const handlePrint = (type: 'blank' | 'filled') => {
-    if (group && groupDetails?.participantes) {
-      generateGroupAttendancePDF(group, groupDetails.participantes, type)
-    }
-  }
-
   // --- COMPUTED ---
   const participantes = groupDetails?.participantes || []
   const presentesCount = participantes.filter(p => p.presente).length
@@ -133,7 +131,6 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
             <div className="space-y-1">
               <DialogTitle className="flex items-center gap-3 text-xl">
                 {group?.tema}
-                {/* [FIX] Usa 'secondary' que é válido */}
                 <Badge variant="secondary" className="font-normal text-xs uppercase tracking-wide">
                   {group?.tipo.replace('_', ' ')}
                 </Badge>
@@ -152,14 +149,26 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
               </DialogDescription>
             </div>
             
-            {/* AÇÕES DE IMPRESSÃO */}
+            {/* AÇÕES DE IMPRESSÃO [ATUALIZADO] */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => handlePrint('blank')}>
-                <Printer className="mr-2 h-4 w-4 text-muted-foreground" /> Lista em Branco
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrint('filled')}>
-                <FileText className="mr-2 h-4 w-4 text-primary" /> Relatório
-              </Button>
+              {group && (
+                <>
+                  <PDFDownloadButton 
+                    document={<GroupAttendanceDoc group={group} participants={participantes} type="blank" />}
+                    fileName={`Lista_Frequencia_Branca_${group.tema.replace(/\s+/g, '_')}.pdf`}
+                    label="Lista em Branco"
+                    variant="outline"
+                    size="sm"
+                  />
+                  <PDFDownloadButton 
+                    document={<GroupAttendanceDoc group={group} participants={participantes} type="filled" />}
+                    fileName={`Relatorio_Execucao_${group.tema.replace(/\s+/g, '_')}.pdf`}
+                    label="Relatório"
+                    variant="outline"
+                    size="sm"
+                  />
+                </>
+              )}
             </div>
           </div>
         </DialogHeader>
@@ -213,7 +222,6 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-semibold uppercase text-muted-foreground">Novos Participantes</Label>
                   {selectedCandidates.length > 0 && (
-                    // [CORREÇÃO] 'primary' não existe -> trocado por 'default'
                     <Badge variant="default" className="text-[10px] h-5">{selectedCandidates.length}</Badge>
                   )}
                 </div>

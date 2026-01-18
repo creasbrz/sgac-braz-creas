@@ -22,6 +22,7 @@ ESTRUTURA GERAL (Backend):
 ├── prisma
 ├── scripts
 ├── src
+├── tsconfig.json
 ├── tsup.config.ts
 
 
@@ -978,6 +979,7 @@ export function Agenda() {
 ==================================================================
 FILE: frontend\src\pages\CaseDetail.tsx
 ==================================================================
+// frontend/src/pages/CaseDetail.tsx
 import { useState, Suspense, lazy } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
@@ -1208,7 +1210,7 @@ export function CaseDetail() {
                 </TabsContent>
                 
                 <TabsContent value="evolutions" className="mt-0"><CaseEvolutions caseId={id!} /></TabsContent>
-                <TabsContent value="family" className="mt-0"><FamilyTab caseId={id!} /></TabsContent>
+                <TabsContent value="family" className="mt-0"><FamilyTab caseId={id!} titularRenda={Number(caseData.renda) || 0} /></TabsContent>
                 
                 {/* [CORREÇÃO] Conteúdo PAF reinserido */}
                 <TabsContent value="paf" className="mt-0 animate-in fade-in">
@@ -3960,6 +3962,7 @@ export function Reports() {
 ==================================================================
 FILE: frontend\src\pages\reports\RmaTab.tsx
 ==================================================================
+// frontend/src/pages/reports/RmaTab.tsx
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -3970,16 +3973,19 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 
 // --- TIPOS DE DADOS ---
+
 interface StandardCounter {
   masculino: { a0_12: number, a13_17: number, a18_59: number, a60_mais: number }
   feminino: { a0_12: number, a13_17: number, a18_59: number, a60_mais: number }
   total: number
 }
+
 interface ChildCounter {
   masculino: { a0_6: number, a7_12: number, a13_17: number }
   feminino: { a0_6: number, a7_12: number, a13_17: number }
   total: number
 }
+
 interface ChildLaborCounter {
   masculino: { a0_12: number, a13_15: number }
   feminino: { a0_12: number, a13_15: number }
@@ -3988,33 +3994,62 @@ interface ChildLaborCounter {
 
 interface RmaData {
   bloco1: {
-    a1_total: number; a2_novos: number;
-    b1_pbf: number; b2_bpc: number; b3_trab_infantil: number; b4_acolhimento: number; b5_drogas: number; b7_mse: number;
+    // A - Volume
+    a1_total_acompanhamento: number;
+    a2_novos_casos: number;
+    
+    // B - Perfil
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
     b6_vitimas: StandardCounter;
-    c1_infamiliar: ChildCounter; c2_abuso: ChildCounter; c3_exploracao: ChildCounter; c4_negligencia: ChildCounter;
-    c5_trab_infantil: ChildLaborCounter;
-    d1_violencia: number; d2_negligencia: number;
-    e1_violencia: StandardCounter; e2_negligencia: StandardCounter;
+    b7_mse: number;
+
+    // C - Crianças
+    c1_infamiliar: ChildCounter;
+    c2_abuso: ChildCounter;
+    c3_exploracao: ChildCounter;
+    c4_negligencia: ChildCounter;
+    c5_trabalho_infantil: ChildLaborCounter;
+
+    // D - Idosos
+    d1_violencia: number;
+    d2_negligencia: number;
+
+    // E - PCD
+    e1_violencia: StandardCounter;
+    e2_negligencia: StandardCounter;
+
+    // F - Mulheres
     f1_mulheres: number;
+
+    // G - Tráfico
     g1_trafico: StandardCounter;
+
+    // H - Discriminação
     h1_discriminacao: number;
+
+    // I - Pop Rua
     i1_rua: StandardCounter;
   };
   bloco2: {
-    m1_individual: number; m2_grupo: number; m3_cras: number; m4_visitas: number;
+    m1_individual: number;
+    m2_grupo: number;
+    m3_cras: number;
+    m4_visitas: number;
   };
 }
 
 // --- COMPONENTES VISUAIS ---
 
-// Th Padrão (Fundo Cinza Claro) - Usado para sub-cabeçalhos se necessário, ou células menos importantes
 const Th = ({ children, rS = 1, cS = 1, className = "" }: any) => (
   <th rowSpan={rS} colSpan={cS} className={`border border-black bg-gray-400 px-1 py-1 text-[9px] font-bold text-black text-center uppercase align-middle leading-tight ${className}`}>
     {children}
   </th>
 )
 
-// DarkTh (Alto Contraste) - Usado para Títulos de Seção e Cabeçalhos Principais (Total, Sexo, etc)
 const DarkTh = ({ children, rS = 1, cS = 1, className = "", align = "center" }: any) => (
   <th rowSpan={rS} colSpan={cS} className={`border border-black bg-gray-800 text-white px-2 py-1 text-[10px] font-bold uppercase align-middle leading-tight ${align === 'left' ? 'text-left' : 'text-center'} ${className}`}>
     {children}
@@ -4103,45 +4138,20 @@ export function RmaTab() {
   return (
     <div className="flex flex-col items-center pb-20 bg-slate-100 min-h-screen font-sans">
       
-      {/* --- CSS PARA IMPRESSÃO --- */}
+      {/* CSS PARA IMPRESSÃO */}
       <style>{`
         @media print {
-          @page { 
-            margin: 5mm; 
-            size: A4 portrait; 
-          }
-          
-          /* Garante que cores de fundo (preto/cinza) sejam impressas */
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          
+          @page { margin: 5mm; size: A4 portrait; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body * { visibility: hidden; }
-          
-          #rma-print-content, #rma-print-content * { 
-            visibility: visible; 
-          }
-
+          #rma-print-content, #rma-print-content * { visibility: visible; }
           #rma-print-content {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            width: 210mm;
-            transform: translateX(-50%) scale(0.75); 
-            transform-origin: top center;
-            margin: 0;
-            padding: 0;
-            background: white;
-            z-index: 9999;
+            position: absolute; top: 0; left: 50%;
+            width: 210mm; transform: translateX(-50%) scale(0.85); 
+            transform-origin: top center; margin: 0; padding: 0; background: white;
           }
-
           .print-hidden { display: none !important; }
-          
-          .break-inside-avoid { 
-            break-inside: avoid; 
-            page-break-inside: avoid; 
-          }
+          .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
 
@@ -4172,7 +4182,6 @@ export function RmaTab() {
               <div className="flex border-b border-black pb-0.5">Nome da Unidade: <span className="ml-2 font-mono uppercase italic">CREAS Brazlândia</span></div>
               <div className="flex border-b border-black pb-0.5">Município: <span className="ml-2 font-mono uppercase italic">Brasília (Brazlândia)</span></div>
               <div className="flex border-b border-black pb-0.5 uppercase font-bold">Mês/Ano: <span className="ml-2 font-mono">{monthLabel}</span></div>
-              <div className="flex border-b border-black pb-0.5">Nº da Unidade: <span className="ml-2 font-mono"></span></div>
             </div>
           </div>
 
@@ -4187,19 +4196,18 @@ export function RmaTab() {
               </tr>
             </thead>
             <tbody>
-              {renderSimpleRow('A.1', 'Total de casos em acompanhamento (Ativos no mês)', data.bloco1.a1_total)}
-              {renderSimpleRow('A.2', 'Novos casos inseridos no acompanhamento durante o mês', data.bloco1.a2_novos)}
+              {renderSimpleRow('A.1', 'Total de casos em acompanhamento (Ativos no mês)', data.bloco1.a1_total_acompanhamento)}
+              {renderSimpleRow('A.2', 'Novos casos inseridos no acompanhamento durante o mês', data.bloco1.a2_novos_casos)}
               
-              {/* LINHA DE PERFIL (B.1 a B.7) - ALTO CONTRASTE */}
               <tr>
                 <Td cS={2} align="left" className="bg-gray-800 text-white font-bold text-[10px] py-1 uppercase pl-4 border-y border-black">
                   Perfil dos novos casos inseridos (B.1 a B.7)
                 </Td>
               </tr>
               
-              {renderSimpleRow('B.1', 'Famílias beneficiárias do Programa Bolsa Família', data.bloco1.b1_pbf)}
+              {renderSimpleRow('B.1', 'Famílias beneficiárias do Programa Bolsa Família', data.bloco1.b1_bolsa_familia)}
               {renderSimpleRow('B.2', 'Famílias com membros beneficiários do BPC', data.bloco1.b2_bpc)}
-              {renderSimpleRow('B.3', 'Famílias com crianças/adolescentes em Trabalho Infantil', data.bloco1.b3_trab_infantil)}
+              {renderSimpleRow('B.3', 'Famílias com crianças/adolescentes em Trabalho Infantil', data.bloco1.b3_trabalho_infantil)}
               {renderSimpleRow('B.4', 'Famílias com crianças/adolescentes em Acolhimento', data.bloco1.b4_acolhimento)}
               {renderSimpleRow('B.5', 'Famílias com violência associada a substâncias psicoativas', data.bloco1.b5_drogas)}
               {renderSimpleRow('B.7', 'Famílias com adolescente em cumprimento de MSE', data.bloco1.b7_mse)}
@@ -4212,14 +4220,11 @@ export function RmaTab() {
               <thead>
                 <tr>
                   <DarkTh rS={2} className="w-[45%] pl-2" align="left">B.6. Quantidade de Pessoas Vitimadas (Novos Casos)</DarkTh>
-                  {/* CABEÇALHOS AGORA PADRONIZADOS EM ALTO CONTRASTE */}
                   <DarkTh rS={2} className="w-10">Total</DarkTh>
                   <DarkTh rS={2} className="w-10">Sexo</DarkTh>
                   <DarkTh cS={4}>Faixa Etária</DarkTh>
                 </tr>
-                <tr>
-                  <Th>0-12</Th><Th>13-17</Th><Th>18-59</Th><Th>60+</Th>
-                </tr>
+                <tr><Th>0-12</Th><Th>13-17</Th><Th>18-59</Th><Th>60+</Th></tr>
               </thead>
               <tbody>
                 {renderStandardDemo('B.6', 'Pessoas vitimadas que ingressaram no PAEFI', data.bloco1.b6_vitimas)}
@@ -4237,9 +4242,7 @@ export function RmaTab() {
                   <DarkTh rS={2} className="w-10">Sexo</DarkTh>
                   <DarkTh cS={3}>Faixa Etária (Específico)</DarkTh>
                 </tr>
-                <tr>
-                  <Th>0 a 6</Th><Th>7 a 12</Th><Th>13 a 17</Th>
-                </tr>
+                <tr><Th>0 a 6</Th><Th>7 a 12</Th><Th>13 a 17</Th></tr>
               </thead>
               <tbody>
                 {renderChildDemo('C.1', 'Violência Intrafamiliar (Física/Psicológica)', data.bloco1.c1_infamiliar)}
@@ -4260,20 +4263,18 @@ export function RmaTab() {
                   <DarkTh rS={2} className="w-10">Sexo</DarkTh>
                   <DarkTh cS={2}>Faixa Etária</DarkTh>
                 </tr>
-                <tr>
-                  <Th>0 a 12 anos</Th><Th>13 a 15 anos</Th>
-                </tr>
+                <tr><Th>0 a 12 anos</Th><Th>13 a 15 anos</Th></tr>
               </thead>
               <tbody>
                 <tr>
                   <Td rS={2} align="left" className="w-[45%]"><span className="font-bold mr-1">C.5</span>Crianças/Adolescentes em Trabalho Infantil</Td>
-                  <Td rS={2} className="font-bold bg-gray-100">{data.bloco1.c5_trab_infantil.total}</Td>
+                  <Td rS={2} className="font-bold bg-gray-100">{data.bloco1.c5_trabalho_infantil.total}</Td>
                   <Td className="text-[9px] font-bold uppercase bg-gray-100">Masc</Td>
-                  <Td>{data.bloco1.c5_trab_infantil.masculino.a0_12}</Td><Td>{data.bloco1.c5_trab_infantil.masculino.a13_15}</Td>
+                  <Td>{data.bloco1.c5_trabalho_infantil.masculino.a0_12}</Td><Td>{data.bloco1.c5_trabalho_infantil.masculino.a13_15}</Td>
                 </tr>
                 <tr>
                   <Td className="text-[9px] font-bold uppercase bg-gray-100">Fem</Td>
-                  <Td>{data.bloco1.c5_trab_infantil.feminino.a0_12}</Td><Td>{data.bloco1.c5_trab_infantil.feminino.a13_15}</Td>
+                  <Td>{data.bloco1.c5_trabalho_infantil.feminino.a0_12}</Td><Td>{data.bloco1.c5_trabalho_infantil.feminino.a13_15}</Td>
                 </tr>
               </tbody>
             </table>
@@ -4369,9 +4370,9 @@ export function RmaTab() {
           
           <table className="w-full border-collapse border border-black border-t-0 mt-0 break-inside-avoid">
             <thead>
+              {/* CORREÇÃO: Tabela agora possui apenas 2 colunas para combinar com as linhas geradas */}
               <tr>
-                <DarkTh className="w-10 text-center">Item</DarkTh>
-                <DarkTh className="pl-2" align="center">Descrição do Atendimento</DarkTh>
+                <DarkTh className="pl-2" align="left">Descrição do Atendimento</DarkTh>
                 <DarkTh className="w-16 text-center">Total</DarkTh>
               </tr>
             </thead>
@@ -4396,7 +4397,6 @@ export function RmaTab() {
               <p className="text-center">Assinatura e CPF</p>
             </div>
           </div>
-
         </div>
       )}
     </div>

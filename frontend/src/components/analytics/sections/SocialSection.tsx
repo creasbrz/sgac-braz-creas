@@ -1,6 +1,7 @@
+// frontend/src/components/analytics/sections/SocialSection.tsx
 import { useMemo } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, PieChart, Pie, Label
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, PieChart, Pie, Label, Cell
 } from 'recharts'
 import { Users, BarChart3 } from 'lucide-react'
 
@@ -14,7 +15,7 @@ import {
   ChartLegendContent 
 } from "@/components/ui/chart"
 
-import type { ObservatoryData } from '@/utils/pdfGenerator'
+import type { ObservatoryData } from '@/types/case'
 
 // --- CHART CONFIG ---
 const ageChartConfig = {
@@ -49,10 +50,11 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
   const sexData = useMemo(() => {
     return data.sexData.map(item => {
       const name = item.name.toLowerCase()
-      let fill = "var(--color-other)" // Default fallback
+      // Usando variáveis CSS HSL para consistência
+      let fill = "hsl(var(--muted-foreground))" // Default fallback (Cinza)
       
-      if (name.includes('masculino') || name.startsWith('m')) fill = "var(--color-male)"
-      else if (name.includes('feminino') || name.startsWith('f')) fill = "var(--color-female)"
+      if (name.includes('masculino') || name.startsWith('m')) fill = "hsl(var(--chart-1))" // Azul
+      else if (name.includes('feminino') || name.startsWith('f')) fill = "hsl(var(--chart-3))" // Rosa
       
       return { ...item, fill }
     })
@@ -73,41 +75,44 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
         </CardHeader>
         <CardContent className="flex-1 min-h-[350px]">
           {data.ageData.length > 0 ? (
-            <ChartContainer config={ageChartConfig} className="w-full h-full">
-              <BarChart 
-                accessibilityLayer
-                data={data.ageData} 
-                layout="vertical" 
-                margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
-              >
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4}/>
-                <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={100} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
-                />
-                <ChartTooltip 
-                  cursor={{fill: 'hsl(var(--muted)/0.2)'}} 
-                  content={<ChartTooltipContent indicator="dashed" />} 
-                />
-                <Bar 
-                  dataKey="value" 
-                  fill="var(--color-value)" 
-                  radius={[0, 4, 4, 0]} 
-                  barSize={24}
+            // [CORREÇÃO] min-h explícito para evitar warning de width
+            <div className="w-full h-[350px]">
+              <ChartContainer config={ageChartConfig} className="w-full h-full">
+                <BarChart 
+                  accessibilityLayer
+                  data={data.ageData} 
+                  layout="vertical" 
+                  margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
                 >
-                  <LabelList 
-                    dataKey="value" 
-                    position="right" 
-                    className="fill-foreground font-bold text-xs" 
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4}/>
+                  <XAxis type="number" hide />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    width={100} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
                   />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+                  <ChartTooltip 
+                    cursor={{fill: 'hsl(var(--muted)/0.2)'}} 
+                    content={<ChartTooltipContent indicator="dashed" />} 
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    fill="var(--color-value)" 
+                    radius={[0, 4, 4, 0]} 
+                    barSize={24}
+                  >
+                    <LabelList 
+                      dataKey="value" 
+                      position="right" 
+                      className="fill-foreground font-bold text-xs" 
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
               Sem dados de idade disponíveis.
@@ -134,39 +139,48 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
         </CardHeader>
         <CardContent className="flex-1 min-h-[350px]">
           {sexData.length > 0 ? (
-            <ChartContainer config={genderChartConfig} className="mx-auto aspect-square max-h-[350px]">
-              <PieChart>
-                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                <Pie 
-                  data={sexData} 
-                  dataKey="value" 
-                  nameKey="name" 
-                  innerRadius={70} 
-                  strokeWidth={4}
-                >
-                  <Label 
-                    content={({ viewBox }) => {
-                      if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                        return (
-                          <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                            <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
-                              {totalUsers}
-                            </tspan>
-                            <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
-                              USUÁRIOS
-                            </tspan>
-                          </text>
-                        )
-                      }
-                    }}
+            // [CORREÇÃO] min-h explícito
+            <div className="w-full h-[350px]">
+              <ChartContainer config={genderChartConfig} className="mx-auto aspect-square max-h-[350px]">
+                <PieChart>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                  <Pie 
+                    data={sexData} 
+                    dataKey="value" 
+                    nameKey="name" 
+                    innerRadius={75} 
+                    strokeWidth={4}
+                    paddingAngle={3}
+                    stroke="none"
+                  >
+                    {sexData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                    <Label 
+                      content={({ viewBox }) => {
+                        if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                          return (
+                            <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
+                                {totalUsers}
+                              </tspan>
+                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
+                                USUÁRIOS
+                              </tspan>
+                            </text>
+                          )
+                        }
+                      }}
+                    />
+                  </Pie>
+                  {/* [CORREÇÃO] Adicionado payload={[]} para satisfazer o TypeScript no Recharts v3 */}
+                  <ChartLegend 
+                    content={<ChartLegendContent nameKey="name" payload={[]} />} 
+                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
                   />
-                </Pie>
-                <ChartLegend 
-                  content={<ChartLegendContent nameKey="name" />} 
-                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
-                />
-              </PieChart>
-            </ChartContainer>
+                </PieChart>
+              </ChartContainer>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
               Sem dados de gênero disponíveis.

@@ -1,3 +1,4 @@
+// frontend/src/components/analytics/sections/PerformanceSection.tsx
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts'
 import { Users, Gift, Clock, Activity, CheckCircle, AlertCircle } from 'lucide-react'
 
@@ -10,9 +11,8 @@ import {
   ChartTooltipContent 
 } from "@/components/ui/chart"
 
-import type { ObservatoryData } from '@/utils/pdfGenerator'
-
-// --- UTILS ---
+// [CORREÇÃO] Importando do local correto dos tipos (SSoT)
+import type { ObservatoryData } from '@/types/case'
 
 // --- CHART CONFIG ---
 const benefitsChartConfig = {
@@ -27,6 +27,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
   
   // Data extraction with safe defaults
   const benefits = data.benefitsData || []
+  // Top 5 benefícios mais concedidos
   const sortedBenefits = [...benefits].sort((a, b) => b.value - a.value).slice(0, 5)
   const efficiency = data.efficiencyData || {}
 
@@ -65,7 +66,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
       {/* 2. Métricas de Volume e Benefícios */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Card: Grupos e Oficinas (Custom Layout using standard components) */}
+        {/* Card: Grupos e Oficinas (Custom Layout) */}
         <Card className="lg:col-span-1 shadow-sm border-border/60 flex flex-col">
           <CardHeader>
             <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -74,7 +75,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
             <CardDescription>Engajamento em grupos e oficinas.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center gap-4">
-             {/* Sub-metric 1 */}
+             {/* Sub-metric 1: Total Participantes */}
              <div className="flex items-center justify-between p-4 bg-pink-50 dark:bg-pink-900/10 rounded-xl border border-pink-100 dark:border-pink-900/30">
                 <div>
                    <p className="text-xs font-bold text-pink-700 dark:text-pink-400 uppercase tracking-wider">Participantes</p>
@@ -87,7 +88,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
                 </div>
              </div>
              
-             {/* Sub-metric 2 */}
+             {/* Sub-metric 2: Média por Grupo */}
              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50">
                 <div>
                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Média por Grupo</p>
@@ -125,7 +126,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
                     tickLine={false} 
                     axisLine={false}
                     tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
-                    // Truncate long names
+                    // Truncate long names to keep layout clean
                     tickFormatter={(val) => val.length > 18 ? `${val.substring(0, 18)}...` : val}
                   />
                   <ChartTooltip 

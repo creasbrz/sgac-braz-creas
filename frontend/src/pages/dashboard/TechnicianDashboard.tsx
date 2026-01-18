@@ -1,10 +1,11 @@
+// frontend/src/pages/dashboard/TechnicianDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { 
   Users, Activity, FileCheck, Clock, AlertTriangle, ArrowUpRight, 
   CheckCircle2, PieChart as PieIcon, AlertCircle, LucideIcon 
 } from 'lucide-react'
-import { PieChart, Pie, Label } from 'recharts' // Recharts puro é usado internamente
+import { PieChart, Pie, Label } from 'recharts'
 import { useNavigate } from 'react-router-dom'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -29,23 +30,22 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// --- CONFIGURAÇÃO DO GRÁFICO (NOVO) ---
-// Define labels e cores mapeadas para CSS Variables ou Variáveis do Tema
+// --- CONFIGURAÇÃO DO GRÁFICO ---
 const chartConfig = {
   cases: {
     label: "Casos",
   },
   alta: {
     label: "Alta/Crítica",
-    color: "hsl(var(--destructive))", // Usa a cor de erro do tema
+    color: "hsl(var(--destructive))", 
   },
   media: {
     label: "Média",
-    color: "hsl(var(--chart-4))", // Laranja (baseado no index.css)
+    color: "hsl(var(--chart-4))", 
   },
   baixa: {
     label: "Baixa/Estável",
-    color: "hsl(var(--chart-2))", // Verde/Emerald (baseado no index.css)
+    color: "hsl(var(--chart-2))", 
   },
   neutro: {
     label: "Sem Classif.",
@@ -94,7 +94,6 @@ const getAlertDetails = (type: string, days: number): AlertDetails => {
   }
 }
 
-// Componente StatCard (Mantido igual à versão anterior refatorada)
 interface StatCardProps {
   title: string
   value: string | number
@@ -152,16 +151,14 @@ export function TechnicianDashboard() {
     refetchInterval: 1000 * 60 * 5 
   })
 
-  // --- LOADING & ERROR STATES (Mantidos para brevidade) ---
   if (isLoading) return <div className="p-6 space-y-6 animate-pulse"><Skeleton className="h-32 w-full" /><Skeleton className="h-96 w-full" /></div>
   if (isError) return <div className="p-6 text-destructive">Erro ao carregar dashboard.</div>
 
   const myCases = data.myCases || []
   
-  // Lógica de Contagem (Mantida intacta)
   const urgencyCount = myCases.reduce((acc: Record<string, number>, curr: any) => {
     const term = (curr.urgencia || '').toUpperCase()
-    let key = 'neutro' // Chaves minúsculas para bater com o chartConfig
+    let key = 'neutro'
     
     if (URGENCIA_NIVEIS.GRAVISSIMA.some(u => term.includes(u.toUpperCase())) || 
         URGENCIA_NIVEIS.MUITO_GRAVE.some(u => term.includes(u.toUpperCase()))) {
@@ -176,8 +173,6 @@ export function TechnicianDashboard() {
     return acc
   }, { alta: 0, media: 0, baixa: 0, neutro: 0 })
 
-  // Preparação dos dados para o Shadcn Chart
-  // Note o uso de `fill: "var(--color-key)"` que linka com o config
   const chartData = [
     { type: 'alta', value: urgencyCount.alta, fill: "var(--color-alta)" },
     { type: 'media', value: urgencyCount.media, fill: "var(--color-media)" },
@@ -200,7 +195,7 @@ export function TechnicianDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
-        {/* 2. GRÁFICO MIGRADO PARA SHADCN CHARTS */}
+        {/* 2. GRÁFICO */}
         <Card className="lg:col-span-2 flex flex-col h-[450px] shadow-sm border-border/60">
           <CardHeader className="items-center pb-0">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -225,7 +220,6 @@ export function TechnicianDashboard() {
                     innerRadius={60}
                     strokeWidth={5}
                   >
-                    {/* Label Central (Total) */}
                     <Label
                       content={({ viewBox }) => {
                         if (viewBox && "cx" in viewBox && "cy" in viewBox) {
@@ -243,22 +237,28 @@ export function TechnicianDashboard() {
                       }}
                     />
                   </Pie>
-                  <ChartLegend content={<ChartLegendContent nameKey="type" />} className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" />
+                  
+                  {/* [CORREÇÃO] Render Prop adicionada aqui */}
+                  <ChartLegend 
+                    content={({ payload }) => <ChartLegendContent payload={payload} nameKey="type" />} 
+                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
+                  />
+                  
                 </PieChart>
               </ChartContainer>
             )}
           </CardContent>
           <CardFooter className="flex-col gap-2 text-sm text-muted-foreground pt-4">
-             <div className="flex items-center gap-2 font-medium leading-none">
+              <div className="flex items-center gap-2 font-medium leading-none">
                 Tendência de alta complexidade em 5% <Activity className="h-4 w-4" />
-             </div>
-             <div className="leading-none text-muted-foreground">
+              </div>
+              <div className="leading-none text-muted-foreground">
                 Exibindo dados atualizados da carteira
-             </div>
+              </div>
           </CardFooter>
         </Card>
 
-        {/* 3. COLUNA DIREITA (Agenda e Alertas) - Mantido igual para focar na migração do gráfico */}
+        {/* 3. COLUNA DIREITA */}
         <div className="space-y-6 flex flex-col h-full">
           <UpcomingAppointments data={data.appointments} title="Agenda de Hoje" enableScroll />
           

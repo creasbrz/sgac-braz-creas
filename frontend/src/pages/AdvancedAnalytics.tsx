@@ -1,5 +1,5 @@
 // frontend/src/pages/AdvancedAnalytics.tsx
-import { useState, useRef, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { format } from "date-fns"
@@ -7,14 +7,13 @@ import { format } from "date-fns"
 // Gráficos (Recharts via Shadcn Charts)
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  PieChart, Pie, Label, BarChart, Bar, LabelList
+  PieChart, Pie, Label, BarChart, Bar, LabelList, Cell
 } from "recharts"
 
 // Ícones e UI
 import { 
-  Loader2, Download, AlertTriangle, 
-  Clock, TrendingUp, FileBarChart, 
-  Activity, Briefcase
+  AlertTriangle, Clock, TrendingUp, FileBarChart, 
+  Activity, Briefcase, Calendar
 } from "lucide-react"
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -22,7 +21,6 @@ import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
 import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { toast } from "sonner"
 
 // Shadcn Charts
 import { 
@@ -30,44 +28,26 @@ import {
   ChartContainer, 
   ChartTooltip, 
   ChartTooltipContent, 
-  ChartLegend, 
-  ChartLegendContent 
+  ChartLegend,
+  ChartLegendContent
 } from "@/components/ui/chart"
 
-// Bibliotecas de PDF
-import html2canvas from "html2canvas"
-import pdfMake from "pdfmake/build/pdfmake"
-import pdfFonts from "pdfmake/build/vfs_fonts"
+// PDF Imports
+import { PDFDownloadButton } from "@/components/reports/PDFDownloadButton"
+import { AnalyticsReportDoc } from "@/components/reports/templates/AnalyticsReportDoc"
+import type { AnalyticsReportData } from "@/types/case"
 
-// --- TYPES CORRECTION & PDF SETUP ---
-type TDocumentDefinitions = any;
-const pdfMakeAny: any = pdfMake;
-if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
-  pdfMakeAny.vfs = pdfFonts.pdfMake.vfs;
-} else if (pdfFonts && (pdfFonts as any).vfs) {
-  pdfMakeAny.vfs = (pdfFonts as any).vfs;
-} else if (pdfMakeAny.vfs === undefined) {
-  try { pdfMakeAny.vfs = pdfFonts; } catch(e) { console.warn('Erro ao carregar fontes PDF', e)}
-}
-
-// --- CONFIGURAÇÃO DE GRÁFICOS (THEMING) ---
+// --- CONFIGURAÇÃO DE GRÁFICOS ESTÁTICOS ---
 
 const trendChartConfig = {
   novos: {
     label: "Novos Casos",
-    color: "hsl(var(--chart-1))", // Azul/Primary
+    color: "hsl(var(--chart-2))", // Azul/Primary
   },
   fechados: {
     label: "Desligamentos",
-    color: "hsl(var(--chart-2))", // Verde/Secondary
+    color: "hsl(var(--chart-1))", // Verde/Secondary
   },
-} satisfies ChartConfig
-
-const violationChartConfig = {
-  value: {
-    label: "Ocorrências",
-  },
-  // As cores serão geradas dinamicamente no render baseadas nas variáveis CSS --chart-X
 } satisfies ChartConfig
 
 const productivityChartConfig = {
@@ -88,7 +68,8 @@ interface TrendData {
 interface PieData { 
   name: string; 
   value: number; 
-  fill?: string; // Adicionado para controle de cor
+  fill?: string;
+  realLabel?: string;
 }
 
 interface Insight { 
@@ -144,8 +125,6 @@ function AnalyticsSkeleton() {
 
 export function AdvancedAnalytics() {
   const [periodMonths, setPeriodMonths] = useState<number>(12)
-  const exportRef = useRef<HTMLDivElement | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
   
   // 1. Query Principal
   const { data: dataRaw, isLoading, isError } = useQuery({
@@ -162,7 +141,7 @@ export function AdvancedAnalytics() {
     staleTime: 1000 * 60 * 5,
   })
 
-  // 2. Query Secundária
+  // 2. Query Secundária (Produtividade)
   const { data: productivityRaw } = useQuery<ProductivityItem[]>({
     queryKey: ["stats", "productivity", periodMonths],
     queryFn: async () => {
@@ -175,24 +154,39 @@ export function AdvancedAnalytics() {
 
   // 3. Processamento de Dados (Memo)
   const data = useMemo(() => {
-    // Split de violações (Lógica de Negócio Mantida)
     const rawPieData = (Array.isArray(dataRaw?.pieData) ? dataRaw.pieData : []) as PieData[]
     const violationCounts: Record<string, number> = {}
 
-    rawPieData.forEach(item => {
-      const categories = item.name.split(',').map(s => s.trim())
-      categories.forEach(cat => {
+    // Agrupamento
+    rawPieData.forEach((item: any) => {
+      const categories = item.name.split(',').map((s: string) => s.trim())
+      categories.forEach((cat: string) => {
         if (cat) violationCounts[cat] = (violationCounts[cat] || 0) + item.value
       })
     })
 
-    // Atribuição de cores cíclicas do tema (chart-1 a chart-5)
+    const dynamicViolationConfig: ChartConfig = {
+      occurrences: { label: "Ocorrências" },
+    }
+
     const processedPieData = Object.entries(violationCounts)
-      .map(([name, value], index) => ({ 
-        name, 
-        value, 
-        fill: `hsl(var(--chart-${(index % 5) + 1}))` 
-      }))
+      .map(([realName, value], index) => {
+        const color = `hsl(var(--chart-${(index % 5) + 1}))`
+        const safeKey = `segment_${index}` // Chave segura para o config do gráfico
+        
+        // Adiciona ao config dinamicamente
+        dynamicViolationConfig[safeKey] = {
+          label: realName,
+          color: color
+        }
+
+        return { 
+          name: safeKey, // Usa a chave segura para o gráfico
+          realLabel: realName, // Usa o nome real para tooltip/legenda
+          value, 
+          fill: color 
+        }
+      })
       .sort((a, b) => b.value - a.value)
 
     return {
@@ -200,13 +194,14 @@ export function AdvancedAnalytics() {
       totalActive: dataRaw?.totalActive || 0,
       trendData: (Array.isArray(dataRaw?.trendData) ? dataRaw.trendData : []) as TrendData[],
       pieData: processedPieData,
+      violationConfig: dynamicViolationConfig, 
       insights: (Array.isArray(dataRaw?.insights) ? dataRaw.insights : []) as Insight[]
     }
   }, [dataRaw])
 
   const productivity = useMemo(() => Array.isArray(productivityRaw) ? productivityRaw : [], [productivityRaw])
 
-  // 4. Métricas Derivadas
+  // 4. Métricas Derivadas e Previsão
   const forecast = useMemo(() => {
     const xs: number[] = [], ys: number[] = []
     data.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
@@ -215,57 +210,31 @@ export function AdvancedAnalytics() {
 
   const totalViolations = useMemo(() => data.pieData.reduce((acc, curr) => acc + curr.value, 0), [data.pieData])
 
-  // Transformar Insights (Objeto) para formato string[] que o SmartInsightsCard aceita
-  // mas mantendo a riqueza dos dados se possível. O componente refatorado SmartInsightsCard aceita string[].
-  // Vamos formatar para passar a informação completa.
   const formattedInsights = useMemo(() => 
     data.insights.map(i => `${i.title}: ${i.description}`), 
   [data.insights])
 
-  // 5. Exportação PDF
-  const handleExportPdf = async () => {
-    if (!exportRef.current) return
-
-    try {
-      setIsExporting(true)
-      toast.info("Preparando documento...")
-
-      // Pequeno delay para garantir renderização
-      await new Promise(r => setTimeout(r, 500))
-
-      const canvas = await html2canvas(exportRef.current, { 
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff", // Força fundo branco
-        ignoreElements: (element) => element.classList.contains('no-print')
-      })
-      
-      const imgData = canvas.toDataURL('image/png')
-      const docDefinition: TDocumentDefinitions = {
-        pageSize: 'A4',
-        pageOrientation: 'landscape',
-        pageMargins: [30, 30, 30, 40],
-        content: [
-          { text: 'Relatório de Inteligência de Dados - CREAS', style: 'header', alignment: 'center', margin: [0, 0, 0, 5] },
-          { text: `Período: Últimos ${periodMonths} meses | Gerado em: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, style: 'subheader', alignment: 'center', margin: [0, 0, 0, 20] },
-          { image: imgData, width: 760, alignment: 'center' }
-        ],
-        styles: {
-          header: { fontSize: 18, bold: true, color: '#0f172a' },
-          subheader: { fontSize: 10, color: '#64748b' },
-        }
-      }
-
-      pdfMakeAny.createPdf(docDefinition).download(`analytics_report_${Date.now()}.pdf`)
-      toast.success("Download iniciado!")
-    } catch (e) {
-      console.error(e)
-      toast.error("Erro ao gerar PDF.")
-    } finally {
-      setIsExporting(false)
+  // Preparação de dados para o PDF
+  const reportData: AnalyticsReportData | null = useMemo(() => {
+    if (!dataRaw) return null;
+    
+    return {
+        periodo: periodMonths,
+        kpis: {
+        tempoMedio: data.avgHandlingTime,
+        ativosPaefi: data.totalActive,
+        previsaoNovos: forecast
+        },
+        insights: data.insights,
+        fluxo: data.trendData.map(d => ({ name: d.name, novos: d.novos, fechados: d.fechados })),
+        violacoes: data.pieData.map(p => ({ 
+        name: p.realLabel || p.name, 
+        value: p.value,
+        percent: totalViolations > 0 ? (p.value / totalViolations) * 100 : 0
+        })),
+        produtividade: productivity.map(p => ({ name: p.name, value: p.value }))
     }
-  }
+  }, [data, productivity, periodMonths, forecast, totalViolations, dataRaw]);
 
   if (isLoading) return <AnalyticsSkeleton />
   
@@ -281,47 +250,50 @@ export function AdvancedAnalytics() {
   }
 
   return (
-    <div className="space-y-8 p-1 animate-in fade-in duration-700">
+    <div className="space-y-8 p-4 md:p-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
       
       {/* HEADER DE CONTROLE */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-6">
-        <div className="space-y-1">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b pb-6">
+        <div className="space-y-1.5">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Inteligência de Dados</h1>
-          <p className="text-muted-foreground text-sm">Monitoramento estratégico e preditivo da unidade.</p>
+          <p className="text-muted-foreground text-sm flex items-center gap-2">
+             <Activity className="w-4 h-4" /> Monitoramento estratégico e preditivo da unidade.
+          </p>
         </div>
 
-        <div className="flex gap-2 items-center p-1 bg-background/50 backdrop-blur rounded-lg border shadow-sm">
-          <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
-            <SelectTrigger className="w-[150px] border-0 focus:ring-0 shadow-none h-9 bg-transparent font-medium">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="3">Últimos 3 Meses</SelectItem>
-              <SelectItem value="6">Últimos 6 Meses</SelectItem>
-              <SelectItem value="12">Últimos 12 Meses</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* Controls Container */}
+          <div className="flex items-center gap-2 p-1 bg-background border rounded-lg shadow-sm">
+            <Calendar className="w-4 h-4 text-muted-foreground ml-2" />
+            <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
+              <SelectTrigger className="w-[160px] border-0 focus:ring-0 shadow-none h-9 bg-transparent font-medium text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="3">Últimos 3 Meses</SelectItem>
+                <SelectItem value="6">Últimos 6 Meses</SelectItem>
+                <SelectItem value="12">Últimos 12 Meses</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           
-          <div className="h-5 w-[1px] bg-border" />
-          
-          <Button 
-            onClick={handleExportPdf} 
-            disabled={isExporting} 
-            variant="ghost" 
-            size="sm" 
-            className="h-9 text-muted-foreground hover:text-primary gap-2"
-          >
-            {isExporting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4"/>} 
-            <span className="hidden sm:inline">Exportar PDF</span>
-          </Button>
+          {reportData && (
+            <PDFDownloadButton 
+                document={<AnalyticsReportDoc data={reportData} />}
+                fileName={`Report_Inteligencia_${periodMonths}M_${format(new Date(), 'yyyyMMdd')}.pdf`}
+                label="Exportar PDF"
+                variant="default" 
+                size="sm"
+            />
+          )}
         </div>
       </div>
 
-      {/* ÁREA DE EXPORTAÇÃO (Conteúdo do Relatório) */}
-      <div ref={exportRef} className="space-y-8 bg-background p-2 rounded-xl">
+      {/* ÁREA DE EXIBIÇÃO */}
+      <div className="space-y-6">
         
         {/* 1. KPIs */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <DashboardStatCard 
             title="Tempo Médio de Resolução" 
             value={data.avgHandlingTime} 
@@ -339,9 +311,9 @@ export function AdvancedAnalytics() {
             index={1}
           />
           <DashboardStatCard 
-            title="Novos Casos (Mês)" 
-            value={data.trendData[data.trendData.length-1]?.novos ?? 0} 
-            description="Demandas espontâneas e encaminhadas" 
+            title="Novos Casos (Período)" 
+            value={data.trendData.reduce((acc, curr) => acc + curr.novos, 0)} 
+            description={`Entradas nos últimos ${periodMonths} meses`} 
             icon={TrendingUp} 
             variant="green" 
             index={2}
@@ -351,59 +323,65 @@ export function AdvancedAnalytics() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* 2. GRÁFICO DE TENDÊNCIA (Linha) */}
-          <Card className="lg:col-span-2 shadow-sm border-border/60">
+          <Card className="lg:col-span-2 shadow-sm border-border/60 flex flex-col">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary"/> Fluxo de Atendimentos
+                <TrendingUp className="h-5 w-5 text-primary"/> Fluxo de Atendimentos
               </CardTitle>
               <CardDescription>Evolução de entradas e saídas no período selecionado</CardDescription>
             </CardHeader>
-            <CardContent>
-              <ChartContainer config={trendChartConfig} className="aspect-[16/9] w-full max-h-[350px]">
-                <LineChart data={data.trendData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
-                  <XAxis 
-                    dataKey="name" 
-                    tickLine={false} 
-                    axisLine={false} 
-                    tickMargin={10} 
-                    fontSize={12} 
-                    stroke="hsl(var(--muted-foreground))"
-                  />
-                  <YAxis 
-                    tickLine={false} 
-                    axisLine={false} 
-                    fontSize={12} 
-                    stroke="hsl(var(--muted-foreground))"
-                    width={30}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  
-                  <Line 
-                    type="monotone" 
-                    dataKey="novos" 
-                    stroke="var(--color-novos)" 
-                    strokeWidth={3} 
-                    dot={{ r: 4, strokeWidth: 0, fill: "var(--color-novos)" }} 
-                    activeDot={{ r: 6 }} 
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="fechados" 
-                    stroke="var(--color-fechados)" 
-                    strokeWidth={2} 
-                    strokeDasharray="4 4" 
-                    dot={{ r: 3, strokeWidth: 0, fill: "var(--color-fechados)" }} 
-                  />
-                </LineChart>
+            <CardContent className="flex-1 min-h-[350px]">
+              <ChartContainer config={trendChartConfig} className="h-[350px] w-full">
+                  <LineChart data={data.trendData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
+                    <XAxis 
+                        dataKey="name" 
+                        tickLine={false} 
+                        axisLine={false} 
+                        tickMargin={12} 
+                        fontSize={12} 
+                        stroke="hsl(var(--muted-foreground))"
+                        padding={{ left: 20, right: 20 }}
+                    />
+                    <YAxis 
+                        tickLine={false} 
+                        axisLine={false} 
+                        fontSize={12} 
+                        stroke="hsl(var(--muted-foreground))"
+                        width={30}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent indicator="line" className="w-48" />} />
+                    
+                    <ChartLegend content={<ChartLegendContent payload={[]} />} />
+                    
+                    {/* CORREÇÃO: Removido 'dot={...}' e usado 'dot={false}' para visual limpo */}
+                    <Line 
+                        type="monotone" 
+                        dataKey="novos" 
+                        stroke="var(--color-novos)" 
+                        strokeWidth={3} 
+                        dot={false} 
+                        activeDot={{ r: 6, strokeWidth: 0, fill: "var(--color-novos)" }} 
+                    />
+                    <Line 
+                        type="monotone" 
+                        dataKey="fechados" 
+                        stroke="var(--color-fechados)" 
+                        strokeWidth={2} 
+                        strokeDasharray="4 4" 
+                        dot={false}
+                        activeDot={{ r: 5, strokeWidth: 0, fill: "var(--color-fechados)" }} 
+                    />
+                  </LineChart>
               </ChartContainer>
               
               {forecast && (
-                <div className="mt-4 mx-4 p-3 bg-primary/5 rounded-lg border border-primary/10 flex items-center justify-center gap-2 text-sm text-primary/80">
-                   <Activity className="h-4 w-4" />
+                <div className="mt-4 p-3 bg-muted/50 rounded-lg border border-border/50 flex items-center gap-3 text-sm text-muted-foreground">
+                   <div className="p-1.5 bg-background rounded-md shadow-sm">
+                      <Activity className="h-4 w-4 text-primary" />
+                   </div>
                    <span>
-                     Previsão (Regressão Linear): <strong>~{Math.round(forecast)} novos casos</strong> no próximo mês
+                      Previsão (IA): Tendência de <strong>{Math.round(forecast)} novos casos</strong> para o próximo mês.
                    </span>
                 </div>
               )}
@@ -415,7 +393,7 @@ export function AdvancedAnalytics() {
             <SmartInsightsCard 
               insights={formattedInsights} 
               isLoading={isLoading} 
-              className="h-full border-border/60"
+              className="h-full border-border/50 shadow-sm"
             />
           </div>
         </div>
@@ -423,52 +401,77 @@ export function AdvancedAnalytics() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           {/* 4. DONUT CHART (Violações) */}
-          <Card className="shadow-sm border-border/60">
+          <Card className="shadow-sm border-border/60 flex flex-col">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-orange-500"/> Tipificação das Violações
+                <AlertTriangle className="h-5 w-5 text-orange-500"/> Tipificação das Violações
               </CardTitle>
               <CardDescription>Distribuição percentual por natureza</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="h-[300px] w-full">
+            <CardContent className="flex-1">
+              <div className="h-[350px] w-full flex items-center justify-center">
                 {data.pieData.length > 0 ? (
-                  <ChartContainer config={violationChartConfig} className="mx-auto aspect-square max-h-[300px]">
+                  <ChartContainer config={data.violationConfig} className="mx-auto aspect-square h-full">
                     <PieChart>
-                      <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                      <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel className="w-40" />} />
                       <Pie 
                         data={data.pieData} 
                         dataKey="value" 
                         nameKey="name" 
-                        innerRadius={60} 
+                        innerRadius={80} 
+                        outerRadius={110}
                         strokeWidth={4}
+                        stroke="hsl(var(--card))"
+                        paddingAngle={2}
                       >
-                        <Label 
-                          content={({ viewBox }) => {
-                            if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                              return (
-                                <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                                  <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
-                                    {totalViolations}
-                                  </tspan>
-                                  <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
-                                    OCORRÊNCIAS
-                                  </tspan>
-                                </text>
-                              )
-                            }
-                          }}
-                        />
+                        {data.pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                       <Label
+  content={({ viewBox }) => {
+    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+      return (
+        <text
+          x={viewBox.cx}
+          y={viewBox.cy}
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          {/* Número Principal: dy="-10" para subir um pouco do centro exato */}
+          <tspan
+            x={viewBox.cx}
+            y={viewBox.cy}
+            dy="-0.3em" 
+            className="fill-foreground text-4xl font-bold tracking-tight"
+          >
+            {totalViolations}
+          </tspan>
+          
+          {/* Legenda: dy="24" para ficar abaixo do número */}
+          <tspan
+            x={viewBox.cx}
+            y={viewBox.cy}
+            dy="1.5em"
+            className="fill-muted-foreground text-xs font-semibold uppercase tracking-wider"
+          >
+            OCORRÊNCIAS
+          </tspan>
+        </text>
+      )
+    }
+  }}
+/>
                       </Pie>
                       <ChartLegend 
-                        content={<ChartLegendContent nameKey="name" />} 
-                        className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
+                        content={<ChartLegendContent payload={[]} nameKey="realLabel" />} 
+                        className="-translate-y-2 flex-wrap gap-3 [&>*]:basis-auto" 
                       />
                     </PieChart>
                   </ChartContainer>
                 ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm opacity-60">
-                    Nenhuma violação tipificada.
+                  <div className="flex flex-col items-center justify-center text-muted-foreground opacity-60">
+                    <FileBarChart className="h-10 w-10 mb-2 stroke-1" />
+                    <p className="text-sm">Nenhuma violação tipificada.</p>
                   </div>
                 )}
               </div>
@@ -476,15 +479,15 @@ export function AdvancedAnalytics() {
           </Card>
 
           {/* 5. BAR CHART (Produtividade) */}
-          <Card className="shadow-sm border-border/60">
+          <Card className="shadow-sm border-border/60 flex flex-col">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Briefcase className="h-4 w-4 text-primary"/> Produtividade Técnica
+                <Briefcase className="h-5 w-5 text-primary"/> Produtividade Técnica
               </CardTitle>
               <CardDescription>Intervenções registradas por técnico</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="h-[300px] w-full">
+            <CardContent className="flex-1">
+              <div className="h-[350px] w-full">
                 {productivity.length > 0 ? (
                   <ChartContainer config={productivityChartConfig} className="w-full h-full">
                     <BarChart accessibilityLayer data={productivity} layout="vertical" margin={{ left: 0, right: 40, top: 0, bottom: 0 }}>
@@ -494,28 +497,30 @@ export function AdvancedAnalytics() {
                         type="category" 
                         tickLine={false} 
                         axisLine={false} 
-                        width={100}
-                        fontSize={12}
+                        width={110}
+                        fontSize={13}
                         tick={{fill: 'hsl(var(--foreground))', fontWeight: 500}} 
+                        className="text-sm"
                       />
                       <XAxis type="number" hide />
                       <ChartTooltip 
-  cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}} 
-  content={<ChartTooltipContent indicator="dashed" />} // ✅ Correção
-/>
+                        cursor={{fill: 'hsl(var(--muted))', opacity: 0.1}} 
+                        content={<ChartTooltipContent indicator="dashed" />}
+                      />
                       <Bar dataKey="value" fill="var(--color-value)" radius={[0, 4, 4, 0]} barSize={32}>
                         <LabelList 
                           dataKey="value" 
                           position="right" 
-                          className="fill-foreground font-bold text-xs" 
-                          formatter={(v: number) => v > 0 ? v : ''} 
+                          className="fill-foreground font-bold text-sm" 
+                          formatter={(v: any) => v > 0 ? v : ''} 
                         />
                       </Bar>
                     </BarChart>
                   </ChartContainer>
                 ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm opacity-60">
-                    Sem registros de produtividade.
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-60">
+                    <Briefcase className="h-10 w-10 mb-2 stroke-1" />
+                    <p className="text-sm">Sem registros de produtividade.</p>
                   </div>
                 )}
               </div>

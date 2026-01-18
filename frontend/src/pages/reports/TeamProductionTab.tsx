@@ -1,3 +1,4 @@
+// frontend/src/pages/reports/TeamProductionTab.tsx
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { format } from 'date-fns'
@@ -5,17 +6,17 @@ import { ptBR } from 'date-fns/locale'
 import { 
   Card, CardContent, CardHeader, CardTitle, CardDescription 
 } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer 
 } from 'recharts'
-import { Briefcase, Activity, Download } from 'lucide-react'
-import { toast } from 'sonner'
+import { Briefcase, Activity } from 'lucide-react'
 
-// Import do Gerador
-import { generateManagementPDF, type ManagementReportData } from '@/utils/pdfGenerator'
+// Imports de PDF e Tipos
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { ManagementDoc } from '@/components/reports/templates/ManagementDoc'
+import type { ManagementReportData } from '@/types/case'
 
 interface TeamMemberWorkload {
   name: string
@@ -42,50 +43,39 @@ export function TeamProductionTab() {
 
   const isLoading = isLoadingWorkload || isLoadingPerformance
 
-  // Lógica de Exportação
-  const handleExport = () => {
-    if (!workloadData) {
-      toast.warning("Aguarde o carregamento dos dados.")
-      return
-    }
+  // Preparação dos dados para o PDF
+  const pdfData: ManagementReportData | null = (() => {
+    if (!workloadData) return null;
 
-    try {
-      // Separação por cargo
-      const agentes = workloadData
-        .filter(u => u.role === 'Agente_Social')
-        .map(u => ({ name: u.name, value: u.active }))
-      
-      const especialistas = workloadData
-        .filter(u => u.role === 'Especialista')
-        .map(u => ({ name: u.name, value: u.active }))
+    // Separação por cargo
+    const agentes = workloadData
+      .filter(u => u.role === 'Agente_Social')
+      .map(u => ({ name: u.name, value: u.active }))
+    
+    const especialistas = workloadData
+      .filter(u => u.role === 'Especialista')
+      .map(u => ({ name: u.name, value: u.active }))
 
-      // Cálculos Totais
-      const totalAtivos = workloadData.reduce((acc, curr) => acc + curr.active, 0)
-      const totalAcolhida = agentes.reduce((acc, curr) => acc + curr.value, 0)
-      const totalPaefi = especialistas.reduce((acc, curr) => acc + curr.value, 0)
+    // Cálculos Totais
+    const totalAtivos = workloadData.reduce((acc, curr) => acc + curr.active, 0)
+    const totalAcolhida = agentes.reduce((acc, curr) => acc + curr.value, 0)
+    const totalPaefi = especialistas.reduce((acc, curr) => acc + curr.value, 0)
 
-      const pdfData: ManagementReportData = {
-        periodo: format(new Date(), "MMMM 'de' yyyy", { locale: ptBR }),
-        stats: {
-          ativos: totalAtivos,
-          acolhidas: totalAcolhida,
-          paefi: totalPaefi,
-          novos: 0, // Dado não disponível neste endpoint (snapshot), ajustável se tiver API
-          desligados: 0 
-        },
-        cargaHoraria: {
-          agentes,
-          especialistas
-        }
+    return {
+      periodo: format(new Date(), "MMMM 'de' yyyy", { locale: ptBR }),
+      stats: {
+        ativos: totalAtivos,
+        acolhidas: totalAcolhida,
+        paefi: totalPaefi,
+        novos: 0, 
+        desligados: 0 
+      },
+      cargaHoraria: {
+        agentes,
+        especialistas
       }
-
-      generateManagementPDF(pdfData)
-      toast.success("Relatório de equipe gerado com sucesso!")
-    } catch (error) {
-      console.error(error)
-      toast.error("Erro ao gerar PDF.")
     }
-  }
+  })();
 
   if (isLoading) return <div className="space-y-4"><Skeleton className="h-64"/><Skeleton className="h-64"/></div>
 
@@ -98,10 +88,17 @@ export function TeamProductionTab() {
           <h2 className="text-lg font-semibold tracking-tight">Produtividade e Carga Horária</h2>
           <p className="text-sm text-muted-foreground">Monitoramento da distribuição de casos e desempenho técnico.</p>
         </div>
-        <Button variant="outline" onClick={handleExport} className="gap-2 shadow-sm">
-          <Download className="h-4 w-4" />
-          Exportar Relatório
-        </Button>
+        
+        {/* Botão PDF (Corrigido: removido className) */}
+        {pdfData && (
+          <PDFDownloadButton 
+            document={<ManagementDoc data={pdfData} />}
+            fileName={`Relatorio_Equipe_${format(new Date(), 'MM-yyyy')}.pdf`}
+            label="Exportar Relatório"
+            variant="outline"
+            size="sm"
+          />
+        )}
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

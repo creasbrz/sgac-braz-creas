@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma'
 import { CaseStatus, CaseOrigin } from '@prisma/client'
 import ExcelJS from 'exceljs'
 import { parse, isValid } from 'date-fns'
-import { Buffer } from 'node:buffer'
+import { Buffer } from 'node:buffer' // Importante para tipagem correta com ExcelJS
 
 interface ImportResult {
   processed: number
@@ -21,7 +21,10 @@ export class ImportService {
   }
 
   private static normalizeKey(key: string) {
-    return key.toLowerCase().replace(/[^a-z0-9]/g, '')
+    // Remove acentos e caracteres especiais para facilitar o "match" das colunas
+    return key.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, '')
   }
 
   private static parseExcelDate(value: any): Date | null {
@@ -37,23 +40,38 @@ export class ImportService {
       if (isValid(parsedIso)) return parsedIso
     }
     
-    // Fórmula/Hyperlink
+    // Tratamento para fórmulas ou links do Excel
     if (typeof value === 'object' && value !== null) {
         if ('result' in value && value.result instanceof Date) return value.result;
     }
     return null
   }
 
+  private static parseCurrency(value: any): number | null {
+    if (!value) return null
+    if (typeof value === 'number') return value
+    
+    // Limpa R$, espaços e converte vírgula decimal para ponto
+    const cleanStr = String(value)
+      .replace('R$', '')
+      .replace(/\s/g, '')
+      .replace(/\./g, '') // Remove separador de milhar se houver
+      .replace(',', '.')  // Troca vírgula decimal por ponto
+    
+    const num = parseFloat(cleanStr)
+    return isNaN(num) ? null : num
+  }
+
   private static parseArrayField(value: any): string[] {
     if (!value) return []
     return String(value)
-      .split(/[;,]/)
+      .split(/[;,]/) // Aceita separação por ponto-e-vírgula ou vírgula
       .map(v => v.trim())
       .filter(v => v.length > 0)
   }
 
   /**
-   * Processa o arquivo (Buffer ou Stream) e importa os casos
+   * Processa o arquivo (Buffer) e importa os casos
    */
   static async processImport(fileBuffer: Buffer, isCsv: boolean, userId: string): Promise<ImportResult> {
     const workbook = new ExcelJS.Workbook()
@@ -64,7 +82,7 @@ export class ImportService {
       stream.push(null)
       await workbook.csv.read(stream)
     } else {
-      // [CORREÇÃO 1] Cast para 'any' resolve a incompatibilidade estrita de tipos do ExcelJS
+      // [IMPORTANTE] Carrega o XLSX nativo. O cast 'as any' evita conflito de tipos do Buffer.
       await workbook.xlsx.load(fileBuffer as any)
     }
 
@@ -73,7 +91,8 @@ export class ImportService {
       throw new Error('PLANILHA_VAZIA')
     }
 
-    // Mapeamento de Cabeçalhos
+    // 1. Mapeamento Dinâmico de Cabeçalhos
+    // Permite que o usuário use "Nome Completo", "Nome", "Usuário" e o sistema entenda.
     const headerMap: Record<string, number> = {}
     const headerRow = worksheet.getRow(1)
     
@@ -83,11 +102,13 @@ export class ImportService {
       }
     })
 
+    // Função auxiliar para buscar valor em várias colunas possíveis
     const getValue = (row: ExcelJS.Row, ...keys: string[]) => {
         for (const key of keys) {
             const colIndex = headerMap[this.normalizeKey(key)]
             if (colIndex) {
                 const val = row.getCell(colIndex).value
+                // Se for célula com fórmula ou rich text, extrai o valor real
                 if (val && typeof val === 'object') {
                     if ('text' in val) return (val as any).text;
                     if ('result' in val) return (val as any).result;
@@ -110,13 +131,13 @@ export class ImportService {
       const rowNum = i
       
       try {
-          // 1. Campos Obrigatórios
+          // --- CAMPOS ESSENCIAIS ---
           const nome = getValue(row, 'nome', 'nomecompleto', 'usuario')
           const cpfRaw = getValue(row, 'cpf')
 
-          if (!nome) continue 
+          if (!nome) continue // Pula linhas vazias
 
-          // 2. Validação CPF
+          // Validação CPF
           const cpf = cpfRaw ? this.cleanDigits(cpfRaw) : null
           
           if (!cpf) {
@@ -126,55 +147,63 @@ export class ImportService {
           }
 
           if (cpf.length !== 11) {
-              logs.push(`Linha ${rowNum}: CPF inválido (${cpfRaw}). Ignorada.`)
-              errorCount++
-              continue
+             logs.push(`Linha ${rowNum}: CPF inválido (${cpfRaw}). Ignorada.`)
+             errorCount++
+             continue
           }
 
-          // 3. Duplicidade (Arquivo ou Banco)
+          // Validação Duplicidade no Arquivo
           if (cpfSet.has(cpf)) {
             logs.push(`Linha ${rowNum}: CPF ${cpf} duplicado no arquivo. Ignorada.`)
             errorCount++
             continue
           }
           
-          // Verifica no Banco
+          // Validação Duplicidade no Banco
           const existing = await prisma.case.findUnique({ where: { cpf: String(cpf) } })
           if (existing) {
-              logs.push(`Linha ${rowNum}: CPF ${cpf} já cadastrado no sistema. Ignorada.`)
-              errorCount++
-              continue
+             logs.push(`Linha ${rowNum}: CPF ${cpf} já cadastrado no sistema. Ignorada.`)
+             errorCount++
+             continue
           }
           cpfSet.add(cpf)
 
-          // 4. Extração de Dados
-          const nascimento = this.parseExcelDate(getValue(row, 'nascimento', 'datanascimento')) || new Date('1900-01-01')
-          const dataEntrada = this.parseExcelDate(getValue(row, 'dataentrada', 'dataatendimento')) || new Date()
+          // --- EXTRAÇÃO DE DADOS ---
+          const nascimento = this.parseExcelDate(getValue(row, 'nascimento', 'datanascimento', 'nasc')) || new Date('1900-01-01')
+          const dataEntrada = this.parseExcelDate(getValue(row, 'dataentrada', 'dataatendimento', 'entrada')) || new Date()
+          
+          // Arrays e Listas
           const violacoes = this.parseArrayField(getValue(row, 'violacao', 'violacoes', 'tipoviolacao'))
           const beneficios = this.parseArrayField(getValue(row, 'beneficios', 'beneficio', 'transferenciarenda'))
           
+          // Novos Campos
+          const ocupacao = String(getValue(row, 'ocupacao', 'profissão', 'trabalho') || '')
+          const rendaRaw = getValue(row, 'renda', 'salario', 'rendimento')
+          const renda = this.parseCurrency(rendaRaw)
+
+          // Endereço
           const endereco_logradouro = String(getValue(row, 'endereco', 'logradouro', 'rua') || '')
           const endereco_ra = String(getValue(row, 'ra', 'regiao') || 'Não Informada')
           const endereco_cep = this.cleanDigits(getValue(row, 'cep'))
 
+          // Contatos
           const contatos = []
           const tel1 = getValue(row, 'telefone', 'celular', 'contato')
           if (tel1) contatos.push({ tipo: "Principal", numero: String(tel1) })
-          const tel2 = getValue(row, 'telefone2', 'recado')
-          if (tel2) contatos.push({ tipo: "Recado", numero: String(tel2) })
-
-          // Urgência
+          
+          // Urgência (Heurística)
           const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
           let pesoUrgencia = Number(getValue(row, 'pesourgencia', 'peso'))
+          
           if (!pesoUrgencia || isNaN(pesoUrgencia)) {
               const uLower = urgenciaTexto.toLowerCase()
-              if (uLower.includes('morte') || uLower.includes('agressor') || uLower.includes('sexual')) pesoUrgencia = 4
-              else if (uLower.includes('ameaça') || uLower.includes('reincidência') || uLower.includes('física')) pesoUrgencia = 3
-              else if (uLower.includes('acolhimento') || uLower.includes('rua') || uLower.includes('idoso')) pesoUrgencia = 2
+              if (uLower.includes('morte') || uLower.includes('agressor') || uLower.includes('sexual') || uLower.includes('gravíssima')) pesoUrgencia = 4
+              else if (uLower.includes('ameaça') || uLower.includes('reincidência') || uLower.includes('física') || uLower.includes('muito grave')) pesoUrgencia = 3
+              else if (uLower.includes('acolhimento') || uLower.includes('rua') || uLower.includes('idoso') || uLower.includes('grave')) pesoUrgencia = 2
               else pesoUrgencia = 1
           }
 
-          // Persistência
+          // --- PERSISTÊNCIA ---
           await prisma.case.create({
               data: {
                   nomeCompleto: String(nome),
@@ -183,9 +212,10 @@ export class ImportService {
                   nascimento,
                   sexo: String(getValue(row, 'sexo') || 'Não Informado'),
                   
-                  // [CORREÇÃO 2] Campo 'nis' removido pois não existe no Schema do Prisma
-                  // nis: this.cleanDigits(getValue(row, 'nis')) || null, 
-                  
+                  // Campos novos mapeados
+                  ocupacao: ocupacao || null,
+                  renda: renda, // Prisma deve estar configurado para aceitar Float ou Decimal, ou null
+
                   contatos: contatos as any,
                   endereco_logradouro,
                   endereco_ra,
@@ -193,7 +223,7 @@ export class ImportService {
                   endereco_uf: 'DF',
                   endereco_cep: endereco_cep || null,
                   
-                  // Geo
+                  // Geo (se houver)
                   latitude: getValue(row, 'lat', 'latitude') ? Number(getValue(row, 'lat', 'latitude')) : null,
                   longitude: getValue(row, 'lng', 'long', 'longitude') ? Number(getValue(row, 'lng', 'long', 'longitude')) : null,
 
@@ -225,7 +255,7 @@ export class ImportService {
       processed: worksheet.rowCount - 1,
       created: createdCount,
       errors: errorCount,
-      logs: logs.slice(0, 100)
+      logs: logs.slice(0, 100) // Limita logs para segurança
     }
   }
 }

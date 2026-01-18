@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { 
-  Loader2, Edit, History, PlusCircle, Printer, Lock, 
+  Loader2, Edit, History, PlusCircle, Lock, 
   FileText, Target, Lightbulb, Calendar, Save, X 
 } from 'lucide-react'
 
@@ -29,7 +29,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { PafHistoryModal } from '@/components/modals/PafHistoryModal'
 import { usePaf } from '@/hooks/api/useCaseQueries'
 import type { CaseDetailData, PafData } from '@/types/case'
-import { generatePafPDF } from '@/utils/pdfGenerator'
+
+// [NOVO] Imports de PDF
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { PafDoc } from '@/components/reports/templates/PafDoc'
 
 type PafFormData = z.infer<typeof pafFormSchema>
 
@@ -237,9 +240,15 @@ export function PafTab({ caseData }: { caseData: CaseDetailData }) {
         <div className="flex flex-wrap gap-2">
           {paf && (
             <>
-              <Button variant="outline" size="sm" onClick={() => generatePafPDF(caseData, paf)}>
-                <Printer className="mr-2 h-4 w-4" /> Imprimir
-              </Button>
+              {/* [ATUALIZADO] Botão PDF */}
+              <PDFDownloadButton 
+                document={<PafDoc caseData={caseData} paf={paf} />}
+                fileName={`PAF_${caseData.nomeCompleto.replace(/\s+/g, '_')}_v${paf.versaoAtual || 1}.pdf`}
+                label="Imprimir"
+                variant="outline"
+                size="sm"
+              />
+              
               <Button variant="outline" size="sm" onClick={() => setIsHistoryOpen(true)}>
                 <History className="mr-2 h-4 w-4" /> Histórico
               </Button>

@@ -1,3 +1,4 @@
+// frontend/src/components/modals/ImportCasesModal.tsx
 import { useState, useRef, useCallback } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -15,67 +16,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-// --- CONSTANTES (MODELO PADRÃO COMPLETO) ---
-// Baseado na exportação oficial do sistema
-const CSV_HEADERS = [
-  "Nome Completo",
-  "Nome Social",
-  "CPF",
-  "NIS",
-  "Data Nascimento",
-  "Sexo",
-  "Categoria",
-  "Telefone",      // Simplificado para facilitar preenchimento (backend trata)
-  "Telefone2",     // Campo extra para recado
-  "Endereço",      // Logradouro
-  "CEP",
-  "RA",
-  "Cidade",
-  "UF",
-  "Data Entrada",
-  "Urgência",
-  "Peso Urgência",
-  "Violações",     // Separar por ;
-  "Benefícios",    // Separar por ;
-  "Orgão Demandante",
-  "Nº SEI",
-  "Link SEI",
-  "Responsável Legal",
-  "Parentesco",
-  "Status",        // Opcional na importação (padrão: AGUARDANDO)
-  "Origem do Cadastro"
-].join(",")
-
-const CSV_EXAMPLE = [
-  "Maria Silva",
-  "Mari",
-  "12345678900",
-  "12345678900",
-  "01/01/1990",
-  "Feminino",
-  "Mulher",
-  "61999999999",
-  "61988888888",
-  "Rua das Flores 10",
-  "72000000",
-  "Ceilândia",
-  "Brasília",
-  "DF",
-  "10/01/2024",
-  "Risco de morte",
-  "4",
-  "Violência física; Negligência",
-  "Bolsa Família; BPC",
-  "CRAS",
-  "00000.123/2024-00",
-  "https://sei.df.gov.br",
-  "-",
-  "-",
-  "AGUARDANDO_DISTRIBUICAO",
-  "IMPORTACAO"
-].join(",")
-
-// Interface alinhada com o retorno do novo backend (import.ts)
+// Interface alinhada com o retorno do backend
 interface ImportResponse {
   processed: number
   created: number
@@ -94,8 +35,9 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
   
   const [result, setResult] = useState<ImportResponse | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
-  // --- MUTATION ---
+  // --- MUTATION IMPORTAÇÃO ---
   const { mutate: importFile, isPending } = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData()
@@ -112,7 +54,6 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
         })
         queryClient.invalidateQueries({ queryKey: ['cases'] })
         queryClient.invalidateQueries({ queryKey: ['stats'] })
-        queryClient.invalidateQueries({ queryKey: ['waiting-list'] })
       } else {
         toast.warning("Nenhum caso foi criado. Verifique os erros.")
       }
@@ -137,6 +78,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
         "application/csv"
     ]
     
+    // Validação de extensão também, pois mimetype pode falhar em alguns SOs
     const isValidType = validTypes.includes(file.type) || 
                         file.name.endsWith('.xlsx') || 
                         file.name.endsWith('.xls') || 
@@ -171,20 +113,30 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
     if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0])
   }, [])
 
-  const handleDownloadTemplate = () => {
-    // Gera CSV com BOM para compatibilidade Excel
-    const bom = "\uFEFF";
-    const csvContent = `${bom}${CSV_HEADERS}\n${CSV_EXAMPLE}`
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    
-    const link = document.createElement("a")
-    link.href = url
-    link.download = "modelo_importacao_completo.csv"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+  // [CORREÇÃO] Download do Template via API (Excel Real)
+  const handleDownloadTemplate = async () => {
+    try {
+      setIsDownloading(true)
+      const response = await api.get('/cases/import/template', {
+        responseType: 'blob', // Importante para arquivos binários
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Modelo_Importacao_Casos.xlsx`) // Nome fixo para facilitar
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      
+      toast.success("Modelo baixado com sucesso!")
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao baixar o modelo.")
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   return (
@@ -196,7 +148,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
             Importação em Massa
           </DialogTitle>
           <DialogDescription>
-            Use o modelo padronizado para garantir que todos os campos (Social, NIS, Endereço completo) sejam importados corretamente.
+            Use o modelo padronizado (Excel) para garantir que todos os campos (incluindo Ocupação e Renda) sejam importados corretamente.
           </DialogDescription>
         </DialogHeader>
 
@@ -259,9 +211,9 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
                 <div className="space-y-1">
                   <p><strong>Dicas de preenchimento:</strong></p>
                   <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Separe múltiplas <strong>violações</strong> ou <strong>benefícios</strong> com ponto e vírgula (<code>;</code>).</li>
-                    <li>Datas devem estar no formato <code>DD/MM/AAAA</code>.</li>
-                    <li>O CPF deve conter 11 dígitos (com ou sem pontuação).</li>
+                    <li>Use o <strong>modelo oficial</strong> abaixo para evitar erros.</li>
+                    <li>Separe múltiplas <strong>violações</strong> com ponto e vírgula (<code>;</code>).</li>
+                    <li>O <strong>CPF</strong> deve conter 11 dígitos.</li>
                   </ul>
                 </div>
               </div>
@@ -270,10 +222,11 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
                 variant="outline" 
                 size="sm" 
                 onClick={handleDownloadTemplate} 
+                disabled={isDownloading}
                 className="w-full text-xs h-9 border-dashed bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
               >
-                <Download className="mr-2 h-3.5 w-3.5" />
-                Baixar Modelo Completo (.csv)
+                {isDownloading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
+                Baixar Modelo Oficial (.xlsx)
               </Button>
             </div>
           </div>

@@ -20,7 +20,7 @@ module.exports = {
         sans: ["Inter", "sans-serif"],
       },
 
-      // 🎨 Paleta GOV-BR (via CSS variables do index.css)
+      // 🎨 Paleta de Cores Mapeada (CSS Variables)
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -64,7 +64,8 @@ module.exports = {
         sm: "calc(var(--radius) - 4px)",
       },
 
-      // ✨ Animações GOV-BR
+      // ✨ Micro-interações e Animações
+      // Expandido para incluir entradas suaves (fades/zooms) comuns em UIs modernas
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -74,10 +75,30 @@ module.exports = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "fade-out": {
+          from: { opacity: "1" },
+          to: { opacity: "0" },
+        },
+        "zoom-in": {
+          from: { transform: "scale(0.95)", opacity: "0" },
+          to: { transform: "scale(1)", opacity: "1" },
+        },
+        "slide-in-from-right": {
+          from: { transform: "translateX(100%)" },
+          to: { transform: "translateX(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-in": "fade-in 0.2s ease-out",
+        "fade-out": "fade-out 0.2s ease-out",
+        "zoom-in": "zoom-in 0.2s ease-out",
+        "slide-in-right": "slide-in-from-right 0.3s ease-out",
       },
     },
   },

@@ -1,4 +1,4 @@
-// frontend/src/components/case/CaseEvolutions.tsx
+// frontend/src/components/case/tabs/EvolutionsTab.tsx
 import { useState } from "react"
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -40,6 +40,7 @@ interface PaginatedEvolutions {
 }
 
 // Hook de Auth (Simplificado)
+// Nota: Em um cenário ideal, isso viria de um AuthContext global
 function useCurrentUserId() {
   const token = localStorage.getItem('@sgac-braz:token') 
   if (!token) return null
@@ -60,6 +61,7 @@ const getAvatarColor = (name: string) => {
     'bg-pink-100 text-pink-700', 'bg-rose-100 text-rose-700'
   ]
   let hash = 0
+  if (!name) return colors[0];
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
 }
@@ -154,9 +156,9 @@ function EvolutionItem({ evo, currentUserId, onUpdate, onDeleteLocal }: any) {
                     </DropdownMenuItem>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                         <div className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10">
+                          <div className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10">
                             <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                         </div>
+                          </div>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
@@ -212,8 +214,8 @@ function EvolutionItem({ evo, currentUserId, onUpdate, onDeleteLocal }: any) {
   )
 }
 
-// --- COMPONENTE PRINCIPAL ---
-export function CaseEvolutions({ caseId }: { caseId: string }) {
+// --- COMPONENTE PRINCIPAL (Renomeado) ---
+export function EvolutionsTab({ caseId }: { caseId: string }) {
   const queryClient = useQueryClient()
   const [newEvolution, setNewEvolution] = useState("")
   const [isSecret, setIsSecret] = useState(false)
@@ -240,7 +242,7 @@ export function CaseEvolutions({ caseId }: { caseId: string }) {
     onError: () => toast.error("Erro ao salvar.")
   })
 
-  // Update Otimista Local
+  // Update Otimista Local (para remoção)
   const handleLocalDelete = (id: string) => {
     queryClient.setQueryData(["evolutions", caseId], (old: any) => {
       if (!old) return old

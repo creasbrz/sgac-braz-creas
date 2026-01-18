@@ -85,7 +85,7 @@ export async function caseRoutes(app: FastifyInstance) {
     return reply.send({ data: items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } })
   })
 
-  // 4. [GET] DETALHES COMPLETOS (Com Cálculos Econômicos)
+  // 4. [GET] DETALHES COMPLETOS
   server.get('/cases/:id', {
     schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }) }
   }, async (request, reply) => {
@@ -139,7 +139,7 @@ export async function caseRoutes(app: FastifyInstance) {
     return reply.send(updated)
   })
 
-  // 8. [GET] EXPORTAR EXCEL
+  // 8. [GET] EXPORTAR EXCEL (Gera relatório completo)
   server.get('/cases/export', {
     schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
   }, async (request, reply) => {
@@ -156,6 +156,46 @@ export async function caseRoutes(app: FastifyInstance) {
     } catch (error) {
       request.log.error(error)
       return reply.status(500).send({ message: 'Erro ao gerar excel.' })
+    }
+  })
+
+  // 9. [POST] IMPORTAR CASOS (Processa o arquivo preenchido)
+  server.post('/cases/import', {
+    schema: {
+      tags: ['Casos'],
+      summary: 'Importar casos em massa via JSON (do Excel processado no front)',
+      body: z.array(z.any())
+    }
+  }, async (request, reply) => {
+    const { cargo, sub } = request.user as { sub: string, cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    try {
+      const result = await CaseService.importCases(request.body, sub)
+      return reply.send(result)
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({ message: 'Erro na importação.' })
+    }
+  })
+
+  // 10. [GET] DOWNLOAD MODELO (Gera o template vazio com colunas novas)
+  server.get('/cases/import/template', {
+    schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
+  }, async (request, reply) => {
+    try {
+      // Reutiliza o serviço de exportação, mas passando um flag ou lista vazia 
+      // para gerar apenas o cabeçalho.
+      // IMPORTANTE: Certifique-se de que o 'generateTemplate' inclua 'Ocupação' e 'Renda'
+      const buffer = await ExportService.generateTemplate() 
+
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      reply.header('Content-Disposition', `attachment; filename="Modelo_Importacao_Casos.xlsx"`)
+      
+      return reply.send(buffer)
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar template.' })
     }
   })
 }

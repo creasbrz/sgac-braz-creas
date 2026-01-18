@@ -1,5 +1,3 @@
-// frontend/src/pages/dashboard/ManagerDashboard.tsx
-import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { format } from 'date-fns'
@@ -7,7 +5,7 @@ import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { 
   Users, UserPlus, FolderOpen, FolderCheck, RefreshCw, 
-  FileText, Loader2, Activity, Briefcase, LucideIcon 
+  Activity, Briefcase, LucideIcon 
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, LabelList } from "recharts"
 import { clsx, type ClassValue } from 'clsx'
@@ -31,14 +29,16 @@ import { UpcomingPafDeadlines } from '@/components/dashboard/UpcomingPafDeadline
 import { RecentActivityFeed } from '@/components/dashboard/RecentActivityFeed'
 import { AdvancedAnalytics } from '../AdvancedAnalytics'
 
-import { generateManagementPDF } from '@/utils/pdfGenerator'
+// Imports de PDF
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { ManagementReportDoc } from '@/components/reports/templates/ManagementReportDoc'
 
 // --- UTILS ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// --- CONFIGURAÇÃO DOS GRÁFICOS (Shadcn Charts) ---
+// --- CONFIGURAÇÃO DOS GRÁFICOS ---
 const workloadChartConfig = {
   cases: {
     label: "Casos Ativos",
@@ -119,7 +119,12 @@ function DashboardSkeleton() {
 
 export function ManagerDashboard() {
   const queryClient = useQueryClient()
-  const [isExporting, setIsExporting] = useState(false)
+  
+  const { data: vigData } = useQuery({ 
+    queryKey: ['stats', 'vigilancia'],
+    queryFn: async () => (await api.get('/stats/vigilancia')).data,
+    enabled: true 
+  })
 
   const {
     data: stats,
@@ -133,48 +138,31 @@ export function ManagerDashboard() {
     staleTime: 1000 * 60 * 2,
   })
 
-  const handleExportFullReport = async () => {
-    if (!stats) return
-    setIsExporting(true)
-
-    try {
-      const vigilanciaRes = await api.get('/stats/vigilancia')
-      const vigData = vigilanciaRes.data
-
-      generateManagementPDF({
-        periodo: format(new Date(), "MMMM 'de' yyyy", { locale: ptBR }),
-        stats: {
-          ativos: stats.acolhidasCount + stats.acompanhamentosCount,
-          acolhidas: stats.acolhidasCount,
-          paefi: stats.acompanhamentosCount,
-          novos: stats.newCasesThisMonth,
-          desligados: stats.closedCasesThisMonth
-        },
-        cargaHoraria: {
-          agentes: stats.workloadByAgent,
-          especialistas: stats.workloadBySpecialist
-        },
-        vigilancia: {
-          violacoes: vigData.violationData.slice(0, 8),
-          demografia: vigData.ageData,
-          territorio: []
-        }
-      })
-      
-      toast.success("Relatório gerado e baixado.")
-    } catch (error) {
-      console.error(error)
-      toast.error("Falha ao gerar o relatório.")
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
   const handleForceRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['stats', 'manager'] })
     refetch()
     toast.info("Atualizando indicadores...")
   }
+
+  const reportData = stats ? {
+    periodo: format(new Date(), "MMMM 'de' yyyy", { locale: ptBR }),
+    stats: {
+      ativos: stats.acolhidasCount + stats.acompanhamentosCount,
+      acolhidas: stats.acolhidasCount,
+      paefi: stats.acompanhamentosCount,
+      novos: stats.newCasesThisMonth,
+      desligados: stats.closedCasesThisMonth
+    },
+    cargaHoraria: {
+      agentes: stats.workloadByAgent,
+      especialistas: stats.workloadBySpecialist
+    },
+    vigilancia: vigData ? {
+      violacoes: vigData.violationData.slice(0, 8),
+      demografia: vigData.ageData,
+      territorio: []
+    } : undefined
+  } : null
 
   const renderOverview = () => {
     if (isLoading) return <DashboardSkeleton />
@@ -222,16 +210,15 @@ export function ManagerDashboard() {
               <span className="sr-only sm:not-sr-only">Atualizar</span>
             </Button>
 
-            <Button 
-              variant="default" 
-              size="sm" 
-              onClick={handleExportFullReport} 
-              disabled={isExporting}
-              className="h-9 gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <FileText className="h-3.5 w-3.5"/>}
-              {isExporting ? "Gerando PDF..." : "Relatório Mensal"}
-            </Button>
+            {reportData && (
+              <PDFDownloadButton 
+                document={<ManagementReportDoc data={reportData as any} />}
+                fileName={`Relatorio_Gerencial_${format(new Date(), 'MM-yyyy')}.pdf`}
+                label="Relatório Mensal"
+                variant="default"
+                size="sm"
+              />
+            )}
           </div>
         </div>
 
@@ -298,7 +285,8 @@ export function ManagerDashboard() {
                   <XAxis type="number" hide />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                    <LabelList dataKey="value" position="right" fontSize={12} fill="hsl(var(--foreground))" formatter={(val: number) => val > 0 ? val : ''} />
+                    {/* [CORREÇÃO 1] Alterado 'val: number' para 'val: any' */}
+                    <LabelList dataKey="value" position="right" fontSize={12} fill="hsl(var(--foreground))" formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
                 </BarChart>
               </ChartContainer>
@@ -334,7 +322,8 @@ export function ManagerDashboard() {
                   <XAxis type="number" hide />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                    <LabelList dataKey="value" position="right" fontSize={12} fill="hsl(var(--foreground))" formatter={(val: number) => val > 0 ? val : ''} />
+                    {/* [CORREÇÃO 2] Alterado 'val: number' para 'val: any' */}
+                    <LabelList dataKey="value" position="right" fontSize={12} fill="hsl(var(--foreground))" formatter={(val: any) => val > 0 ? val : ''} />
                   </Bar>
                 </BarChart>
               </ChartContainer>
@@ -342,8 +331,7 @@ export function ManagerDashboard() {
           </Card>
         </div>
 
-        {/* 3. OPERATIONAL FEEDS (Altura Igualada) */}
-        {/* Usamos a grid padrão (que tem items-stretch implícito) e forçamos os filhos a terem h-full */}
+        {/* 3. OPERATIONAL FEEDS */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 flex flex-col">
             <UpcomingAppointments enableScroll className="h-full min-h-[400px]" />

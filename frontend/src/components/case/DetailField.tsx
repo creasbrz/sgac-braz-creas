@@ -1,3 +1,4 @@
+// frontend/src/components/case/DetailField.tsx
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -10,6 +11,10 @@ interface DetailFieldProps {
   labelClassName?: string
   valueClassName?: string
   fallback?: ReactNode
+  /** * 'default': Texto padrão (text-sm) - Usado em abas como Visão Geral
+   * 'xs': Texto reduzido (text-[10px]/text-xs) - Usado em Sidebars
+   */
+  size?: 'default' | 'xs' 
 }
 
 export function DetailField({
@@ -19,28 +24,47 @@ export function DetailField({
   className,
   labelClassName,
   valueClassName,
-  fallback = <span className="text-muted-foreground italic font-normal opacity-80">Não informado</span>
+  fallback = <span className="text-muted-foreground italic font-normal opacity-80">Não informado</span>,
+  size = 'default'
 }: DetailFieldProps) {
   
-  // Verifica se o valor é "vazio" (null, undefined ou string vazia)
-  // Preserva o número 0 como valor válido
   const isEmpty = value === null || value === undefined || value === ''
 
+  // Configuração de tamanhos baseada no Design System do CaseDetail
+  const styles = {
+    default: {
+      label: "text-xs mb-1.5",
+      value: "text-sm",
+      icon: "h-3.5 w-3.5"
+    },
+    xs: {
+      label: "text-[10px] mb-1", // Estilo da SidebarInfo
+      value: "text-xs font-medium",
+      icon: "h-3 w-3"
+    }
+  }
+
+  const currentStyle = styles[size]
+
   return (
-    <div className={cn("space-y-1.5 min-w-0", className)}>
+    <div className={cn("min-w-0 group", className)}>
       <div
         className={cn(
-          "text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5",
+          "font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5",
+          currentStyle.label,
           labelClassName
         )}
       >
-        {Icon && <Icon className="h-3.5 w-3.5 opacity-70" />}
+        {Icon && <Icon className={cn(currentStyle.icon, "opacity-70")} />}
         {label}
       </div>
 
       <div 
         className={cn(
-          "text-sm font-medium text-foreground whitespace-pre-wrap break-words leading-relaxed",
+          "text-foreground whitespace-pre-wrap break-words leading-relaxed",
+          currentStyle.value,
+          // Se for default, mantém font-medium, se xs, já aplicamos acima
+          size === 'default' && "font-medium", 
           valueClassName
         )}
       >

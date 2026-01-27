@@ -1,16 +1,21 @@
 // frontend/src/components/case/CaseForm.tsx
-import { useEffect, useMemo, useState } from 'react'
+
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useForm, useFieldArray, useFormContext } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, MapPin, Phone, User, AlertCircle, Briefcase } from 'lucide-react'
+import { 
+  Loader2, Plus, Trash2, MapPin, Phone, User, 
+  AlertCircle, Briefcase, FileText 
+} from 'lucide-react'
 import { clsx } from 'clsx'
 import { differenceInYears } from 'date-fns'
 
+// Libs & Components
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Input, InputProps } from '@/components/ui/input' // [NOVO] Importando InputProps
+import { Input, InputProps } from '@/components/ui/input'
 import { MaskedInput } from '@/components/ui/masked-input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -24,50 +29,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 
+// Utils & Schemas
 import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 import { REGIOES_ADMINISTRATIVAS } from '@/constants/locations'
 import { OPTIONS } from '@/constants/options'
 
-// --- MÁSCARA MONETÁRIA (NOVO COMPONENTE INTERNO) ---
-
-interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
-  value: number
-  onChange: (value: number) => void
-}
-
-function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
-  const [displayValue, setDisplayValue] = useState('')
-
-  useEffect(() => {
-    const formatted = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-    }).format(value || 0)
-    
-    setDisplayValue(formatted)
-  }, [value])
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value.replace(/\D/g, '')
-    const numberValue = Number(rawValue) / 100
-    onChange(numberValue)
-  }
-
-  return (
-    <Input
-      {...props}
-      value={displayValue}
-      onChange={handleChange}
-      className={className}
-      placeholder="R$ 0,00"
-    />
-  )
-}
-
-// --- CONSTANTES LOCAIS ---
+// --- CONSTANTES ---
 
 const MASKS = {
   CPF: '000.000.000-00',
@@ -90,7 +59,56 @@ const defaultValues: CreateCaseFormData = {
   dataEntrada: getLocalDateOnly(), 
 }
 
-// --- SUB-COMPONENTES MODULARES ---
+// --- COMPONENTES UTILITÁRIOS ---
+
+interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
+  value: number
+  onChange: (value: number) => void
+}
+
+function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
+  // Formata o valor para exibição (R$ 0,00)
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    }).format(val || 0)
+  }
+
+  const [displayValue, setDisplayValue] = useState(formatCurrency(value))
+
+  // Sincroniza o valor interno quando a prop 'value' muda externamente (ex: carregamento inicial)
+  useEffect(() => {
+    setDisplayValue(formatCurrency(value))
+  }, [value])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Remove tudo que não é dígito
+    const rawValue = e.target.value.replace(/\D/g, '')
+    
+    // Converte para float (ex: 1234 -> 12.34)
+    const numberValue = Number(rawValue) / 100
+    
+    // Atualiza o display instantaneamente para UX fluida
+    setDisplayValue(formatCurrency(numberValue))
+    
+    // Propaga o valor numérico puro para o formulário
+    onChange(numberValue)
+  }
+
+  return (
+    <Input
+      {...props}
+      value={displayValue}
+      onChange={handleChange}
+      className={className}
+      placeholder="R$ 0,00"
+    />
+  )
+}
+
+// --- SEÇÕES DO FORMULÁRIO ---
 
 function PersonalDataSection() {
   const { control, watch } = useFormContext<CreateCaseFormData>()
@@ -103,8 +121,8 @@ function PersonalDataSection() {
   }, [nascimento])
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-primary/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <User className="h-5 w-5" /> Identificação Pessoal
         </CardTitle>
@@ -144,7 +162,6 @@ function PersonalDataSection() {
           )}/>
         </div>
 
-        {/* [ATUALIZADO] Ocupação e Renda (Com MoneyInput) */}
         <div className="md:col-span-6">
           <FormField control={control} name="ocupacao" render={({ field }) => (
             <FormItem>
@@ -152,7 +169,6 @@ function PersonalDataSection() {
               <Select value={field.value || ""} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione a ocupação" /></SelectTrigger></FormControl>
                 <SelectContent>
-                  {/* [CORREÇÃO] Usando constante importada */}
                   {OPTIONS.ocupacao.map(op => <SelectItem key={op} value={op}>{op}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -165,7 +181,6 @@ function PersonalDataSection() {
             <FormItem>
               <FormLabel>Renda Individual</FormLabel>
               <FormControl>
-                {/* [NOVO] Componente de máscara monetária */}
                 <MoneyInput 
                   value={field.value} 
                   onChange={field.onChange} 
@@ -201,8 +216,8 @@ function ContactSection() {
   const { fields, append, remove } = useFieldArray({ control, name: "contatos" })
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-emerald-500/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <Phone className="h-5 w-5" /> Contatos
         </CardTitle>
@@ -270,13 +285,10 @@ function AddressSection() {
   const { control, setValue } = useFormContext<CreateCaseFormData>()
   const [isLoadingCep, setIsLoadingCep] = useState(false)
 
-  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    const cepRaw = e.target.value.replace(/\D/g, '')
-    if (cepRaw.length !== 8) return
-
-    setIsLoadingCep(true)
+  const fetchAddressByCep = useCallback(async (cep: string) => {
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${cepRaw}/json/`)
+      setIsLoadingCep(true)
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
       const data = await response.json()
 
       if (!data.erro) {
@@ -289,22 +301,28 @@ function AddressSection() {
         if (REGIOES_ADMINISTRATIVAS.includes(data.bairro)) {
             setValue('endereco.ra', data.bairro)
         }
-        
         toast.success('Endereço encontrado!')
       } else {
         toast.error('CEP não encontrado.')
       }
     } catch (error) {
       console.error(error)
-      toast.error('Erro ao buscar CEP.')
+      toast.error('Erro ao buscar CEP. Verifique sua conexão.')
     } finally {
       setIsLoadingCep(false)
+    }
+  }, [setValue])
+
+  const handleCepBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const cepRaw = e.target.value.replace(/\D/g, '')
+    if (cepRaw.length === 8) {
+      fetchAddressByCep(cepRaw)
     }
   }
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-blue-500/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <MapPin className="h-5 w-5" /> Endereço e Localização
         </CardTitle>
@@ -376,6 +394,7 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   const { control, watch, setValue } = useFormContext<CreateCaseFormData>()
   
   const origem = watch('origem')
+  
   useEffect(() => {
     if (origem === 'ESPONTANEA') {
       setValue('orgaoDemandante', 'Demanda Espontânea')
@@ -383,8 +402,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   }, [origem, setValue])
   
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-orange-500/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <Briefcase className="h-5 w-5" /> Dados da Demanda
         </CardTitle>
@@ -431,11 +450,13 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
         </div>
 
         <div className="space-y-3">
-          <Label className="text-base font-semibold">Violações de Direitos Identificadas *</Label>
+          <Label className="text-base font-semibold flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" /> Violações de Direitos Identificadas *
+          </Label>
           <p className="text-[11px] text-muted-foreground -mt-2 italic">Marque todas as situações identificadas no atendimento inicial.</p>
           <FormField control={control} name="violacao" render={({ field }) => (
             <FormItem>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-inner">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-sm">
                 {OPTIONS.violacao.map(v => (
                   <div key={v} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
@@ -460,7 +481,7 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           <Label className="mb-3 block font-medium">Transferência de Renda</Label>
           <FormField control={control} name="beneficios" render={({ field }) => (
             <FormItem>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border p-4 rounded-md bg-background shadow-sm">
                 {OPTIONS.transferenciaRenda.map(item => (
                   <div key={item} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
@@ -518,6 +539,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   )
 }
 
+// --- COMPONENTE PRINCIPAL ---
+
 interface CaseFormProps {
   onCaseCreated?: () => void
   initialData?: any
@@ -532,18 +555,18 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
   const normalizedInitialData = useMemo(() => {
     if (!initialData) return defaultValues;
     
-    const hasContactsArray = Array.isArray(initialData.contatos) && initialData.contatos.length > 0;
-    
+    // Normalização segura para garantir que o formulário receba a estrutura correta
     return {
       ...defaultValues,
       ...initialData,
-      dataEntrada: initialData.dataEntrada?.split('T')[0] || getLocalDateOnly(),
-      nascimento: initialData.nascimento?.split('T')[0] || '',
-      contatos: hasContactsArray 
+      dataEntrada: initialData.dataEntrada ? initialData.dataEntrada.split('T')[0] : getLocalDateOnly(),
+      nascimento: initialData.nascimento ? initialData.nascimento.split('T')[0] : '',
+      
+      contatos: Array.isArray(initialData.contatos) && initialData.contatos.length > 0
         ? initialData.contatos 
         : (initialData.telefone ? [{ numero: initialData.telefone, tipo: 'Pessoal', nome: '' }] : defaultValues.contatos),
       
-      endereco: typeof initialData.endereco === 'object' 
+      endereco: initialData.endereco && typeof initialData.endereco === 'object' 
         ? initialData.endereco 
         : (typeof initialData.endereco === 'string' ? { ...defaultValues.endereco, logradouro: initialData.endereco } : defaultValues.endereco),
       
@@ -551,10 +574,8 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         ? initialData.violacao 
         : (initialData.violacao ? [initialData.violacao] : []),
 
-      // Normalização dos campos novos caso venham nulos do banco
       ocupacao: initialData.ocupacao || '',
       renda: initialData.renda ? Number(initialData.renda) : 0,
-
       beneficios: initialData.beneficios || [],
       numeroSei: initialData.numeroSei || '',
       linkSei: initialData.linkSei || '',
@@ -568,12 +589,14 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     defaultValues: normalizedInitialData,
   })
 
+  // Reseta o formulário quando os dados iniciais são carregados
   useEffect(() => {
     if (initialData) form.reset(normalizedInitialData)
   }, [initialData, form, normalizedInitialData])
 
   const { mutateAsync: submitCase, isPending } = useMutation({
     mutationFn: async (data: CreateCaseFormData) => {
+      // Prepara payload, limpando máscaras e garantindo tipos
       const payload = {
         ...data,
         cpf: data.cpf.replace(/\D/g, ''),
@@ -581,7 +604,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         numeroSei: data.numeroSei || null,
         linkSei: data.linkSei || null,
         observacoes: data.observacoes || null,
-        // Garantir envio correto de renda e ocupação
         ocupacao: data.ocupacao || null,
         renda: Number(data.renda),
       }
@@ -602,7 +624,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     },
     onError: (error) => {
       console.error(error)
-      toast.error(getErrorMessage(error, 'Erro ao salvar os dados.'))
+      toast.error(getErrorMessage(error, 'Erro ao salvar os dados. Verifique os campos.'))
     },
   })
 
@@ -617,10 +639,19 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         <AddressSection />
         <TechnicalDataSection agents={agents} isLoadingAgents={isLoadingAgents} isEditing={isEditing} />
 
-        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4 border-t">
+        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4 border-t sticky bottom-0 bg-background py-4 z-10">
           <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto min-w-[200px] shadow-md">
-            {isPending && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-            {isPending ? 'Salvando...' : (isEditing ? 'Salvar Alterações' : 'Cadastrar Caso')}
+            {isPending ? (
+              <>
+                <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                Processando...
+              </>
+            ) : (
+              <>
+                <FileText className="mr-2 h-4 w-4" />
+                {isEditing ? 'Salvar Alterações' : 'Cadastrar Caso'}
+              </>
+            )}
           </Button>
         </div>
       </form>

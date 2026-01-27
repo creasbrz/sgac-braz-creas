@@ -3,7 +3,39 @@ import { prisma } from '../lib/prisma'
 import { CaseStatus, CaseOrigin } from '@prisma/client'
 import ExcelJS from 'exceljs'
 import { parse, isValid } from 'date-fns'
-import { Buffer } from 'node:buffer' // Importante para tipagem correta com ExcelJS
+import { Buffer } from 'node:buffer'
+import { Readable } from 'stream'
+
+// Mapa de Pesos atualizado com as novas opções
+const MAPA_PESO_URGENCIA: Record<string, number> = {
+  // PESO 4
+  'Convive com agressor': 4, 
+  'Idoso 80+': 4, 
+  'Primeira infância': 4, 
+  'Risco de morte': 4, 
+  'Violência sexual': 4,
+  'Risco Grave / Morte (Peso 4)': 4,
+  
+  // PESO 3
+  'Risco de reincidência': 3, 
+  'Sofre ameaça': 3, 
+  'Risco de desabrigo': 3, 
+  'Criança/Adolescente': 3,
+  'Violação de Direitos (Peso 3)': 3,
+  
+  // PESO 2
+  'PCD': 2, 
+  'Idoso': 2, 
+  'Internação': 2, 
+  'Acolhimento': 2, 
+  'Gestante/Lactante': 2,
+  'Risco Social (Peso 2)': 2,
+  
+  // PESO 1
+  'Sem risco imediato': 1, 
+  'Visita periódica': 1,
+  'Sem risco imediato (Peso 1)': 1
+}
 
 interface ImportResult {
   processed: number
@@ -14,35 +46,35 @@ interface ImportResult {
 
 export class ImportService {
 
-  // --- HELPERS PRIVADOS DE PARSING ---
-
+  // --- HELPERS ---
   private static cleanDigits(val: any) {
     return String(val || '').replace(/\D/g, '')
   }
 
   private static normalizeKey(key: string) {
-    // Remove acentos e caracteres especiais para facilitar o "match" das colunas
     return key.toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]/g, '')
   }
 
+  private static normalizeName(name: string) {
+    return name.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+      .trim()
+  }
+
   private static parseExcelDate(value: any): Date | null {
     if (!value) return null
     if (value instanceof Date) return value
-    
-    // Texto DD/MM/AAAA
     if (typeof value === 'string') {
-      const parsed = parse(value.trim(), 'dd/MM/yyyy', new Date())
+      const v = value.trim()
+      let parsed = parse(v, 'dd/MM/yyyy', new Date())
       if (isValid(parsed)) return parsed
-      
-      const parsedIso = new Date(value)
-      if (isValid(parsedIso)) return parsedIso
+      parsed = new Date(v)
+      if (isValid(parsed)) return parsed
     }
-    
-    // Tratamento para fórmulas ou links do Excel
     if (typeof value === 'object' && value !== null) {
-        if ('result' in value && value.result instanceof Date) return value.result;
+       if ('result' in value && value.result instanceof Date) return value.result;
     }
     return null
   }
@@ -50,65 +82,46 @@ export class ImportService {
   private static parseCurrency(value: any): number | null {
     if (!value) return null
     if (typeof value === 'number') return value
-    
-    // Limpa R$, espaços e converte vírgula decimal para ponto
-    const cleanStr = String(value)
-      .replace('R$', '')
-      .replace(/\s/g, '')
-      .replace(/\./g, '') // Remove separador de milhar se houver
-      .replace(',', '.')  // Troca vírgula decimal por ponto
-    
+    const cleanStr = String(value).replace('R$', '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.') 
     const num = parseFloat(cleanStr)
     return isNaN(num) ? null : num
   }
 
   private static parseArrayField(value: any): string[] {
     if (!value) return []
-    return String(value)
-      .split(/[;,]/) // Aceita separação por ponto-e-vírgula ou vírgula
-      .map(v => v.trim())
-      .filter(v => v.length > 0)
+    return String(value).split(/[;,]/).map(v => v.trim()).filter(v => v.length > 0)
   }
 
-  /**
-   * Processa o arquivo (Buffer) e importa os casos
-   */
   static async processImport(fileBuffer: Buffer, isCsv: boolean, userId: string): Promise<ImportResult> {
     const workbook = new ExcelJS.Workbook()
     
+    // Cast 'as any' para evitar erro de tipagem no ExcelJS
     if (isCsv) {
-      const stream = new (require('stream').Readable)()
-      stream.push(fileBuffer)
-      stream.push(null)
-      await workbook.csv.read(stream)
+      await workbook.csv.read(Readable.from(fileBuffer as any))
     } else {
-      // [IMPORTANTE] Carrega o XLSX nativo. O cast 'as any' evita conflito de tipos do Buffer.
       await workbook.xlsx.load(fileBuffer as any)
     }
 
     const worksheet = workbook.worksheets[0]
-    if (!worksheet) {
-      throw new Error('PLANILHA_VAZIA')
-    }
+    if (!worksheet) throw new Error('PLANILHA_VAZIA')
 
-    // 1. Mapeamento Dinâmico de Cabeçalhos
-    // Permite que o usuário use "Nome Completo", "Nome", "Usuário" e o sistema entenda.
-    const headerMap: Record<string, number> = {}
-    const headerRow = worksheet.getRow(1)
-    
-    headerRow.eachCell((cell, colNumber) => {
-      if (cell.value) {
-          headerMap[this.normalizeKey(String(cell.value))] = colNumber
-      }
+    const allUsers = await prisma.user.findMany({ select: { id: true, nome: true } })
+    const userMap = new Map<string, string>()
+    allUsers.forEach(u => {
+      if (u.nome) userMap.set(this.normalizeName(u.nome), u.id)
     })
 
-    // Função auxiliar para buscar valor em várias colunas possíveis
+    const headerMap: Record<string, number> = {}
+    const headerRow = worksheet.getRow(1)
+    headerRow.eachCell((cell, colNumber) => {
+      if (cell.value) headerMap[this.normalizeKey(String(cell.value))] = colNumber
+    })
+
     const getValue = (row: ExcelJS.Row, ...keys: string[]) => {
         for (const key of keys) {
             const colIndex = headerMap[this.normalizeKey(key)]
             if (colIndex) {
                 const val = row.getCell(colIndex).value
-                // Se for célula com fórmula ou rich text, extrai o valor real
                 if (val && typeof val === 'object') {
                     if ('text' in val) return (val as any).text;
                     if ('result' in val) return (val as any).result;
@@ -121,101 +134,105 @@ export class ImportService {
 
     let createdCount = 0
     let errorCount = 0
+    let processedCount = 0
     const logs: string[] = []
     const cpfSet = new Set<string>()
 
-    // Loop de Processamento (Começa da linha 2)
+    // Loop
     for (let i = 2; i <= worksheet.rowCount; i++) {
       const row = worksheet.getRow(i)
       if (!row.hasValues) continue
+      processedCount++
       const rowNum = i
       
       try {
-          // --- CAMPOS ESSENCIAIS ---
-          const nome = getValue(row, 'nome', 'nomecompleto', 'usuario')
+          const nome = getValue(row, 'nome', 'nomecompleto')
           const cpfRaw = getValue(row, 'cpf')
 
-          if (!nome) continue // Pula linhas vazias
+          if (!nome) continue 
 
-          // Validação CPF
           const cpf = cpfRaw ? this.cleanDigits(cpfRaw) : null
           
-          if (!cpf) {
-             logs.push(`Linha ${rowNum}: CPF não informado. Ignorada.`)
+          if (!cpf || cpf.length !== 11) {
+             logs.push(`Linha ${rowNum}: CPF inválido ou ausente. Ignorada.`)
              errorCount++
-             continue
+             continue 
           }
 
-          if (cpf.length !== 11) {
-             logs.push(`Linha ${rowNum}: CPF inválido (${cpfRaw}). Ignorada.`)
-             errorCount++
-             continue
-          }
-
-          // Validação Duplicidade no Arquivo
           if (cpfSet.has(cpf)) {
-            logs.push(`Linha ${rowNum}: CPF ${cpf} duplicado no arquivo. Ignorada.`)
+             logs.push(`Linha ${rowNum}: CPF duplicado no arquivo. Ignorada.`)
+             errorCount++
+             continue
+          }
+          const existing = await prisma.case.findUnique({ where: { cpf: String(cpf) } })
+          if (existing) {
+            logs.push(`Linha ${rowNum}: CPF já cadastrado no sistema. Ignorada.`)
             errorCount++
             continue
           }
-          
-          // Validação Duplicidade no Banco
-          const existing = await prisma.case.findUnique({ where: { cpf: String(cpf) } })
-          if (existing) {
-             logs.push(`Linha ${rowNum}: CPF ${cpf} já cadastrado no sistema. Ignorada.`)
-             errorCount++
-             continue
-          }
           cpfSet.add(cpf)
 
-          // --- EXTRAÇÃO DE DADOS ---
           const nascimento = this.parseExcelDate(getValue(row, 'nascimento', 'datanascimento', 'nasc')) || new Date('1900-01-01')
           const dataEntrada = this.parseExcelDate(getValue(row, 'dataentrada', 'dataatendimento', 'entrada')) || new Date()
           
-          // Arrays e Listas
-          const violacoes = this.parseArrayField(getValue(row, 'violacao', 'violacoes', 'tipoviolacao'))
-          const beneficios = this.parseArrayField(getValue(row, 'beneficios', 'beneficio', 'transferenciarenda'))
+          const violacoes = this.parseArrayField(getValue(row, 'violacao', 'violacoes'))
+          const beneficios = this.parseArrayField(getValue(row, 'beneficios', 'beneficio'))
           
-          // Novos Campos
-          const ocupacao = String(getValue(row, 'ocupacao', 'profissão', 'trabalho') || '')
-          const rendaRaw = getValue(row, 'renda', 'salario', 'rendimento')
-          const renda = this.parseCurrency(rendaRaw)
+          const ocupacao = String(getValue(row, 'ocupacao', 'profissão') || '')
+          const renda = this.parseCurrency(getValue(row, 'renda', 'salario'))
 
-          // Endereço
-          const endereco_logradouro = String(getValue(row, 'endereco', 'logradouro', 'rua') || '')
+          const responsavelLegal = String(getValue(row, 'responsavel', 'responsavellegal', 'resp') || '')
+          const parentescoResponsavel = String(getValue(row, 'parentesco', 'vinculo', 'parent') || '')
+
+          const endereco_logradouro = String(getValue(row, 'endereco', 'logradouro') || '')
           const endereco_ra = String(getValue(row, 'ra', 'regiao') || 'Não Informada')
           const endereco_cep = this.cleanDigits(getValue(row, 'cep'))
 
-          // Contatos
           const contatos = []
-          const tel1 = getValue(row, 'telefone', 'celular', 'contato')
+          const tel1 = getValue(row, 'telefone', 'celular')
           if (tel1) contatos.push({ tipo: "Principal", numero: String(tel1) })
-          
-          // Urgência (Heurística)
-          const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
-          let pesoUrgencia = Number(getValue(row, 'pesourgencia', 'peso'))
-          
-          if (!pesoUrgencia || isNaN(pesoUrgencia)) {
-              const uLower = urgenciaTexto.toLowerCase()
-              if (uLower.includes('morte') || uLower.includes('agressor') || uLower.includes('sexual') || uLower.includes('gravíssima')) pesoUrgencia = 4
-              else if (uLower.includes('ameaça') || uLower.includes('reincidência') || uLower.includes('física') || uLower.includes('muito grave')) pesoUrgencia = 3
-              else if (uLower.includes('acolhimento') || uLower.includes('rua') || uLower.includes('idoso') || uLower.includes('grave')) pesoUrgencia = 2
-              else pesoUrgencia = 1
+
+          // Vínculos
+          let agenteId = null
+          let especialistaId = null
+          const rawAgente = getValue(row, 'agenteacolhida', 'agente', 'tecnico')
+          if (rawAgente) {
+             agenteId = userMap.get(this.normalizeName(String(rawAgente))) || null
+             if (!agenteId) logs.push(`Aviso [Linha ${rowNum}]: Agente "${rawAgente}" não encontrado no sistema.`)
+          }
+          const rawEspecialista = getValue(row, 'especialistaref', 'especialista')
+          if (rawEspecialista) {
+             especialistaId = userMap.get(this.normalizeName(String(rawEspecialista))) || null
           }
 
-          // --- PERSISTÊNCIA ---
+          // Urgência
+          const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
+          let pesoUrgencia = MAPA_PESO_URGENCIA[urgenciaTexto] || Number(getValue(row, 'pesourgencia', 'peso')) || 1
+          
+          // Heurística de fallback se o peso vier zerado
+          if (!MAPA_PESO_URGENCIA[urgenciaTexto] && pesoUrgencia === 1) {
+             const lower = urgenciaTexto.toLowerCase()
+             if (lower.includes('morte') || lower.includes('sexual')) pesoUrgencia = 4
+             else if (lower.includes('ameaça') || lower.includes('reincidência')) pesoUrgencia = 3
+             else if (lower.includes('acolhimento') || lower.includes('internação')) pesoUrgencia = 2
+          }
+
+          let statusRaw = String(getValue(row, 'status') || 'AGUARDANDO_DISTRIBUICAO').toUpperCase().replace(/ /g, '_')
+          if (!Object.values(CaseStatus).includes(statusRaw as any)) statusRaw = 'AGUARDANDO_DISTRIBUICAO'
+
           await prisma.case.create({
               data: {
                   nomeCompleto: String(nome),
                   nomeSocial: getValue(row, 'nomesocial') ? String(getValue(row, 'nomesocial')) : null,
                   cpf: cpf, 
-                  nascimento,
-                  sexo: String(getValue(row, 'sexo') || 'Não Informado'),
+                  nascimento: nascimento,
                   
-                  // Campos novos mapeados
-                  ocupacao: ocupacao || null,
-                  renda: renda, // Prisma deve estar configurado para aceitar Float ou Decimal, ou null
+                  responsavelLegal: responsavelLegal || null,
+                  parentescoResponsavel: parentescoResponsavel || null,
 
+                  sexo: String(getValue(row, 'sexo') || 'Não Informado'),
+                  ocupacao: ocupacao || null,
+                  renda: renda,
                   contatos: contatos as any,
                   endereco_logradouro,
                   endereco_ra,
@@ -223,39 +240,31 @@ export class ImportService {
                   endereco_uf: 'DF',
                   endereco_cep: endereco_cep || null,
                   
-                  // Geo (se houver)
-                  latitude: getValue(row, 'lat', 'latitude') ? Number(getValue(row, 'lat', 'latitude')) : null,
-                  longitude: getValue(row, 'lng', 'long', 'longitude') ? Number(getValue(row, 'lng', 'long', 'longitude')) : null,
-
                   urgencia: urgenciaTexto,
                   pesoUrgencia,
                   violacao: violacoes.length > 0 ? violacoes : ['Não classificado'],
                   categoria: String(getValue(row, 'categoria') || 'Família'),
                   
-                  orgaoDemandante: String(getValue(row, 'orgaodemandante', 'origem') || 'Demanda Espontânea'),
+                  orgaoDemandante: String(getValue(row, 'orgaodemandante', 'orgao') || 'Demanda Espontânea'),
                   origem: CaseOrigin.DOCUMENTAL,
                   numeroSei: getValue(row, 'sei', 'numerosei') ? String(getValue(row, 'sei', 'numerosei')) : null,
                   beneficios,
                   
                   dataEntrada,
-                  status: CaseStatus.AGUARDANDO_DISTRIBUICAO,
+                  status: statusRaw as CaseStatus,
+                  
+                  agenteAcolhidaId: agenteId,
+                  especialistaPAEFIId: especialistaId,
                   criadoPorId: userId
               }
           })
-          
           createdCount++
-
       } catch (err: any) {
-          logs.push(`Linha ${rowNum}: Erro ao salvar - ${err.message}`)
+          logs.push(`Linha ${rowNum}: Erro crítico - ${err.message}`)
           errorCount++
       }
     }
 
-    return {
-      processed: worksheet.rowCount - 1,
-      created: createdCount,
-      errors: errorCount,
-      logs: logs.slice(0, 100) // Limita logs para segurança
-    }
+    return { processed: processedCount, created: createdCount, errors: errorCount, logs: logs }
   }
 }

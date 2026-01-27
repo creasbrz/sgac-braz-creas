@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Cargo } from '@prisma/client'
 import { ImportService } from '../services/ImportService'
 
-// Schema de resposta padronizado para sucesso e erro
+// Schema de resposta de SUCESSO
 const importResponseSchema = z.object({
   processed: z.number(),
   created: z.number(),
@@ -16,7 +16,6 @@ const importResponseSchema = z.object({
 export async function importRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
 
-  // Middleware de Autenticação e Autorização
   server.addHook('onRequest', async (request, reply) => {
     try {
       await request.jwtVerify()
@@ -36,26 +35,29 @@ export async function importRoutes(app: FastifyInstance) {
       summary: 'Importar planilha completa de casos (Excel/CSV)',
       consumes: ['multipart/form-data'],
       response: {
-        200: importResponseSchema,
-        400: importResponseSchema, // Retorna logs explicativos em caso de erro do cliente
-        500: importResponseSchema  // Retorna logs explicativos em caso de erro do servidor
+        // [CORREÇÃO] Apenas validamos estritamente o sucesso (200).
+        // Removemos 400 e 500 daqui para permitir que o Fastify envie
+        // erros nativos (como "File too large" ou erros de conexão) sem travar.
+        200: importResponseSchema
       }
     }
   }, async (request, reply) => {
-    // 1. Leitura do Arquivo (Multipart)
-    const data = await request.file()
     
-    if (!data) {
-      return reply.status(400).send({ 
-        processed: 0, created: 0, errors: 0, 
-        logs: ['Nenhum arquivo foi enviado.'] 
-      })
-    }
-
+    // [CORREÇÃO] Movemos tudo para dentro do TRY para capturar erros de upload
     try {
+      // 1. Leitura do Arquivo (Multipart)
+      const data = await request.file()
+      
+      if (!data) {
+        // Retornamos o formato esperado manualmente, mas sem forçar no schema global
+        return reply.status(400).send({ 
+          processed: 0, created: 0, errors: 0, 
+          logs: ['Nenhum arquivo foi enviado.'] 
+        })
+      }
+
       // 2. Preparação dos dados
       const buffer = await data.toBuffer()
-      // Verificação mais robusta para CSV
       const isCsv = data.mimetype === 'text/csv' || data.filename.toLowerCase().endsWith('.csv')
       const { sub: userId } = request.user as { sub: string }
 
@@ -67,7 +69,7 @@ export async function importRoutes(app: FastifyInstance) {
     } catch (error: any) {
       request.log.error(error)
 
-      // Tratamento de erros de negócio conhecidos
+      // Se for um erro conhecido nosso, mantemos o padrão visual bonito
       if (error.message === 'PLANILHA_VAZIA') {
         return reply.status(400).send({ 
           processed: 0, created: 0, errors: 1, 
@@ -75,10 +77,19 @@ export async function importRoutes(app: FastifyInstance) {
         })
       }
 
-      // Erro genérico de servidor
+      // Se for erro de limite de arquivo do Fastify (ex: arquivo muito grande)
+      if (error.code === 'FST_FILES_LIMIT' || error.code === 'FST_PARTS_LIMIT') {
+        return reply.status(400).send({ 
+            processed: 0, created: 0, errors: 1, 
+            logs: ['O arquivo é muito grande ou excedeu os limites de upload.'] 
+        })
+      }
+
+      // Erro genérico (Crash, Banco fora do ar, etc)
+      // Agora que removemos o schema do 500, isso não vai mais quebrar a aplicação
       return reply.status(500).send({ 
         processed: 0, created: 0, errors: 1, 
-        logs: ['Erro crítico ao processar o arquivo. Verifique se o arquivo não está corrompido.'] 
+        logs: [`Erro crítico no servidor: ${error.message || 'Desconhecido'}`] 
       })
     }
   })

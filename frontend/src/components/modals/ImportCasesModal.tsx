@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-// Interface alinhada com o retorno do backend
 interface ImportResponse {
   processed: number
   created: number
@@ -43,23 +42,30 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
       const formData = new FormData()
       formData.append('file', file)
       
-      const res = await api.post('/import/cases', formData)
+      // 'Content-Type': undefined força o browser a gerar o boundary correto
+      const res = await api.post('/import/cases', formData, {
+        headers: {
+          'Content-Type': undefined
+        }
+      })
       return res.data
     },
     onSuccess: (data: ImportResponse) => {
       setResult(data)
       if (data.created > 0) {
         toast.success(`Importação finalizada!`, {
-            description: `${data.created} novos casos criados com sucesso.`
+            description: `${data.created} novos casos criados.`
         })
         queryClient.invalidateQueries({ queryKey: ['cases'] })
         queryClient.invalidateQueries({ queryKey: ['stats'] })
       } else {
-        toast.warning("Nenhum caso foi criado. Verifique os erros.")
+        toast.warning("Nenhum caso criado. Verifique os logs.")
       }
     },
-    onError: () => {
-      toast.error("Erro ao enviar o arquivo. Verifique se é uma planilha válida.")
+    onError: (error: any) => {
+      console.error(error)
+      const msg = error.response?.data?.logs?.[0] || "Erro ao enviar o arquivo."
+      toast.error(msg)
     }
   })
 
@@ -78,7 +84,6 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
         "application/csv"
     ]
     
-    // Validação de extensão também, pois mimetype pode falhar em alguns SOs
     const isValidType = validTypes.includes(file.type) || 
                         file.name.endsWith('.xlsx') || 
                         file.name.endsWith('.xls') || 
@@ -113,18 +118,17 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
     if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0])
   }, [])
 
-  // [CORREÇÃO] Download do Template via API (Excel Real)
   const handleDownloadTemplate = async () => {
     try {
       setIsDownloading(true)
       const response = await api.get('/cases/import/template', {
-        responseType: 'blob', // Importante para arquivos binários
+        responseType: 'blob', 
       })
 
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `Modelo_Importacao_Casos.xlsx`) // Nome fixo para facilitar
+      link.setAttribute('download', `Modelo_Importacao_Casos.xlsx`)
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -148,13 +152,13 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
             Importação em Massa
           </DialogTitle>
           <DialogDescription>
-            Use o modelo padronizado (Excel) para garantir que todos os campos (incluindo Ocupação e Renda) sejam importados corretamente.
+            Use o modelo padronizado (Excel). Agora com listas de seleção para facilitar o preenchimento de Categoria, RA e Urgência.
           </DialogDescription>
         </DialogHeader>
 
         {!result ? (
           <div className="space-y-6 py-2">
-            {/* Área de Upload */}
+            {/* Upload Area */}
             <div 
               className={cn(
                 "relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer gap-3 group",
@@ -182,18 +186,16 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
                   )}>
                     {isDragOver ? <FileUp className="h-8 w-8 text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground group-hover:text-primary" />}
                   </div>
-                  
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
                       {isDragOver ? "Solte a planilha aqui" : "Clique ou arraste o arquivo"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Suporta .XLSX, .XLS e .CSV (Max 5MB)
+                      Suporta .XLSX e .CSV (Max 10MB)
                     </p>
                   </div>
                 </>
               )}
-              
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -204,20 +206,19 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               />
             </div>
 
-            {/* Dicas e Download */}
+            {/* Template Download */}
             <div className="bg-muted/30 rounded-lg p-4 space-y-3 border border-border/50">
               <div className="flex items-start gap-2 text-xs text-muted-foreground">
                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
                 <div className="space-y-1">
-                  <p><strong>Dicas de preenchimento:</strong></p>
+                  <p><strong>Dicas Importantes:</strong></p>
                   <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Use o <strong>modelo oficial</strong> abaixo para evitar erros.</li>
-                    <li>Separe múltiplas <strong>violações</strong> com ponto e vírgula (<code>;</code>).</li>
-                    <li>O <strong>CPF</strong> deve conter 11 dígitos.</li>
+                    <li>Baixe o <strong>novo modelo</strong> para ter acesso às listas de seleção.</li>
+                    <li>O CPF é obrigatório (11 dígitos).</li>
+                    <li>Para <strong>Crianças/Adolescentes</strong>, preencha o Responsável Legal.</li>
                   </ul>
                 </div>
               </div>
-              
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -231,7 +232,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
             </div>
           </div>
         ) : (
-          /* TELA DE RESULTADO */
+          /* Result Screen */
           <div className="space-y-5 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800 text-center">
@@ -249,7 +250,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               </div>
             </div>
 
-            {/* Lista de Logs */}
+            {/* Logs List */}
             {result.logs.length > 0 && (
               <Alert variant={result.errors > 0 ? "destructive" : "default"} className={cn(
                 result.errors > 0 

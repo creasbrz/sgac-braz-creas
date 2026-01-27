@@ -59,11 +59,19 @@ export const createCaseBodySchema = z.object({
   sexo: z.string().min(1, 'Selecione o sexo'),
 
   // [NOVOS CAMPOS] Dados Socioeconômicos
-  ocupacao: z.enum(OCUPACOES_ROL).or(z.string()).optional(),
-  renda: z.number().nonnegative().optional().nullable(),
+  ocupacao: z.enum(OCUPACOES_ROL).or(z.string()).optional().nullable(),
+  
+  // Renda: Aceita número ou string, converte vírgula para ponto e garante número
+  renda: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const clean = val.replace(',', '.').trim();
+      return clean === '' ? undefined : parseFloat(clean);
+    }
+    return val;
+  }, z.number().nonnegative().optional().nullable()),
   
   // 2. Contatos e Endereço
-  contatos: z.array(ContactItemSchema).min(1, "Adicione pelo menos um contato"),
+  contatos: z.array(ContactItemSchema).min(1, "Adicione pelo menos um contato").optional().default([]),
   endereco: EnderecoSchema,
   
   // 3. Responsável Legal
@@ -86,6 +94,11 @@ export const createCaseBodySchema = z.object({
   linkSei: z.string().nullish().transform(v => v?.trim()),
   observacoes: z.string().nullish().transform(v => v?.trim()),
   beneficios: z.array(z.string()).default([]),
+
+  // [NOVOS CAMPOS] Controle Administrativo
+  seiRespondido: z.boolean().optional().default(false),
+  dataRespostaSei: z.coerce.date().nullish(),
+  dataInicioPAEFI: z.coerce.date().nullish(),
 })
 
 // --- Schema de Atualização ---

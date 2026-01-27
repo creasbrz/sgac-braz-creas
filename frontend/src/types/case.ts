@@ -1,8 +1,8 @@
+// frontend/src/types/case.ts
 import { CaseStatusType } from '@/constants/cases/definitions'
 
 // --- TIPOS AUXILIARES ---
 
-// [REFATORADO] Agora usamos o tipo que vem do arquivo de definições (SSoT)
 export type CaseStatus = CaseStatusType;
 
 export type CaseOrigin = 
@@ -174,6 +174,10 @@ export interface CaseDetailData {
   linkSei: string | null
   observacoes: string | null
   
+  // [NOVOS CAMPOS] Controle de Resposta SEI
+  seiRespondido: boolean
+  dataRespostaSei: string | null
+  
   // 6. Relacionamentos (Objetos)
   criadoPor: { nome: string }
   agenteAcolhida: { id: string, nome: string } | null
@@ -193,8 +197,8 @@ export interface CaseDetailData {
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
-  dataInicioPAEFI?: string
-  dataDesligamento?: string
+  dataInicioPAEFI?: string | null
+  dataDesligamento?: string | null
 }
 
 export interface CaseSummary {
@@ -224,7 +228,6 @@ export interface StatData {
   value: number
 }
 
-// Interface específica para Urgência que inclui o peso
 export interface UrgencyStatData extends StatData {
   weight: number
 }
@@ -250,7 +253,7 @@ export interface ChildLaborBreakdown {
 }
 
 export interface RmaReportData {
-  periodo?: string; // Campo auxiliar para exibição no PDF
+  periodo?: string;
   bloco1: {
     // A - Volume
     a1_total_acompanhamento: number;
@@ -262,7 +265,7 @@ export interface RmaReportData {
     b3_trabalho_infantil: number;
     b4_acolhimento: number;
     b5_drogas: number;
-    b6_vitimas: AgeBreakdown; // Tabela B.6 (Demografia Geral)
+    b6_vitimas: AgeBreakdown;
     b7_mse: number;
 
     // C - Crianças
@@ -347,7 +350,7 @@ export interface InsightData {
 }
 
 export interface AnalyticsReportData {
-  periodo: number; // Quantidade de meses (ex: 3, 6, 12)
+  periodo: number;
   kpis: {
     tempoMedio: number;
     ativosPaefi: number;

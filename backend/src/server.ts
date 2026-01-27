@@ -91,7 +91,7 @@ app.register(multipart, {
 // 4. SWAGGER (Docs)
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS Brazlândia API', version: '7.6.6' },
+    info: { title: 'CREAS Brazlândia API', version: '7.6.7' },
     components: { 
       securitySchemes: { 
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } 

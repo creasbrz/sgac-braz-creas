@@ -42,7 +42,7 @@ const MASKS = {
   CPF: '000.000.000-00',
   PHONE: '(00) 00000-0000',
   CEP: '00000-000',
-  SEI: '00000-00000000/0000-00'
+  // SEI removido daqui pois é dinâmico
 }
 
 const getLocalDateOnly = (date = new Date()) =>
@@ -61,39 +61,57 @@ const defaultValues: CreateCaseFormData = {
 
 // --- COMPONENTES UTILITÁRIOS ---
 
+// [CORRIGIDO] Input Inteligente para SEI (Removido a prop 'guide' que causava erro)
+function SeiInput({ value, onChange }: { value: string, onChange: (val: string) => void }) {
+  // Define qual máscara usar baseado no tamanho dos dígitos
+  const rawValue = value?.replace(/\D/g, '') || ''
+  
+  // Se tiver mais de 19 dígitos, assume o formato longo (21 digitos)
+  // Formato Curto: 00054-00160500/2025-77 (19 char mask)
+  // Formato Longo: 19.04.1237.0168706/2025-77 (21 char mask)
+  
+  const mask = rawValue.length > 19 
+    ? '00.00.0000.0000000/0000-00' // Máscara longa
+    : '00000-00000000/0000-00'     // Máscara padrão
+
+  return (
+    <MaskedInput 
+      mask={mask} 
+      placeholder="Digite o número do processo..." 
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+}
+
 interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
   value: number
   onChange: (value: number) => void
 }
 
 function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
-  // Formata o valor para exibição (R$ 0,00)
+  // Garante que value seja numérico
+  const safeValue = isNaN(value) ? 0 : value
+
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
       minimumFractionDigits: 2,
-    }).format(val || 0)
+    }).format(val)
   }
 
-  const [displayValue, setDisplayValue] = useState(formatCurrency(value))
+  const [displayValue, setDisplayValue] = useState(formatCurrency(safeValue))
 
-  // Sincroniza o valor interno quando a prop 'value' muda externamente (ex: carregamento inicial)
   useEffect(() => {
-    setDisplayValue(formatCurrency(value))
-  }, [value])
+    setDisplayValue(formatCurrency(safeValue))
+  }, [safeValue])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Remove tudo que não é dígito
     const rawValue = e.target.value.replace(/\D/g, '')
-    
-    // Converte para float (ex: 1234 -> 12.34)
     const numberValue = Number(rawValue) / 100
     
-    // Atualiza o display instantaneamente para UX fluida
     setDisplayValue(formatCurrency(numberValue))
-    
-    // Propaga o valor numérico puro para o formulário
     onChange(numberValue)
   }
 
@@ -182,7 +200,7 @@ function PersonalDataSection() {
               <FormLabel>Renda Individual</FormLabel>
               <FormControl>
                 <MoneyInput 
-                  value={field.value} 
+                  value={Number(field.value) || 0} 
                   onChange={field.onChange} 
                 />
               </FormControl>
@@ -519,11 +537,25 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
               </FormItem>
             )}/>
           </div>
+          
+          {/* [MODIFICADO] Campo SEI com Input Dinâmico */}
           <div className="lg:col-span-3">
             <FormField control={control} name="numeroSei" render={({ field }) => (
-              <FormItem><FormLabel>Número SEI</FormLabel><FormControl><MaskedInput mask={MASKS.SEI} placeholder="00000..." {...field} /></FormControl></FormItem>
+              <FormItem>
+                <FormLabel>Número SEI</FormLabel>
+                <FormControl>
+                  <SeiInput 
+                    value={field.value || ''} 
+                    onChange={field.onChange} 
+                  />
+                </FormControl>
+                <p className="text-[10px] text-muted-foreground">
+                  Aceita formato padrão (19) ou longo (21)
+                </p>
+              </FormItem>
             )}/>
           </div>
+          
           <div className="lg:col-span-5">
             <FormField control={control} name="linkSei" render={({ field }) => (
               <FormItem><FormLabel>Link Processo SEI</FormLabel><FormControl><Input type="url" {...field} placeholder="https://..." /></FormControl></FormItem>
@@ -555,25 +587,31 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
   const normalizedInitialData = useMemo(() => {
     if (!initialData) return defaultValues;
     
-    // Normalização segura para garantir que o formulário receba a estrutura correta
+    // Normalização segura: 
+    // Garante que se o backend mandar null/undefined, usamos o default do formulário
     return {
       ...defaultValues,
       ...initialData,
+      // Datas: Se vier ISO (com Time), pega só a data YYYY-MM-DD
       dataEntrada: initialData.dataEntrada ? initialData.dataEntrada.split('T')[0] : getLocalDateOnly(),
       nascimento: initialData.nascimento ? initialData.nascimento.split('T')[0] : '',
       
+      // Contatos: Garante array com pelo menos 1 item ou o telefone legado
       contatos: Array.isArray(initialData.contatos) && initialData.contatos.length > 0
         ? initialData.contatos 
         : (initialData.telefone ? [{ numero: initialData.telefone, tipo: 'Pessoal', nome: '' }] : defaultValues.contatos),
       
+      // Endereço: Normaliza se vier string antiga ou objeto
       endereco: initialData.endereco && typeof initialData.endereco === 'object' 
         ? initialData.endereco 
         : (typeof initialData.endereco === 'string' ? { ...defaultValues.endereco, logradouro: initialData.endereco } : defaultValues.endereco),
       
+      // Arrays
       violacao: Array.isArray(initialData.violacao) 
         ? initialData.violacao 
         : (initialData.violacao ? [initialData.violacao] : []),
 
+      // Campos Simples (proteção contra null)
       ocupacao: initialData.ocupacao || '',
       renda: initialData.renda ? Number(initialData.renda) : 0,
       beneficios: initialData.beneficios || [],
@@ -596,16 +634,42 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
 
   const { mutateAsync: submitCase, isPending } = useMutation({
     mutationFn: async (data: CreateCaseFormData) => {
-      // Prepara payload, limpando máscaras e garantindo tipos
+      // Prepara payload limpo para envio
       const payload = {
-        ...data,
+        // Dados Pessoais
+        nomeCompleto: data.nomeCompleto,
+        nomeSocial: data.nomeSocial || null,
         cpf: data.cpf.replace(/\D/g, ''),
-        contatos: data.contatos.map(c => ({ ...c, numero: c.numero.replace(/\D/g, '') })),
-        numeroSei: data.numeroSei || null,
-        linkSei: data.linkSei || null,
-        observacoes: data.observacoes || null,
+        nascimento: data.nascimento,
+        sexo: data.sexo,
+        
+        // Sócio-econômico
         ocupacao: data.ocupacao || null,
         renda: Number(data.renda),
+
+        // Endereço e Contato
+        endereco: data.endereco,
+        contatos: data.contatos.map(c => ({ ...c, numero: c.numero.replace(/\D/g, '') })),
+
+        // Responsável
+        responsavelLegal: data.responsavelLegal || null,
+        parentescoResponsavel: data.parentescoResponsavel || null,
+
+        // Dados Técnicos
+        urgencia: data.urgencia,
+        violacao: data.violacao,
+        categoria: data.categoria,
+        orgaoDemandante: data.orgaoDemandante,
+        origem: data.origem,
+        dataEntrada: data.dataEntrada,
+        
+        // Administrativo
+        agenteAcolhidaId: data.agenteAcolhidaId || null,
+        // Limpa o SEI para salvar apenas números (como CPF/Telefone)
+        numeroSei: data.numeroSei ? data.numeroSei.replace(/\D/g, '') : null,
+        linkSei: data.linkSei || null,
+        observacoes: data.observacoes || null,
+        beneficios: data.beneficios
       }
 
       return isEditing && caseId

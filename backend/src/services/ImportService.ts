@@ -1,23 +1,21 @@
 // backend/src/services/ImportService.ts
 import { prisma } from '../lib/prisma'
-import { CaseStatus, CaseOrigin } from '@prisma/client'
+import { CaseStatus, CaseOrigin, Prisma } from '@prisma/client'
 import ExcelJS from 'exceljs'
 import { parse, isValid } from 'date-fns'
 import { Buffer } from 'node:buffer'
 import { Readable } from 'stream'
 
+// Mapeamento EXATO da lista fornecida para os pesos
 const MAPA_PESO_URGENCIA: Record<string, number> = {
   // GRAVISSIMA (4)
   'Convive com agressor': 4, 'Idoso 80+': 4, 'Primeira infância': 4, 'Risco de morte': 4, 'Violência sexual': 4,
-  'Risco Grave / Morte (Peso 4)': 4,
   // MUITO GRAVE (3)
-  'Risco de reincidência': 3, 'Sofre ameaça': 3, 'Risco de desabrigo': 3, 'Criança/Adolescente': 3,
-  'Violação de Direitos (Peso 3)': 3,
+  'Risco de reincidência': 3, 'Sofre ameaça': 3, 'Risco de desabrigo': 3, 'Criança/Adolescente': 3, 'Violação de Direitos (Peso 3)': 3,
   // GRAVE (2)
-  'PCD': 2, 'Idoso': 2, 'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2,
-  'Risco Social (Peso 2)': 2,
+  'PCD': 2, 'Idoso': 2, 'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2, 'Risco Social (Peso 2)': 2,
   // LEVE (1)
-  'Sem risco imediato': 1, 'Visita periódica': 1, 'Sem risco imediato (Peso 1)': 1
+  'Sem risco imediato': 1, 'Visita periódica': 1
 }
 
 interface ImportResult {
@@ -35,15 +33,11 @@ export class ImportService {
   }
 
   private static normalizeKey(key: string) {
-    return key.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]/g, '')
+    return key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '')
   }
 
   private static normalizeName(name: string) {
-    return name.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
-      .trim()
+    return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim()
   }
 
   private static parseExcelDate(value: any): Date | null {
@@ -51,8 +45,10 @@ export class ImportService {
     if (value instanceof Date) return value
     if (typeof value === 'string') {
       const v = value.trim()
+      // Tenta formato DD/MM/YYYY
       let parsed = parse(v, 'dd/MM/yyyy', new Date())
       if (isValid(parsed)) return parsed
+      // Tenta formato ISO ou nativo
       parsed = new Date(v)
       if (isValid(parsed)) return parsed
     }
@@ -62,12 +58,25 @@ export class ImportService {
     return null
   }
 
-  private static parseCurrency(value: any): number | null {
-    if (!value) return null
-    if (typeof value === 'number') return value
-    const cleanStr = String(value).replace('R$', '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.') 
-    const num = parseFloat(cleanStr)
-    return isNaN(num) ? null : num
+  // [AJUSTE] Retorna Prisma.Decimal para compatibilidade com o Schema
+  private static parseCurrency(value: any): Prisma.Decimal | null {
+    if (value === null || value === undefined || value === '') return null
+    
+    if (typeof value === 'number') {
+        return new Prisma.Decimal(value)
+    }
+    
+    // Limpa R$, espaços e converte vírgula para ponto
+    const cleanStr = String(value)
+        .replace(/[^\d,-]/g, '') // Mantém apenas dígitos, vírgula e hífen
+        .replace(',', '.')
+    
+    try {
+        const num = parseFloat(cleanStr)
+        return isNaN(num) ? null : new Prisma.Decimal(cleanStr)
+    } catch {
+        return null
+    }
   }
 
   private static parseArrayField(value: any): string[] {
@@ -87,12 +96,14 @@ export class ImportService {
     const worksheet = workbook.worksheets[0]
     if (!worksheet) throw new Error('PLANILHA_VAZIA')
 
+    // Carrega usuários para vincular por nome
     const allUsers = await prisma.user.findMany({ select: { id: true, nome: true } })
     const userMap = new Map<string, string>()
     allUsers.forEach(u => {
       if (u.nome) userMap.set(this.normalizeName(u.nome), u.id)
     })
 
+    // Mapeia cabeçalhos
     const headerMap: Record<string, number> = {}
     const headerRow = worksheet.getRow(1)
     headerRow.eachCell((cell, colNumber) => {
@@ -120,7 +131,7 @@ export class ImportService {
     const logs: string[] = []
     const cpfSet = new Set<string>()
 
-    // Loop
+    // Loop a partir da linha 2
     for (let i = 2; i <= worksheet.rowCount; i++) {
       const row = worksheet.getRow(i)
       if (!row.hasValues) continue
@@ -154,39 +165,43 @@ export class ImportService {
           }
           cpfSet.add(cpf)
 
+          // --- DATAS ---
           const nascimento = this.parseExcelDate(getValue(row, 'nascimento', 'datanascimento', 'nasc')) || new Date('1900-01-01')
           const dataEntrada = this.parseExcelDate(getValue(row, 'dataentrada', 'dataatendimento', 'entrada')) || new Date()
-          
-          const violacoes = this.parseArrayField(getValue(row, 'violacao', 'violacoes'))
-          const beneficios = this.parseArrayField(getValue(row, 'beneficios', 'beneficio'))
-          
+          const dataInicioPAEFI = this.parseExcelDate(getValue(row, 'inicio_paefi', 'datainiciopaefi', 'data_paefi', 'inicio_acompanhamento'))
+
+          // --- CAMPOS SIMPLES ---
           const ocupacao = String(getValue(row, 'ocupacao', 'profissão') || '')
           const renda = this.parseCurrency(getValue(row, 'renda', 'salario'))
-
           const responsavelLegal = String(getValue(row, 'responsavel', 'responsavellegal', 'resp') || '')
           const parentescoResponsavel = String(getValue(row, 'parentesco', 'vinculo', 'parent') || '')
 
-          const endereco_logradouro = String(getValue(row, 'endereco', 'logradouro') || '')
-          const endereco_ra = String(getValue(row, 'ra', 'regiao') || 'Não Informada')
+          // --- ENDEREÇO DETALHADO ---
           const endereco_cep = this.cleanDigits(getValue(row, 'cep'))
+          const endereco_ra = String(getValue(row, 'ra', 'regiao', 'regiao_adm') || 'Não Informada')
+          const endereco_logradouro = String(getValue(row, 'logradouro', 'endereco', 'rua') || '')
+          const endereco_complemento = String(getValue(row, 'complemento', 'comp') || '')
+          const endereco_bairro = String(getValue(row, 'bairro', 'setor', 'vila') || '')
 
+          // --- CONTATOS ---
           const contatos = []
           const tel1 = getValue(row, 'telefone', 'celular')
           if (tel1) contatos.push({ tipo: "Principal", numero: String(tel1) })
 
-          // Vínculos de Agentes
+          // --- VÍNCULOS DE EQUIPE ---
           let agenteId = null
           let especialistaId = null
           const rawAgente = getValue(row, 'agenteacolhida', 'agente', 'tecnico')
           if (rawAgente) {
              agenteId = userMap.get(this.normalizeName(String(rawAgente))) || null
-             if (!agenteId) logs.push(`Aviso [Linha ${rowNum}]: Agente "${rawAgente}" não encontrado no sistema.`)
+             if (!agenteId) logs.push(`Aviso [Linha ${rowNum}]: Agente "${rawAgente}" não encontrado.`)
           }
-          const rawEspecialista = getValue(row, 'especialistaref', 'especialista')
+          const rawEspecialista = getValue(row, 'especialistaref', 'especialista', 'spec')
           if (rawEspecialista) {
              especialistaId = userMap.get(this.normalizeName(String(rawEspecialista))) || null
           }
 
+          // --- URGÊNCIA E STATUS ---
           const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
           let pesoUrgencia = MAPA_PESO_URGENCIA[urgenciaTexto] || Number(getValue(row, 'pesourgencia', 'peso')) || 1
           
@@ -200,8 +215,12 @@ export class ImportService {
           let statusRaw = String(getValue(row, 'status') || 'AGUARDANDO_DISTRIBUICAO').toUpperCase().replace(/ /g, '_')
           if (!Object.values(CaseStatus).includes(statusRaw as any)) statusRaw = 'AGUARDANDO_DISTRIBUICAO'
 
-          // [NOVO] Extração do Link SEI
           const linkSei = String(getValue(row, 'linksei', 'link_sei', 'urlsei') || '')
+          const numeroSei = getValue(row, 'sei', 'numerosei') ? String(getValue(row, 'sei', 'numerosei')) : null
+
+          // --- LISTAS ---
+          const violacoes = this.parseArrayField(getValue(row, 'violacao', 'violacoes'))
+          const beneficios = this.parseArrayField(getValue(row, 'beneficios', 'beneficio'))
 
           await prisma.case.create({
               data: {
@@ -214,15 +233,22 @@ export class ImportService {
                   parentescoResponsavel: parentescoResponsavel || null,
 
                   sexo: String(getValue(row, 'sexo') || 'Não Informado'),
+                  
+                  // Novos Campos Financeiros
                   ocupacao: ocupacao || null,
-                  renda: renda,
-                  contatos: contatos as any,
-                  endereco_logradouro,
+                  renda: renda, // Prisma.Decimal
+                  
+                  // Mapeamento de Endereço (Campos Flat)
+                  endereco_cep: endereco_cep || null,
                   endereco_ra,
+                  endereco_logradouro,
+                  endereco_complemento: endereco_complemento || null,
+                  endereco_bairro: endereco_bairro || null,
                   endereco_cidade: 'Brasília',
                   endereco_uf: 'DF',
-                  endereco_cep: endereco_cep || null,
                   
+                  contatos: contatos as any,
+
                   urgencia: urgenciaTexto,
                   pesoUrgencia,
                   violacao: violacoes.length > 0 ? violacoes : ['Não classificado'],
@@ -230,10 +256,10 @@ export class ImportService {
                   
                   orgaoDemandante: String(getValue(row, 'orgaodemandante', 'orgao') || 'Demanda Espontânea'),
                   origem: CaseOrigin.DOCUMENTAL,
-                  numeroSei: getValue(row, 'sei', 'numerosei') ? String(getValue(row, 'sei', 'numerosei')) : null,
                   
-                  // [NOVO] Salvando Link SEI
+                  numeroSei,
                   linkSei: linkSei || null,
+                  dataInicioPAEFI: dataInicioPAEFI || null,
                   
                   beneficios,
                   dataEntrada,

@@ -10,8 +10,9 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
 import { closeCaseFormSchema } from '@/schemas/caseSchemas'
-import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases'
-import { ROUTES } from '@/constants/app-routes' // [CORREÇÃO] Usando rotas centralizadas
+import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases/definitions'
+import { ROUTES } from '@/constants/app-routes'
+import { formatProcessoSei } from "@/utils/formatters" // [IMPORTANTE]
 
 import { Button } from '@/components/ui/button'
 import {
@@ -46,9 +47,17 @@ interface CloseCaseModalProps {
   caseId: string
   isOpen: boolean
   onOpenChange: (open: boolean) => void
+  seiRespondido?: boolean
+  numeroSei?: string | null
 }
 
-export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalProps) {
+export function CloseCaseModal({ 
+  caseId, 
+  isOpen, 
+  onOpenChange,
+  seiRespondido = false,
+  numeroSei = null
+}: CloseCaseModalProps) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -67,16 +76,10 @@ export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalP
     },
     onSuccess: () => {
       toast.success('Caso desligado e arquivado com sucesso!')
-      
-      // Invalida queries
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
-      
       handleClose()
-      
-      // [CORREÇÃO 5.1] Redireciona para a página de detalhes do caso (modo leitura/arquivo morto)
-      // Usando ROUTES.CASE_DETAIL garante consistência com o restante do app
       navigate(ROUTES.CASE_DETAIL(caseId))
     },
     onError: (error) => {
@@ -104,13 +107,27 @@ export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalP
           </DialogDescription>
         </DialogHeader>
 
-        <Alert variant="destructive" className="my-2 bg-destructive/5 border-destructive/20 text-destructive-foreground">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Atenção</AlertTitle>
-          <AlertDescription>
-            Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
-          </AlertDescription>
-        </Alert>
+        {/* [CORREÇÃO] APLICAÇÃO DA MÁSCARA NO NÚMERO SEI */}
+        {numeroSei && !seiRespondido && (
+          <Alert className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-800">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="ml-2 font-bold">Resposta ao SEI Pendente</AlertTitle>
+            <AlertDescription className="ml-2 text-xs mt-1">
+              O processo <strong>{formatProcessoSei(numeroSei)}</strong> consta como não respondido. 
+              <br/>Lembre-se de enviar o ofício de resposta ao órgão demandante informando o desligamento.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {(!numeroSei || seiRespondido) && (
+          <Alert variant="destructive" className="my-2 bg-destructive/5 border-destructive/20 text-destructive-foreground">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Atenção</AlertTitle>
+            <AlertDescription>
+              Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-2">

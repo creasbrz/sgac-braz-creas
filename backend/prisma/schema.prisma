@@ -74,9 +74,9 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relacionamentos
-  casosCriados      Case[]                @relation("Criador")
-  casosAcolhida     Case[]                @relation("AgenteAcolhida")
-  casosPAEFI        Case[]                @relation("EspecialistaPAEFI")
+  casosCriados      Case[]               @relation("Criador")
+  casosAcolhida     Case[]               @relation("AgenteAcolhida")
+  casosPAEFI        Case[]               @relation("EspecialistaPAEFI")
   evolucoes         Evolucao[]
   pafs              Paf[]
   pafVersions       PafVersion[]
@@ -90,79 +90,79 @@ model User {
 }
 
 model Case {
-  id            String   @id @default(uuid())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // 1. Identificação
-  nomeCompleto         String
-  nomeSocial           String?
-  cpf                  String   @unique
-  nascimento           DateTime
-  sexo                 String
-  
-  // [NOVOS CAMPOS] Dados Socioeconômicos do Titular
-  ocupacao String?  
-  renda    Decimal? @db.Decimal(10, 2) 
+  nomeCompleto String
+  nomeSocial   String?
+  cpf          String   @unique
+  nascimento   DateTime
+  sexo         String
 
-  // 2. Contato (Versão 2.0 - Flexível)
-  contatos      Json?
+  // 2. Dados Socioeconômicos do Titular
+  ocupacao String?
+  renda    Decimal? @db.Decimal(10, 2)
 
-  // 3. Endereço e Localização (Versão 2.0 e 3.0)
+  // 3. Contato (JSON Flexível)
+  contatos Json?
+
+  // 4. Endereço e Localização
   endereco_logradouro  String?
   endereco_complemento String?
   endereco_bairro      String?
   endereco_cidade      String? @default("Brasília")
   endereco_uf          String? @default("DF")
   endereco_cep         String?
-  endereco_ra          String? 
-  
-  // Geolocalização (V3.0 - Mapa de Calor)
+  endereco_ra          String?
   latitude             Float?
   longitude            Float?
 
-  // 4. Responsável (Menores/Incapazes)
-  responsavelLegal       String?
+  // 5. Responsável (Menores/Incapazes)
+  responsavelLegal      String?
   parentescoResponsavel String?
 
-  // 5. Dados Técnicos da Demanda
-  dataEntrada          DateTime   @default(now())
-  orgaoDemandante      String
-  origem               CaseOrigin @default(ESPONTANEA)
-  urgencia             String
-  pesoUrgencia         Int        @default(1)
-  violacao             String[] 
-  categoria            String
-  
-  // 6. Dados Administrativos
-  numeroSei   String?
-  linkSei     String?
-  observacoes String?
-  status      CaseStatus @default(AGUARDANDO_ACOLHIDA)
-  beneficios  String[]   @default([]) 
+  // 6. Dados Técnicos da Demanda
+  dataEntrada     DateTime   @default(now())
+  orgaoDemandante String
+  origem          CaseOrigin @default(ESPONTANEA)
+  urgencia        String
+  pesoUrgencia    Int        @default(1)
+  violacao        String[]
+  categoria       String
 
-  // 7. Gestão de Equipe (Relacionamentos)
-  criadoPorId          String
-  criadoPor            User   @relation("Criador", fields: [criadoPorId], references: [id])
-  
-  agenteAcolhidaId     String?
-  agenteAcolhida       User?  @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
-  
+  // 7. Dados Administrativos & SEI
+  numeroSei       String?
+  linkSei         String?
+  seiRespondido   Boolean    @default(false)
+  dataRespostaSei DateTime?
+  observacoes     String?
+  status          CaseStatus @default(AGUARDANDO_ACOLHIDA)
+  beneficios      String[]   @default([])
+
+  // 8. Gestão de Equipe (Relacionamentos)
+  criadoPorId String
+  criadoPor   User   @relation("Criador", fields: [criadoPorId], references: [id])
+
+  agenteAcolhidaId String?
+  agenteAcolhida   User?   @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
+
   especialistaPAEFIId String?
-  especialistaPAEFI    User?  @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
+  especialistaPAEFI   User?   @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
 
-  // 8. Desligamento
-  dataInicioPAEFI      DateTime?
-  dataDesligamento     DateTime?
-  motivoDesligamento   String?
+  // 9. Desligamento
+  dataInicioPAEFI     DateTime?
+  dataDesligamento    DateTime?
+  motivoDesligamento  String?
   destinoDesligamento String?
-  parecerFinal         String?
-  
-  // Soft Delete
-  deletado      Boolean   @default(false)
+  parecerFinal        String?
+
+  // 10. Soft Delete
+  deletado     Boolean   @default(false)
   dataDeletado DateTime?
 
-  // 9. Relacionamentos Detalhados
+  // 11. Relacionamentos Detalhados
   evolucoes       Evolucao[]
   paf             Paf?
   agendamentos    Agendamento[]
@@ -173,15 +173,14 @@ model Case {
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
 
-  // Índices
+  // Índices para Performance
   @@index([status])
   @@index([dataEntrada])
   @@index([pesoUrgencia])
   @@index([agenteAcolhidaId])
   @@index([especialistaPAEFIId])
   @@index([violacao])
-  @@index([endereco_ra]) 
-
+  @@index([endereco_ra])
   @@map("cases")
 }
 
@@ -191,49 +190,49 @@ model Evolucao {
   sigilo    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  casoId    String
-  caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  
-  autorId   String
-  autor     User     @relation(fields: [autorId], references: [id])
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
 
   @@index([casoId, createdAt(sort: Desc)])
 }
 
 model Paf {
-  id          String       @id @default(uuid())
+  id          String   @id @default(uuid())
   diagnostico String
   objetivos   String
   estrategias String
   deadline    DateTime
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  
-  casoId      String       @unique
-  caso        Case         @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  
-  autorId     String
-  autor       User         @relation(fields: [autorId], references: [id])
-  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  casoId String @unique
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+
   versaoAtual Int          @default(1)
   versoes     PafVersion[]
 }
 
 model PafVersion {
-  id           String   @id @default(uuid())
-  diagnostico  String
-  objetivos    String
-  estrategias  String
-  deadline     DateTime
-  savedAt      DateTime @default(now())
-  
-  pafId        String
-  paf          Paf      @relation(fields: [pafId], references: [id], onDelete: Cascade)
-  
+  id          String   @id @default(uuid())
+  diagnostico String
+  objetivos   String
+  estrategias String
+  deadline    DateTime
+  savedAt     DateTime @default(now())
+
+  pafId String
+  paf   Paf    @relation(fields: [pafId], references: [id], onDelete: Cascade)
+
   autorId      String
-  autor        User     @relation(fields: [autorId], references: [id])
-  versaoNumero Int      @default(1)
+  autor        User   @relation(fields: [autorId], references: [id])
+  versaoNumero Int    @default(1)
 }
 
 model Agendamento {
@@ -244,12 +243,12 @@ model Agendamento {
   observacoes String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   responsavelId String
   responsavel   User   @relation(fields: [responsavelId], references: [id])
-  
-  casoId        String
-  caso          Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
 
   @@index([responsavelId, data])
 }
@@ -261,12 +260,12 @@ model CaseLog {
   valorAnterior String?
   valorNovo     String?
   createdAt     DateTime  @default(now())
-  
-  casoId        String
-  caso          Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  
-  autorId       String
-  autor         User      @relation(fields: [autorId], references: [id])
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
 }
 
 model Anexo {
@@ -276,12 +275,12 @@ model Anexo {
   url       String
   tamanho   Int?
   createdAt DateTime @default(now())
-  
-  casoId    String
-  caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  
-  autorId   String
-  autor     User     @relation(fields: [autorId], references: [id])
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
 }
 
 model SavedFilter {
@@ -289,9 +288,9 @@ model SavedFilter {
   nome      String
   config    Json
   createdAt DateTime @default(now())
-  
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Encaminhamento {
@@ -304,19 +303,19 @@ model Encaminhamento {
   retorno     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  casoId      String
-  caso        Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  
-  autorId     String
-  autor       User     @relation(fields: [autorId], references: [id])
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
 }
 
 model MembroFamilia {
-  id          String    @id @default(uuid())
-  nome        String
-  parentesco  String
-  
+  id         String  @id @default(uuid())
+  nome       String
+  parentesco String
+
   idade       Int?
   cpf         String?
   nascimento  DateTime?
@@ -324,62 +323,62 @@ model MembroFamilia {
   ocupacao    String?
   renda       Decimal?  @db.Decimal(10, 2)
   observacoes String?
-  
-  violacao    String[]  @default([])
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
-  casoId      String
-  caso        Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  violacao String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
 }
 
 model ServiceDeliverable {
   id              String    @id @default(uuid())
-  tipo            String    // "Cesta Básica", "Auxílio Natalidade"
-  status          String    // "SOLICITADO", "ENTREGUE"
+  tipo            String // "Cesta Básica", "Auxílio Natalidade"
+  status          String // "SOLICITADO", "ENTREGUE"
   dataSolicitacao DateTime  @default(now())
   dataEntrega     DateTime?
   observacoes     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
-  casoId          String
-  caso            Case      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  
-  responsavelId   String
-  responsavel     User      @relation(fields: [responsavelId], references: [id])
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  responsavelId String
+  responsavel   User   @relation(fields: [responsavelId], references: [id])
 }
 
 model GroupActivity {
-  id                 String             @id @default(uuid())
-  tema               String
-  tipo               GroupType
-  dataRealizacao     DateTime
-  local              String?
-  descricao          String?
-  orgaosEnvolvidos   String[]           @default([])
-  attendanceConfirmed Boolean           @default(false)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                  String    @id @default(uuid())
+  tema                String
+  tipo                GroupType
+  dataRealizacao      DateTime
+  local               String?
+  descricao           String?
+  orgaosEnvolvidos    String[]  @default([])
+  attendanceConfirmed Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  facilitadorId      String
-  facilitador        User               @relation(fields: [facilitadorId], references: [id])
-  
-  participantes      GroupAttendance[]
+  facilitadorId String
+  facilitador   User   @relation(fields: [facilitadorId], references: [id])
+
+  participantes GroupAttendance[]
 }
 
 model GroupAttendance {
-  id          String        @id @default(uuid())
-  presente    Boolean       @default(false)
+  id          String   @id @default(uuid())
+  presente    Boolean  @default(false)
   observacoes String?
-  createdAt   DateTime      @default(now())
-  
-  grupoId     String
-  grupo       GroupActivity @relation(fields: [grupoId], references: [id], onDelete: Cascade)
-  
-  casoId      String
-  caso        Case          @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  grupoId String
+  grupo   GroupActivity @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
 
   @@unique([grupoId, casoId])
 }

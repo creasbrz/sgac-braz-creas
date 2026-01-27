@@ -3,14 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { 
-  FileText, AlertTriangle, ExternalLink, 
-  Calendar, Tag, Hash, Shield, CheckCircle2, Clock, 
-  Wallet, Briefcase // [NOVO] Ícones
+  FileText, AlertTriangle, 
+  Calendar, Tag, Shield, CheckCircle2, Clock, 
+  Wallet, Briefcase 
 } from 'lucide-react'
 import { formatDateSafe } from '@/utils/formatters'
 import type { CaseDetailData } from '@/types/case'
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+
+// [NOVO] Importação do gerenciador do SEI
+import { SeiManager } from '@/components/case/SeiManager'
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 
@@ -60,34 +63,7 @@ function TeamMemberRow({
 
 export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
   
-  // Lógica de renderização do SEI
-  const renderSeiValue = () => {
-    if (!caseData.numeroSei) return null;
-    
-    const content = (
-      <span className="font-mono font-medium flex items-center gap-1.5">
-        {caseData.numeroSei}
-        {caseData.linkSei && <ExternalLink className="h-3 w-3 opacity-50" />}
-      </span>
-    );
-
-    if (caseData.linkSei) {
-      return (
-        <a 
-          href={caseData.linkSei} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-primary hover:text-primary/80 hover:underline decoration-primary/30 underline-offset-4 transition-all block"
-          title="Abrir processo no SEI"
-        >
-          {content}
-        </a>
-      )
-    }
-    return content;
-  }
-
-  // Renderização das Violações como Badges (V3.1)
+  // Renderização das Violações como Badges
   const renderViolations = () => {
     const violations = Array.isArray(caseData.violacao) 
       ? caseData.violacao 
@@ -124,7 +100,8 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
           </CardHeader>
           
           <CardContent className="pt-6 space-y-6">
-            {/* Seção de Violações Identificadas */}
+            
+            {/* 1. Seção de Violações Identificadas */}
             <div className="space-y-2">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5">
                 <AlertTriangle className="h-3 w-3" /> Violações de Direitos Detectadas
@@ -136,8 +113,22 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
               </div>
             </div>
 
-            {/* Grid de Informações Secundárias */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {/* 2. [NOVO] Gerenciador do SEI (Número, Link e Status de Resposta) */}
+            <div className="py-1">
+              <SeiManager 
+                caseId={caseData.id}
+                numeroSei={caseData.numeroSei}
+                linkSei={caseData.linkSei}
+                // Garante valores booleanos mesmo se vier null do banco antigo
+                seiRespondido={!!caseData.seiRespondido}
+                dataRespostaSei={caseData.dataRespostaSei}
+              />
+            </div>
+
+            <Separator className="bg-border/60" />
+
+            {/* 3. Grid de Informações Básicas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <InfoField 
                 icon={Tag} 
                 label="Categoria do Público" 
@@ -148,15 +139,10 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                 label="Data de Entrada" 
                 value={formatDateSafe(caseData.dataEntrada)} 
               />
-              <InfoField 
-                icon={Hash} 
-                label="Protocolo SEI" 
-                value={renderSeiValue()} 
-              />
             </div>
 
-            {/* [NOVO] Grid Socioeconômico do Titular */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+            {/* 4. Grid Socioeconômico do Titular */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <InfoField 
                 icon={Briefcase} 
                 label="Ocupação Atual" 
@@ -165,14 +151,14 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
               <InfoField 
                 icon={Wallet} 
                 label="Renda Individual" 
-                value={caseData.renda ? caseData.renda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null} 
+                value={caseData.renda ? Number(caseData.renda).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null} 
                 className="text-emerald-700 font-medium"
               />
             </div>
 
-            {/* Área de Observações Críticas */}
+            {/* 5. Área de Observações Críticas */}
             {caseData.observacoes && (
-              <div className="mt-6">
+              <div className="mt-2">
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-lg p-4 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-amber-400" />
                   <h4 className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -213,7 +199,7 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
           </CardContent>
         </Card>
 
-        {/* Card de Benefícios e Transferência de Renda */}
+        {/* Card de Benefícios */}
         <Card className="shadow-sm">
           <CardHeader className="pb-3 border-b bg-muted/5">
             <CardTitle className="text-sm font-semibold flex items-center justify-between">

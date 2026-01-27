@@ -21,7 +21,6 @@ import { CaseStatusBadge } from "@/components/case/CaseStatusBadge"
 import { isValidBrazilianPhone } from "@/utils/phone"
 import { formatCPF } from '@/utils/formatters'
 
-// [CORREÇÃO] Importando o template recém-criado
 import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
 import { CaseDoc } from '@/components/reports/templates/CaseDoc'
 
@@ -58,7 +57,7 @@ function TabSkeleton() {
   )
 }
 
-// Header Minimalista com Botão PDF Atualizado
+// Header Minimalista
 function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit: () => void }) {
   return (
     <div className="flex flex-col gap-4 pt-2">
@@ -68,7 +67,6 @@ function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit:
         </Button>
         <div className="flex items-center gap-2">
             
-            {/* [CORREÇÃO] Removido className, apenas props suportadas */}
             <PDFDownloadButton 
               document={<CaseDoc data={caseData} />}
               fileName={`Prontuario_${caseData.nomeCompleto.replace(/\s+/g, '_')}.pdf`}
@@ -109,7 +107,14 @@ function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit:
 
         <div className="w-full md:w-auto mt-2 md:mt-0">
            <Suspense fallback={<div className="h-9 w-32 bg-muted rounded" />}>
-              <CaseActions caseId={caseData.id} status={caseData.status} currentSpecialistId={caseData.especialistaPAEFI?.id} />
+              <CaseActions 
+                caseId={caseData.id} 
+                status={caseData.status} 
+                currentSpecialistId={caseData.especialistaPAEFI?.id}
+                // [ATUALIZAÇÃO] Passando dados para o alerta do SEI no desligamento
+                seiRespondido={!!caseData.seiRespondido}
+                numeroSei={caseData.numeroSei}
+              />
            </Suspense>
         </div>
       </div>
@@ -117,7 +122,6 @@ function MinimalHeader({ caseData, onEdit }: { caseData: CaseDetailData; onEdit:
   )
 }
 
-// Sidebar Lateral (Mantido inalterado)
 function SidebarInfo({ caseData }: { caseData: CaseDetailData }) {
   return (
     <div className="space-y-6">

@@ -1,8 +1,10 @@
+// frontend/src/components/case/CaseActions.tsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
-  MoreHorizontal, UserPlus, ArrowRight, CheckCircle2, XCircle, Loader2, Power, AlertTriangle 
+  MoreHorizontal, UserPlus, ArrowRight, CheckCircle2, XCircle, 
+  Loader2, Power, AlertTriangle 
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -39,24 +41,32 @@ interface CaseActionsProps {
   caseId: string
   status: string
   currentSpecialistId?: string
+  // [NEW PROPS] For SEI control on case closure
+  seiRespondido?: boolean
+  numeroSei?: string | null
 }
 
-export function CaseActions({ caseId, status }: CaseActionsProps) {
+export function CaseActions({ 
+  caseId, 
+  status, 
+  seiRespondido = false, 
+  numeroSei = null 
+}: CaseActionsProps) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  // Estados dos Modais
+  // Modal States
   const [isAssignOpen, setIsAssignOpen] = useState(false)
   const [isCloseOpen, setIsCloseOpen] = useState(false)
   const [pendingStatusAction, setPendingStatusAction] = useState<StatusAction | null>(null)
 
-  // Estados do Form de Desligamento
+  // Closure Form States
   const [closeReason, setCloseReason] = useState('')
   const [closeDestination, setCloseDestination] = useState('')
   const [closeParecer, setCloseParecer] = useState('')
 
-  // 1. Mutação: Alterar Status
+  // 1. Mutation: Change Status
   const { mutate: changeStatus, isPending: isChanging } = useMutation({
     mutationFn: async (newStatus: string) => {
       await api.patch(`/cases/${caseId}/status`, { status: newStatus })
@@ -70,7 +80,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
     onError: () => toast.error('Erro ao atualizar status.')
   })
 
-  // 2. Mutação: Desligar Caso
+  // 2. Mutation: Close Case
   const { mutate: closeCase, isPending: isClosing } = useMutation({
     mutationFn: async () => {
       await api.patch(`/cases/${caseId}/close`, {
@@ -83,12 +93,10 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
       toast.success('Caso desligado e arquivado.')
       setIsCloseOpen(false)
       
-      // Invalida cache para atualizar UI
+      // Invalidate cache to update UI
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       
-      // [CORREÇÃO] Redireciona para o próprio caso (que agora estará "somente leitura"),
-      // ao invés de ir para a lista geral.
       navigate(`/app/cases/${caseId}`) 
     },
     onError: () => toast.error('Erro ao desligar caso.')
@@ -97,7 +105,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
   const actions = user ? getAvailableActions(status, user.cargo) : []
   if (!actions.length) return null
 
-  // Handler centralizado
+  // Centralized Handler
   const handleAction = (action: StatusAction) => {
     if (action.type === 'assign') setIsAssignOpen(true)
     else if (action.type === 'close') setIsCloseOpen(true)
@@ -109,7 +117,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Ação Principal em Destaque */}
+      {/* Primary Action Button */}
       {primaryAction && (
         <Button 
           onClick={() => handleAction(primaryAction)}
@@ -122,7 +130,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         </Button>
       )}
 
-      {/* Menu de Ações Secundárias */}
+      {/* Secondary Actions Menu */}
       {secondaryActions.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -149,7 +157,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         </DropdownMenu>
       )}
 
-      {/* --- MODAIS --- */}
+      {/* --- MODALS --- */}
 
       <AssignSpecialistModal 
         isOpen={isAssignOpen} 
@@ -157,7 +165,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         caseId={caseId} 
       />
 
-      {/* Modal de Transição de Status */}
+      {/* Status Transition Modal */}
       <Dialog open={!!pendingStatusAction} onOpenChange={(o) => !o && setPendingStatusAction(null)}>
         <DialogContent>
           <DialogHeader>
@@ -178,7 +186,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Desligamento (Critical) */}
+      {/* Case Closure Modal (Critical) */}
       <Dialog open={isCloseOpen} onOpenChange={setIsCloseOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -190,13 +198,28 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
             </DialogDescription>
           </DialogHeader>
           
-          <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Atenção</AlertTitle>
-            <AlertDescription>
-              Certifique-se de que todos os relatórios e encaminhamentos foram concluídos antes de prosseguir.
-            </AlertDescription>
-          </Alert>
+          {/* [NEW] PENDING SEI RESPONSE ALERT */}
+          {numeroSei && !seiRespondido && (
+            <Alert className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-800">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertTitle className="ml-2 font-bold">Resposta ao SEI Pendente</AlertTitle>
+              <AlertDescription className="ml-2 text-xs mt-1">
+                O processo <strong>{numeroSei}</strong> consta como não respondido. 
+                <br/>Lembre-se de enviar o ofício de resposta ao órgão demandante informando o desligamento.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Standard Warning Alert */}
+          {(!numeroSei || seiRespondido) && (
+             <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Atenção</AlertTitle>
+                <AlertDescription>
+                  Certifique-se de que todos os relatórios e encaminhamentos foram concluídos antes de prosseguir.
+                </AlertDescription>
+             </Alert>
+          )}
 
           <div className="grid gap-4 py-2">
             <div className="space-y-2">

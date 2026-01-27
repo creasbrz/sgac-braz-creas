@@ -2,9 +2,9 @@
 import { prisma } from '../lib/prisma'
 import { cache } from '../lib/cache'
 import { geocodeAddress } from '../utils/geocoding'
-// [CORREÇÃO] Adicionado 'Cargo' aos imports
 import { LogAction, CaseStatus, Cargo, Prisma } from '@prisma/client'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
+import { ImportService } from './ImportService'
 
 export class CaseService {
   
@@ -12,17 +12,28 @@ export class CaseService {
 
   private static stripTime(date: Date | string): Date {
     const d = new Date(date)
+    if (isNaN(d.getTime())) return new Date()
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
   }
 
   private static calculateUrgencyWeight(urgencia: string): number {
-    const term = urgencia.trim()
+    const term = urgencia ? urgencia.trim() : ''
     const weights: Record<string, number> = {
       'Convive com agressor': 4, 'Idoso 80+': 4, 'Primeira infância': 4, 'Risco de morte': 4, 'Violência sexual': 4,
       'Risco de reincidência': 3, 'Sofre ameaça': 3, 'Risco de desabrigo': 3, 'Criança/Adolescente': 3, 'Violência física': 3,
       'PCD': 2, 'Idoso': 2, 'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2, 'Situação de rua': 2
     }
     return weights[term] || 1
+  }
+
+  private static parseDecimal(value: any): Prisma.Decimal | null {
+    if (value === null || value === undefined || value === '') return null
+    try {
+      const cleanValue = String(value).replace(',', '.')
+      return new Prisma.Decimal(cleanValue)
+    } catch (e) {
+      return null
+    }
   }
 
   private static async createLog(casoId: string, autorId: string, acao: LogAction, descricao: string, valorAnterior?: string | null, valorNovo?: string | null) {
@@ -50,29 +61,31 @@ export class CaseService {
     }
 
     // 3. Persistência
+    // [IMPORTANTE] Desestruturamos 'endereco' para não passá-lo diretamente ao Prisma
+    const { endereco, ...restData } = data
+
     const newCase = await prisma.case.create({
       data: {
-        ...data,
+        ...restData, // Espalha os outros campos (nome, cpf, etc)
+        
         nascimento: this.stripTime(data.nascimento),
         dataEntrada: this.stripTime(data.dataEntrada),
         pesoUrgencia: this.calculateUrgencyWeight(data.urgencia),
         
-        // [CORREÇÃO] Após 'npx prisma generate', estes campos serão reconhecidos
-        ocupacao: data.ocupacao,
-        renda: data.renda ? new Prisma.Decimal(data.renda) : null,
+        ocupacao: data.ocupacao || null,
+        renda: this.parseDecimal(data.renda),
 
-        // Mapeamento manual do endereço
-        endereco_logradouro: data.endereco.logradouro,
-        endereco_ra: data.endereco.ra,
-        endereco_cep: data.endereco.cep,
-        endereco_complemento: data.endereco.complemento,
-        endereco_bairro: data.endereco.bairro,
-        endereco_cidade: data.endereco.cidade,
-        endereco_uf: data.endereco.uf,
+        // Mapeamento manual do objeto 'endereco' para os campos flat do banco
+        endereco_logradouro: endereco.logradouro,
+        endereco_ra: endereco.ra,
+        endereco_cep: endereco.cep,
+        endereco_complemento: endereco.complemento,
+        endereco_bairro: endereco.bairro,
+        endereco_cidade: endereco.cidade,
+        endereco_uf: endereco.uf,
         latitude: endLat,
         longitude: endLng,
         
-        // Campos de relacionamento/controle
         criadoPorId: userId,
         status: CaseStatus.AGUARDANDO_ACOLHIDA,
         contatos: data.contatos as any, 
@@ -85,23 +98,29 @@ export class CaseService {
     return newCase
   }
 
-  static async update(id: string, data: UpdateCaseInput, userId: string) {
+  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, dataRespostaSei?: Date | null }, userId: string) {
     const oldCase = await prisma.case.findUnique({ where: { id } })
     if (!oldCase) throw new Error('NOT_FOUND')
 
+    // Cria cópia do objeto para não mutar o original
     const dataToUpdate: any = { ...data }
     
-    // Tratamentos Especiais
+    // Remove o objeto 'endereco' do payload direto, pois vamos mapear manualmente
+    if (data.endereco) {
+        delete dataToUpdate.endereco
+    }
+
+    // Tratamentos de Data/Peso
     if (data.nascimento) dataToUpdate.nascimento = this.stripTime(data.nascimento)
     if (data.dataEntrada) dataToUpdate.dataEntrada = this.stripTime(data.dataEntrada)
     if (data.urgencia) dataToUpdate.pesoUrgencia = this.calculateUrgencyWeight(data.urgencia)
     
-    // Renda
-    if (data.renda !== undefined) {
-       dataToUpdate.renda = data.renda ? new Prisma.Decimal(data.renda) : null
-    }
+    // Renda e SEI
+    if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
+    if (data.seiRespondido !== undefined) dataToUpdate.seiRespondido = data.seiRespondido
+    if (data.dataRespostaSei !== undefined) dataToUpdate.dataRespostaSei = data.dataRespostaSei
 
-    // Lógica de Endereço e Re-Geocodificação
+    // Lógica de Endereço (Mapeamento Manual)
     if (data.endereco) {
       Object.assign(dataToUpdate, {
         endereco_logradouro: data.endereco.logradouro,
@@ -114,8 +133,8 @@ export class CaseService {
         latitude: data.endereco.latitude,
         longitude: data.endereco.longitude,
       })
-      delete dataToUpdate.endereco
 
+      // Re-geocodificação se mudou endereço e não veio lat/lng
       const addressChanged = data.endereco.logradouro !== oldCase.endereco_logradouro || data.endereco.ra !== oldCase.endereco_ra
       if (addressChanged && !data.endereco.latitude) {
         try {
@@ -128,7 +147,11 @@ export class CaseService {
     const updated = await prisma.case.update({ where: { id }, data: dataToUpdate })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, userId, LogAction.OUTRO, `Editou dados cadastrais.`)
+    
+    let logDesc = `Editou dados cadastrais.`
+    if (data.seiRespondido !== undefined) logDesc = data.seiRespondido ? 'Marcou SEI como respondido.' : 'Desmarcou resposta do SEI.'
+    
+    await this.createLog(id, userId, LogAction.OUTRO, logDesc)
     
     return updated
   }
@@ -151,7 +174,6 @@ export class CaseService {
     if (!caso) return null
 
     // --- CÁLCULO ECONÔMICO ---
-    // [CORREÇÃO] Após 'npx prisma generate', caso.renda será reconhecido
     const rendaTitular = caso.renda ? Number(caso.renda) : 0
     
     const rendaFamiliares = caso.familia.reduce((acc, membro) => {
@@ -191,10 +213,8 @@ export class CaseService {
     }
 
     const updated = await prisma.case.update({ where: { id }, data: updateData })
-    
     cache.invalidate('manager_stats')
     await this.createLog(id, userId, LogAction.MUDANCA_STATUS, `Alterou status para ${status}`, caso.status, status)
-    
     return updated
   }
 
@@ -235,25 +255,26 @@ export class CaseService {
     return updated
   }
 
-  // Query Builder Complexo para Listagem
+  // Placeholder para manter compatibilidade
+  static async importCases(fileData: any, userId: string) {
+     return null
+  }
+
   static buildWhereClause(query: any, user: { cargo: string, sub: string }) {
     const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId } = query
     let where: any = {}
 
-    // 1. Filtros de Escopo (Visão)
     if (agenteId) where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
     else if (specialistId) where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
     else if (view === 'all') {
       if (status === 'DESLIGADO') where = { status: CaseStatus.DESLIGADO }
       else where = { status: { not: CaseStatus.DESLIGADO } }
     } else {
-      // [CORREÇÃO] Cargo agora é reconhecido devido ao import
       if (user.cargo === Cargo.Gerente) where = { status: CaseStatus.AGUARDANDO_DISTRIBUICAO }
       else if (user.cargo === Cargo.Agente_Social) where = { agenteAcolhidaId: user.sub, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
       else if (user.cargo === Cargo.Especialista) where = { especialistaPAEFIId: user.sub, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
     }
 
-    // 2. Busca Textual
     if (search) {
       where.AND = [ ...(where.AND || []), {
           OR: [
@@ -265,7 +286,6 @@ export class CaseService {
       }]
     }
 
-    // 3. Filtros Específicos
     if (status && status !== 'all') {
       const validStatuses = status.split(',').filter((s: string) => Object.values(CaseStatus).includes(s as CaseStatus))
       if (validStatuses.length > 0) where.status = { in: validStatuses }

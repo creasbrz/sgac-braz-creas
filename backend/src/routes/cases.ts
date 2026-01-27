@@ -7,34 +7,73 @@ import { CaseStatus, Cargo } from '@prisma/client'
 import { createCaseBodySchema, updateCaseBodySchema } from '../schemas/caseSchema'
 import { CaseService } from '../services/CaseService'
 import { ExportService } from '../services/ExportService'
+import { ImportService } from '../services/ImportService' // Adicionado
 import { format } from 'date-fns'
 
 export async function caseRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
 
+  // Middleware de Autenticação Global para estas rotas
   server.addHook('onRequest', async (request, reply) => {
-    try { await request.jwtVerify() } catch (err) { await reply.status(401).send({ message: 'Não autorizado' }) }
+    try { 
+      await request.jwtVerify() 
+    } catch (err) { 
+      await reply.status(401).send({ message: 'Não autorizado' }) 
+    }
   })
 
   // 1. [POST] CRIAR CASO
   server.post('/cases', {
-    schema: { tags: ['Casos'], body: createCaseBodySchema }
+    schema: { 
+      tags: ['Casos'], 
+      body: createCaseBodySchema 
+    }
   }, async (request, reply) => {
     try {
       const newCase = await CaseService.create(request.body, request.user.sub)
       return reply.status(201).send(newCase)
     } catch (error: any) {
-      if (error.message === 'CPF_ALREADY_EXISTS') return reply.status(409).send({ message: 'CPF já cadastrado.' })
+      if (error.message === 'CPF_ALREADY_EXISTS') {
+        return reply.status(409).send({ message: 'CPF já cadastrado.' })
+      }
       throw error
     }
   })
 
-  // 2. [PUT] EDITAR CASO
+  // 2. [PUT] EDITAR CASO (Inclui lógica do SEI)
   server.put('/cases/:id', {
-    schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }), body: updateCaseBodySchema }
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      // Estendemos o schema aqui caso o arquivo original ainda não tenha os campos, 
+      // ou confiamos que updateCaseBodySchema já foi atualizado.
+      body: updateCaseBodySchema.extend({
+        seiRespondido: z.boolean().optional(),
+        linkSei: z.string().optional().nullable(),
+        numeroSei: z.string().optional().nullable()
+      })
+    }
   }, async (request, reply) => {
     try {
-      const updated = await CaseService.update(request.params.id, request.body, request.user.sub)
+      const { id } = request.params
+      const data = request.body
+
+      // --- LÓGICA DE CONTROLE DO SEI ---
+      // Se o status de resposta foi alterado, manipulamos a data automaticamente
+      let extraData: any = {}
+      
+      if (typeof data.seiRespondido === 'boolean') {
+        if (data.seiRespondido === true) {
+          extraData.dataRespostaSei = new Date() // Marca agora
+        } else {
+          extraData.dataRespostaSei = null // Limpa a data
+        }
+      }
+
+      // Mescla os dados do corpo com a lógica calculada
+      const payload = { ...data, ...extraData }
+
+      const updated = await CaseService.update(id, payload, request.user.sub)
       return reply.send(updated)
     } catch (error: any) {
       if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
@@ -42,7 +81,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 3. [GET] LISTAR CASOS
+  // 3. [GET] LISTAR CASOS (Com filtros avançados)
   server.get('/cases', {
     schema: {
       tags: ['Casos'],
@@ -69,6 +108,7 @@ export async function caseRoutes(app: FastifyInstance) {
     const where = CaseService.buildWhereClause(request.query, { cargo, sub })
 
     let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]
+    
     if (sortBy) {
       if (sortBy === 'urgencia') orderBy = { pesoUrgencia: sortOrder || 'desc' }
       else orderBy = { [sortBy]: sortOrder || 'asc' }
@@ -76,13 +116,22 @@ export async function caseRoutes(app: FastifyInstance) {
 
     const [items, total] = await Promise.all([
       prisma.case.findMany({
-        where, orderBy, take: pageSize, skip: (page - 1) * pageSize,
-        include: { agenteAcolhida: { select: { nome: true } }, especialistaPAEFI: { select: { nome: true } } },
+        where, 
+        orderBy, 
+        take: pageSize, 
+        skip: (page - 1) * pageSize,
+        include: { 
+          agenteAcolhida: { select: { nome: true } }, 
+          especialistaPAEFI: { select: { nome: true } } 
+        },
       }),
       prisma.case.count({ where }),
     ])
 
-    return reply.send({ data: items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } })
+    return reply.send({ 
+      data: items, 
+      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } 
+    })
   })
 
   // 4. [GET] DETALHES COMPLETOS
@@ -100,36 +149,63 @@ export async function caseRoutes(app: FastifyInstance) {
 
   // 5. [PATCH] MUDAR STATUS
   server.patch('/cases/:id/status', {
-    schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }), body: z.object({ status: z.nativeEnum(CaseStatus) }) }
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: z.object({ status: z.nativeEnum(CaseStatus) }) 
+    }
   }, async (request, reply) => {
     try {
       const updated = await CaseService.updateStatus(request.params.id, request.body.status, request.user.sub)
       return reply.send(updated)
-    } catch (e) { return reply.status(404).send({ message: 'Caso não encontrado.' }) }
+    } catch (e) { 
+      return reply.status(404).send({ message: 'Caso não encontrado.' }) 
+    }
   })
 
   // 6. [PATCH] ATRIBUIR TÉCNICO
   server.patch('/cases/:id/assign', {
-    schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }), body: z.object({ specialistId: z.string().uuid() }) }
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: z.object({ specialistId: z.string().uuid() }) 
+    }
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
+    
+    // Apenas Gerente pode atribuir (ou adapte conforme sua regra)
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
     
     try {
       const updated = await CaseService.assignSpecialist(request.params.id, request.body.specialistId, sub)
       return reply.send(updated)
-    } catch (e) { return reply.status(404).send({ message: 'Caso não encontrado.' }) }
+    } catch (e) { 
+      return reply.status(404).send({ message: 'Caso não encontrado.' }) 
+    }
   })
 
   // 7. [PATCH] DESLIGAR CASO
   server.patch('/cases/:id/close', {
-    schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }), body: z.object({ parecerFinal: z.string().min(10), motivoDesligamento: z.string().min(1), destinoDesligamento: z.string().optional() }) }
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: z.object({ 
+        parecerFinal: z.string().min(10), 
+        motivoDesligamento: z.string().min(1), 
+        destinoDesligamento: z.string().optional() 
+      }) 
+    }
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
     
-    const caso = await prisma.case.findUnique({ where: { id: request.params.id }, select: { agenteAcolhidaId: true, especialistaPAEFIId: true } })
+    const caso = await prisma.case.findUnique({ 
+      where: { id: request.params.id }, 
+      select: { agenteAcolhidaId: true, especialistaPAEFIId: true } 
+    })
+    
     if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
+    // Apenas Gerente ou o próprio técnico do caso podem desligar
     const isManager = cargo === Cargo.Gerente
     if (!isManager && caso.agenteAcolhidaId !== sub && caso.especialistaPAEFIId !== sub) {
       return reply.status(403).send({ message: 'Sem permissão.' })
@@ -139,11 +215,12 @@ export async function caseRoutes(app: FastifyInstance) {
     return reply.send(updated)
   })
 
-  // 8. [GET] EXPORTAR EXCEL (Gera relatório completo)
+  // 8. [GET] EXPORTAR EXCEL
   server.get('/cases/export', {
     schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
   }, async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
+    // Apenas Gerente exporta tudo (ou remova se todos puderem)
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
 
     try {
@@ -159,34 +236,47 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 9. [POST] IMPORTAR CASOS (Processa o arquivo preenchido)
+  // 9. [POST] IMPORTAR CASOS (MULTIPART FILE)
   server.post('/cases/import', {
     schema: {
       tags: ['Casos'],
-      summary: 'Importar casos em massa via JSON (do Excel processado no front)',
-      body: z.array(z.any())
+      summary: 'Importar casos em massa via Excel/CSV',
+      // Não definimos 'body' aqui pois é multipart manipulado pelo plugin @fastify/multipart
     }
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
 
+    // Verifica se é multipart
+    if (!request.isMultipart()) {
+      return reply.status(400).send({ message: 'Arquivo obrigatório (multipart/form-data).' })
+    }
+
     try {
-      const result = await CaseService.importCases(request.body, sub)
+      const data = await request.file()
+      if (!data) {
+        return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
+      }
+
+      // Converte stream para buffer
+      const buffer = await data.toBuffer()
+      const isCsv = data.mimetype === 'text/csv' || data.filename.endsWith('.csv')
+
+      // Processa
+      const result = await ImportService.processImport(buffer, isCsv, sub)
+      
       return reply.send(result)
     } catch (error) {
       request.log.error(error)
-      return reply.status(500).send({ message: 'Erro na importação.' })
+      return reply.status(500).send({ message: 'Erro interno na importação.' })
     }
   })
 
-  // 10. [GET] DOWNLOAD MODELO (Gera o template vazio com colunas novas)
+  // 10. [GET] DOWNLOAD MODELO (TEMPLATE)
   server.get('/cases/import/template', {
     schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
   }, async (request, reply) => {
     try {
-      // Reutiliza o serviço de exportação, mas passando um flag ou lista vazia 
-      // para gerar apenas o cabeçalho.
-      // IMPORTANTE: Certifique-se de que o 'generateTemplate' inclua 'Ocupação' e 'Renda'
       const buffer = await ExportService.generateTemplate() 
 
       reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

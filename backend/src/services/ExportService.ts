@@ -9,17 +9,9 @@ import { Buffer } from 'node:buffer'
 const LISTAS = {
   SEXO: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
   
-  // Lista atualizada conforme pedido
   CATEGORIA: [
-    'Mulher', 
-    'POP RUA', 
-    'LGBTQIA+', 
-    'Migrante', 
-    'Idoso', 
-    'Criança/adolescente', 
-    'PCD', 
-    'Álcool/drogas', 
-    'Família em vulnerabilidade'
+    'Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 
+    'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'
   ],
 
   URGENCIA: [
@@ -29,27 +21,17 @@ const LISTAS = {
     'Risco Grave / Morte (Peso 4)'
   ],
 
-  // Lista atualizada conforme pedido
   VIOLACOES: [
-    'Abandono', 
-    'Negligência', 
-    'Afastamento do convívio familiar', 
-    'Violência física', 
-    'Violência psicológica', 
-    'Abuso sexual', 
-    'Exploração sexual',
-    'Tráfico de seres humanos', 
-    'Abuso financeiro/patrimonial', 
-    'Trabalho infantil', 
-    'Discriminação', 
-    'Situação de rua', 
-    'Outros'
+    'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
+    'Violência física', 'Violência psicológica', 'Abuso sexual', 'Exploração sexual',
+    'Tráfico de seres humanos', 'Abuso financeiro/patrimonial', 
+    'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
   ],
 
   STATUS: [
     'AGUARDANDO_ACOLHIDA',
     'AGUARDANDO_DISTRIBUICAO',
-    'EM_ACOLHIDA', // Adicionado para compatibilidade
+    'EM_ACOLHIDA',
     'EM_ACOLHIDA_ESPECIALIZADA',
     'EM_ACOMPANHAMENTO',
     'EM_MONITORAMENTO',
@@ -57,10 +39,7 @@ const LISTAS = {
   ],
 
   ORIGEM: [
-    'ESPONTANEA',
-    'DOCUMENTAL',
-    'REFERENCIADA',
-    'BUSCA_ATIVA'
+    'ESPONTANEA', 'DOCUMENTAL', 'REFERENCIADA', 'BUSCA_ATIVA'
   ],
   
   RAS: [
@@ -95,16 +74,18 @@ export class ExportService {
     return parts.filter(Boolean).join(', ')
   }
 
-  private static addDataValidation(worksheet: ExcelJS.Worksheet, colLetter: string, optionsList: string[]) {
+  private static addDataValidation(worksheet: ExcelJS.Worksheet, colLetter: string, optionsList: string[], allowType: boolean = false) {
     for (let i = 2; i <= 1000; i++) {
       worksheet.getCell(`${colLetter}${i}`).dataValidation = {
         type: 'list',
         allowBlank: true,
         formulae: [`"${optionsList.join(',')}"`],
         showErrorMessage: true,
-        errorStyle: 'warning',
-        errorTitle: 'Entrada Inválida',
-        error: 'Selecione um item da lista.'
+        errorStyle: allowType ? 'warning' : 'stop', // Se allowType=true, deixa digitar fora da lista
+        errorTitle: allowType ? 'Atenção' : 'Valor Inválido',
+        error: allowType 
+          ? 'Este valor não está na lista. Certifique-se que a grafia está correta ou separe múltiplos itens com ponto e vírgula.' 
+          : 'Selecione um item da lista.'
       }
     }
   }
@@ -114,7 +95,8 @@ export class ExportService {
     mainSheet: ExcelJS.Worksheet, 
     colLetter: string, 
     data: string[], 
-    refCol: string
+    refCol: string,
+    allowType: boolean = false
   ) {
     let dataSheet = workbook.getWorksheet('DadosOcultos')
     if (!dataSheet) {
@@ -134,8 +116,11 @@ export class ExportService {
         allowBlank: true,
         formulae: [refRange],
         showErrorMessage: true,
-        errorStyle: 'stop',
-        error: 'Selecione um valor válido.'
+        errorStyle: allowType ? 'warning' : 'stop',
+        errorTitle: allowType ? 'Atenção' : 'Valor Inválido',
+        error: allowType 
+          ? 'Você digitou um valor fora da lista padrão. Se for múltipla escolha, use ponto e vírgula (;).' 
+          : 'Selecione um valor válido.'
       }
     }
   }
@@ -170,12 +155,13 @@ export class ExportService {
       
       { header: 'Orgão Demandante', key: 'orgao', width: 20 },
       { header: 'Nº SEI', key: 'sei', width: 20 },
+      { header: 'Link SEI', key: 'link_sei', width: 30 },
       
-      { header: 'Status', key: 'status', width: 25 },     // W
+      { header: 'Status', key: 'status', width: 25 },     // X
       { header: 'Agente Acolhida', key: 'agente', width: 25 },
       { header: 'Especialista Ref.', key: 'spec', width: 25 },
       
-      { header: 'Origem do Cadastro', key: 'origem', width: 20 }, // Z
+      { header: 'Origem do Cadastro', key: 'origem', width: 20 }, // AA
     ]
   }
 
@@ -188,79 +174,64 @@ export class ExportService {
 
     worksheet.columns = this.getColumns()
 
-    // Estilo
+    // 1. Adicionar Cabeçalho e Estilo
     worksheet.getRow(1).font = { bold: true, size: 12 }
     worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }
 
-    // --- Validadores (Dropdowns) ---
-    this.addDataValidation(worksheet, 'F', LISTAS.SEXO)
-    this.addDataValidation(worksheet, 'Z', LISTAS.ORIGEM)
-    
-    // Listas Grandes via Aba Oculta
-    this.addReferenceValidation(workbook, worksheet, 'G', LISTAS.CATEGORIA, 'A') // Coluna A oculta
-    this.addReferenceValidation(workbook, worksheet, 'O', LISTAS.RAS, 'B')       // Coluna B oculta
-    this.addReferenceValidation(workbook, worksheet, 'Q', LISTAS.URGENCIA, 'C')  // Coluna C oculta
-    this.addReferenceValidation(workbook, worksheet, 'W', LISTAS.STATUS, 'D')    // Coluna D oculta
-    
-    // --- Salvar Violações na Aba Oculta para Referência ---
-    // (Não aplicamos validação estrita na coluna S pois é multi-select, 
-    // mas colocamos a lista na aba oculta caso o usuário queira consultar)
-    let dataSheet = workbook.getWorksheet('DadosOcultos')
-    if (dataSheet) {
-        // Cabeçalho na aba oculta (opcional, só para organização)
-        dataSheet.getCell('E1').value = "LISTA DE VIOLAÇÕES (Para Consulta)"
-        LISTAS.VIOLACOES.forEach((v, i) => dataSheet!.getCell(`E${i+2}`).value = v)
-    }
-
-    // --- Notas de Instrução (Comentários nas Células) ---
-    worksheet.getCell('D1').note = 'Obrigatório. Apenas números (11 dígitos).'
-    
-    // Nota Especial para Violações
-    worksheet.getCell('S1').note = {
-      texts: [
-        {'font': {'bold': true}, 'text': 'Campo de Múltipla Escolha:\n'},
-        {'text': 'Separe os itens com ponto e vírgula (;).\n\nExemplo: Negligência; Abuso sexual\n\n'},
-        {'text': 'Opções Válidas: ' + LISTAS.VIOLACOES.join(', ')}
-      ]
-    }
-
-    worksheet.getCell('J1').note = 'Preencher se for menor de idade.'
-    worksheet.getCell('R1').note = 'Calculado automaticamente se deixado em branco.'
-
-    // --- LINHA DE EXEMPLO (Preenchida) ---
+    // 2. [CORREÇÃO] Adicionar Linha de Exemplo ANTES de aplicar validações em massa
+    // Isso garante que ela fique na linha 2 e não na 1001.
     worksheet.addRow({
-      nome: 'EXEMPLO DE PREENCHIMENTO (Pode apagar esta linha)',
+      nome: 'MARIA EXEMPLO DA SILVA',
       cpf: '000.000.000-00',
       nasc: '10/05/2015',
-      sexo: 'Masculino',
+      sexo: 'Feminino',
       cat: 'Criança/adolescente',
       ocupacao: 'Estudante',
       renda: '0,00',
-      
-      // Exemplo de Responsável
-      resp: 'Maria da Silva (Mãe)',
+      resp: 'JOANA DA SILVA (MÃE)',
       parent: 'Mãe',
-      
       telefone: '61999999999',
       endereco: 'QNN 10 Conjunto A Casa 5',
       cep: '72000000',
       ra: 'Ceilândia',
       entrada: '01/01/2024',
-      
       urgencia: 'Violação de Direitos (Peso 3)',
       peso: '3',
-      
-      // Exemplo de Múltiplas Violações
-      violacoes: 'Negligência; Violência física',
+      violacoes: 'Negligência; Violência física', // Exemplo com múltipla escolha
       beneficios: 'Bolsa Família',
-      
       orgao: 'Conselho Tutelar',
       sei: '00000-000000/2024',
+      link_sei: 'https://sei.df.gov.br/...',
       status: 'AGUARDANDO_DISTRIBUICAO',
       origem: 'DOCUMENTAL',
       agente: 'Nome do Técnico',
       spec: 'Nome do Especialista'
     })
+
+    // 3. Aplicar Validadores (Dropdowns)
+    this.addDataValidation(worksheet, 'F', LISTAS.SEXO)
+    this.addDataValidation(worksheet, 'AA', LISTAS.ORIGEM)
+    
+    // Listas Grandes via Aba Oculta
+    this.addReferenceValidation(workbook, worksheet, 'G', LISTAS.CATEGORIA, 'A') 
+    this.addReferenceValidation(workbook, worksheet, 'O', LISTAS.RAS, 'B')       
+    this.addReferenceValidation(workbook, worksheet, 'Q', LISTAS.URGENCIA, 'C')  
+    this.addReferenceValidation(workbook, worksheet, 'X', LISTAS.STATUS, 'D')
+    
+    // [NOVO] Dropdown de Violações (AllowType=true para permitir "Violência; Negligência")
+    this.addReferenceValidation(workbook, worksheet, 'S', LISTAS.VIOLACOES, 'E', true)
+
+    // 4. Notas de Instrução
+    worksheet.getCell('D1').note = 'Obrigatório. Apenas números (11 dígitos).'
+    worksheet.getCell('S1').note = {
+      texts: [
+        {'font': {'bold': true}, 'text': 'Múltipla Escolha:\n'},
+        {'text': 'Selecione um item da lista OU digite manualmente separando por ponto e vírgula (;).\n\nEx: Negligência; Abuso sexual'}
+      ]
+    }
+    worksheet.getCell('J1').note = 'Preencher se for menor de idade.'
+    worksheet.getCell('R1').note = 'Calculado automaticamente se deixado em branco.'
+    worksheet.getCell('W1').note = 'Cole o link completo do processo SEI.'
 
     const buffer = await workbook.xlsx.writeBuffer()
     return Buffer.from(buffer)
@@ -303,6 +274,7 @@ export class ExportService {
           beneficios: Array.isArray(c.beneficios) ? c.beneficios.join('; ') : '',
           orgao: c.orgaoDemandante,
           sei: c.numeroSei || '-',
+          link_sei: c.linkSei || '-',
           status: c.status.replace(/_/g, ' '),
           agente: c.agenteAcolhida?.nome || '-',
           spec: c.especialistaPAEFI?.nome || '-',

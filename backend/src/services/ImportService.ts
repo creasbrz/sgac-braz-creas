@@ -6,35 +6,18 @@ import { parse, isValid } from 'date-fns'
 import { Buffer } from 'node:buffer'
 import { Readable } from 'stream'
 
-// Mapa de Pesos atualizado com as novas opções
 const MAPA_PESO_URGENCIA: Record<string, number> = {
-  // PESO 4
-  'Convive com agressor': 4, 
-  'Idoso 80+': 4, 
-  'Primeira infância': 4, 
-  'Risco de morte': 4, 
-  'Violência sexual': 4,
+  // GRAVISSIMA (4)
+  'Convive com agressor': 4, 'Idoso 80+': 4, 'Primeira infância': 4, 'Risco de morte': 4, 'Violência sexual': 4,
   'Risco Grave / Morte (Peso 4)': 4,
-  
-  // PESO 3
-  'Risco de reincidência': 3, 
-  'Sofre ameaça': 3, 
-  'Risco de desabrigo': 3, 
-  'Criança/Adolescente': 3,
+  // MUITO GRAVE (3)
+  'Risco de reincidência': 3, 'Sofre ameaça': 3, 'Risco de desabrigo': 3, 'Criança/Adolescente': 3,
   'Violação de Direitos (Peso 3)': 3,
-  
-  // PESO 2
-  'PCD': 2, 
-  'Idoso': 2, 
-  'Internação': 2, 
-  'Acolhimento': 2, 
-  'Gestante/Lactante': 2,
+  // GRAVE (2)
+  'PCD': 2, 'Idoso': 2, 'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2,
   'Risco Social (Peso 2)': 2,
-  
-  // PESO 1
-  'Sem risco imediato': 1, 
-  'Visita periódica': 1,
-  'Sem risco imediato (Peso 1)': 1
+  // LEVE (1)
+  'Sem risco imediato': 1, 'Visita periódica': 1, 'Sem risco imediato (Peso 1)': 1
 }
 
 interface ImportResult {
@@ -95,7 +78,6 @@ export class ImportService {
   static async processImport(fileBuffer: Buffer, isCsv: boolean, userId: string): Promise<ImportResult> {
     const workbook = new ExcelJS.Workbook()
     
-    // Cast 'as any' para evitar erro de tipagem no ExcelJS
     if (isCsv) {
       await workbook.csv.read(Readable.from(fileBuffer as any))
     } else {
@@ -192,7 +174,7 @@ export class ImportService {
           const tel1 = getValue(row, 'telefone', 'celular')
           if (tel1) contatos.push({ tipo: "Principal", numero: String(tel1) })
 
-          // Vínculos
+          // Vínculos de Agentes
           let agenteId = null
           let especialistaId = null
           const rawAgente = getValue(row, 'agenteacolhida', 'agente', 'tecnico')
@@ -205,20 +187,21 @@ export class ImportService {
              especialistaId = userMap.get(this.normalizeName(String(rawEspecialista))) || null
           }
 
-          // Urgência
           const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
           let pesoUrgencia = MAPA_PESO_URGENCIA[urgenciaTexto] || Number(getValue(row, 'pesourgencia', 'peso')) || 1
           
-          // Heurística de fallback se o peso vier zerado
           if (!MAPA_PESO_URGENCIA[urgenciaTexto] && pesoUrgencia === 1) {
              const lower = urgenciaTexto.toLowerCase()
              if (lower.includes('morte') || lower.includes('sexual')) pesoUrgencia = 4
              else if (lower.includes('ameaça') || lower.includes('reincidência')) pesoUrgencia = 3
              else if (lower.includes('acolhimento') || lower.includes('internação')) pesoUrgencia = 2
           }
-
+          
           let statusRaw = String(getValue(row, 'status') || 'AGUARDANDO_DISTRIBUICAO').toUpperCase().replace(/ /g, '_')
           if (!Object.values(CaseStatus).includes(statusRaw as any)) statusRaw = 'AGUARDANDO_DISTRIBUICAO'
+
+          // [NOVO] Extração do Link SEI
+          const linkSei = String(getValue(row, 'linksei', 'link_sei', 'urlsei') || '')
 
           await prisma.case.create({
               data: {
@@ -248,8 +231,11 @@ export class ImportService {
                   orgaoDemandante: String(getValue(row, 'orgaodemandante', 'orgao') || 'Demanda Espontânea'),
                   origem: CaseOrigin.DOCUMENTAL,
                   numeroSei: getValue(row, 'sei', 'numerosei') ? String(getValue(row, 'sei', 'numerosei')) : null,
-                  beneficios,
                   
+                  // [NOVO] Salvando Link SEI
+                  linkSei: linkSei || null,
+                  
+                  beneficios,
                   dataEntrada,
                   status: statusRaw as CaseStatus,
                   
@@ -258,6 +244,7 @@ export class ImportService {
                   criadoPorId: userId
               }
           })
+          
           createdCount++
       } catch (err: any) {
           logs.push(`Linha ${rowNum}: Erro crítico - ${err.message}`)

@@ -15,10 +15,14 @@ const LISTAS = {
   ],
 
   URGENCIA: [
-    'Sem risco imediato (Peso 1)',
-    'Risco Social (Peso 2)',
-    'Violação de Direitos (Peso 3)',
-    'Risco Grave / Morte (Peso 4)'
+    // GRAVISSIMA (4)
+  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual',
+  // MUITO GRAVE (3)
+  'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
+  // GRAVE (2)
+  'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+  // LEVE (1)
+  'Sem risco imediato', 'Visita periódica'
   ],
 
   VIOLACOES: [
@@ -195,7 +199,7 @@ export class ExportService {
       cep: '72000000',
       ra: 'Ceilândia',
       entrada: '01/01/2024',
-      urgencia: 'Violação de Direitos (Peso 3)',
+      urgencia: 'Idoso 80+',
       peso: '3',
       violacoes: 'Negligência; Violência física', // Exemplo com múltipla escolha
       beneficios: 'Bolsa Família',

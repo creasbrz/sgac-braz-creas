@@ -44,6 +44,48 @@ export class CaseService {
 
   // --- MÉTODOS PÚBLICOS ---
 
+  // [NOVO MÉTODO] Centraliza a busca paginada e resolve a duplicação de lógica nas rotas
+  static async findAll(params: any, user: { sub: string, cargo: string }) {
+    const { page = 1, pageSize = 10, sortBy, sortOrder } = params
+    
+    // Constrói o filtro usando o helper existente
+    const where = this.buildWhereClause(params, user)
+
+    // Definição de Ordenação Padrão
+    let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]
+    
+    // Ordenação Personalizada vinda do frontend
+    if (sortBy) {
+      if (sortBy === 'urgencia') orderBy = { pesoUrgencia: sortOrder || 'desc' }
+      else orderBy = { [sortBy]: sortOrder || 'asc' }
+    }
+
+    // Busca dados e contagem em paralelo para performance
+    const [items, total] = await Promise.all([
+      prisma.case.findMany({
+        where,
+        orderBy,
+        take: Number(pageSize),
+        skip: (Number(page) - 1) * Number(pageSize),
+        include: {
+          agenteAcolhida: { select: { nome: true } },
+          especialistaPAEFI: { select: { nome: true } }
+        },
+      }),
+      prisma.case.count({ where }),
+    ])
+
+    return { 
+      data: items, 
+      meta: { 
+        total, 
+        page: Number(page), 
+        pageSize: Number(pageSize), 
+        totalPages: Math.ceil(total / Number(pageSize)) 
+      } 
+    }
+  }
+
   static async create(data: CreateCaseInput, userId: string) {
     // 1. Verificação de Duplicidade
     const exists = await prisma.case.findUnique({ where: { cpf: data.cpf } })
@@ -61,12 +103,11 @@ export class CaseService {
     }
 
     // 3. Persistência
-    // [IMPORTANTE] Desestruturamos 'endereco' para não passá-lo diretamente ao Prisma
     const { endereco, ...restData } = data
 
     const newCase = await prisma.case.create({
       data: {
-        ...restData, // Espalha os outros campos (nome, cpf, etc)
+        ...restData, 
         
         nascimento: this.stripTime(data.nascimento),
         dataEntrada: this.stripTime(data.dataEntrada),
@@ -102,25 +143,20 @@ export class CaseService {
     const oldCase = await prisma.case.findUnique({ where: { id } })
     if (!oldCase) throw new Error('NOT_FOUND')
 
-    // Cria cópia do objeto para não mutar o original
     const dataToUpdate: any = { ...data }
     
-    // Remove o objeto 'endereco' do payload direto, pois vamos mapear manualmente
     if (data.endereco) {
         delete dataToUpdate.endereco
     }
 
-    // Tratamentos de Data/Peso
     if (data.nascimento) dataToUpdate.nascimento = this.stripTime(data.nascimento)
     if (data.dataEntrada) dataToUpdate.dataEntrada = this.stripTime(data.dataEntrada)
     if (data.urgencia) dataToUpdate.pesoUrgencia = this.calculateUrgencyWeight(data.urgencia)
     
-    // Renda e SEI
     if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
     if (data.seiRespondido !== undefined) dataToUpdate.seiRespondido = data.seiRespondido
     if (data.dataRespostaSei !== undefined) dataToUpdate.dataRespostaSei = data.dataRespostaSei
 
-    // Lógica de Endereço (Mapeamento Manual)
     if (data.endereco) {
       Object.assign(dataToUpdate, {
         endereco_logradouro: data.endereco.logradouro,
@@ -134,7 +170,6 @@ export class CaseService {
         longitude: data.endereco.longitude,
       })
 
-      // Re-geocodificação se mudou endereço e não veio lat/lng
       const addressChanged = data.endereco.logradouro !== oldCase.endereco_logradouro || data.endereco.ra !== oldCase.endereco_ra
       if (addressChanged && !data.endereco.latitude) {
         try {
@@ -173,7 +208,6 @@ export class CaseService {
 
     if (!caso) return null
 
-    // --- CÁLCULO ECONÔMICO ---
     const rendaTitular = caso.renda ? Number(caso.renda) : 0
     
     const rendaFamiliares = caso.familia.reduce((acc, membro) => {
@@ -255,7 +289,6 @@ export class CaseService {
     return updated
   }
 
-  // Placeholder para manter compatibilidade
   static async importCases(fileData: any, userId: string) {
      return null
   }

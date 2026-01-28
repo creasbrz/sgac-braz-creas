@@ -579,6 +579,7 @@ export function UpcomingAppointments({
 ==================================================================
 FILE: frontend\src\components\analytics\sections\NetworkSection.tsx
 ==================================================================
+// frontend/src/components/analytics/sections/NetworkSection.tsx
 import { useMemo } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
@@ -720,7 +721,8 @@ function NetworkChartWidget({
                   dataKey="value" 
                   position="right" 
                   className="fill-foreground font-bold text-xs" 
-                  formatter={(val: number) => val > 0 ? val : ''}
+                  // [CORREÇÃO] Tipagem 'any' para satisfazer Recharts v3
+                  formatter={(val: any) => val > 0 ? val : ''}
                 />
               </Bar>
             </BarChart>
@@ -776,14 +778,16 @@ export function NetworkSection({ data }: NetworkSectionProps) {
 ==================================================================
 FILE: frontend\src\components\analytics\sections\OverviewSection.tsx
 ==================================================================
+// frontend/src/components/analytics/sections/OverviewSection.tsx
 import { useMemo } from 'react'
 import {
   XAxis, YAxis, CartesianGrid, 
-  PieChart, Pie, Label, BarChart, Bar, LabelList
+  PieChart, Pie, Label, BarChart, Bar, LabelList, Cell
 } from 'recharts'
 import { 
   TrendingUp, AlertTriangle, PieChart as PieIcon, 
-  Activity, UserPlus, CheckCircle2} from 'lucide-react'
+  Activity, UserPlus, CheckCircle2 
+} from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
@@ -796,54 +800,45 @@ import {
   ChartLegendContent 
 } from "@/components/ui/chart"
 
-import type { ObservatoryData } from '@/utils/pdfGenerator'
+import type { ObservatoryData } from '@/types/case'
 
-// --- UTILS ---
-
-// --- CHART CONFIGURATIONS ---
+// --- CONFIGURAÇÕES ESTÁTICAS ---
 const evolutionChartConfig = {
   novos: {
     label: "Novos Casos",
-    color: "hsl(var(--chart-1))", // Blue/Primary
+    color: "hsl(var(--chart-2))", 
   },
   desligados: {
     label: "Desligamentos",
-    color: "hsl(var(--chart-2))", // Emerald/Green
+    color: "hsl(var(--chart-1))", 
   },
 } satisfies ChartConfig
 
 const urgencyChartConfig = {
   value: {
     label: "Quantidade",
-    // Cores serão definidas dinamicamente no render
-  }
-} satisfies ChartConfig
-
-const violationChartConfig = {
-  value: {
-    label: "Ocorrências",
   }
 } satisfies ChartConfig
 
 export function OverviewSection({ data }: { data: ObservatoryData }) {
   
-  // Helper para cor de urgência (mantendo lógica de negócio)
+  // --- LÓGICA DE NEGÓCIO ---
   const getUrgencyColor = (weight: number) => {
-    if (weight >= 4) return 'hsl(var(--destructive))'; // Red
-    if (weight === 3) return 'hsl(var(--chart-4))'; // Orange
-    if (weight === 2) return 'hsl(var(--chart-3))'; // Yellow/Amber
-    return 'hsl(var(--chart-2))'; // Green
+    if (weight >= 4) return 'hsl(var(--destructive))'; 
+    if (weight === 3) return 'hsl(var(--chart-5))'; // Laranja
+    if (weight === 2) return 'hsl(var(--chart-4))'; // Amarelo
+    return 'hsl(var(--chart-2))'; // Verde
   }
 
-  // Cálculos Básicos
   const totalNovos = useMemo(() => data.evolutionData.reduce((acc, c) => acc + c.novos, 0), [data])
   const totalDesligados = useMemo(() => data.efficiencyData.totalClosed, [data])
   const totalRiscoAlto = useMemo(() => data.urgencyData.filter((u) => u.weight >= 3).reduce((acc, c) => acc + c.value, 0), [data])
   
-  // Processamento de Violações (Split & Count)
-  const pieData = useMemo(() => {
+  // Processamento Dinâmico de Violações
+  const { pieData, violationConfig, principalDemanda } = useMemo(() => {
     const rawCounts: Record<string, number> = {}
 
+    // 1. Contagem
     data.violationData.forEach((item) => {
       const categories = item.name.split(',').map(s => s.trim())
       categories.forEach(cat => {
@@ -851,26 +846,52 @@ export function OverviewSection({ data }: { data: ObservatoryData }) {
       })
     })
 
-    const processedData = Object.entries(rawCounts)
-      .map(([name, value], index) => ({ 
-        name, 
-        value,
-        fill: `hsl(var(--chart-${(index % 5) + 1}))` // Cores cíclicas do tema
-      }))
+    // 2. Transformação em Array
+    let processedData = Object.entries(rawCounts)
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-    
-    if (processedData.length <= 5) return processedData
-    
-    const top5 = processedData.slice(0, 5)
-    const outrosVal = processedData.slice(5).reduce((acc, curr) => acc + curr.value, 0)
-    
-    return [...top5, { name: 'Outros', value: outrosVal, fill: 'hsl(var(--muted))' }]
+
+    // 3. Lógica de Agrupamento
+    if (processedData.length > 10) {
+        const top9 = processedData.slice(0, 9)
+        const outrosVal = processedData.slice(9).reduce((acc, curr) => acc + curr.value, 0)
+        
+        const existingOutros = top9.find(i => i.name.toLowerCase() === 'outros')
+        if (existingOutros) {
+            existingOutros.value += outrosVal
+            processedData = top9
+        } else {
+            processedData = [...top9, { name: 'Outros', value: outrosVal }]
+        }
+    }
+
+    // 4. Geração Dinâmica da Configuração
+    const dynamicConfig: ChartConfig = {
+        occurrences: { label: "Ocorrências" }
+    }
+
+    const finalData = processedData.map((item, index) => {
+        const color = item.name.toLowerCase() === 'outros' 
+            ? "hsl(var(--muted-foreground))" 
+            : `hsl(var(--chart-${(index % 5) + 1}))`
+        
+        dynamicConfig[item.name] = {
+            label: item.name,
+            color: color
+        }
+
+        return { ...item, fill: color }
+    })
+
+    return {
+        pieData: finalData,
+        violationConfig: dynamicConfig,
+        principalDemanda: finalData.length > 0 ? finalData[0].name : 'N/A'
+    }
   }, [data])
 
-  const principalDemanda = pieData.length > 0 ? pieData[0].name : 'N/A'
   const totalViolations = pieData.reduce((acc, curr) => acc + curr.value, 0)
 
-  // Dados de Urgência com Cores
   const urgencyData = useMemo(() => 
     data.urgencyData.map(d => ({
       ...d,
@@ -879,137 +900,140 @@ export function OverviewSection({ data }: { data: ObservatoryData }) {
   [data.urgencyData])
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
       
       {/* 1. KPIs */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <DashboardStatCard 
-          title="Novos Casos (6 Meses)" 
-          value={totalNovos} 
-          icon={UserPlus} 
-          variant="blue" 
-        />
-        <DashboardStatCard 
-          title="Casos Desligados" 
-          value={totalDesligados} 
-          icon={CheckCircle2} 
-          variant="green" 
-        />
-        <DashboardStatCard 
-          title="Alto Risco Ativo" 
-          value={totalRiscoAlto} 
-          icon={AlertTriangle} 
-          variant="rose" 
-        />
-        <DashboardStatCard 
-          title="Principal Demanda" 
-          value={principalDemanda} 
-          icon={Activity} 
-          variant="purple" 
-          description="Violação mais recorrente"
-          // Pequeno ajuste para texto longo se necessário
-          className="text-xl" 
-        />
+        <DashboardStatCard title="Novos Casos (6 Meses)" value={totalNovos} icon={UserPlus} variant="blue" />
+        <DashboardStatCard title="Casos Desligados" value={totalDesligados} icon={CheckCircle2} variant="green" />
+        <DashboardStatCard title="Alto Risco Ativo" value={totalRiscoAlto} icon={AlertTriangle} variant="rose" />
+        <DashboardStatCard title="Principal Demanda" value={principalDemanda} icon={Activity} variant="purple" description="Violação mais recorrente" className="text-xl" />
       </section>
 
-      {/* 2. GRÁFICOS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 2. CHARTS GRID (5 COLUNAS) */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         
-        {/* Fluxo de Atendimento (Bar Chart) */}
-        <Card className="shadow-sm border-border/60">
+        {/* EVOLUÇÃO (Bar Chart) - 60% Width */}
+        <Card className="lg:col-span-3 shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <TrendingUp className="h-4 w-4 text-primary"/> Fluxo de Atendimento
             </CardTitle>
-            <CardDescription>Comparativo mensal de entradas e saídas.</CardDescription>
+            <CardDescription>Entradas vs. Saídas nos últimos meses</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChartContainer config={evolutionChartConfig} className="aspect-[16/9] w-full max-h-[350px]">
-              <BarChart accessibilityLayer data={data.evolutionData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
-                <XAxis 
-                  dataKey="name" 
-                  tickLine={false} 
-                  axisLine={false} 
-                  tickMargin={10} 
-                  fontSize={12}
-                />
-                <ChartTooltip cursor={{fill: 'hsl(var(--muted)/0.2)'}} content={<ChartTooltipContent indicator="dashed" />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                
-                <Bar dataKey="novos" fill="var(--color-novos)" radius={[4, 4, 0, 0]} barSize={24} />
-                <Bar dataKey="desligados" fill="var(--color-desligados)" radius={[4, 4, 0, 0]} barSize={24} />
-              </BarChart>
-            </ChartContainer>
+          <CardContent className="pl-0">
+            {/* [CORREÇÃO] Altura fixa (h-[350px]) em vez de min-h */}
+            <div className="h-[350px] w-full">
+                <ChartContainer config={evolutionChartConfig} className="h-full w-full">
+                  <BarChart accessibilityLayer data={data.evolutionData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} fontSize={12} className="text-muted-foreground font-medium" padding={{ left: 10, right: 10 }} />
+                      <ChartTooltip cursor={{ fill: 'hsl(var(--muted)/0.2)' }} content={<ChartTooltipContent indicator="dashed" className="w-[180px]" />} />
+                      
+                      {/* Legenda com Render Prop */}
+                      <ChartLegend content={({ payload }) => <ChartLegendContent payload={payload} />} />
+                      
+                      <Bar dataKey="novos" fill="var(--color-novos)" radius={[4, 4, 0, 0]} barSize={28} />
+                      <Bar dataKey="desligados" fill="var(--color-desligados)" radius={[4, 4, 0, 0]} barSize={28} />
+                  </BarChart>
+                </ChartContainer>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Matriz de Risco (Vertical Bar) */}
-        <Card className="shadow-sm border-border/60">
+        {/* MATRIZ DE RISCO - 40% Width */}
+        <Card className="lg:col-span-2 shadow-sm border-border/50 flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <AlertTriangle className="h-4 w-4 text-orange-500"/> Matriz de Risco
             </CardTitle>
-            <CardDescription>Distribuição dos casos ativos por gravidade.</CardDescription>
+            <CardDescription>Casos ativos por gravidade</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChartContainer config={urgencyChartConfig} className="aspect-[16/9] w-full max-h-[350px]">
-              <BarChart accessibilityLayer data={urgencyData} layout="vertical" margin={{ left: 0, right: 40 }}>
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4} />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={100} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  fontSize={12}
-                  tick={{fontWeight: 500}} 
-                />
-                <XAxis type="number" hide />
-                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
-                  <LabelList 
-                    dataKey="value" 
-                    position="right" 
-                    className="fill-foreground font-bold text-xs" 
-                  />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+          <CardContent className="flex-1">
+            {/* [CORREÇÃO] Altura fixa (h-[350px]) */}
+            <div className="h-[350px] w-full">
+                <ChartContainer config={urgencyChartConfig} className="h-full w-full">
+                  <BarChart accessibilityLayer data={urgencyData} layout="vertical" margin={{ left: 0, right: 40 }}>
+                      <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                      
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        width={140}  
+                        tickLine={false} 
+                        axisLine={false} 
+                        fontSize={11} 
+                        interval={0} 
+                        className="text-muted-foreground font-medium"
+                      />
+
+                      <XAxis type="number" hide />
+                      <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                      
+                      <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                          {urgencyData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                          <LabelList 
+                            dataKey="value" 
+                            position="right" 
+                            className="fill-foreground font-bold text-sm" 
+                            formatter={(val: any) => val > 0 ? val : ''} 
+                          />
+                      </Bar>
+                  </BarChart>
+                </ChartContainer>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Tipificação das Violações (Donut) */}
-        <Card className="lg:col-span-2 shadow-sm border-border/60">
+        {/* TIPIFICAÇÃO (Donut Chart) */}
+        <Card className="lg:col-span-5 shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <PieIcon className="h-4 w-4 text-purple-500"/> Tipificação das Violações
+              <PieIcon className="h-4 w-4 text-purple-500"/> Natureza das Violações
             </CardTitle>
-            <CardDescription>Principais naturezas de violação identificadas (Contagem individual).</CardDescription>
+            <CardDescription>Distribuição das ocorrências</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[350px] w-full">
-              <ChartContainer config={violationChartConfig} className="mx-auto aspect-square max-h-[350px]">
+            {/* [CORREÇÃO] Altura fixa e remoção de classes conflitantes */}
+            <div className="h-[350px] w-full flex justify-center">
+              <ChartContainer config={violationConfig} className="h-full w-full max-w-[500px]">
                 <PieChart>
                   <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                   <Pie 
                     data={pieData} 
                     dataKey="value" 
                     nameKey="name" 
-                    innerRadius={60} 
-                    strokeWidth={4}
+                    innerRadius={80} 
+                    outerRadius={100} 
+                    strokeWidth={3}
+                    stroke="hsl(var(--card))"
+                    paddingAngle={2}
                   >
-                    <Label 
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                    <Label
                       content={({ viewBox }) => {
                         if (viewBox && "cx" in viewBox && "cy" in viewBox) {
                           return (
                             <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
+                              <tspan
+                                x={viewBox.cx}
+                                y={viewBox.cy}
+                                dy="-1.0em" 
+                                className="fill-foreground text-4xl font-bold tracking-tight"
+                              >
                                 {totalViolations}
                               </tspan>
-                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
-                                OCORRÊNCIAS
+                              <tspan
+                                x={viewBox.cx}
+                                y={viewBox.cy}
+                                dy="-0.5em" 
+                                className="fill-muted-foreground text-xs font-semibold uppercase tracking-wider"
+                              >
+                                Ocorrências
                               </tspan>
                             </text>
                           )
@@ -1017,10 +1041,12 @@ export function OverviewSection({ data }: { data: ObservatoryData }) {
                       }}
                     />
                   </Pie>
+                  
                   <ChartLegend 
-                    content={<ChartLegendContent nameKey="name" />} 
-                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
+                    content={({ payload }) => <ChartLegendContent payload={payload} nameKey="name" />} 
+                    className="-translate-y-2 flex-wrap gap-4 [&>*]:basis-auto" 
                   />
+                  
                 </PieChart>
               </ChartContainer>
             </div>
@@ -1035,6 +1061,7 @@ export function OverviewSection({ data }: { data: ObservatoryData }) {
 ==================================================================
 FILE: frontend\src\components\analytics\sections\PerformanceSection.tsx
 ==================================================================
+// frontend/src/components/analytics/sections/PerformanceSection.tsx
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts'
 import { Users, Gift, Clock, Activity, CheckCircle, AlertCircle } from 'lucide-react'
 
@@ -1047,9 +1074,8 @@ import {
   ChartTooltipContent 
 } from "@/components/ui/chart"
 
-import type { ObservatoryData } from '@/utils/pdfGenerator'
-
-// --- UTILS ---
+// [CORREÇÃO] Importando do local correto dos tipos (SSoT)
+import type { ObservatoryData } from '@/types/case'
 
 // --- CHART CONFIG ---
 const benefitsChartConfig = {
@@ -1064,6 +1090,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
   
   // Data extraction with safe defaults
   const benefits = data.benefitsData || []
+  // Top 5 benefícios mais concedidos
   const sortedBenefits = [...benefits].sort((a, b) => b.value - a.value).slice(0, 5)
   const efficiency = data.efficiencyData || {}
 
@@ -1102,7 +1129,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
       {/* 2. Métricas de Volume e Benefícios */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Card: Grupos e Oficinas (Custom Layout using standard components) */}
+        {/* Card: Grupos e Oficinas (Custom Layout) */}
         <Card className="lg:col-span-1 shadow-sm border-border/60 flex flex-col">
           <CardHeader>
             <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -1111,7 +1138,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
             <CardDescription>Engajamento em grupos e oficinas.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center gap-4">
-             {/* Sub-metric 1 */}
+             {/* Sub-metric 1: Total Participantes */}
              <div className="flex items-center justify-between p-4 bg-pink-50 dark:bg-pink-900/10 rounded-xl border border-pink-100 dark:border-pink-900/30">
                 <div>
                    <p className="text-xs font-bold text-pink-700 dark:text-pink-400 uppercase tracking-wider">Participantes</p>
@@ -1124,7 +1151,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
                 </div>
              </div>
              
-             {/* Sub-metric 2 */}
+             {/* Sub-metric 2: Média por Grupo */}
              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50">
                 <div>
                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Média por Grupo</p>
@@ -1162,7 +1189,7 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
                     tickLine={false} 
                     axisLine={false}
                     tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
-                    // Truncate long names
+                    // Truncate long names to keep layout clean
                     tickFormatter={(val) => val.length > 18 ? `${val.substring(0, 18)}...` : val}
                   />
                   <ChartTooltip 
@@ -1202,9 +1229,10 @@ export function PerformanceSection({ data }: { data: ObservatoryData }) {
 ==================================================================
 FILE: frontend\src\components\analytics\sections\SocialSection.tsx
 ==================================================================
+// frontend/src/components/analytics/sections/SocialSection.tsx
 import { useMemo } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, PieChart, Pie, Label
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, PieChart, Pie, Label, Cell
 } from 'recharts'
 import { Users, BarChart3 } from 'lucide-react'
 
@@ -1218,7 +1246,7 @@ import {
   ChartLegendContent 
 } from "@/components/ui/chart"
 
-import type { ObservatoryData } from '@/utils/pdfGenerator'
+import type { ObservatoryData } from '@/types/case'
 
 // --- CHART CONFIG ---
 const ageChartConfig = {
@@ -1253,10 +1281,11 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
   const sexData = useMemo(() => {
     return data.sexData.map(item => {
       const name = item.name.toLowerCase()
-      let fill = "var(--color-other)" // Default fallback
+      // Usando variáveis CSS HSL para consistência
+      let fill = "hsl(var(--muted-foreground))" // Default fallback (Cinza)
       
-      if (name.includes('masculino') || name.startsWith('m')) fill = "var(--color-male)"
-      else if (name.includes('feminino') || name.startsWith('f')) fill = "var(--color-female)"
+      if (name.includes('masculino') || name.startsWith('m')) fill = "hsl(var(--chart-1))" // Azul
+      else if (name.includes('feminino') || name.startsWith('f')) fill = "hsl(var(--chart-3))" // Rosa
       
       return { ...item, fill }
     })
@@ -1277,41 +1306,44 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
         </CardHeader>
         <CardContent className="flex-1 min-h-[350px]">
           {data.ageData.length > 0 ? (
-            <ChartContainer config={ageChartConfig} className="w-full h-full">
-              <BarChart 
-                accessibilityLayer
-                data={data.ageData} 
-                layout="vertical" 
-                margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
-              >
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4}/>
-                <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={100} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
-                />
-                <ChartTooltip 
-                  cursor={{fill: 'hsl(var(--muted)/0.2)'}} 
-                  content={<ChartTooltipContent indicator="dashed" />} 
-                />
-                <Bar 
-                  dataKey="value" 
-                  fill="var(--color-value)" 
-                  radius={[0, 4, 4, 0]} 
-                  barSize={24}
+            // [CORREÇÃO] min-h explícito para evitar warning de width
+            <div className="w-full h-[350px]">
+              <ChartContainer config={ageChartConfig} className="w-full h-full">
+                <BarChart 
+                  accessibilityLayer
+                  data={data.ageData} 
+                  layout="vertical" 
+                  margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
                 >
-                  <LabelList 
-                    dataKey="value" 
-                    position="right" 
-                    className="fill-foreground font-bold text-xs" 
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4}/>
+                  <XAxis type="number" hide />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    width={100} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
                   />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+                  <ChartTooltip 
+                    cursor={{fill: 'hsl(var(--muted)/0.2)'}} 
+                    content={<ChartTooltipContent indicator="dashed" />} 
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    fill="var(--color-value)" 
+                    radius={[0, 4, 4, 0]} 
+                    barSize={24}
+                  >
+                    <LabelList 
+                      dataKey="value" 
+                      position="right" 
+                      className="fill-foreground font-bold text-xs" 
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
               Sem dados de idade disponíveis.
@@ -1338,39 +1370,48 @@ export function SocialSection({ data }: { data: ObservatoryData }) {
         </CardHeader>
         <CardContent className="flex-1 min-h-[350px]">
           {sexData.length > 0 ? (
-            <ChartContainer config={genderChartConfig} className="mx-auto aspect-square max-h-[350px]">
-              <PieChart>
-                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                <Pie 
-                  data={sexData} 
-                  dataKey="value" 
-                  nameKey="name" 
-                  innerRadius={70} 
-                  strokeWidth={4}
-                >
-                  <Label 
-                    content={({ viewBox }) => {
-                      if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                        return (
-                          <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                            <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
-                              {totalUsers}
-                            </tspan>
-                            <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
-                              USUÁRIOS
-                            </tspan>
-                          </text>
-                        )
-                      }
-                    }}
+            // [CORREÇÃO] min-h explícito
+            <div className="w-full h-[350px]">
+              <ChartContainer config={genderChartConfig} className="mx-auto aspect-square max-h-[350px]">
+                <PieChart>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                  <Pie 
+                    data={sexData} 
+                    dataKey="value" 
+                    nameKey="name" 
+                    innerRadius={75} 
+                    strokeWidth={4}
+                    paddingAngle={3}
+                    stroke="none"
+                  >
+                    {sexData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                    <Label 
+                      content={({ viewBox }) => {
+                        if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                          return (
+                            <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
+                                {totalUsers}
+                              </tspan>
+                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs">
+                                USUÁRIOS
+                              </tspan>
+                            </text>
+                          )
+                        }
+                      }}
+                    />
+                  </Pie>
+                  {/* [CORREÇÃO] Adicionado payload={[]} para satisfazer o TypeScript no Recharts v3 */}
+                  <ChartLegend 
+                    content={<ChartLegendContent nameKey="name" payload={[]} />} 
+                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
                   />
-                </Pie>
-                <ChartLegend 
-                  content={<ChartLegendContent nameKey="name" />} 
-                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" 
-                />
-              </PieChart>
-            </ChartContainer>
+                </PieChart>
+              </ChartContainer>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
               Sem dados de gênero disponíveis.
@@ -1688,11 +1729,13 @@ export function TerritoryMap({ data }: TerritoryMapProps) {
 ==================================================================
 FILE: frontend\src\components\case\CaseActions.tsx
 ==================================================================
+// frontend/src/components/case/CaseActions.tsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
-  MoreHorizontal, UserPlus, ArrowRight, CheckCircle2, XCircle, Loader2, Power, AlertTriangle 
+  MoreHorizontal, UserPlus, ArrowRight, CheckCircle2, XCircle, 
+  Loader2, Power, AlertTriangle 
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -1729,24 +1772,32 @@ interface CaseActionsProps {
   caseId: string
   status: string
   currentSpecialistId?: string
+  // [NEW PROPS] For SEI control on case closure
+  seiRespondido?: boolean
+  numeroSei?: string | null
 }
 
-export function CaseActions({ caseId, status }: CaseActionsProps) {
+export function CaseActions({ 
+  caseId, 
+  status, 
+  seiRespondido = false, 
+  numeroSei = null 
+}: CaseActionsProps) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  // Estados dos Modais
+  // Modal States
   const [isAssignOpen, setIsAssignOpen] = useState(false)
   const [isCloseOpen, setIsCloseOpen] = useState(false)
   const [pendingStatusAction, setPendingStatusAction] = useState<StatusAction | null>(null)
 
-  // Estados do Form de Desligamento
+  // Closure Form States
   const [closeReason, setCloseReason] = useState('')
   const [closeDestination, setCloseDestination] = useState('')
   const [closeParecer, setCloseParecer] = useState('')
 
-  // 1. Mutação: Alterar Status
+  // 1. Mutation: Change Status
   const { mutate: changeStatus, isPending: isChanging } = useMutation({
     mutationFn: async (newStatus: string) => {
       await api.patch(`/cases/${caseId}/status`, { status: newStatus })
@@ -1760,7 +1811,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
     onError: () => toast.error('Erro ao atualizar status.')
   })
 
-  // 2. Mutação: Desligar Caso
+  // 2. Mutation: Close Case
   const { mutate: closeCase, isPending: isClosing } = useMutation({
     mutationFn: async () => {
       await api.patch(`/cases/${caseId}/close`, {
@@ -1773,12 +1824,10 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
       toast.success('Caso desligado e arquivado.')
       setIsCloseOpen(false)
       
-      // Invalida cache para atualizar UI
+      // Invalidate cache to update UI
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       
-      // [CORREÇÃO] Redireciona para o próprio caso (que agora estará "somente leitura"),
-      // ao invés de ir para a lista geral.
       navigate(`/app/cases/${caseId}`) 
     },
     onError: () => toast.error('Erro ao desligar caso.')
@@ -1787,7 +1836,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
   const actions = user ? getAvailableActions(status, user.cargo) : []
   if (!actions.length) return null
 
-  // Handler centralizado
+  // Centralized Handler
   const handleAction = (action: StatusAction) => {
     if (action.type === 'assign') setIsAssignOpen(true)
     else if (action.type === 'close') setIsCloseOpen(true)
@@ -1799,7 +1848,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Ação Principal em Destaque */}
+      {/* Primary Action Button */}
       {primaryAction && (
         <Button 
           onClick={() => handleAction(primaryAction)}
@@ -1812,7 +1861,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         </Button>
       )}
 
-      {/* Menu de Ações Secundárias */}
+      {/* Secondary Actions Menu */}
       {secondaryActions.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1839,7 +1888,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         </DropdownMenu>
       )}
 
-      {/* --- MODAIS --- */}
+      {/* --- MODALS --- */}
 
       <AssignSpecialistModal 
         isOpen={isAssignOpen} 
@@ -1847,7 +1896,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         caseId={caseId} 
       />
 
-      {/* Modal de Transição de Status */}
+      {/* Status Transition Modal */}
       <Dialog open={!!pendingStatusAction} onOpenChange={(o) => !o && setPendingStatusAction(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1868,7 +1917,7 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Desligamento (Critical) */}
+      {/* Case Closure Modal (Critical) */}
       <Dialog open={isCloseOpen} onOpenChange={setIsCloseOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -1880,13 +1929,28 @@ export function CaseActions({ caseId, status }: CaseActionsProps) {
             </DialogDescription>
           </DialogHeader>
           
-          <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Atenção</AlertTitle>
-            <AlertDescription>
-              Certifique-se de que todos os relatórios e encaminhamentos foram concluídos antes de prosseguir.
-            </AlertDescription>
-          </Alert>
+          {/* [NEW] PENDING SEI RESPONSE ALERT */}
+          {numeroSei && !seiRespondido && (
+            <Alert className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-800">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertTitle className="ml-2 font-bold">Resposta ao SEI Pendente</AlertTitle>
+              <AlertDescription className="ml-2 text-xs mt-1">
+                O processo <strong>{numeroSei}</strong> consta como não respondido. 
+                <br/>Lembre-se de enviar o ofício de resposta ao órgão demandante informando o desligamento.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Standard Warning Alert */}
+          {(!numeroSei || seiRespondido) && (
+             <Alert variant="destructive" className="bg-destructive/10 border-destructive/20 text-destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Atenção</AlertTitle>
+                <AlertDescription>
+                  Certifique-se de que todos os relatórios e encaminhamentos foram concluídos antes de prosseguir.
+                </AlertDescription>
+             </Alert>
+          )}
 
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
@@ -2155,348 +2219,6 @@ export function CaseContactList({ contatos, telefoneAntigo }: CaseContactListPro
 }
 
 ==================================================================
-FILE: frontend\src\components\case\CaseEvolutions.tsx
-==================================================================
-// frontend/src/components/case/CaseEvolutions.tsx
-import { useState } from "react"
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
-import { 
-  Send, Loader2, PlusCircle, Lock, ChevronDown, 
-  MoreVertical, Pencil, Trash2, History
-} from "lucide-react"
-import { toast } from "sonner"
-import { jwtDecode } from "jwt-decode"
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-
-import type { Evolution } from '@/types/case'
-
-function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
-
-interface PaginatedEvolutions {
-  items: Evolution[]
-  total: number
-  page: number
-  totalPages: number
-}
-
-// Hook de Auth (Simplificado)
-function useCurrentUserId() {
-  const token = localStorage.getItem('@sgac-braz:token') 
-  if (!token) return null
-  try {
-    const decoded: any = jwtDecode(token)
-    return decoded.sub 
-  } catch (e) { return null }
-}
-
-// Helper para cor determinística de avatar
-const getAvatarColor = (name: string) => {
-  const colors = [
-    'bg-red-100 text-red-700', 'bg-orange-100 text-orange-700', 'bg-amber-100 text-amber-700',
-    'bg-yellow-100 text-yellow-700', 'bg-lime-100 text-lime-700', 'bg-green-100 text-green-700',
-    'bg-emerald-100 text-emerald-700', 'bg-teal-100 text-teal-700', 'bg-cyan-100 text-cyan-700',
-    'bg-sky-100 text-sky-700', 'bg-blue-100 text-blue-700', 'bg-indigo-100 text-indigo-700',
-    'bg-violet-100 text-violet-700', 'bg-purple-100 text-purple-700', 'bg-fuchsia-100 text-fuchsia-700',
-    'bg-pink-100 text-pink-700', 'bg-rose-100 text-rose-700'
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  return colors[Math.abs(hash) % colors.length]
-}
-
-// --- ITEM INDIVIDUAL ---
-function EvolutionItem({ evo, currentUserId, onUpdate, onDeleteLocal }: any) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editContent, setEditContent] = useState(evo.conteudo)
-  const [editSigilo, setEditSigilo] = useState(evo.sigilo)
-  const isAuthor = currentUserId === evo.autor?.id
-
-  const { mutate: saveEdit, isPending: isSaving } = useMutation({
-    mutationFn: async () => await api.patch(`/evolutions/${evo.id}`, { conteudo: editContent, sigilo: editSigilo }),
-    onSuccess: () => {
-      toast.success("Atualizado!")
-      setIsEditing(false)
-      onUpdate()
-    },
-    onError: () => toast.error("Erro ao atualizar.")
-  })
-
-  const { mutate: deleteEvo, isPending: isDeleting } = useMutation({
-    mutationFn: async () => await api.delete(`/evolutions/${evo.id}`),
-    onSuccess: () => {
-      onDeleteLocal(evo.id)
-      toast.success("Removido.")
-      onUpdate()
-    },
-    onError: () => toast.error("Erro ao remover.")
-  })
-
-  return (
-    <div className="relative pl-8 sm:pl-10 group animate-in fade-in slide-in-from-bottom-3 duration-500">
-      {/* Linha do Tempo Vertical */}
-      <div className="absolute left-[15px] sm:left-[19px] top-10 bottom-0 w-px bg-border group-last:hidden" />
-      
-      {/* Avatar na Timeline */}
-      <div className="absolute left-0 top-0">
-        <Avatar className={cn(
-          "h-8 w-8 sm:h-10 sm:w-10 border-2 shadow-sm transition-transform group-hover:scale-105",
-          evo.sigilo ? "border-amber-200" : "border-background"
-        )}>
-          <AvatarFallback className={cn(
-            "font-bold text-xs sm:text-sm", 
-            evo.sigilo ? "bg-amber-100 text-amber-700" : getAvatarColor(evo.autor?.nome || 'U')
-          )}>
-            {evo.sigilo ? <Lock className="h-3 w-3 sm:h-4 sm:w-4" /> : (evo.autor?.nome?.[0] || "U")}
-          </AvatarFallback>
-        </Avatar>
-      </div>
-
-      {/* Conteúdo */}
-      <Card className={cn(
-        "mb-6 transition-all shadow-sm border",
-        evo.sigilo ? "bg-amber-50/40 border-amber-200" : "hover:border-primary/30"
-      )}>
-        <CardContent className="p-3 sm:p-4">
-          
-          {/* Cabeçalho */}
-          <div className="flex justify-between items-start mb-2 gap-3">
-            <div className="min-w-0">
-               <div className="flex items-center gap-2 flex-wrap">
-                 <span className="font-bold text-sm text-foreground truncate max-w-[200px] sm:max-w-md">
-                   {evo.autor?.nome}
-                 </span>
-                 {evo.sigilo && (
-                   <Badge variant="outline" className="h-5 px-1.5 bg-amber-100 text-amber-800 border-amber-200 text-[10px] gap-1">
-                     <Lock className="w-3 h-3"/> SIGILO
-                   </Badge>
-                 )}
-               </div>
-               <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wide font-medium">
-                 {evo.autor?.cargo?.replace('_', ' ') || 'Profissional'}
-               </p>
-            </div>
-
-            <div className="flex items-center gap-1 shrink-0">
-              <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap" title={format(new Date(evo.createdAt), "PPPppp", { locale: ptBR })}>
-                {format(new Date(evo.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}
-              </span>
-              
-              {isAuthor && !isEditing && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 ml-1 text-muted-foreground hover:text-foreground">
-                      <MoreVertical className="h-3 w-3 sm:h-4 sm:w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setIsEditing(true)}>
-                      <Pencil className="mr-2 h-4 w-4" /> Editar
-                    </DropdownMenuItem>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                         <div className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10">
-                            <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                         </div>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Excluir evolução?</AlertDialogTitle>
-                          <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => deleteEvo()} className="bg-destructive hover:bg-destructive/90">
-                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : "Excluir"}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          </div>
-
-          {/* Corpo do Texto */}
-          {isEditing ? (
-            <div className="space-y-3 animate-in fade-in duration-300">
-              <Textarea 
-                value={editContent} 
-                onChange={(e) => setEditContent(e.target.value)} 
-                className="min-h-[120px] bg-background text-sm"
-              />
-              <div className="flex items-center justify-between bg-muted/30 p-2 rounded-md border">
-                <div className="flex items-center space-x-2">
-                  <Checkbox id={`edit-sigilo-${evo.id}`} checked={editSigilo} onCheckedChange={(c) => setEditSigilo(!!c)} />
-                  <Label htmlFor={`edit-sigilo-${evo.id}`} className="text-xs cursor-pointer">Sigiloso</Label>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
-                  <Button size="sm" onClick={() => saveEdit()} disabled={isSaving || !editContent.trim()}>
-                    {isSaving && <Loader2 className="mr-2 h-3 w-3 animate-spin"/>} Salvar
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className={cn(
-              "text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap break-words font-normal",
-              evo.sigilo && "text-amber-900/80"
-            )}>
-              {evo.conteudo}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// --- COMPONENTE PRINCIPAL ---
-export function CaseEvolutions({ caseId }: { caseId: string }) {
-  const queryClient = useQueryClient()
-  const [newEvolution, setNewEvolution] = useState("")
-  const [isSecret, setIsSecret] = useState(false)
-  const currentUserId = useCurrentUserId()
-
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery<PaginatedEvolutions>({
-    queryKey: ["evolutions", caseId],
-    queryFn: async ({ pageParam = 1 }) => (await api.get(`/cases/${caseId}/evolutions`, { params: { page: pageParam, pageSize: 10 } })).data,
-    initialPageParam: 1,
-    getNextPageParam: (last) => last.page < last.totalPages ? last.page + 1 : undefined,
-  })
-
-  const { mutate: addEvolution, isPending } = useMutation({
-    mutationFn: async () => {
-      if (!newEvolution.trim()) return
-      await api.post(`/cases/${caseId}/evolutions`, { conteudo: newEvolution, sigilo: isSecret })
-    },
-    onSuccess: () => {
-      toast.success("Registrado!")
-      setNewEvolution("")
-      setIsSecret(false)
-      queryClient.invalidateQueries({ queryKey: ["evolutions", caseId] })
-    },
-    onError: () => toast.error("Erro ao salvar.")
-  })
-
-  // Update Otimista Local
-  const handleLocalDelete = (id: string) => {
-    queryClient.setQueryData(["evolutions", caseId], (old: any) => {
-      if (!old) return old
-      return { ...old, pages: old.pages.map((p: any) => ({ ...p, items: p.items.filter((i: any) => i.id !== id) })) }
-    })
-  }
-
-  const isEmpty = !data?.pages[0]?.items.length
-
-  return (
-    <div className="space-y-8 pb-10">
-      
-      {/* Editor */}
-      <div className={cn(
-        "rounded-xl border shadow-sm p-1 transition-all focus-within:ring-2 focus-within:ring-primary/20",
-        isSecret ? "bg-amber-50/50 border-amber-200" : "bg-card border-border"
-      )}>
-         <div className="p-3 sm:p-4 space-y-3">
-            <div className="flex items-center justify-between">
-               <h3 className={cn("text-sm font-semibold flex items-center gap-2", isSecret ? "text-amber-700" : "text-foreground")}>
-                 {isSecret ? <Lock className="h-4 w-4"/> : <PlusCircle className="h-4 w-4 text-primary"/>}
-                 {isSecret ? "Novo Registro Sigiloso" : "Nova Evolução"}
-               </h3>
-               <div className="flex items-center space-x-2">
-                 <Checkbox id="new-sigilo" checked={isSecret} onCheckedChange={(c) => setIsSecret(!!c)} />
-                 <Label htmlFor="new-sigilo" className="text-xs cursor-pointer select-none">Sigiloso</Label>
-               </div>
-            </div>
-            
-            <Textarea 
-               placeholder="Digite aqui o relato técnico..."
-               value={newEvolution}
-               onChange={e => setNewEvolution(e.target.value)}
-               className="min-h-[100px] border-0 bg-transparent resize-none focus-visible:ring-0 px-0 text-sm"
-            />
-            
-            <div className="flex justify-between items-center pt-2 border-t border-border/50">
-               <p className="text-[10px] text-muted-foreground hidden sm:block">
-                  Pressione Ctrl+Enter para enviar rápido (futuro)
-               </p>
-               <Button size="sm" onClick={() => addEvolution()} disabled={isPending || !newEvolution.trim()} 
-                 className={cn("gap-2", isSecret && "bg-amber-600 hover:bg-amber-700 text-white")}
-               >
-                  {isPending ? <Loader2 className="h-3 w-3 animate-spin"/> : <Send className="h-3 w-3"/>}
-                  Registrar
-               </Button>
-            </div>
-         </div>
-      </div>
-
-      <div className="relative">
-         {isLoading ? (
-            <div className="space-y-4 pt-4">
-               {[1,2,3].map(i => (
-                 <div key={i} className="flex gap-4 animate-pulse">
-                    <div className="h-10 w-10 rounded-full bg-muted shrink-0"/>
-                    <div className="flex-1 h-24 rounded-lg bg-muted"/>
-                 </div>
-               ))}
-            </div>
-         ) : isEmpty ? (
-            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
-               <History className="h-10 w-10 mb-2 opacity-20"/>
-               <p className="text-sm">Histórico vazio.</p>
-            </div>
-         ) : (
-            <div className="space-y-0 relative">
-               {data?.pages.map((page, i) => (
-                  <div key={i}>
-                     {page.items.map(evo => (
-                        <EvolutionItem 
-                          key={evo.id} 
-                          evo={evo} 
-                          currentUserId={currentUserId} 
-                          onUpdate={() => queryClient.invalidateQueries({ queryKey: ["evolutions", caseId] })}
-                          onDeleteLocal={handleLocalDelete}
-                        />
-                     ))}
-                  </div>
-               ))}
-               
-               {hasNextPage && (
-                  <div className="flex justify-center pt-6 relative z-10">
-                     <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage} className="gap-2 bg-background shadow-sm">
-                        {isFetchingNextPage ? <Loader2 className="h-3 w-3 animate-spin"/> : <ChevronDown className="h-3 w-3"/>}
-                        Carregar Antigos
-                     </Button>
-                  </div>
-               )}
-            </div>
-         )}
-      </div>
-    </div>
-  )
-}
-
-==================================================================
 FILE: frontend\src\components\case\CaseFilters.tsx
 ==================================================================
 import { Search, X, Filter } from "lucide-react"
@@ -2637,18 +2359,23 @@ export function CaseFilters({ filters, setFilters }: CaseFiltersProps) {
 FILE: frontend\src\components\case\CaseForm.tsx
 ==================================================================
 // frontend/src/components/case/CaseForm.tsx
-import { useEffect, useMemo, useState } from 'react'
+
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useForm, useFieldArray, useFormContext } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, Trash2, MapPin, Phone, User, AlertCircle, Briefcase } from 'lucide-react'
+import { 
+  Loader2, Plus, Trash2, MapPin, Phone, User, 
+  AlertCircle, Briefcase, FileText 
+} from 'lucide-react'
 import { clsx } from 'clsx'
 import { differenceInYears } from 'date-fns'
 
+// Libs & Components
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Input, InputProps } from '@/components/ui/input' // [NOVO] Importando InputProps
+import { Input, InputProps } from '@/components/ui/input'
 import { MaskedInput } from '@/components/ui/masked-input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -2662,56 +2389,20 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 
+// Utils & Schemas
 import { getErrorMessage } from '@/utils/error'
 import { createCaseFormSchema, type CreateCaseFormData } from '@/schemas/caseSchemas'
 import { useAgents } from '@/hooks/api/useCaseQueries'
 import { REGIOES_ADMINISTRATIVAS } from '@/constants/locations'
 import { OPTIONS } from '@/constants/options'
 
-// --- MÁSCARA MONETÁRIA (NOVO COMPONENTE INTERNO) ---
-
-interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
-  value: number
-  onChange: (value: number) => void
-}
-
-function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
-  const [displayValue, setDisplayValue] = useState('')
-
-  useEffect(() => {
-    const formatted = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-    }).format(value || 0)
-    
-    setDisplayValue(formatted)
-  }, [value])
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value.replace(/\D/g, '')
-    const numberValue = Number(rawValue) / 100
-    onChange(numberValue)
-  }
-
-  return (
-    <Input
-      {...props}
-      value={displayValue}
-      onChange={handleChange}
-      className={className}
-      placeholder="R$ 0,00"
-    />
-  )
-}
-
-// --- CONSTANTES LOCAIS ---
+// --- CONSTANTES ---
 
 const MASKS = {
   CPF: '000.000.000-00',
   PHONE: '(00) 00000-0000',
   CEP: '00000-000',
-  SEI: '00000-00000000/0000-00'
+  // SEI removido daqui pois é dinâmico
 }
 
 const getLocalDateOnly = (date = new Date()) =>
@@ -2728,7 +2419,74 @@ const defaultValues: CreateCaseFormData = {
   dataEntrada: getLocalDateOnly(), 
 }
 
-// --- SUB-COMPONENTES MODULARES ---
+// --- COMPONENTES UTILITÁRIOS ---
+
+// [CORRIGIDO] Input Inteligente para SEI (Removido a prop 'guide' que causava erro)
+function SeiInput({ value, onChange }: { value: string, onChange: (val: string) => void }) {
+  // Define qual máscara usar baseado no tamanho dos dígitos
+  const rawValue = value?.replace(/\D/g, '') || ''
+  
+  // Se tiver mais de 19 dígitos, assume o formato longo (21 digitos)
+  // Formato Curto: 00054-00160500/2025-77 (19 char mask)
+  // Formato Longo: 19.04.1237.0168706/2025-77 (21 char mask)
+  
+  const mask = rawValue.length > 19 
+    ? '00.00.0000.0000000/0000-00' // Máscara longa
+    : '00000-00000000/0000-00'     // Máscara padrão
+
+  return (
+    <MaskedInput 
+      mask={mask} 
+      placeholder="Digite o número do processo..." 
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+}
+
+interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
+  value: number
+  onChange: (value: number) => void
+}
+
+function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
+  // Garante que value seja numérico
+  const safeValue = isNaN(value) ? 0 : value
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    }).format(val)
+  }
+
+  const [displayValue, setDisplayValue] = useState(formatCurrency(safeValue))
+
+  useEffect(() => {
+    setDisplayValue(formatCurrency(safeValue))
+  }, [safeValue])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/\D/g, '')
+    const numberValue = Number(rawValue) / 100
+    
+    setDisplayValue(formatCurrency(numberValue))
+    onChange(numberValue)
+  }
+
+  return (
+    <Input
+      {...props}
+      value={displayValue}
+      onChange={handleChange}
+      className={className}
+      placeholder="R$ 0,00"
+    />
+  )
+}
+
+// --- SEÇÕES DO FORMULÁRIO ---
 
 function PersonalDataSection() {
   const { control, watch } = useFormContext<CreateCaseFormData>()
@@ -2741,8 +2499,8 @@ function PersonalDataSection() {
   }, [nascimento])
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-primary/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <User className="h-5 w-5" /> Identificação Pessoal
         </CardTitle>
@@ -2782,7 +2540,6 @@ function PersonalDataSection() {
           )}/>
         </div>
 
-        {/* [ATUALIZADO] Ocupação e Renda (Com MoneyInput) */}
         <div className="md:col-span-6">
           <FormField control={control} name="ocupacao" render={({ field }) => (
             <FormItem>
@@ -2790,7 +2547,6 @@ function PersonalDataSection() {
               <Select value={field.value || ""} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Selecione a ocupação" /></SelectTrigger></FormControl>
                 <SelectContent>
-                  {/* [CORREÇÃO] Usando constante importada */}
                   {OPTIONS.ocupacao.map(op => <SelectItem key={op} value={op}>{op}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -2803,9 +2559,8 @@ function PersonalDataSection() {
             <FormItem>
               <FormLabel>Renda Individual</FormLabel>
               <FormControl>
-                {/* [NOVO] Componente de máscara monetária */}
                 <MoneyInput 
-                  value={field.value} 
+                  value={Number(field.value) || 0} 
                   onChange={field.onChange} 
                 />
               </FormControl>
@@ -2839,8 +2594,8 @@ function ContactSection() {
   const { fields, append, remove } = useFieldArray({ control, name: "contatos" })
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-emerald-500/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <Phone className="h-5 w-5" /> Contatos
         </CardTitle>
@@ -2908,13 +2663,10 @@ function AddressSection() {
   const { control, setValue } = useFormContext<CreateCaseFormData>()
   const [isLoadingCep, setIsLoadingCep] = useState(false)
 
-  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    const cepRaw = e.target.value.replace(/\D/g, '')
-    if (cepRaw.length !== 8) return
-
-    setIsLoadingCep(true)
+  const fetchAddressByCep = useCallback(async (cep: string) => {
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${cepRaw}/json/`)
+      setIsLoadingCep(true)
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
       const data = await response.json()
 
       if (!data.erro) {
@@ -2927,22 +2679,28 @@ function AddressSection() {
         if (REGIOES_ADMINISTRATIVAS.includes(data.bairro)) {
             setValue('endereco.ra', data.bairro)
         }
-        
         toast.success('Endereço encontrado!')
       } else {
         toast.error('CEP não encontrado.')
       }
     } catch (error) {
       console.error(error)
-      toast.error('Erro ao buscar CEP.')
+      toast.error('Erro ao buscar CEP. Verifique sua conexão.')
     } finally {
       setIsLoadingCep(false)
+    }
+  }, [setValue])
+
+  const handleCepBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const cepRaw = e.target.value.replace(/\D/g, '')
+    if (cepRaw.length === 8) {
+      fetchAddressByCep(cepRaw)
     }
   }
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-blue-500/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <MapPin className="h-5 w-5" /> Endereço e Localização
         </CardTitle>
@@ -3014,6 +2772,7 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   const { control, watch, setValue } = useFormContext<CreateCaseFormData>()
   
   const origem = watch('origem')
+  
   useEffect(() => {
     if (origem === 'ESPONTANEA') {
       setValue('orgaoDemandante', 'Demanda Espontânea')
@@ -3021,8 +2780,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   }, [origem, setValue])
   
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3 border-b mb-3 bg-muted/10">
+    <Card className="shadow-sm border-l-4 border-l-orange-500/50">
+      <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
         <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
           <Briefcase className="h-5 w-5" /> Dados da Demanda
         </CardTitle>
@@ -3069,11 +2828,13 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
         </div>
 
         <div className="space-y-3">
-          <Label className="text-base font-semibold">Violações de Direitos Identificadas *</Label>
+          <Label className="text-base font-semibold flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" /> Violações de Direitos Identificadas *
+          </Label>
           <p className="text-[11px] text-muted-foreground -mt-2 italic">Marque todas as situações identificadas no atendimento inicial.</p>
           <FormField control={control} name="violacao" render={({ field }) => (
             <FormItem>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-inner">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-sm">
                 {OPTIONS.violacao.map(v => (
                   <div key={v} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
@@ -3098,7 +2859,7 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           <Label className="mb-3 block font-medium">Transferência de Renda</Label>
           <FormField control={control} name="beneficios" render={({ field }) => (
             <FormItem>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border p-4 rounded-md bg-background shadow-sm">
                 {OPTIONS.transferenciaRenda.map(item => (
                   <div key={item} className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
@@ -3136,11 +2897,25 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
               </FormItem>
             )}/>
           </div>
+          
+          {/* [MODIFICADO] Campo SEI com Input Dinâmico */}
           <div className="lg:col-span-3">
             <FormField control={control} name="numeroSei" render={({ field }) => (
-              <FormItem><FormLabel>Número SEI</FormLabel><FormControl><MaskedInput mask={MASKS.SEI} placeholder="00000..." {...field} /></FormControl></FormItem>
+              <FormItem>
+                <FormLabel>Número SEI</FormLabel>
+                <FormControl>
+                  <SeiInput 
+                    value={field.value || ''} 
+                    onChange={field.onChange} 
+                  />
+                </FormControl>
+                <p className="text-[10px] text-muted-foreground">
+                  Aceita formato padrão (19) ou longo (21)
+                </p>
+              </FormItem>
             )}/>
           </div>
+          
           <div className="lg:col-span-5">
             <FormField control={control} name="linkSei" render={({ field }) => (
               <FormItem><FormLabel>Link Processo SEI</FormLabel><FormControl><Input type="url" {...field} placeholder="https://..." /></FormControl></FormItem>
@@ -3156,6 +2931,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   )
 }
 
+// --- COMPONENTE PRINCIPAL ---
+
 interface CaseFormProps {
   onCaseCreated?: () => void
   initialData?: any
@@ -3170,29 +2947,33 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
   const normalizedInitialData = useMemo(() => {
     if (!initialData) return defaultValues;
     
-    const hasContactsArray = Array.isArray(initialData.contatos) && initialData.contatos.length > 0;
-    
+    // Normalização segura: 
+    // Garante que se o backend mandar null/undefined, usamos o default do formulário
     return {
       ...defaultValues,
       ...initialData,
-      dataEntrada: initialData.dataEntrada?.split('T')[0] || getLocalDateOnly(),
-      nascimento: initialData.nascimento?.split('T')[0] || '',
-      contatos: hasContactsArray 
+      // Datas: Se vier ISO (com Time), pega só a data YYYY-MM-DD
+      dataEntrada: initialData.dataEntrada ? initialData.dataEntrada.split('T')[0] : getLocalDateOnly(),
+      nascimento: initialData.nascimento ? initialData.nascimento.split('T')[0] : '',
+      
+      // Contatos: Garante array com pelo menos 1 item ou o telefone legado
+      contatos: Array.isArray(initialData.contatos) && initialData.contatos.length > 0
         ? initialData.contatos 
         : (initialData.telefone ? [{ numero: initialData.telefone, tipo: 'Pessoal', nome: '' }] : defaultValues.contatos),
       
-      endereco: typeof initialData.endereco === 'object' 
+      // Endereço: Normaliza se vier string antiga ou objeto
+      endereco: initialData.endereco && typeof initialData.endereco === 'object' 
         ? initialData.endereco 
         : (typeof initialData.endereco === 'string' ? { ...defaultValues.endereco, logradouro: initialData.endereco } : defaultValues.endereco),
       
+      // Arrays
       violacao: Array.isArray(initialData.violacao) 
         ? initialData.violacao 
         : (initialData.violacao ? [initialData.violacao] : []),
 
-      // Normalização dos campos novos caso venham nulos do banco
+      // Campos Simples (proteção contra null)
       ocupacao: initialData.ocupacao || '',
       renda: initialData.renda ? Number(initialData.renda) : 0,
-
       beneficios: initialData.beneficios || [],
       numeroSei: initialData.numeroSei || '',
       linkSei: initialData.linkSei || '',
@@ -3206,22 +2987,49 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     defaultValues: normalizedInitialData,
   })
 
+  // Reseta o formulário quando os dados iniciais são carregados
   useEffect(() => {
     if (initialData) form.reset(normalizedInitialData)
   }, [initialData, form, normalizedInitialData])
 
   const { mutateAsync: submitCase, isPending } = useMutation({
     mutationFn: async (data: CreateCaseFormData) => {
+      // Prepara payload limpo para envio
       const payload = {
-        ...data,
+        // Dados Pessoais
+        nomeCompleto: data.nomeCompleto,
+        nomeSocial: data.nomeSocial || null,
         cpf: data.cpf.replace(/\D/g, ''),
-        contatos: data.contatos.map(c => ({ ...c, numero: c.numero.replace(/\D/g, '') })),
-        numeroSei: data.numeroSei || null,
-        linkSei: data.linkSei || null,
-        observacoes: data.observacoes || null,
-        // Garantir envio correto de renda e ocupação
+        nascimento: data.nascimento,
+        sexo: data.sexo,
+        
+        // Sócio-econômico
         ocupacao: data.ocupacao || null,
         renda: Number(data.renda),
+
+        // Endereço e Contato
+        endereco: data.endereco,
+        contatos: data.contatos.map(c => ({ ...c, numero: c.numero.replace(/\D/g, '') })),
+
+        // Responsável
+        responsavelLegal: data.responsavelLegal || null,
+        parentescoResponsavel: data.parentescoResponsavel || null,
+
+        // Dados Técnicos
+        urgencia: data.urgencia,
+        violacao: data.violacao,
+        categoria: data.categoria,
+        orgaoDemandante: data.orgaoDemandante,
+        origem: data.origem,
+        dataEntrada: data.dataEntrada,
+        
+        // Administrativo
+        agenteAcolhidaId: data.agenteAcolhidaId || null,
+        // Limpa o SEI para salvar apenas números (como CPF/Telefone)
+        numeroSei: data.numeroSei ? data.numeroSei.replace(/\D/g, '') : null,
+        linkSei: data.linkSei || null,
+        observacoes: data.observacoes || null,
+        beneficios: data.beneficios
       }
 
       return isEditing && caseId
@@ -3240,7 +3048,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     },
     onError: (error) => {
       console.error(error)
-      toast.error(getErrorMessage(error, 'Erro ao salvar os dados.'))
+      toast.error(getErrorMessage(error, 'Erro ao salvar os dados. Verifique os campos.'))
     },
   })
 
@@ -3255,10 +3063,19 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         <AddressSection />
         <TechnicalDataSection agents={agents} isLoadingAgents={isLoadingAgents} isEditing={isEditing} />
 
-        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4 border-t">
+        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4 border-t sticky bottom-0 bg-background py-4 z-10">
           <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto min-w-[200px] shadow-md">
-            {isPending && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-            {isPending ? 'Salvando...' : (isEditing ? 'Salvar Alterações' : 'Cadastrar Caso')}
+            {isPending ? (
+              <>
+                <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                Processando...
+              </>
+            ) : (
+              <>
+                <FileText className="mr-2 h-4 w-4" />
+                {isEditing ? 'Salvar Alterações' : 'Cadastrar Caso'}
+              </>
+            )}
           </Button>
         </div>
       </form>
@@ -3453,6 +3270,7 @@ export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
 ==================================================================
 FILE: frontend\src\components\case\CaseTable.tsx
 ==================================================================
+// frontend/src/components/case/CaseTable.tsx
 import { useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -3517,11 +3335,11 @@ interface PaginatedCasesResponse {
 
 interface CaseTableProps { 
   endpoint: '/cases' | '/cases/closed'
-  title?: string // Opcional agora
-  description?: string // Opcional agora
+  title?: string
+  description?: string
   defaultView?: 'my' | 'all'
   queryParams?: Record<string, string | undefined>
-  className?: string // [NOVO] Para customização visual pelo pai
+  className?: string
 }
 
 type SortDirection = 'asc' | 'desc'
@@ -3668,7 +3486,8 @@ export function CaseTable({
   const [searchParams, setSearchParams] = useSearchParams()
   const currentPage = Number(searchParams.get('page') ?? '1')
   
-  const [isExporting] = useState(false)
+  // [CORREÇÃO] Adicionado o setter setIsExporting
+  const [isExporting, setIsExporting] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [sorting, setSorting] = useState<SortingState | null>(null)
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS)
@@ -3726,9 +3545,33 @@ export function CaseTable({
 
   const handlePageChange = (page: number) => setSearchParams(prev => { prev.set('page', String(page)); return prev })
 
-  const handleExport = async () => { console.log('Exporting...') }
+  // [CORREÇÃO] Implementação real da exportação via Blob
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
+      const response = await api.get('/cases/export', {
+        responseType: 'blob', // Importante para arquivos binários
+      })
 
-  // Lógica de visualização baseada no Endpoint (Ativo vs Arquivo)
+      // Criar URL temporária para download
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      
+      // Limpeza
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Erro ao exportar:', error)
+      // Aqui você pode adicionar um toast de erro se disponível
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const isArchiveMode = endpoint === '/cases/closed'
   const showImportExport = !isArchiveMode && user?.cargo === 'Gerente'
 
@@ -3748,7 +3591,6 @@ export function CaseTable({
   return (
     <div className={cn("flex h-full flex-col space-y-6 animate-in fade-in duration-500", className)}>
       
-      {/* Header (Opcional, pois pode vir do pai) */}
       {(title || description || showImportExport) && (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           {(title || description) && (
@@ -3764,16 +3606,22 @@ export function CaseTable({
                 <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> 
                 <span className="hidden sm:inline">Importar</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting} className="h-9 gap-2">
-                <FileDown className="h-4 w-4" /> 
-                <span className="hidden sm:inline">Exportar</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleExport} 
+                disabled={isExporting} 
+                className="h-9 gap-2"
+              >
+                {/* Ícone animado ou estático dependendo do estado */}
+                <FileDown className={cn("h-4 w-4", isExporting && "animate-bounce")} /> 
+                <span className="hidden sm:inline">{isExporting ? 'Exportando...' : 'Exportar'}</span>
               </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* Filtros */}
       <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
         <DataTableFilters filters={activeFilters} setFilters={handleFilterChange} onClear={clearFilters} />
         <div className="mt-2 flex justify-end xl:mt-0">
@@ -3781,7 +3629,6 @@ export function CaseTable({
         </div>
       </div>
 
-      {/* Tabela */}
       <div className="flex-1 rounded-md border bg-card shadow-sm overflow-hidden flex flex-col">
         <div className="flex-1 overflow-auto relative">
           <Table>
@@ -3791,7 +3638,6 @@ export function CaseTable({
                 <SortableColumn label="Sexo" field="sexo" sorting={sorting} onToggle={toggleSort} align="center" className="w-[80px]" />
                 <TableHead className="w-[130px] whitespace-nowrap">CPF</TableHead>
                 
-                {/* Colunas Dinâmicas baseadas no Modo */}
                 {!isArchiveMode && (
                   <>
                     <SortableColumn label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-[140px]" />
@@ -3809,10 +3655,8 @@ export function CaseTable({
                 />
                 
                 {isArchiveMode && <TableHead className="whitespace-nowrap w-[150px]">Motivo</TableHead>}
-                
                 <TableHead className="whitespace-nowrap w-[150px]">Responsável</TableHead>
                 
-                {/* Status só faz sentido se não for arquivo morto (que é tudo desligado) */}
                 {!isArchiveMode && (
                    <SortableColumn label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-[140px]" />
                 )}
@@ -3899,7 +3743,6 @@ export function CaseTable({
                     )}
 
                     <TableCell className="text-xs font-medium text-foreground/80 align-top pt-3.5">
-                      {/* Lógica para mostrar técnico responsável baseado no status */}
                       {item.status === 'EM_ACOMPANHAMENTO' || (isArchiveMode && item.especialistaPAEFI) 
                         ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? '-' 
                         : item.agenteAcolhida?.nome?.split(' ')[0] ?? '-'
@@ -3958,25 +3801,32 @@ export function CaseTable({
 ==================================================================
 FILE: frontend\src\components\case\CaseWorkflow.tsx
 ==================================================================
+// frontend/src/components/case/CaseWorkflow.tsx
 import { clsx } from "clsx"
 import { CheckCircle2, Circle } from "lucide-react"
+// [1] Importamos as constantes de definição
+import { CASE_STATUS } from "@/constants/cases/definitions"
 
 interface CaseWorkflowProps {
   status: string
 }
 
 export function CaseWorkflow({ status }: CaseWorkflowProps) {
+  // [2] Usamos as constantes para garantir que os IDs sejam idênticos ao resto do sistema
   const steps = [
-    { id: 'AGUARDANDO_ACOLHIDA', label: 'Triagem' },
-    { id: 'EM_ACOLHIDA', label: 'Acolhida' },
-    { id: 'AGUARDANDO_DISTRIBUICAO', label: 'Distribuição' },
-    { id: 'EM_ACOLHIDA_ESPECIALIZADA', label: 'Acolhida Esp.' },
-    { id: 'EM_ACOMPANHAMENTO', label: 'Acompanhamento' },
-    { id: 'EM_MONITORAMENTO', label: 'Monitoramento' },
-    { id: 'DESLIGADO', label: 'Finalizado' }
+    { id: CASE_STATUS.AGUARDANDO_ACOLHIDA, label: 'Triagem' },
+    { id: CASE_STATUS.EM_ACOLHIDA, label: 'Acolhida' },
+    { id: CASE_STATUS.AGUARDANDO_DISTRIBUICAO, label: 'Distribuição' },
+    { id: CASE_STATUS.EM_ACOLHIDA_ESPECIALIZADA, label: 'Acolhida Esp.' },
+    { id: CASE_STATUS.EM_ACOMPANHAMENTO, label: 'Acompanhamento' },
+    { id: CASE_STATUS.EM_MONITORAMENTO, label: 'Monitoramento' },
+    { id: CASE_STATUS.DESLIGADO, label: 'Finalizado' }
   ]
 
+  // A lógica permanece a mesma, mas agora é type-safe
   const currentIndex = steps.findIndex(s => s.id === status)
+  
+  // Se o status não for encontrado (ex: status novo não mapeado), assume o início ou trata erro
   const activeIndex = currentIndex === -1 ? 0 : currentIndex
 
   return (
@@ -3985,10 +3835,8 @@ export function CaseWorkflow({ status }: CaseWorkflowProps) {
         <div className="relative">
           
           {/* --- LINHAS DE PROGRESSO (TRACKS) --- */}
-          {/* Fundo Cinza */}
           <div className="absolute top-4 left-0 w-full h-0.5 bg-muted -z-10 rounded-full" />
           
-          {/* Progresso Colorido */}
           <div 
             className="absolute top-4 left-0 h-0.5 bg-primary transition-all duration-1000 ease-in-out -z-10 rounded-full" 
             style={{ width: `${(activeIndex / (steps.length - 1)) * 100}%` }}
@@ -4027,7 +3875,6 @@ export function CaseWorkflow({ status }: CaseWorkflowProps) {
                     <span className={clsx(
                       "text-[9px] sm:text-[10px] font-bold uppercase tracking-tighter sm:tracking-wider leading-tight block transition-all duration-300",
                       isCurrent ? "text-primary scale-105" : "text-muted-foreground/60",
-                      // Mobile: Esconde labels inativas para evitar sobreposição
                       !isCurrent && "hidden md:block" 
                     )}>
                       {step.label}
@@ -4053,6 +3900,7 @@ export function CaseWorkflow({ status }: CaseWorkflowProps) {
 ==================================================================
 FILE: frontend\src\components\case\DetailField.tsx
 ==================================================================
+// frontend/src/components/case/DetailField.tsx
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -4065,6 +3913,10 @@ interface DetailFieldProps {
   labelClassName?: string
   valueClassName?: string
   fallback?: ReactNode
+  /** * 'default': Texto padrão (text-sm) - Usado em abas como Visão Geral
+   * 'xs': Texto reduzido (text-[10px]/text-xs) - Usado em Sidebars
+   */
+  size?: 'default' | 'xs' 
 }
 
 export function DetailField({
@@ -4074,28 +3926,47 @@ export function DetailField({
   className,
   labelClassName,
   valueClassName,
-  fallback = <span className="text-muted-foreground italic font-normal opacity-80">Não informado</span>
+  fallback = <span className="text-muted-foreground italic font-normal opacity-80">Não informado</span>,
+  size = 'default'
 }: DetailFieldProps) {
   
-  // Verifica se o valor é "vazio" (null, undefined ou string vazia)
-  // Preserva o número 0 como valor válido
   const isEmpty = value === null || value === undefined || value === ''
 
+  // Configuração de tamanhos baseada no Design System do CaseDetail
+  const styles = {
+    default: {
+      label: "text-xs mb-1.5",
+      value: "text-sm",
+      icon: "h-3.5 w-3.5"
+    },
+    xs: {
+      label: "text-[10px] mb-1", // Estilo da SidebarInfo
+      value: "text-xs font-medium",
+      icon: "h-3 w-3"
+    }
+  }
+
+  const currentStyle = styles[size]
+
   return (
-    <div className={cn("space-y-1.5 min-w-0", className)}>
+    <div className={cn("min-w-0 group", className)}>
       <div
         className={cn(
-          "text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5",
+          "font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5",
+          currentStyle.label,
           labelClassName
         )}
       >
-        {Icon && <Icon className="h-3.5 w-3.5 opacity-70" />}
+        {Icon && <Icon className={cn(currentStyle.icon, "opacity-70")} />}
         {label}
       </div>
 
       <div 
         className={cn(
-          "text-sm font-medium text-foreground whitespace-pre-wrap break-words leading-relaxed",
+          "text-foreground whitespace-pre-wrap break-words leading-relaxed",
+          currentStyle.value,
+          // Se for default, mantém font-medium, se xs, já aplicamos acima
+          size === 'default' && "font-medium", 
           valueClassName
         )}
       >
@@ -4111,102 +3982,295 @@ FILE: frontend\src\components\case\DetailSkeleton.tsx
 // frontend/src/components/case/DetailSkeleton.tsx
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
 
 export function DetailSkeleton() {
   return (
-    <div className="space-y-8 animate-pulse">
+    <div className="container mx-auto max-w-7xl pb-10 space-y-6 animate-pulse">
       
-      {/* 1. Cabeçalho de Página (Título + Botões de Ação) */}
-      <div className="flex flex-col md:flex-row justify-between gap-4 border-b pb-6">
-        <div className="space-y-3 w-full max-w-2xl">
-          <Skeleton className="h-8 w-1/3 rounded-md" /> {/* Nome do Caso */}
-          <div className="flex gap-2">
-            <Skeleton className="h-5 w-24 rounded-full" /> {/* Badge Status */}
-            <Skeleton className="h-5 w-32 rounded-full" /> {/* Badge Urgência */}
+      {/* 1. Header Minimalista (Alinhado com CaseDetail > MinimalHeader) */}
+      <div className="flex flex-col gap-4 pt-2">
+        {/* Topo: Voltar + Botões de Ação */}
+        <div className="flex items-center justify-between">
+           <Skeleton className="h-4 w-20" /> {/* Botão Voltar */}
+           <div className="flex items-center gap-2">
+              <Skeleton className="h-9 w-24" /> {/* PDF */}
+              <Skeleton className="h-9 w-24" /> {/* Editar */}
+           </div>
+        </div>
+
+        {/* Informações Principais */}
+        <div className="flex flex-col md:flex-row gap-6 items-start">
+           {/* Avatar Box */}
+           <Skeleton className="h-14 w-14 md:h-16 md:w-16 rounded-xl shrink-0" />
+           
+           <div className="flex-1 min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                 <Skeleton className="h-8 w-64 rounded-md" /> {/* Nome */}
+                 <Skeleton className="h-6 w-24 rounded-full" /> {/* Badge Status */}
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-4">
+                 <Skeleton className="h-4 w-32" /> {/* CPF */}
+                 <Skeleton className="h-4 w-32" /> {/* Nascimento */}
+                 <Skeleton className="h-5 w-20 rounded-full" /> {/* Origem */}
+              </div>
+           </div>
+
+           {/* Workflow Actions */}
+           <Skeleton className="h-9 w-40 rounded-md" />
+        </div>
+      </div>
+
+      {/* 2. Workflow Bar */}
+      <Skeleton className="h-24 w-full rounded-xl opacity-50" />
+
+      {/* 3. Tabs List */}
+      <div className="border-b">
+        <div className="flex gap-2 overflow-x-auto pb-2">
+           {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-9 w-28 rounded-full" />
+           ))}
+        </div>
+      </div>
+
+      {/* 4. Grid Principal (Layout 9 + 3 colunas) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pt-6">
+        
+        {/* Coluna Principal (9/12) */}
+        <div className="lg:col-span-9 space-y-6">
+           {/* Cards de Métricas (Overview) */}
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Skeleton className="h-32 rounded-xl" />
+              <Skeleton className="h-32 rounded-xl" />
+              <Skeleton className="h-32 rounded-xl" />
+           </div>
+           
+           {/* Card de Conteúdo Genérico */}
+           <Card>
+             <CardHeader className="pb-2">
+               <Skeleton className="h-6 w-48" />
+             </CardHeader>
+             <CardContent className="space-y-4 pt-4">
+               <div className="space-y-2">
+                 <Skeleton className="h-4 w-full" />
+                 <Skeleton className="h-4 w-5/6" />
+                 <Skeleton className="h-4 w-4/6" />
+               </div>
+             </CardContent>
+           </Card>
+        </div>
+
+        {/* Sidebar Lateral (3/12) */}
+        <aside className="hidden lg:block lg:col-span-3 space-y-6">
+           <div className="rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden">
+              <div className="p-3 px-4 border-b bg-muted/20">
+                 <Skeleton className="h-4 w-32" />
+              </div>
+              <div className="p-4 space-y-5">
+                 {/* Item Sidebar */}
+                 <div className="space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-4 w-full" />
+                 </div>
+                 <Separator />
+                 {/* Item Sidebar com Ícone */}
+                 <div className="space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <div className="flex gap-2">
+                       <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                       <div className="space-y-1 flex-1">
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-2/3" />
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </aside>
+
+      </div>
+    </div>
+  )
+}
+
+==================================================================
+FILE: frontend\src\components\case\SeiManager.tsx
+==================================================================
+// frontend/src/components/case/SeiManager.tsx
+import { useState, useEffect, useId } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { FileText, ExternalLink, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
+import { format, isValid } from "date-fns"
+
+import { api } from "@/lib/api"
+import { Switch } from "@/components/ui/switch"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+// [IMPORTANTE] Importando o formatador para aplicar a máscara visual
+import { formatProcessoSei } from "@/utils/formatters"
+
+interface SeiManagerProps {
+  caseId: string
+  numeroSei: string | null
+  linkSei: string | null
+  seiRespondido: boolean
+  dataRespostaSei: string | null
+  readOnly?: boolean
+}
+
+export function SeiManager({ 
+  caseId, 
+  numeroSei, 
+  linkSei, 
+  seiRespondido: initialStatus,
+  dataRespostaSei,
+  readOnly = false
+}: SeiManagerProps) {
+  const queryClient = useQueryClient()
+  const switchId = useId() // ID único para acessibilidade
+  
+  // Estado local para feedback imediato na UI
+  const [isResponded, setIsResponded] = useState(initialStatus)
+
+  // Sincroniza estado local se a prop mudar externamente (ex: re-fetch)
+  useEffect(() => {
+    setIsResponded(initialStatus)
+  }, [initialStatus])
+
+  const { mutate: toggleSei, isPending } = useMutation({
+    mutationFn: async (checked: boolean) => {
+      // Atualização otimista na UI antes da requisição terminar
+      setIsResponded(checked)
+      
+      await api.put(`/cases/${caseId}`, {
+        seiRespondido: checked
+      })
+      return checked
+    },
+    onSuccess: (newState) => {
+      // Invalida para garantir dados frescos (ex: dataRespostaSei gerada no back)
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+      
+      if (newState) {
+        toast.success("Marcado como respondido!", {
+          description: "O registro da resposta foi salvo com a data de hoje."
+        })
+      } else {
+        toast.info("Status de resposta removido.")
+      }
+    },
+    onError: () => {
+      // Reverte o estado visual em caso de erro
+      setIsResponded(!isResponded)
+      toast.error("Erro ao atualizar status. Tente novamente.")
+    }
+  })
+
+  // Se não tiver dados do SEI, exibe estado vazio
+  if (!numeroSei && !linkSei) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border border-dashed">
+        <AlertCircle className="h-4 w-4" />
+        <span>Nenhum Processo SEI vinculado.</span>
+      </div>
+    )
+  }
+
+  // Helper para formatar data com segurança
+  const formattedDate = dataRespostaSei && isValid(new Date(dataRespostaSei))
+    ? format(new Date(dataRespostaSei), "dd/MM/yyyy 'às' HH:mm")
+    : null
+
+  return (
+    <div className={cn(
+      "flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border transition-all",
+      isResponded 
+        ? "bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800" 
+        : "bg-white dark:bg-card border-border"
+    )}>
+      {/* Lado Esquerdo: Informações do SEI */}
+      <div className="flex items-start gap-3">
+        <div className={cn(
+          "p-2 rounded-full mt-0.5 transition-colors",
+          isResponded ? "bg-emerald-100 text-emerald-700" : "bg-blue-50 text-blue-600"
+        )}>
+          <FileText className="h-5 w-5" />
+        </div>
+        
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-sm">Processo SEI</span>
+            {isResponded && (
+              <Badge variant="outline" className="text-xs bg-emerald-100 text-emerald-700 border-emerald-200 h-5 px-1.5 gap-1 animate-in fade-in zoom-in-95">
+                <CheckCircle2 className="h-3 w-3" /> Respondido
+              </Badge>
+            )}
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {/* [USO DO FORMATADOR] Aplica a máscara visual correta */}
+            <span className="font-mono text-sm text-foreground/90 select-all font-medium tracking-tight">
+              {formatProcessoSei(numeroSei) || "Nº não informado"}
+            </span>
+            
+            {linkSei && (
+              <Button variant="link" size="sm" className="h-auto p-0 text-blue-600 hover:text-blue-700" asChild>
+                <a href={linkSei} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1">
+                  Acessar Processo <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+          </div>
+
+          {isResponded && formattedDate && (
+            <p className="text-xs text-emerald-600/90 font-medium">
+              Respondido em: {formattedDate}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Lado Direito: Ação (Switch) */}
+      {!readOnly && (
+        <div className="flex items-center gap-3 pl-2 sm:pl-0 sm:border-l sm:border-border/50 sm:ml-2">
+          <div className="flex flex-col items-end gap-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    <label 
+                      htmlFor={switchId}
+                      className="text-sm font-medium cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {isResponded ? "Resposta Enviada" : "Marcar como Respondido"}
+                    </label>
+                    <Switch
+                      id={switchId}
+                      checked={isResponded}
+                      onCheckedChange={(checked) => toggleSei(checked)}
+                      disabled={isPending}
+                      className="data-[state=checked]:bg-emerald-600"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Marque esta opção quando o ofício de resposta <br/>for enviado ao órgão demandante.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            {isPending && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+                <Loader2 className="h-3 w-3 animate-spin" /> Atualizando...
+              </div>
+            )}
           </div>
         </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-10 w-32 rounded-md" /> {/* Botão Primário */}
-          <Skeleton className="h-10 w-10 rounded-md" /> {/* Botão Menu */}
-        </div>
-      </div>
-
-      {/* 2. Barra de Abas (Tabs) */}
-      <div className="flex gap-6 border-b">
-        {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-9 w-24 rounded-t-lg mb-[-1px]" />
-        ))}
-      </div>
-
-      {/* 3. Grid de Conteúdo Principal */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Coluna Esquerda (Principal - 2/3) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Card de Dados Pessoais */}
-          <Card>
-            <CardHeader className="pb-2">
-              <Skeleton className="h-6 w-48 mb-2" />
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <Skeleton className="h-3 w-20" /> {/* Label */}
-                  <Skeleton className={`h-4 ${i % 2 === 0 ? 'w-full' : 'w-3/4'}`} /> {/* Valor Variável */}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Card de Endereço */}
-          <Card>
-            <CardHeader className="pb-2">
-              <Skeleton className="h-6 w-40" />
-            </CardHeader>
-            <CardContent className="space-y-3 pt-2">
-              <Skeleton className="h-4 w-3/4" />
-              <div className="flex gap-4">
-                <Skeleton className="h-4 w-1/4" />
-                <Skeleton className="h-4 w-1/4" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Coluna Direita (Lateral - 1/3) */}
-        <div className="space-y-6">
-          {/* Card de Contatos */}
-          <Card>
-            <CardHeader className="pb-2">
-              <Skeleton className="h-6 w-24" />
-            </CardHeader>
-            <CardContent className="space-y-4 pt-2">
-              {[1, 2].map((i) => (
-                <div key={i} className="flex items-center justify-between p-2 border rounded-md">
-                  <div className="space-y-2 w-full">
-                    <Skeleton className="h-3 w-12" />
-                    <Skeleton className="h-4 w-32" />
-                  </div>
-                  <Skeleton className="h-8 w-8 rounded-full" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Card de Informações Técnicas */}
-          <Card className="h-48">
-            <CardHeader>
-              <Skeleton className="h-6 w-32" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-2/3" />
-            </CardContent>
-          </Card>
-        </div>
-
-      </div>
+      )}
     </div>
   )
 }
@@ -4984,6 +5048,350 @@ export function DeliverablesTab({ caseId }: { caseId: string }) {
 }
 
 ==================================================================
+FILE: frontend\src\components\case\tabs\EvolutionsTab.tsx
+==================================================================
+// frontend/src/components/case/tabs/EvolutionsTab.tsx
+import { useState } from "react"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { 
+  Send, Loader2, PlusCircle, Lock, ChevronDown, 
+  MoreVertical, Pencil, Trash2, History
+} from "lucide-react"
+import { toast } from "sonner"
+import { jwtDecode } from "jwt-decode"
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent } from "@/components/ui/card"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+
+import type { Evolution } from '@/types/case'
+
+function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+
+interface PaginatedEvolutions {
+  items: Evolution[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+// Hook de Auth (Simplificado)
+// Nota: Em um cenário ideal, isso viria de um AuthContext global
+function useCurrentUserId() {
+  const token = localStorage.getItem('@sgac-braz:token') 
+  if (!token) return null
+  try {
+    const decoded: any = jwtDecode(token)
+    return decoded.sub 
+  } catch (e) { return null }
+}
+
+// Helper para cor determinística de avatar
+const getAvatarColor = (name: string) => {
+  const colors = [
+    'bg-red-100 text-red-700', 'bg-orange-100 text-orange-700', 'bg-amber-100 text-amber-700',
+    'bg-yellow-100 text-yellow-700', 'bg-lime-100 text-lime-700', 'bg-green-100 text-green-700',
+    'bg-emerald-100 text-emerald-700', 'bg-teal-100 text-teal-700', 'bg-cyan-100 text-cyan-700',
+    'bg-sky-100 text-sky-700', 'bg-blue-100 text-blue-700', 'bg-indigo-100 text-indigo-700',
+    'bg-violet-100 text-violet-700', 'bg-purple-100 text-purple-700', 'bg-fuchsia-100 text-fuchsia-700',
+    'bg-pink-100 text-pink-700', 'bg-rose-100 text-rose-700'
+  ]
+  let hash = 0
+  if (!name) return colors[0];
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
+}
+
+// --- ITEM INDIVIDUAL ---
+function EvolutionItem({ evo, currentUserId, onUpdate, onDeleteLocal }: any) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState(evo.conteudo)
+  const [editSigilo, setEditSigilo] = useState(evo.sigilo)
+  const isAuthor = currentUserId === evo.autor?.id
+
+  const { mutate: saveEdit, isPending: isSaving } = useMutation({
+    mutationFn: async () => await api.patch(`/evolutions/${evo.id}`, { conteudo: editContent, sigilo: editSigilo }),
+    onSuccess: () => {
+      toast.success("Atualizado!")
+      setIsEditing(false)
+      onUpdate()
+    },
+    onError: () => toast.error("Erro ao atualizar.")
+  })
+
+  const { mutate: deleteEvo, isPending: isDeleting } = useMutation({
+    mutationFn: async () => await api.delete(`/evolutions/${evo.id}`),
+    onSuccess: () => {
+      onDeleteLocal(evo.id)
+      toast.success("Removido.")
+      onUpdate()
+    },
+    onError: () => toast.error("Erro ao remover.")
+  })
+
+  return (
+    <div className="relative pl-8 sm:pl-10 group animate-in fade-in slide-in-from-bottom-3 duration-500">
+      {/* Linha do Tempo Vertical */}
+      <div className="absolute left-[15px] sm:left-[19px] top-10 bottom-0 w-px bg-border group-last:hidden" />
+      
+      {/* Avatar na Timeline */}
+      <div className="absolute left-0 top-0">
+        <Avatar className={cn(
+          "h-8 w-8 sm:h-10 sm:w-10 border-2 shadow-sm transition-transform group-hover:scale-105",
+          evo.sigilo ? "border-amber-200" : "border-background"
+        )}>
+          <AvatarFallback className={cn(
+            "font-bold text-xs sm:text-sm", 
+            evo.sigilo ? "bg-amber-100 text-amber-700" : getAvatarColor(evo.autor?.nome || 'U')
+          )}>
+            {evo.sigilo ? <Lock className="h-3 w-3 sm:h-4 sm:w-4" /> : (evo.autor?.nome?.[0] || "U")}
+          </AvatarFallback>
+        </Avatar>
+      </div>
+
+      {/* Conteúdo */}
+      <Card className={cn(
+        "mb-6 transition-all shadow-sm border",
+        evo.sigilo ? "bg-amber-50/40 border-amber-200" : "hover:border-primary/30"
+      )}>
+        <CardContent className="p-3 sm:p-4">
+          
+          {/* Cabeçalho */}
+          <div className="flex justify-between items-start mb-2 gap-3">
+            <div className="min-w-0">
+               <div className="flex items-center gap-2 flex-wrap">
+                 <span className="font-bold text-sm text-foreground truncate max-w-[200px] sm:max-w-md">
+                   {evo.autor?.nome}
+                 </span>
+                 {evo.sigilo && (
+                   <Badge variant="outline" className="h-5 px-1.5 bg-amber-100 text-amber-800 border-amber-200 text-[10px] gap-1">
+                     <Lock className="w-3 h-3"/> SIGILO
+                   </Badge>
+                 )}
+               </div>
+               <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                 {evo.autor?.cargo?.replace('_', ' ') || 'Profissional'}
+               </p>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap" title={format(new Date(evo.createdAt), "PPPppp", { locale: ptBR })}>
+                {format(new Date(evo.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}
+              </span>
+              
+              {isAuthor && !isEditing && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 ml-1 text-muted-foreground hover:text-foreground">
+                      <MoreVertical className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                      <Pencil className="mr-2 h-4 w-4" /> Editar
+                    </DropdownMenuItem>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                          <div className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10">
+                            <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                          </div>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir evolução?</AlertDialogTitle>
+                          <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteEvo()} className="bg-destructive hover:bg-destructive/90">
+                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : "Excluir"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          </div>
+
+          {/* Corpo do Texto */}
+          {isEditing ? (
+            <div className="space-y-3 animate-in fade-in duration-300">
+              <Textarea 
+                value={editContent} 
+                onChange={(e) => setEditContent(e.target.value)} 
+                className="min-h-[120px] bg-background text-sm"
+              />
+              <div className="flex items-center justify-between bg-muted/30 p-2 rounded-md border">
+                <div className="flex items-center space-x-2">
+                  <Checkbox id={`edit-sigilo-${evo.id}`} checked={editSigilo} onCheckedChange={(c) => setEditSigilo(!!c)} />
+                  <Label htmlFor={`edit-sigilo-${evo.id}`} className="text-xs cursor-pointer">Sigiloso</Label>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+                  <Button size="sm" onClick={() => saveEdit()} disabled={isSaving || !editContent.trim()}>
+                    {isSaving && <Loader2 className="mr-2 h-3 w-3 animate-spin"/>} Salvar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className={cn(
+              "text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap break-words font-normal",
+              evo.sigilo && "text-amber-900/80"
+            )}>
+              {evo.conteudo}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// --- COMPONENTE PRINCIPAL (Renomeado) ---
+export function EvolutionsTab({ caseId }: { caseId: string }) {
+  const queryClient = useQueryClient()
+  const [newEvolution, setNewEvolution] = useState("")
+  const [isSecret, setIsSecret] = useState(false)
+  const currentUserId = useCurrentUserId()
+
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery<PaginatedEvolutions>({
+    queryKey: ["evolutions", caseId],
+    queryFn: async ({ pageParam = 1 }) => (await api.get(`/cases/${caseId}/evolutions`, { params: { page: pageParam, pageSize: 10 } })).data,
+    initialPageParam: 1,
+    getNextPageParam: (last) => last.page < last.totalPages ? last.page + 1 : undefined,
+  })
+
+  const { mutate: addEvolution, isPending } = useMutation({
+    mutationFn: async () => {
+      if (!newEvolution.trim()) return
+      await api.post(`/cases/${caseId}/evolutions`, { conteudo: newEvolution, sigilo: isSecret })
+    },
+    onSuccess: () => {
+      toast.success("Registrado!")
+      setNewEvolution("")
+      setIsSecret(false)
+      queryClient.invalidateQueries({ queryKey: ["evolutions", caseId] })
+    },
+    onError: () => toast.error("Erro ao salvar.")
+  })
+
+  // Update Otimista Local (para remoção)
+  const handleLocalDelete = (id: string) => {
+    queryClient.setQueryData(["evolutions", caseId], (old: any) => {
+      if (!old) return old
+      return { ...old, pages: old.pages.map((p: any) => ({ ...p, items: p.items.filter((i: any) => i.id !== id) })) }
+    })
+  }
+
+  const isEmpty = !data?.pages[0]?.items.length
+
+  return (
+    <div className="space-y-8 pb-10">
+      
+      {/* Editor */}
+      <div className={cn(
+        "rounded-xl border shadow-sm p-1 transition-all focus-within:ring-2 focus-within:ring-primary/20",
+        isSecret ? "bg-amber-50/50 border-amber-200" : "bg-card border-border"
+      )}>
+         <div className="p-3 sm:p-4 space-y-3">
+            <div className="flex items-center justify-between">
+               <h3 className={cn("text-sm font-semibold flex items-center gap-2", isSecret ? "text-amber-700" : "text-foreground")}>
+                 {isSecret ? <Lock className="h-4 w-4"/> : <PlusCircle className="h-4 w-4 text-primary"/>}
+                 {isSecret ? "Novo Registro Sigiloso" : "Nova Evolução"}
+               </h3>
+               <div className="flex items-center space-x-2">
+                 <Checkbox id="new-sigilo" checked={isSecret} onCheckedChange={(c) => setIsSecret(!!c)} />
+                 <Label htmlFor="new-sigilo" className="text-xs cursor-pointer select-none">Sigiloso</Label>
+               </div>
+            </div>
+            
+            <Textarea 
+               placeholder="Digite aqui o relato técnico..."
+               value={newEvolution}
+               onChange={e => setNewEvolution(e.target.value)}
+               className="min-h-[100px] border-0 bg-transparent resize-none focus-visible:ring-0 px-0 text-sm"
+            />
+            
+            <div className="flex justify-between items-center pt-2 border-t border-border/50">
+               <p className="text-[10px] text-muted-foreground hidden sm:block">
+                  Pressione Ctrl+Enter para enviar rápido (futuro)
+               </p>
+               <Button size="sm" onClick={() => addEvolution()} disabled={isPending || !newEvolution.trim()} 
+                 className={cn("gap-2", isSecret && "bg-amber-600 hover:bg-amber-700 text-white")}
+               >
+                  {isPending ? <Loader2 className="h-3 w-3 animate-spin"/> : <Send className="h-3 w-3"/>}
+                  Registrar
+               </Button>
+            </div>
+         </div>
+      </div>
+
+      <div className="relative">
+         {isLoading ? (
+            <div className="space-y-4 pt-4">
+               {[1,2,3].map(i => (
+                 <div key={i} className="flex gap-4 animate-pulse">
+                    <div className="h-10 w-10 rounded-full bg-muted shrink-0"/>
+                    <div className="flex-1 h-24 rounded-lg bg-muted"/>
+                 </div>
+               ))}
+            </div>
+         ) : isEmpty ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+               <History className="h-10 w-10 mb-2 opacity-20"/>
+               <p className="text-sm">Histórico vazio.</p>
+            </div>
+         ) : (
+            <div className="space-y-0 relative">
+               {data?.pages.map((page, i) => (
+                  <div key={i}>
+                     {page.items.map(evo => (
+                        <EvolutionItem 
+                          key={evo.id} 
+                          evo={evo} 
+                          currentUserId={currentUserId} 
+                          onUpdate={() => queryClient.invalidateQueries({ queryKey: ["evolutions", caseId] })}
+                          onDeleteLocal={handleLocalDelete}
+                        />
+                     ))}
+                  </div>
+               ))}
+               
+               {hasNextPage && (
+                  <div className="flex justify-center pt-6 relative z-10">
+                     <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage} className="gap-2 bg-background shadow-sm">
+                        {isFetchingNextPage ? <Loader2 className="h-3 w-3 animate-spin"/> : <ChevronDown className="h-3 w-3"/>}
+                        Carregar Antigos
+                     </Button>
+                  </div>
+               )}
+            </div>
+         )}
+      </div>
+    </div>
+  )
+}
+
+==================================================================
 FILE: frontend\src\components\case\tabs\FamilyTab.tsx
 ==================================================================
 // frontend/src/components/case/tabs/FamilyTab.tsx
@@ -5725,14 +6133,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { 
-  FileText, AlertTriangle, ExternalLink, 
-  Calendar, Tag, Hash, Shield, CheckCircle2, Clock, 
-  Wallet, Briefcase // [NOVO] Ícones
+  FileText, AlertTriangle, 
+  Calendar, Tag, Shield, CheckCircle2, Clock, 
+  Wallet, Briefcase 
 } from 'lucide-react'
 import { formatDateSafe } from '@/utils/formatters'
 import type { CaseDetailData } from '@/types/case'
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+
+// [NOVO] Importação do gerenciador do SEI
+import { SeiManager } from '@/components/case/SeiManager'
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 
@@ -5782,34 +6193,7 @@ function TeamMemberRow({
 
 export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
   
-  // Lógica de renderização do SEI
-  const renderSeiValue = () => {
-    if (!caseData.numeroSei) return null;
-    
-    const content = (
-      <span className="font-mono font-medium flex items-center gap-1.5">
-        {caseData.numeroSei}
-        {caseData.linkSei && <ExternalLink className="h-3 w-3 opacity-50" />}
-      </span>
-    );
-
-    if (caseData.linkSei) {
-      return (
-        <a 
-          href={caseData.linkSei} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-primary hover:text-primary/80 hover:underline decoration-primary/30 underline-offset-4 transition-all block"
-          title="Abrir processo no SEI"
-        >
-          {content}
-        </a>
-      )
-    }
-    return content;
-  }
-
-  // Renderização das Violações como Badges (V3.1)
+  // Renderização das Violações como Badges
   const renderViolations = () => {
     const violations = Array.isArray(caseData.violacao) 
       ? caseData.violacao 
@@ -5846,7 +6230,8 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
           </CardHeader>
           
           <CardContent className="pt-6 space-y-6">
-            {/* Seção de Violações Identificadas */}
+            
+            {/* 1. Seção de Violações Identificadas */}
             <div className="space-y-2">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5">
                 <AlertTriangle className="h-3 w-3" /> Violações de Direitos Detectadas
@@ -5858,8 +6243,22 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
               </div>
             </div>
 
-            {/* Grid de Informações Secundárias */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {/* 2. [NOVO] Gerenciador do SEI (Número, Link e Status de Resposta) */}
+            <div className="py-1">
+              <SeiManager 
+                caseId={caseData.id}
+                numeroSei={caseData.numeroSei}
+                linkSei={caseData.linkSei}
+                // Garante valores booleanos mesmo se vier null do banco antigo
+                seiRespondido={!!caseData.seiRespondido}
+                dataRespostaSei={caseData.dataRespostaSei}
+              />
+            </div>
+
+            <Separator className="bg-border/60" />
+
+            {/* 3. Grid de Informações Básicas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <InfoField 
                 icon={Tag} 
                 label="Categoria do Público" 
@@ -5870,15 +6269,10 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                 label="Data de Entrada" 
                 value={formatDateSafe(caseData.dataEntrada)} 
               />
-              <InfoField 
-                icon={Hash} 
-                label="Protocolo SEI" 
-                value={renderSeiValue()} 
-              />
             </div>
 
-            {/* [NOVO] Grid Socioeconômico do Titular */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+            {/* 4. Grid Socioeconômico do Titular */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <InfoField 
                 icon={Briefcase} 
                 label="Ocupação Atual" 
@@ -5887,14 +6281,14 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
               <InfoField 
                 icon={Wallet} 
                 label="Renda Individual" 
-                value={caseData.renda ? caseData.renda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null} 
+                value={caseData.renda ? Number(caseData.renda).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null} 
                 className="text-emerald-700 font-medium"
               />
             </div>
 
-            {/* Área de Observações Críticas */}
+            {/* 5. Área de Observações Críticas */}
             {caseData.observacoes && (
-              <div className="mt-6">
+              <div className="mt-2">
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-lg p-4 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-amber-400" />
                   <h4 className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -5935,7 +6329,7 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
           </CardContent>
         </Card>
 
-        {/* Card de Benefícios e Transferência de Renda */}
+        {/* Card de Benefícios */}
         <Card className="shadow-sm">
           <CardHeader className="pb-3 border-b bg-muted/5">
             <CardTitle className="text-sm font-semibold flex items-center justify-between">
@@ -5981,7 +6375,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { 
-  Loader2, Edit, History, PlusCircle, Printer, Lock, 
+  Loader2, Edit, History, PlusCircle, Lock, 
   FileText, Target, Lightbulb, Calendar, Save, X 
 } from 'lucide-react'
 
@@ -6004,7 +6398,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { PafHistoryModal } from '@/components/modals/PafHistoryModal'
 import { usePaf } from '@/hooks/api/useCaseQueries'
 import type { CaseDetailData, PafData } from '@/types/case'
-import { generatePafPDF } from '@/utils/pdfGenerator'
+
+// [NOVO] Imports de PDF
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { PafDoc } from '@/components/reports/templates/PafDoc'
 
 type PafFormData = z.infer<typeof pafFormSchema>
 
@@ -6212,9 +6609,15 @@ export function PafTab({ caseData }: { caseData: CaseDetailData }) {
         <div className="flex flex-wrap gap-2">
           {paf && (
             <>
-              <Button variant="outline" size="sm" onClick={() => generatePafPDF(caseData, paf)}>
-                <Printer className="mr-2 h-4 w-4" /> Imprimir
-              </Button>
+              {/* [ATUALIZADO] Botão PDF */}
+              <PDFDownloadButton 
+                document={<PafDoc caseData={caseData} paf={paf} />}
+                fileName={`PAF_${caseData.nomeCompleto.replace(/\s+/g, '_')}_v${paf.versaoAtual || 1}.pdf`}
+                label="Imprimir"
+                variant="outline"
+                size="sm"
+              />
+              
               <Button variant="outline" size="sm" onClick={() => setIsHistoryOpen(true)}>
                 <History className="mr-2 h-4 w-4" /> Histórico
               </Button>
@@ -8577,8 +8980,9 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
 import { closeCaseFormSchema } from '@/schemas/caseSchemas'
-import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases'
-import { ROUTES } from '@/constants/app-routes' // [CORREÇÃO] Usando rotas centralizadas
+import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases/definitions'
+import { ROUTES } from '@/constants/app-routes'
+import { formatProcessoSei } from "@/utils/formatters" // [IMPORTANTE]
 
 import { Button } from '@/components/ui/button'
 import {
@@ -8613,9 +9017,17 @@ interface CloseCaseModalProps {
   caseId: string
   isOpen: boolean
   onOpenChange: (open: boolean) => void
+  seiRespondido?: boolean
+  numeroSei?: string | null
 }
 
-export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalProps) {
+export function CloseCaseModal({ 
+  caseId, 
+  isOpen, 
+  onOpenChange,
+  seiRespondido = false,
+  numeroSei = null
+}: CloseCaseModalProps) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -8634,16 +9046,10 @@ export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalP
     },
     onSuccess: () => {
       toast.success('Caso desligado e arquivado com sucesso!')
-      
-      // Invalida queries
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
-      
       handleClose()
-      
-      // [CORREÇÃO 5.1] Redireciona para a página de detalhes do caso (modo leitura/arquivo morto)
-      // Usando ROUTES.CASE_DETAIL garante consistência com o restante do app
       navigate(ROUTES.CASE_DETAIL(caseId))
     },
     onError: (error) => {
@@ -8671,13 +9077,27 @@ export function CloseCaseModal({ caseId, isOpen, onOpenChange }: CloseCaseModalP
           </DialogDescription>
         </DialogHeader>
 
-        <Alert variant="destructive" className="my-2 bg-destructive/5 border-destructive/20 text-destructive-foreground">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Atenção</AlertTitle>
-          <AlertDescription>
-            Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
-          </AlertDescription>
-        </Alert>
+        {/* [CORREÇÃO] APLICAÇÃO DA MÁSCARA NO NÚMERO SEI */}
+        {numeroSei && !seiRespondido && (
+          <Alert className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-800">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="ml-2 font-bold">Resposta ao SEI Pendente</AlertTitle>
+            <AlertDescription className="ml-2 text-xs mt-1">
+              O processo <strong>{formatProcessoSei(numeroSei)}</strong> consta como não respondido. 
+              <br/>Lembre-se de enviar o ofício de resposta ao órgão demandante informando o desligamento.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {(!numeroSei || seiRespondido) && (
+          <Alert variant="destructive" className="my-2 bg-destructive/5 border-destructive/20 text-destructive-foreground">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Atenção</AlertTitle>
+            <AlertDescription>
+              Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-2">
@@ -9115,18 +9535,18 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
 ==================================================================
 FILE: frontend\src\components\modals\GroupDetailsModal.tsx
 ==================================================================
+// frontend/src/components/modals/GroupDetailsModal.tsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { 
   Users, CheckCircle2, Loader2, UserPlus, X, 
-  Printer, FileText, Calendar, AlertCircle, Check, ChevronsUpDown, Clock 
+  Calendar, AlertCircle, Check, ChevronsUpDown, Clock 
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { generateGroupAttendancePDF } from '@/utils/pdfGenerator'
 import type { GroupActivity } from '@/types/group'
 
 import { Button } from '@/components/ui/button'
@@ -9143,6 +9563,10 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover"
+
+// [NOVO] Imports de PDF
+import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
+import { GroupAttendanceDoc } from '@/components/reports/templates/GroupAttendanceDoc'
 
 // --- TYPES ---
 interface GroupDetailsModalProps {
@@ -9227,12 +9651,6 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
     )
   }
 
-  const handlePrint = (type: 'blank' | 'filled') => {
-    if (group && groupDetails?.participantes) {
-      generateGroupAttendancePDF(group, groupDetails.participantes, type)
-    }
-  }
-
   // --- COMPUTED ---
   const participantes = groupDetails?.participantes || []
   const presentesCount = participantes.filter(p => p.presente).length
@@ -9250,7 +9668,6 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
             <div className="space-y-1">
               <DialogTitle className="flex items-center gap-3 text-xl">
                 {group?.tema}
-                {/* [FIX] Usa 'secondary' que é válido */}
                 <Badge variant="secondary" className="font-normal text-xs uppercase tracking-wide">
                   {group?.tipo.replace('_', ' ')}
                 </Badge>
@@ -9269,14 +9686,26 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
               </DialogDescription>
             </div>
             
-            {/* AÇÕES DE IMPRESSÃO */}
+            {/* AÇÕES DE IMPRESSÃO [ATUALIZADO] */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => handlePrint('blank')}>
-                <Printer className="mr-2 h-4 w-4 text-muted-foreground" /> Lista em Branco
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrint('filled')}>
-                <FileText className="mr-2 h-4 w-4 text-primary" /> Relatório
-              </Button>
+              {group && (
+                <>
+                  <PDFDownloadButton 
+                    document={<GroupAttendanceDoc group={group} participants={participantes} type="blank" />}
+                    fileName={`Lista_Frequencia_Branca_${group.tema.replace(/\s+/g, '_')}.pdf`}
+                    label="Lista em Branco"
+                    variant="outline"
+                    size="sm"
+                  />
+                  <PDFDownloadButton 
+                    document={<GroupAttendanceDoc group={group} participants={participantes} type="filled" />}
+                    fileName={`Relatorio_Execucao_${group.tema.replace(/\s+/g, '_')}.pdf`}
+                    label="Relatório"
+                    variant="outline"
+                    size="sm"
+                  />
+                </>
+              )}
             </div>
           </div>
         </DialogHeader>
@@ -9330,7 +9759,6 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
                 <div className="flex justify-between items-center">
                   <Label className="text-xs font-semibold uppercase text-muted-foreground">Novos Participantes</Label>
                   {selectedCandidates.length > 0 && (
-                    // [CORREÇÃO] 'primary' não existe -> trocado por 'default'
                     <Badge variant="default" className="text-[10px] h-5">{selectedCandidates.length}</Badge>
                   )}
                 </div>
@@ -9457,6 +9885,7 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
 ==================================================================
 FILE: frontend\src\components\modals\ImportCasesModal.tsx
 ==================================================================
+// frontend/src/components/modals/ImportCasesModal.tsx
 import { useState, useRef, useCallback } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -9474,67 +9903,6 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-// --- CONSTANTES (MODELO PADRÃO COMPLETO) ---
-// Baseado na exportação oficial do sistema
-const CSV_HEADERS = [
-  "Nome Completo",
-  "Nome Social",
-  "CPF",
-  "NIS",
-  "Data Nascimento",
-  "Sexo",
-  "Categoria",
-  "Telefone",      // Simplificado para facilitar preenchimento (backend trata)
-  "Telefone2",     // Campo extra para recado
-  "Endereço",      // Logradouro
-  "CEP",
-  "RA",
-  "Cidade",
-  "UF",
-  "Data Entrada",
-  "Urgência",
-  "Peso Urgência",
-  "Violações",     // Separar por ;
-  "Benefícios",    // Separar por ;
-  "Orgão Demandante",
-  "Nº SEI",
-  "Link SEI",
-  "Responsável Legal",
-  "Parentesco",
-  "Status",        // Opcional na importação (padrão: AGUARDANDO)
-  "Origem do Cadastro"
-].join(",")
-
-const CSV_EXAMPLE = [
-  "Maria Silva",
-  "Mari",
-  "12345678900",
-  "12345678900",
-  "01/01/1990",
-  "Feminino",
-  "Mulher",
-  "61999999999",
-  "61988888888",
-  "Rua das Flores 10",
-  "72000000",
-  "Ceilândia",
-  "Brasília",
-  "DF",
-  "10/01/2024",
-  "Risco de morte",
-  "4",
-  "Violência física; Negligência",
-  "Bolsa Família; BPC",
-  "CRAS",
-  "00000.123/2024-00",
-  "https://sei.df.gov.br",
-  "-",
-  "-",
-  "AGUARDANDO_DISTRIBUICAO",
-  "IMPORTACAO"
-].join(",")
-
-// Interface alinhada com o retorno do novo backend (import.ts)
 interface ImportResponse {
   processed: number
   created: number
@@ -9553,31 +9921,38 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
   
   const [result, setResult] = useState<ImportResponse | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
-  // --- MUTATION ---
+  // --- MUTATION IMPORTAÇÃO ---
   const { mutate: importFile, isPending } = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
       
-      const res = await api.post('/import/cases', formData)
+      // 'Content-Type': undefined força o browser a gerar o boundary correto
+      const res = await api.post('/import/cases', formData, {
+        headers: {
+          'Content-Type': undefined
+        }
+      })
       return res.data
     },
     onSuccess: (data: ImportResponse) => {
       setResult(data)
       if (data.created > 0) {
         toast.success(`Importação finalizada!`, {
-            description: `${data.created} novos casos criados com sucesso.`
+            description: `${data.created} novos casos criados.`
         })
         queryClient.invalidateQueries({ queryKey: ['cases'] })
         queryClient.invalidateQueries({ queryKey: ['stats'] })
-        queryClient.invalidateQueries({ queryKey: ['waiting-list'] })
       } else {
-        toast.warning("Nenhum caso foi criado. Verifique os erros.")
+        toast.warning("Nenhum caso criado. Verifique os logs.")
       }
     },
-    onError: () => {
-      toast.error("Erro ao enviar o arquivo. Verifique se é uma planilha válida.")
+    onError: (error: any) => {
+      console.error(error)
+      const msg = error.response?.data?.logs?.[0] || "Erro ao enviar o arquivo."
+      toast.error(msg)
     }
   })
 
@@ -9630,20 +10005,29 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
     if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0])
   }, [])
 
-  const handleDownloadTemplate = () => {
-    // Gera CSV com BOM para compatibilidade Excel
-    const bom = "\uFEFF";
-    const csvContent = `${bom}${CSV_HEADERS}\n${CSV_EXAMPLE}`
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    
-    const link = document.createElement("a")
-    link.href = url
-    link.download = "modelo_importacao_completo.csv"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+  const handleDownloadTemplate = async () => {
+    try {
+      setIsDownloading(true)
+      const response = await api.get('/cases/import/template', {
+        responseType: 'blob', 
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Modelo_Importacao_Casos.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      
+      toast.success("Modelo baixado com sucesso!")
+    } catch (error) {
+      console.error(error)
+      toast.error("Erro ao baixar o modelo.")
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   return (
@@ -9655,13 +10039,13 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
             Importação em Massa
           </DialogTitle>
           <DialogDescription>
-            Use o modelo padronizado para garantir que todos os campos (Social, NIS, Endereço completo) sejam importados corretamente.
+            Use o modelo padronizado (Excel). Agora com listas de seleção para facilitar o preenchimento de Categoria, RA e Urgência.
           </DialogDescription>
         </DialogHeader>
 
         {!result ? (
           <div className="space-y-6 py-2">
-            {/* Área de Upload */}
+            {/* Upload Area */}
             <div 
               className={cn(
                 "relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer gap-3 group",
@@ -9689,18 +10073,16 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
                   )}>
                     {isDragOver ? <FileUp className="h-8 w-8 text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground group-hover:text-primary" />}
                   </div>
-                  
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
                       {isDragOver ? "Solte a planilha aqui" : "Clique ou arraste o arquivo"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Suporta .XLSX, .XLS e .CSV (Max 5MB)
+                      Suporta .XLSX e .CSV (Max 10MB)
                     </p>
                   </div>
                 </>
               )}
-              
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -9711,33 +10093,33 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               />
             </div>
 
-            {/* Dicas e Download */}
+            {/* Template Download */}
             <div className="bg-muted/30 rounded-lg p-4 space-y-3 border border-border/50">
               <div className="flex items-start gap-2 text-xs text-muted-foreground">
                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
                 <div className="space-y-1">
-                  <p><strong>Dicas de preenchimento:</strong></p>
+                  <p><strong>Dicas Importantes:</strong></p>
                   <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Separe múltiplas <strong>violações</strong> ou <strong>benefícios</strong> com ponto e vírgula (<code>;</code>).</li>
-                    <li>Datas devem estar no formato <code>DD/MM/AAAA</code>.</li>
-                    <li>O CPF deve conter 11 dígitos (com ou sem pontuação).</li>
+                    <li>Baixe o <strong>novo modelo</strong> para ter acesso às listas de seleção.</li>
+                    <li>O CPF é obrigatório (11 dígitos).</li>
+                    <li>Para <strong>Crianças/Adolescentes</strong>, preencha o Responsável Legal.</li>
                   </ul>
                 </div>
               </div>
-              
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={handleDownloadTemplate} 
+                disabled={isDownloading}
                 className="w-full text-xs h-9 border-dashed bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
               >
-                <Download className="mr-2 h-3.5 w-3.5" />
-                Baixar Modelo Completo (.csv)
+                {isDownloading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
+                Baixar Modelo Oficial (.xlsx)
               </Button>
             </div>
           </div>
         ) : (
-          /* TELA DE RESULTADO */
+          /* Result Screen */
           <div className="space-y-5 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800 text-center">
@@ -9755,7 +10137,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               </div>
             </div>
 
-            {/* Lista de Logs */}
+            {/* Logs List */}
             {result.logs.length > 0 && (
               <Alert variant={result.errors > 0 ? "destructive" : "default"} className={cn(
                 result.errors > 0 

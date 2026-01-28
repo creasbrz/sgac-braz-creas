@@ -2,12 +2,11 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
 import { CaseStatus, Cargo } from '@prisma/client'
 import { createCaseBodySchema, updateCaseBodySchema } from '../schemas/caseSchema'
 import { CaseService } from '../services/CaseService'
 import { ExportService } from '../services/ExportService'
-import { ImportService } from '../services/ImportService' // Adicionado
+import { ImportService } from '../services/ImportService'
 import { format } from 'date-fns'
 
 export async function caseRoutes(app: FastifyInstance) {
@@ -40,48 +39,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. [PUT] EDITAR CASO (Inclui lógica do SEI)
-  server.put('/cases/:id', {
-    schema: { 
-      tags: ['Casos'], 
-      params: z.object({ id: z.string().uuid() }), 
-      // Estendemos o schema aqui caso o arquivo original ainda não tenha os campos, 
-      // ou confiamos que updateCaseBodySchema já foi atualizado.
-      body: updateCaseBodySchema.extend({
-        seiRespondido: z.boolean().optional(),
-        linkSei: z.string().optional().nullable(),
-        numeroSei: z.string().optional().nullable()
-      })
-    }
-  }, async (request, reply) => {
-    try {
-      const { id } = request.params
-      const data = request.body
-
-      // --- LÓGICA DE CONTROLE DO SEI ---
-      // Se o status de resposta foi alterado, manipulamos a data automaticamente
-      let extraData: any = {}
-      
-      if (typeof data.seiRespondido === 'boolean') {
-        if (data.seiRespondido === true) {
-          extraData.dataRespostaSei = new Date() // Marca agora
-        } else {
-          extraData.dataRespostaSei = null // Limpa a data
-        }
-      }
-
-      // Mescla os dados do corpo com a lógica calculada
-      const payload = { ...data, ...extraData }
-
-      const updated = await CaseService.update(id, payload, request.user.sub)
-      return reply.send(updated)
-    } catch (error: any) {
-      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
-      throw error
-    }
-  })
-
-  // 3. [GET] LISTAR CASOS (Com filtros avançados)
+  // 2. [GET] LISTAR CASOS (Geral)
   server.get('/cases', {
     schema: {
       tags: ['Casos'],
@@ -102,39 +60,75 @@ export async function caseRoutes(app: FastifyInstance) {
       })
     }
   }, async (request, reply) => {
-    const { page, pageSize, sortBy, sortOrder } = request.query
-    const { cargo, sub } = request.user as { cargo: string, sub: string }
-
-    const where = CaseService.buildWhereClause(request.query, { cargo, sub })
-
-    let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]
-    
-    if (sortBy) {
-      if (sortBy === 'urgencia') orderBy = { pesoUrgencia: sortOrder || 'desc' }
-      else orderBy = { [sortBy]: sortOrder || 'asc' }
-    }
-
-    const [items, total] = await Promise.all([
-      prisma.case.findMany({
-        where, 
-        orderBy, 
-        take: pageSize, 
-        skip: (page - 1) * pageSize,
-        include: { 
-          agenteAcolhida: { select: { nome: true } }, 
-          especialistaPAEFI: { select: { nome: true } } 
-        },
-      }),
-      prisma.case.count({ where }),
-    ])
-
-    return reply.send({ 
-      data: items, 
-      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } 
-    })
+    // Refatorado para usar o método centralizado no Service
+    const result = await CaseService.findAll(request.query, request.user)
+    return reply.send(result)
   })
 
-  // 4. [GET] DETALHES COMPLETOS
+  // 3. [GET] CASOS FECHADOS (Arquivo Morto) 
+  // [IMPORTANTE] Esta rota deve vir ANTES de /cases/:id para não dar erro de UUID
+  server.get('/cases/closed', {
+    schema: {
+      tags: ['Casos'],
+      summary: 'Listar casos desligados (Arquivo Morto)',
+      querystring: z.object({
+        search: z.string().optional(),
+        page: z.coerce.number().default(1),
+        pageSize: z.coerce.number().default(10),
+        view: z.string().optional(), // Aceita view para compatibilidade com frontend
+        // Adicione outros filtros se necessário
+      })
+    }
+  }, async (request, reply) => {
+    // Força o status e a view para buscar desligados
+    const params = {
+      ...request.query,
+      view: 'all',
+      status: 'DESLIGADO'
+    }
+    
+    const result = await CaseService.findAll(params, request.user)
+    return reply.send(result)
+  })
+
+  // 4. [GET] EXPORTAR EXCEL (Movido para cima para evitar colisão)
+  server.get('/cases/export', {
+    schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
+  }, async (request, reply) => {
+    const { cargo } = request.user as { cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    try {
+      const buffer = await ExportService.generateCasesExcel()
+
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      reply.header('Content-Disposition', `attachment; filename="Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx"`)
+      
+      return reply.send(buffer)
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar excel.' })
+    }
+  })
+
+  // 5. [GET] DOWNLOAD MODELO (Movido para cima)
+  server.get('/cases/import/template', {
+    schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
+  }, async (request, reply) => {
+    try {
+      const buffer = await ExportService.generateTemplate() 
+
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      reply.header('Content-Disposition', `attachment; filename="Modelo_Importacao_Casos.xlsx"`)
+      
+      return reply.send(buffer)
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar template.' })
+    }
+  })
+
+  // 6. [GET] DETALHES COMPLETOS (Rota com parâmetro ID)
   server.get('/cases/:id', {
     schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }) }
   }, async (request, reply) => {
@@ -147,7 +141,43 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 5. [PATCH] MUDAR STATUS
+  // 7. [PUT] EDITAR CASO
+  server.put('/cases/:id', {
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: updateCaseBodySchema.extend({
+        seiRespondido: z.boolean().optional(),
+        linkSei: z.string().optional().nullable(),
+        numeroSei: z.string().optional().nullable()
+      })
+    }
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params
+      const data = request.body
+
+      let extraData: any = {}
+      
+      if (typeof data.seiRespondido === 'boolean') {
+        if (data.seiRespondido === true) {
+          extraData.dataRespostaSei = new Date()
+        } else {
+          extraData.dataRespostaSei = null
+        }
+      }
+
+      const payload = { ...data, ...extraData }
+
+      const updated = await CaseService.update(id, payload, request.user.sub)
+      return reply.send(updated)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
+      throw error
+    }
+  })
+
+  // 8. [PATCH] MUDAR STATUS
   server.patch('/cases/:id/status', {
     schema: { 
       tags: ['Casos'], 
@@ -163,7 +193,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 6. [PATCH] ATRIBUIR TÉCNICO
+  // 9. [PATCH] ATRIBUIR TÉCNICO
   server.patch('/cases/:id/assign', {
     schema: { 
       tags: ['Casos'], 
@@ -173,7 +203,6 @@ export async function caseRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
     
-    // Apenas Gerente pode atribuir (ou adapte conforme sua regra)
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
     
     try {
@@ -184,7 +213,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 7. [PATCH] DESLIGAR CASO
+  // 10. [PATCH] DESLIGAR CASO
   server.patch('/cases/:id/close', {
     schema: { 
       tags: ['Casos'], 
@@ -205,7 +234,6 @@ export async function caseRoutes(app: FastifyInstance) {
     
     if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-    // Apenas Gerente ou o próprio técnico do caso podem desligar
     const isManager = cargo === Cargo.Gerente
     if (!isManager && caso.agenteAcolhidaId !== sub && caso.especialistaPAEFIId !== sub) {
       return reply.status(403).send({ message: 'Sem permissão.' })
@@ -215,39 +243,16 @@ export async function caseRoutes(app: FastifyInstance) {
     return reply.send(updated)
   })
 
-  // 8. [GET] EXPORTAR EXCEL
-  server.get('/cases/export', {
-    schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
-  }, async (request, reply) => {
-    const { cargo } = request.user as { cargo: string }
-    // Apenas Gerente exporta tudo (ou remova se todos puderem)
-    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
-
-    try {
-      const buffer = await ExportService.generateCasesExcel()
-
-      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      reply.header('Content-Disposition', `attachment; filename="Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx"`)
-      
-      return reply.send(buffer)
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao gerar excel.' })
-    }
-  })
-
-  // 9. [POST] IMPORTAR CASOS (MULTIPART FILE)
+  // 11. [POST] IMPORTAR CASOS
   server.post('/cases/import', {
     schema: {
       tags: ['Casos'],
       summary: 'Importar casos em massa via Excel/CSV',
-      // Não definimos 'body' aqui pois é multipart manipulado pelo plugin @fastify/multipart
     }
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
 
-    // Verifica se é multipart
     if (!request.isMultipart()) {
       return reply.status(400).send({ message: 'Arquivo obrigatório (multipart/form-data).' })
     }
@@ -258,34 +263,15 @@ export async function caseRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
       }
 
-      // Converte stream para buffer
       const buffer = await data.toBuffer()
       const isCsv = data.mimetype === 'text/csv' || data.filename.endsWith('.csv')
 
-      // Processa
       const result = await ImportService.processImport(buffer, isCsv, sub)
       
       return reply.send(result)
     } catch (error) {
       request.log.error(error)
       return reply.status(500).send({ message: 'Erro interno na importação.' })
-    }
-  })
-
-  // 10. [GET] DOWNLOAD MODELO (TEMPLATE)
-  server.get('/cases/import/template', {
-    schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
-  }, async (request, reply) => {
-    try {
-      const buffer = await ExportService.generateTemplate() 
-
-      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      reply.header('Content-Disposition', `attachment; filename="Modelo_Importacao_Casos.xlsx"`)
-      
-      return reply.send(buffer)
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao gerar template.' })
     }
   })
 }

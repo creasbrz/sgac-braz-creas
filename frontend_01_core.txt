@@ -33,7 +33,7 @@ FILE: frontend\package.json
 ==================================================================
 {
   "name": "frontend",
-  "version": "7.6.0",
+  "version": "7.6.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -66,7 +66,6 @@ FILE: frontend\package.json
     "@react-pdf/renderer": "^4.3.2",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-query-devtools": "^5.62.0",
-    "@types/pdfmake": "^0.2.9",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
@@ -79,11 +78,9 @@ FILE: frontend\package.json
     "date-fns": "^4.1.0",
     "fast-csv": "^5.0.2",
     "framer-motion": "^11.13.1",
-    "html2canvas": "^1.4.1",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
-    "pdfmake": "^0.2.15",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-day-picker": "^9.4.1",
@@ -93,9 +90,9 @@ FILE: frontend\package.json
     "react-imask": "^7.6.1",
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.28.0",
-    "recharts": "^2.15.4",
+    "recharts": "^3.6.0",
     "sonner": "^1.7.1",
-    "tailwind-merge": "^2.5.5",
+    "tailwind-merge": "^2.6.0",
     "tailwindcss": "^3.4.16",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.2",
@@ -105,7 +102,7 @@ FILE: frontend\package.json
   "devDependencies": {
     "@eslint/js": "^9.16.0",
     "@types/leaflet": "^1.9.21",
-    "@types/node": "^25.0.9",
+    "@types/node": "^22.10.2",
     "eslint": "^9.16.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
@@ -235,34 +232,34 @@ FILE: frontend\tsconfig.json
 ==================================================================
 {
   "compilerOptions": {
-    "target": "ES2020", //
-    "useDefineForClassFields": true, //
-    "lib": ["ES2020", "DOM", "DOM.Iterable"], //
-    "module": "ESNext", //
-    "skipLibCheck": true, //
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
 
     /* Bundler mode */
-    "moduleResolution": "bundler", //
-    "allowImportingTsExtensions": true, //
-    "resolveJsonModule": true, //
-    "isolatedModules": true, //
-    "noEmit": true, //
-    "jsx": "react-jsx", //
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
 
     /* Linting */
-    "strict": true, //
-    "noUnusedLocals": true, //
-    "noUnusedParameters": true, //
-    "noFallthroughCasesInSwitch": true, //
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
 
     /* Path Aliases */
-    "baseUrl": ".", //
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"] //
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "../backend/src/utils/geocoding.ts"], //
-  "references": [{ "path": "./tsconfig.node.json" }] //
+  "include": ["src"], 
+  "references": [{ "path": "./tsconfig.node.json" }]
 }
 
 ==================================================================
@@ -513,12 +510,14 @@ export const queryClient = new QueryClient({
 ==================================================================
 FILE: frontend\src\lib\utils.ts
 ==================================================================
-// frontend/src/lib/utils.ts
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
+/**
+ * Combina classes condicionais (clsx) e resolve conflitos do Tailwind (twMerge)
+ */
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 ==================================================================
@@ -590,18 +589,18 @@ export function getErrorMessage(
 FILE: frontend\src\utils\formatters.ts
 ==================================================================
 // frontend/src/utils/formatters.ts
-import { format } from 'date-fns'
+import { format, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 /**
  * Formata uma string de CPF para o formato 000.000.000-00.
  */
-export const formatCPF = (cpf?: string | null) => {
+export const formatCPF = (cpf: string | null | undefined): string => {
   if (!cpf) return ''
 
   const cleaned = cpf.replace(/\D/g, '')
 
-  if (cleaned.length !== 11) return cpf // devolve como veio se inválido
+  if (cleaned.length !== 11) return cpf // Retorna original se tamanho incorreto
 
   return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 }
@@ -609,31 +608,72 @@ export const formatCPF = (cpf?: string | null) => {
 /**
  * Formata uma string de telefone para (00) 00000-0000 ou (00) 0000-0000.
  */
-export const formatPhone = (phone?: string | null) => {
+export const formatPhone = (phone: string | null | undefined): string => {
   if (!phone) return ''
 
   const cleaned = phone.replace(/\D/g, '')
 
-  if (cleaned.length < 10) return phone // telefone muito curto -> devolve original
-
+  // Celular (11 dígitos)
   if (cleaned.length === 11) {
-    // Celular
-    return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+    return cleaned.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3')
   }
 
-  // Telefone fixo
-  return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+  // Fixo (10 dígitos)
+  if (cleaned.length === 10) {
+    return cleaned.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3')
+  }
+
+  return phone // Retorna original se não bater os tamanhos
+}
+
+/**
+ * Formata Processo SEI suportando os dois padrões do GDF:
+ * 1. Padrão Antigo/Curto (19 dígitos): 00054-00160500/2025-77
+ * 2. Padrão Novo/Longo (21 dígitos): 19.04.1237.0168706/2025-77
+ */
+export const formatProcessoSei = (value: string | null | undefined): string => {
+  if (!value) return ''
+  
+  const clean = value.replace(/\D/g, '')
+
+  // Modelo 1: 5-8/4-2
+  if (clean.length === 19) {
+    return clean.replace(/^(\d{5})(\d{8})(\d{4})(\d{2})$/, '$1-$2/$3-$4')
+  }
+
+  // Modelo 2: 2.2.4.7/4-2
+  if (clean.length === 21) {
+    return clean.replace(/^(\d{2})(\d{2})(\d{4})(\d{7})(\d{4})(\d{2})$/, '$1.$2.$3.$4/$5-$6')
+  }
+
+  return value
+}
+
+/**
+ * Formata valor numérico para moeda BRL (R$ 1.200,00).
+ */
+export const formatCurrency = (value: number | string | null | undefined): string => {
+  if (value === null || value === undefined || value === '') return 'R$ 0,00'
+  
+  const numberValue = typeof value === 'string' ? parseFloat(value) : value
+  
+  if (isNaN(numberValue)) return 'R$ 0,00'
+
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(numberValue)
 }
 
 /**
  * Formata uma data no formato dd/MM/yyyy de forma segura.
  */
-export const formatDateSafe = (dateInput?: string | null | Date) => {
-  if (!dateInput) return 'N/A'
+export const formatDateSafe = (dateInput: string | Date | null | undefined): string => {
+  if (!dateInput) return '-'
 
   const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
 
-  if (isNaN(date.getTime())) return 'Data inválida'
+  if (!isValid(date)) return '-'
 
   return format(date, 'dd/MM/yyyy', { locale: ptBR })
 }
@@ -1998,16 +2038,11 @@ export interface UpcomingAppointment {
 FILE: frontend\src\types\case.ts
 ==================================================================
 // frontend/src/types/case.ts
-// --- TIPOS AUXILIARES (ENUMS & UNIONS) ---
+import { CaseStatusType } from '@/constants/cases/definitions'
 
-export type CaseStatus = 
-  | 'AGUARDANDO_ACOLHIDA' 
-  | 'EM_ACOLHIDA' 
-  | 'AGUARDANDO_DISTRIBUICAO' 
-  | 'EM_ACOLHIDA_ESPECIALIZADA' 
-  | 'EM_ACOMPANHAMENTO' 
-  | 'EM_MONITORAMENTO' 
-  | 'DESLIGADO';
+// --- TIPOS AUXILIARES ---
+
+export type CaseStatus = CaseStatusType;
 
 export type CaseOrigin = 
   | 'ESPONTANEA' 
@@ -2050,13 +2085,9 @@ export interface FamilyMember {
   cpf?: string | null
   nascimento?: string | null
   telefone?: string | null
-  
-  // Dados Sócio-econômicos do Familiar
   ocupacao?: string | null
   renda?: number | string | null
-  
   observacoes?: string | null
-  // RMA (Bloco C)
   violacao?: string[]
   createdAt: string
 }
@@ -2143,19 +2174,17 @@ export interface CaseDetailData {
   nascimento: string
   sexo: string
   
-  // [NOVOS CAMPOS] Sócio-econômico do Titular
+  // Sócio-econômico do Titular
   ocupacao?: string | null
   renda?: number | null
-  
-  // [NOVO] Objeto calculado pelo backend
   dadosEconomicos?: EconomicData
 
   // 2. Contatos e Endereço
   contatos?: Contact[] 
-  telefone?: string | null // Legacy fallback
+  telefone?: string | null 
   
   // Endereço Detalhado
-  endereco?: string | null // Legacy fallback
+  endereco?: string | null 
   endereco_logradouro?: string | null
   endereco_complemento?: string | null
   endereco_bairro?: string | null
@@ -2184,6 +2213,10 @@ export interface CaseDetailData {
   linkSei: string | null
   observacoes: string | null
   
+  // [NOVOS CAMPOS] Controle de Resposta SEI
+  seiRespondido: boolean
+  dataRespostaSei: string | null
+  
   // 6. Relacionamentos (Objetos)
   criadoPor: { nome: string }
   agenteAcolhida: { id: string, nome: string } | null
@@ -2203,8 +2236,8 @@ export interface CaseDetailData {
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
-  dataInicioPAEFI?: string
-  dataDesligamento?: string
+  dataInicioPAEFI?: string | null
+  dataDesligamento?: string | null
 }
 
 export interface CaseSummary {
@@ -2216,19 +2249,167 @@ export interface CaseSummary {
   urgencia: string
   violacao?: string[] 
   sexo?: string
-  
-  // Endereço e Contato resumidos para listas
   endereco?: string | null
   endereco_ra?: string | null
   contatos?: Contact[]
   telefone?: string | null
-
   dataDesligamento?: string | null
   motivoDesligamento?: string | null
   destinoDesligamento?: string | null
-  
   agenteAcolhida: { nome: string } | null
   especialistaPAEFI: { nome: string } | null
+}
+
+// --- INTERFACES DE RELATÓRIOS (PDF & DASHBOARDS) ---
+
+export interface StatData {
+  name: string
+  value: number
+}
+
+export interface UrgencyStatData extends StatData {
+  weight: number
+}
+
+// --- ESTRUTURAS DO RMA OFICIAL ---
+
+export interface AgeBreakdown {
+  masculino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
+  feminino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
+  total: number;
+}
+
+export interface ChildBreakdown {
+  masculino: { a0_6: number; a7_12: number; a13_17: number };
+  feminino: { a0_6: number; a7_12: number; a13_17: number };
+  total: number;
+}
+
+export interface ChildLaborBreakdown {
+  masculino: { a0_12: number; a13_15: number };
+  feminino: { a0_12: number; a13_15: number };
+  total: number;
+}
+
+export interface RmaReportData {
+  periodo?: string;
+  bloco1: {
+    // A - Volume
+    a1_total_acompanhamento: number;
+    a2_novos_casos: number;
+    
+    // B - Perfil
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
+    b6_vitimas: AgeBreakdown;
+    b7_mse: number;
+
+    // C - Crianças
+    c1_infamiliar: ChildBreakdown;
+    c2_abuso: ChildBreakdown;
+    c3_exploracao: ChildBreakdown;
+    c4_negligencia: ChildBreakdown;
+    c5_trabalho_infantil: ChildLaborBreakdown;
+
+    // D - Idosos
+    d1_violencia: number;
+    d2_negligencia: number;
+
+    // E - PCD
+    e1_violencia: AgeBreakdown;
+    e2_negligencia: AgeBreakdown;
+
+    // F - Mulheres
+    f1_mulheres: number;
+
+    // G - Tráfico
+    g1_trafico: AgeBreakdown;
+
+    // H - Discriminação
+    h1_discriminacao: number;
+
+    // I - Pop Rua
+    i1_rua: AgeBreakdown;
+  };
+  bloco2: {
+    m1_individual: number;
+    m2_grupo: number;
+    m3_cras: number;
+    m4_visitas: number;
+  };
+}
+
+// --- OUTROS RELATÓRIOS ---
+
+export interface ManagementReportData {
+  periodo: string
+  stats: { ativos: number; acolhidas: number; paefi: number; novos: number; desligados: number }
+  cargaHoraria: { agentes: StatData[]; especialistas: StatData[] }
+  vigilancia?: { violacoes: StatData[]; demografia: StatData[]; territorio?: StatData[] }
+}
+
+export interface ObservatoryData {
+  evolutionData: { name: string; novos: number; desligados: number }[]
+  violationData: StatData[]
+  urgencyData: UrgencyStatData[] 
+  originData: StatData[]
+  networkData: StatData[]
+  benefitsData: StatData[]
+  collectiveData: { 
+    totalGroups: number;
+    totalParticipants: number;
+    avgAttendance: number;
+  }
+  efficiencyData: { 
+    avgPermanence: number; 
+    avgWaitTime: number; 
+    retentionRate: number; 
+    totalClosed: number 
+  }
+  ageData: StatData[]
+  sexData: StatData[]
+}
+
+export interface DismissalReportData {
+  periodo: string
+  total: number
+  successRate: number
+  evasionRate: number
+  byReason: StatData[]
+  monthlyTrend: StatData[]
+}
+
+export interface InsightData {
+  type: 'success' | 'warning' | 'info';
+  title: string;
+  description: string;
+}
+
+export interface AnalyticsReportData {
+  periodo: number;
+  kpis: {
+    tempoMedio: number;
+    ativosPaefi: number;
+    previsaoNovos: number | null;
+  };
+  insights: InsightData[];
+  fluxo: {
+    name: string;
+    novos: number;
+    fechados: number;
+  }[];
+  violacoes: {
+    name: string;
+    value: number;
+    percent: number;
+  }[];
+  produtividade: {
+    name: string;
+    value: number;
+  }[];
 }
 
 ==================================================================
@@ -3124,56 +3305,69 @@ FILE: frontend\src\styles\index.css
 @tailwind utilities;
 
 /* -------------------------------------------------------------------------- */
-/* CONFIGURAÇÃO BASE                                                          */
+/* CONFIGURAÇÃO BASE (THEMING)                                                */
 /* -------------------------------------------------------------------------- */
 @layer base {
   :root {
-    /* Ajuda o browser a renderizar inputs nativos (date, time) corretamente */
-    color-scheme: light; 
-
+    /* Otimização de renderização */
+    color-scheme: light;
+    
     /* --- CORES PRINCIPAIS (Light Mode) --- */
-    --background: 0 0% 100%;
+    /* Fundo branco puro #FFFFFF */
+    --background: 0 0% 100%; 
+    /* Texto quase preto (azul muito escuro) para alto contraste #020817 */
     --foreground: 222.2 84% 4.9%;
 
+    /* Fundos de containers (Cards) - Branco */
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
 
+    /* Menus flutuantes, tooltips, dropdowns - Branco */
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    /* Azul Institucional */
+    /* COR DA MARCA: Azul Vibrante (Estilo Royal Blue) #2563EB */
+    /* Usado em botões principais, estados ativos e links */
     --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    --primary-foreground: 210 40% 98%; /* Texto branco/cinza muito claro sobre o azul */
 
+    /* Elementos secundários: Cinza azulado muito claro #F1F5F9 */
+    /* Usado em botões secundários, fundos alternativos */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
+    /* Elementos "mudados" (desabilitados ou menos importantes): Cinza claro */
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 16.3% 46.9%; /* Cinza médio para textos de apoio */
 
+    /* Cores de destaque para interações (Hover, Select): Cinza claro */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
 
+    /* Ações destrutivas (Erro/Deletar): Vermelho #EF4444 */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
+    /* Bordas e Divisórias: Cinza sutil #E2E8F0 */
     --border: 214.3 31.8% 91.4%;
+    /* Bordas de Inputs (campos de texto): Igual à borda geral */
     --input: 214.3 31.8% 91.4%;
+    /* Anel de foco (Focus Ring): Segue a cor primária (Azul) */
     --ring: 221.2 83.2% 53.3%;
 
-    --radius: 0.5rem;
+    --radius: 0.5rem; /* Arredondamento padrão: 8px */
 
-    /* --- CHART COLORS --- */
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* --- CHART COLORS (Cores para Gráficos) --- */
+    --chart-1: 12 76% 61%;  /* Laranja avermelhado */
+    --chart-2: 173 58% 39%; /* Verde azulado (Teal) */
+    --chart-3: 197 37% 24%; /* Azul escuro profundo */
+    --chart-4: 43 74% 66%;  /* Amarelo Ouro */
+    --chart-5: 27 87% 67%;  /* Laranja vivo */
 
-    /* --- SIDEBAR --- */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    /* --- SIDEBAR (Barra Lateral Específica) --- */
+    --sidebar-background: 0 0% 98%; /* Cinza quase branco (Off-white) */
+    --sidebar-foreground: 240 5.3% 26.1%; /* Cinza escuro */
+    --sidebar-primary: 240 5.9% 10%; /* Quase preto */
     --sidebar-primary-foreground: 0 0% 98%;
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
@@ -3181,44 +3375,52 @@ FILE: frontend\src\styles\index.css
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
-  /* --- DARK MODE --- */
   .dark {
-    /* Ajuda o browser a renderizar inputs nativos corretamente no escuro */
     color-scheme: dark;
 
+    /* --- CORES DARK MODE --- */
+    /* Fundo quase preto (Azul profundo) #020817 */
     --background: 222.2 84% 4.9%;
+    /* Texto branco gelo (com leve tom azulado) #F8FAFC */
     --foreground: 210 40% 98%;
 
+    /* Cards levemente mais claros que o fundo */
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
 
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
+    /* Azul primário mais claro para contraste no escuro #3B82F6 */
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
+    /* Elementos secundários escuros (Cinza azulado escuro) */
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
 
+    /* Textos de apoio em cinza médio */
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
 
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
 
+    /* Vermelho para erros (tom mais fechado para não ofuscar) */
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
 
+    /* Bordas escuras sutis */
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
 
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    /* Gráficos ajustados para brilhar no fundo escuro */
+    --chart-1: 220 70% 50%; /* Azul vibrante */
+    --chart-2: 160 60% 45%; /* Verde Esmeralda */
+    --chart-3: 30 80% 55%;  /* Laranja */
+    --chart-4: 280 65% 60%; /* Roxo */
+    --chart-5: 340 75% 55%; /* Rosa */
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -3235,9 +3437,16 @@ FILE: frontend\src\styles\index.css
   * {
     @apply border-border;
   }
+  
   body {
-    @apply bg-background text-foreground;
+    /* Melhoria Visual: Antialiased para fontes mais nítidas */
+    @apply bg-background text-foreground antialiased; 
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* UX/A11y: Padrão de foco global para navegação por teclado */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
 
@@ -3245,58 +3454,43 @@ FILE: frontend\src\styles\index.css
 /* UTILITIES & SCROLLBARS                                                     */
 /* -------------------------------------------------------------------------- */
 @layer utilities {
+  /* Scrollbar moderna e discreta */
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
+  
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
+  
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
+  
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50 transition-colors;
+    @apply bg-muted-foreground/30 rounded-full transition-colors hover:bg-muted-foreground/50;
   }
 }
 
-/* Fallback Global */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
-}
-
 /* -------------------------------------------------------------------------- */
-/* PRIVACY MODE                                                               */
+/* PRIVACY MODE (Otimizado)                                                   */
 /* -------------------------------------------------------------------------- */
-body.privacy-mode .privacy-mask,
-body.privacy-mode h1,
-body.privacy-mode h2,
-body.privacy-mode h3,
-body.privacy-mode h4,
-body.privacy-mode .font-medium,
-body.privacy-mode td:first-child,
-body.privacy-mode td:nth-child(2) {
-  filter: blur(5px);
+/* Agrupamento de seletores para o modo de privacidade */
+body.privacy-mode :is(h1, h2, h3, h4, .font-medium, td:first-child, td:nth-child(2), .privacy-mask) {
+  filter: blur(6px);
   user-select: none;
-  transition: filter 0.2s ease-in-out;
   cursor: default;
+  transition: filter 0.2s ease-in-out;
 }
 
+/* Exceções explícitas */
 body.privacy-mode .privacy-exempt {
   filter: none !important;
 }
 
-body.privacy-mode .privacy-mask:hover,
-body.privacy-mode h1:hover,
-body.privacy-mode td:first-child:hover {
+/* UX: Revelar ao passar o mouse */
+body.privacy-mode :is(h1, h2, h3, h4, td:first-child, .privacy-mask):hover {
   filter: blur(0);
-  transition-delay: 0.1s;
 }

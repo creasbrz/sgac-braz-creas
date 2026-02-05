@@ -6,7 +6,8 @@ import { Printer, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PDFDownloadButtonProps extends ButtonProps {
-  // [CORREÇÃO] <any> permite que o PDFDownloadLink aceite o componente Document sem conflito de tipos
+  // O uso de 'any' aqui é intencional para evitar conflitos de tipagem 
+  // entre versões diferentes do React e React-PDF
   document: React.ReactElement<any>; 
   fileName: string;
   label?: string;
@@ -27,10 +28,12 @@ export function PDFDownloadButton({
   
   const [isClient, setIsClient] = useState(false);
 
+  // Garante que o componente só monte no navegador
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  // Se não estiver no cliente, mostra loading mas não tenta renderizar o PDF
   if (!isClient) {
     return (
       <Button variant={variant} size={size} disabled className={cn("gap-2", className)} {...props}>
@@ -48,7 +51,7 @@ export function PDFDownloadButton({
           return (
             <Button variant="destructive" size={size} disabled className={cn("gap-2", className)} {...props}>
               <AlertCircle className="h-3.5 w-3.5" />
-              Erro ao Gerar
+              Erro
             </Button>
           );
         }
@@ -64,7 +67,7 @@ export function PDFDownloadButton({
             {loading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {label}
+                Gerando...
               </>
             ) : (
               <>

@@ -6,54 +6,43 @@ import { VitePWA } from 'vite-plugin-pwa'
 import packageJson from './package.json'
 
 export default defineConfig({
-  // 1. Build & Performance
   build: {
     target: 'es2022',
     outDir: 'dist',
-    chunkSizeWarningLimit: 1500, // Aumentei um pouco mais para evitar warnings chatos
+    chunkSizeWarningLimit: 1600, 
     sourcemap: false,
     
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // Isolando a biblioteca pesada que causa problemas
-            if (id.includes('@react-pdf/renderer')) return 'vendor-react-pdf';
-            
-            // Outros vendors pesados
-            if (id.includes('pdfmake')) return 'vendor-pdf-core';
-            if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor-maps';
-            if (id.includes('recharts')) return 'vendor-charts';
-            if (id.includes('fullcalendar')) return 'vendor-calendar';
-
-            // Core React
-            if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router')) {
-              return 'vendor-react-core';
+            // 1. ISOLAMENTO CRÍTICO (O que causava o erro do Login antes)
+            // Mantemos o PDF separado pois ele quebra a inicialização
+            if (id.includes('@react-pdf/renderer') || id.includes('pdfmake')) {
+              return 'pdf-lib';
             }
 
-            // UI System
-            if (id.includes('@radix-ui') || id.includes('lucide-react') || id.includes('framer-motion')) {
-              return 'vendor-ui';
-            }
+            // 2. OUTRAS LIBS PESADAS (Opcional, mas bom para performance)
+            if (id.includes('leaflet') || id.includes('react-leaflet')) return 'maps-lib';
+            if (id.includes('recharts')) return 'charts-lib';
+            if (id.includes('fullcalendar')) return 'calendar-lib';
+            if (id.includes('lottie')) return 'lottie-lib';
 
-            // Data
-            if (id.includes('@tanstack') || id.includes('date-fns') || id.includes('axios')) {
-              return 'vendor-data';
-            }
-
-            return 'vendor-utils';
+            // 3. VENDOR GERAL (A CORREÇÃO DO ERRO ATUAL)
+            // Juntamos React, Router, Radix, Lucide e Utils tudo aqui.
+            // Isso garante que o React.forwardRef exista quando o Radix for usado.
+            return 'vendor'; 
           }
         },
       },
     },
   },
 
-  // 2. Otimização de Dependências (AQUI ESTÁ A CORREÇÃO DO ERRO DE LOGIN)
+  // Mantemos a otimização do PDF
   optimizeDeps: {
-    include: ['@react-pdf/renderer'], // Força o pré-bundle dessa lib problemática
+    include: ['@react-pdf/renderer'],
   },
 
-  // 3. Plugins
   plugins: [
     react(),
     tailwindcss(),
@@ -65,7 +54,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // Aumentado para segurança
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
@@ -77,11 +66,6 @@ export default defineConfig({
               expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
               cacheableResponse: { statuses: [0, 200] }
             }
-          },
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'images', expiration: { maxEntries: 60 } }
           }
         ]
       },

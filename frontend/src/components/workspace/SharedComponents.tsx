@@ -4,11 +4,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ArrowRight, Eye, FileText } from 'lucide-react' // [CORREÇÃO] Removido AlertTriangle
+import { ArrowRight, Eye, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ROUTE_PATHS } from '@/constants/app-routes'
 
-// [INTEGRAÇÃO] Importando seu sistema de constantes
 import { getUrgencyColor } from '@/constants/cases/styles'
 import { URGENCIA_NIVEIS } from '@/constants/cases/definitions'
 import { BaseCase } from '@/types/workspace'
@@ -17,10 +16,11 @@ import { BaseCase } from '@/types/workspace'
 export const getUrgencyBorderColor = (urgency: string | null | undefined) => {
   const term = urgency?.trim() || ''
   
-  if (URGENCIA_NIVEIS.GRAVISSIMA.includes(term)) return 'border-l-red-600 dark:border-l-red-500'
-  if (URGENCIA_NIVEIS.MUITO_GRAVE.includes(term)) return 'border-l-orange-500 dark:border-l-orange-400'
-  if (URGENCIA_NIVEIS.GRAVE.includes(term)) return 'border-l-amber-500 dark:border-l-amber-400' 
-  if (URGENCIA_NIVEIS.LEVE.includes(term)) return 'border-l-emerald-500 dark:border-l-emerald-400'
+  // [CORREÇÃO] Adicionado 'as any' para silenciar o erro de tipagem estrita do TS
+  if (URGENCIA_NIVEIS.GRAVISSIMA.includes(term as any)) return 'border-l-red-600 dark:border-l-red-500'
+  if (URGENCIA_NIVEIS.MUITO_GRAVE.includes(term as any)) return 'border-l-orange-500 dark:border-l-orange-400'
+  if (URGENCIA_NIVEIS.GRAVE.includes(term as any)) return 'border-l-amber-500 dark:border-l-amber-400' 
+  if (URGENCIA_NIVEIS.LEVE.includes(term as any)) return 'border-l-emerald-500 dark:border-l-emerald-400'
 
   return 'border-l-slate-300 dark:border-l-slate-700'
 }
@@ -116,7 +116,7 @@ export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: 
       <div className="space-y-3 pb-4">
         {cases.map((c) => {
           const borderColor = getUrgencyBorderColor(c.urgencia)
-          const badgeColorClass = getUrgencyColor(c.urgencia)
+          const badgeColorClass = getUrgencyColor(c.urgencia as any) // [CORREÇÃO] Cast aqui também
 
           return (
             <div 
@@ -126,12 +126,10 @@ export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: 
                 "group relative grid grid-cols-1 md:grid-cols-12 gap-4 rounded-lg bg-card shadow-sm border border-transparent",
                 "p-4 pl-5", 
                 "hover:border-primary/20 hover:shadow-md transition-all items-center cursor-pointer",
-                // [CORREÇÃO TAILWIND] border-l-[4px] -> border-l-4
                 "border-l-4", 
                 borderColor
               )}
             >
-              {/* 1. NOME E STATUS (5/12) */}
               <div className="md:col-span-5 flex flex-col gap-1.5 min-w-0">
                 <div className="flex items-center gap-2">
                    <p className="font-semibold text-sm truncate text-foreground group-hover:text-primary transition-colors" title={c.nomeCompleto}>
@@ -145,7 +143,6 @@ export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: 
                 </div>
               </div>
 
-              {/* 2. URGÊNCIA E VIOLAÇÕES (4/12) */}
               <div className="md:col-span-4 flex flex-col gap-1.5 min-w-0 border-t md:border-t-0 md:border-l border-dashed border-border/60 pt-3 md:pt-0 md:pl-4 mt-1 md:mt-0">
                   <div className="flex items-center gap-2">
                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide">Prioridade:</span>
@@ -158,7 +155,6 @@ export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: 
                   </div>
               </div>
 
-              {/* 3. AÇÕES (3/12) */}
               <div className="md:col-span-3 flex justify-end items-center gap-2 mt-2 md:mt-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0">
                 <Button 
                   size="sm" 

@@ -72,3 +72,11 @@ export interface CreateGroupDTO {
   descricao?: string
   facilitadorId: string
 }
+
+export interface GroupAttendance {
+  id: string
+  casoId: string
+  nomeParticipante: string
+  presente: boolean
+  observacoes?: string
+}

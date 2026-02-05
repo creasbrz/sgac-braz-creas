@@ -29,24 +29,42 @@ export interface DashboardAppointment {
 }
 
 /**
- * Resumo de caso otimizado para listas rápidas e alertas.
+ * Interface Base para Casos nas listagens do Workspace.
+ * Unifica DashboardCase e BaseCase para evitar duplicidade.
  */
-export interface DashboardCase {
+export interface BaseCase {
   id: string
   nomeCompleto: string
   status: string
-  urgencia?: 'ALTA' | 'MEDIA' | 'BAIXA' | null
-  violacao?: string | null
+  // Tipado como string para evitar conflitos com literais estritos no frontend
+  // A validação visual é feita pelos helpers (getUrgencyColor)
+  urgencia: string 
+  violacao: string[] | string | null // Flexibilidade para array ou string vindo do backend
   updatedAt: string
-  dataEntrada?: string // Usado para calcular SLA de acolhida
+  dataEntrada: string
   
-  // Opcional: ID do responsável atual para filtragem rápida no front
+  // Campos opcionais úteis para filtros
   responsavelId?: string
 }
 
-export interface CaseAlert extends DashboardCase {
+// Alias para compatibilidade se necessário, ou usar BaseCase diretamente
+export type DashboardCase = BaseCase
+
+export interface CaseAlert extends BaseCase {
   type: AlertType
   days: number // Dias de atraso ou estagnação
+}
+
+/**
+ * Estrutura de carga de trabalho da equipe.
+ * [CORREÇÃO] Propriedade 'cases' padronizada com o Backend V2.0.
+ */
+export interface TeamLoadMember {
+  id: string
+  nome: string
+  role: UserRole
+  cases: number // Corrigido de 'activeCases' para 'cases'
+  monitoringCases?: number
 }
 
 // ==========================================
@@ -57,7 +75,7 @@ export interface CaseAlert extends DashboardCase {
  * Workspace do Gerente: Visão macro da unidade.
  */
 export interface ManagerWorkspaceData {
-  role: 'Gerente' // String literal para Discriminated Union
+  role: 'Gerente'
   
   stats: {
     totalActive: number
@@ -67,13 +85,8 @@ export interface ManagerWorkspaceData {
     waitingForDistribution: number 
   }
   
-  teamLoad: {
-    id: string
-    nome: string
-    role: UserRole
-    activeCases: number
-    monitoringCases?: number
-  }[]
+  // Lista tipada corretamente
+  teamLoad: TeamLoadMember[]
   
   topViolations: { 
     label: string
@@ -122,7 +135,7 @@ export interface OperationalWorkspaceData {
   role: 'Agente_Social' | 'Especialista'
   
   /** Meus casos ativos ou monitorados */
-  myCases: DashboardCase[]
+  myCases: BaseCase[]
   
   /** Alertas de prazo e estagnação */
   alerts: CaseAlert[]

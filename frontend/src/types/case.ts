@@ -428,3 +428,14 @@ export interface RmaReportData {
     m4_visitas: number;
   };
 }
+
+export interface DismissalReportData {
+  id: string
+  nomeCompleto: string
+  dataEntrada: string
+  dataDesligamento: string
+  tempoAcompanhamento: number // em dias
+  motivo: string
+  destino: string
+  tecnicoResponsavel: string
+}

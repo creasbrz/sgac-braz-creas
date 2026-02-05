@@ -9,27 +9,21 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
   
-  // --- CONFIGURAÇÃO DE LIMITES ---
   const CONFIG = {
-    CASELOAD_LIMIT: 25, // Teto ideal de casos por técnico
-    WARNING_THRESHOLD: 17.5, // 70% do limite (Alerta começa acima de 17 casos)
+    CASELOAD_LIMIT: 25, 
+    WARNING_THRESHOLD: 17.5, 
   }
 
-  // --- HELPERS ---
-  
-  // Determina a cor da barra baseada na carga usando tokens semânticos
   const getLoadColor = (count: number) => {
-    if (count >= CONFIG.CASELOAD_LIMIT) return 'bg-status-error-fg' // Vermelho
-    if (count >= CONFIG.WARNING_THRESHOLD) return 'bg-status-warning-fg' // Laranja
-    return 'bg-status-success-fg' // Verde
+    if (count >= CONFIG.CASELOAD_LIMIT) return 'bg-status-error-fg' 
+    if (count >= CONFIG.WARNING_THRESHOLD) return 'bg-status-warning-fg' 
+    return 'bg-status-success-fg' 
   }
 
-  // Calcula a largura da barra (Escala de 120% para acomodar overflow visualmente)
   const getLoadPercentage = (count: number) => {
     return Math.min((count / (CONFIG.CASELOAD_LIMIT * 1.2)) * 100, 100)
   }
 
-  // Memo para cálculo do ranking de violações (evita recálculo desnecessário)
   const maxViolationCount = useMemo(() => {
     return Math.max(...(data.topViolations?.map(v => v.count) || [0]), 1)
   }, [data.topViolations])
@@ -37,7 +31,7 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 p-6">
       
-      {/* 1. KPIs ESTRATÉGICOS */}
+      {/* 1. KPIs ESTRATÉGICOS (MANTIDO IGUAL) */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="md:col-span-2">
           <KPICard 
@@ -110,8 +104,9 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                     </div>
                     
                     <div className="text-right">
+                      {/* [CORREÇÃO] Voltamos para 'cases' e adicionamos fallback || 0 */}
                       <span className="text-sm font-bold tabular-nums text-foreground">
-                        {member.cases}
+                        {member.cases || 0}
                       </span>
                       <span className="text-xs text-muted-foreground ml-1">/ {CONFIG.CASELOAD_LIMIT}</span>
                     </div>
@@ -120,10 +115,11 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                   {/* Barra de Progresso Customizada */}
                   <div className="h-2.5 w-full bg-muted/50 rounded-full overflow-hidden ring-1 ring-border/30">
                       <div 
-                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${getLoadColor(member.cases)}`} 
-                        style={{ width: `${getLoadPercentage(member.cases)}%` }} 
+                        // [CORREÇÃO] member.cases aqui também
+                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${getLoadColor(member.cases || 0)}`} 
+                        style={{ width: `${getLoadPercentage(member.cases || 0)}%` }} 
                         role="progressbar"
-                        aria-valuenow={member.cases}
+                        aria-valuenow={member.cases || 0}
                         aria-valuemin={0}
                         aria-valuemax={CONFIG.CASELOAD_LIMIT}
                       />
@@ -134,7 +130,7 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
           </CardContent>
         </Card>
 
-        {/* CARD: PRINCIPAIS DEMANDAS (VIOLAÇÕES) */}
+        {/* CARD: PRINCIPAIS DEMANDAS (VIOLAÇÕES - MANTIDO IGUAL) */}
         <Card className="shadow-sm border-border/60 flex flex-col h-full bg-background">
           <CardHeader className="pb-4 border-b border-border/40 bg-muted/5">
             <CardTitle className="flex items-center gap-2 text-base font-bold">
@@ -169,8 +165,6 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                              {v.count}
                            </span>
                         </div>
-                        
-                        {/* Barra Relativa (Visual de Ranking) */}
                         <div className="h-2 w-full bg-muted/40 rounded-full overflow-hidden">
                            <div 
                              className="h-full bg-foreground/70 dark:bg-foreground/50 rounded-full transition-all duration-700 ease-out group-hover:bg-primary/90"

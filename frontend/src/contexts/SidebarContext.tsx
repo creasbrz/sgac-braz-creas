@@ -13,11 +13,11 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined)
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  // [OTIMIZAÇÃO v1.1] Inicialização "Safe": Começa com padrão (false) para render rápido
+  // [OTIMIZAÇÃO] Inicialização segura para evitar erro de hidratação
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Efeito para ler do storage apenas após a montagem (Hydration Safe)
+  // Lê do storage apenas após a montagem do componente no cliente
   useEffect(() => {
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY)
     if (stored) {
@@ -26,7 +26,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     setIsInitialized(true)
   }, [])
 
-  // Efeito para salvar mudanças
+  // Salva no storage sempre que o estado mudar (após inicializado)
   useEffect(() => {
     if (isInitialized) {
       localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isCollapsed))
@@ -35,10 +35,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const toggleSidebar = () => setIsCollapsed((prev) => !prev)
 
-  // Evita "flash" de conteúdo incorreto enquanto lê o storage
-  // (Opcional: Pode renderizar children direto se preferir layout shift mínimo a bloqueio)
+  // Evita renderizar children antes de ler a preferência do usuário (evita "pulo" visual)
   if (!isInitialized) {
-      return null // Ou um skeleton de layout
+      return null 
   }
 
   return (

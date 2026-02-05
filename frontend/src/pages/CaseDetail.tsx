@@ -237,7 +237,8 @@ export function CaseDetail() {
               { id: 'evolutions', label: 'Evoluções', icon: FileText },
               { id: 'family', label: 'Família', icon: Users },
               
-              { id: 'paf', label: 'Plano (PAF)', icon: ClipboardList },
+              // [MUDANÇA] Renomeado para Instrumentais
+              { id: 'paf', label: 'Instrumentais', icon: ClipboardList },
               
               { id: 'appointments', label: 'Agenda', icon: Calendar },
               { id: 'deliverables', label: 'Benefícios', icon: PackageCheck },
@@ -275,6 +276,7 @@ export function CaseDetail() {
                 <TabsContent value="evolutions" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300"><CaseEvolutions caseId={id!} /></TabsContent>
                 <TabsContent value="family" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300"><FamilyTab caseId={id!} titularRenda={Number(caseData.renda) || 0} /></TabsContent>
                 
+                {/* [MUDANÇA] Conteúdo do PAF agora sob a aba renomeada */}
                 <TabsContent value="paf" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <PafTab caseData={caseData} />
                 </TabsContent>

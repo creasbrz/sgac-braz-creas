@@ -14,7 +14,7 @@ import {
 // Ícones e UI
 import { 
   AlertTriangle, Clock, TrendingUp, FileBarChart, 
-  Activity, Briefcase, Calendar, RefreshCw
+  Activity, Briefcase, Calendar
 } from "lucide-react"
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -209,24 +209,25 @@ export function AdvancedAnalytics() {
   const isLoading = statsQuery.isLoading || prodQuery.isLoading
 
   return (
-    <div className="space-y-8 p-6 md:p-8 max-w-400 mx-auto animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700">
       
-      {/* HEADER "GLASS" */}
-      <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-8 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
+      {/* FILTER TOOLBAR */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-muted/30 p-4 rounded-lg border border-border/50">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            Inteligência de Dados
-            {statsQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Análise estratégica e preditiva da unidade.
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Análise Avançada
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Explore tendências, previsões e gargalos.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
-            <SelectTrigger className="w-45 bg-background border-border/60 shadow-sm h-9">
-              <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+            {/* [CORREÇÃO: w-[180px] -> w-45] */}
+            <SelectTrigger className="w-45 bg-background h-9 text-sm">
+              <Calendar className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -240,8 +241,8 @@ export function AdvancedAnalytics() {
             {statsQuery.data && (
                 <PDFDownloadButton 
                     document={<AnalyticsReportDoc data={processedData.reportData} />}
-                    fileName={`Relatorio_Sintetico_${periodMonths}M.pdf`}
-                    label="Exportar PDF"
+                    fileName={`Analytics_${periodMonths}M.pdf`}
+                    label="Exportar"
                     variant="outline" 
                     size="sm"
                     className="h-9"
@@ -278,7 +279,7 @@ export function AdvancedAnalytics() {
               icon={FileBarChart} 
               variant="default"
             />
-             {/* Card de Previsão IA - Gradiente Suave */}
+             {/* Card de Previsão IA - [CORREÇÃO: bg-gradient-to-br -> bg-linear-to-br] */}
              <Card className="flex flex-col justify-between border-l-4 border-l-primary shadow-sm bg-linear-to-br from-background to-muted/20">
                 <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">Previsão (IA)</CardTitle>
@@ -299,6 +300,7 @@ export function AdvancedAnalytics() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* 1. GRÁFICO PRINCIPAL (Fluxo) */}
+        {/* [CORREÇÃO: h-[500px] -> h-125] */}
         <Card className="lg:col-span-8 shadow-sm border-border/50 flex flex-col h-125">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -369,6 +371,7 @@ export function AdvancedAnalytics() {
         </Card>
 
         {/* 2. INSIGHTS IA (Lateral) */}
+        {/* [CORREÇÃO: h-[500px] -> h-125] */}
         <div className="lg:col-span-4 flex flex-col h-125">
            <SmartInsightsCard 
              insights={processedData.formattedInsights} 
@@ -378,6 +381,7 @@ export function AdvancedAnalytics() {
         </div>
 
         {/* 3. GRÁFICO DE PIZZA (Violações) */}
+        {/* [CORREÇÃO: h-[400px] -> h-100] */}
         <Card className="lg:col-span-5 shadow-sm border-border/50 h-100 flex flex-col">
             <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -388,6 +392,7 @@ export function AdvancedAnalytics() {
             <CardContent className="flex-1 flex items-center justify-center">
                 {isLoading ? <Skeleton className="h-64 w-64 rounded-full" /> : (
                     processedData.pieChartData.length > 0 ? (
+                        // [CORREÇÃO: max-h-[300px] -> max-h-75]
                         <ChartContainer config={processedData.violationConfig} className="aspect-square h-full max-h-75">
                             <PieChart>
                                 <ChartTooltip content={<ChartTooltipContent hideLabel />} />
@@ -403,7 +408,7 @@ export function AdvancedAnalytics() {
                                 >
                                      {processedData.pieChartData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.fill} />
-                                    ))}
+                                     ))}
                                     <Label
                                         content={({ viewBox }) => {
                                             if (viewBox && "cx" in viewBox && "cy" in viewBox) {
@@ -434,7 +439,8 @@ export function AdvancedAnalytics() {
             </CardContent>
         </Card>
 
-        {/* 4. GRÁFICO DE BARRAS (Produtividade) - Versão Compacta Corrigida */}
+        {/* 4. GRÁFICO DE BARRAS (Produtividade) */}
+        {/* [CORREÇÃO: h-[400px] -> h-100] */}
         <Card className="lg:col-span-7 shadow-sm border-border/50 h-100 flex flex-col">
              <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">

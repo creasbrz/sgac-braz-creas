@@ -17,7 +17,7 @@ import { OperationalWorkspaceData } from '@/types/workspace'
 import { ROUTES } from '@/constants/app-routes'
 import { cn } from '@/lib/utils'
 
-// [CORREÇÃO TS] Importar o tipo do componente consumidor para garantir compatibilidade
+// Importação do tipo para garantir compatibilidade
 import type { UpcomingAppointment } from '@/components/agenda/UpcomingAppointments'
 
 // Sub-componente de Alerta
@@ -26,9 +26,9 @@ const TechnicianAlertItem = ({ alert, isNavigating, onClick }: { alert: any, isN
   
   const getStyle = (type: string) => {
     switch (type) {
-      case 'PAF_NOT_STARTED': return { icon: AlertCircle, text: 'PAF não iniciado', color: 'text-status-error-fg', border: 'border-l-status-error-fg', bg: 'hover:bg-status-error-bg/20' }
-      case 'PAF_REVIEW_OVERDUE': return { icon: Clock, text: `Revisão vencida (${days}d)`, color: 'text-status-warning-fg', border: 'border-l-status-warning-fg', bg: 'hover:bg-status-warning-bg/20' }
-      case 'PAF_STALLED': return { icon: Activity, text: `Sem evolução (${days}d)`, color: 'text-status-warning-fg', border: 'border-l-status-warning-fg', bg: 'hover:bg-status-warning-bg/20' }
+      case 'PAF_NOT_STARTED': return { icon: AlertCircle, text: 'PAF não iniciado', color: 'text-red-600', border: 'border-l-red-500', bg: 'hover:bg-red-50' }
+      case 'PAF_REVIEW_OVERDUE': return { icon: Clock, text: `Revisão vencida (${days}d)`, color: 'text-orange-600', border: 'border-l-orange-500', bg: 'hover:bg-orange-50' }
+      case 'PAF_STALLED': return { icon: Activity, text: `Sem evolução (${days}d)`, color: 'text-orange-600', border: 'border-l-orange-500', bg: 'hover:bg-orange-50' }
       default: return { icon: AlertTriangle, text: 'Atenção necessária', color: 'text-muted-foreground', border: 'border-l-muted-foreground', bg: 'hover:bg-muted/50' }
     }
   }
@@ -40,7 +40,6 @@ const TechnicianAlertItem = ({ alert, isNavigating, onClick }: { alert: any, isN
       type="button"
       onClick={onClick}
       disabled={isNavigating}
-      // [CORREÇÃO TAILWIND] border-l-[4px] -> border-l-4
       className={cn(
         "w-full text-left group relative p-3 pl-4 border-b last:border-0 transition-all duration-200 bg-card border-l-4", 
         style.border, 
@@ -49,7 +48,6 @@ const TechnicianAlertItem = ({ alert, isNavigating, onClick }: { alert: any, isN
       )}
     >
       <div className="flex justify-between items-start mb-1 gap-2">
-        {/* [CORREÇÃO TAILWIND] max-w-[200px] -> max-w-50 */}
         <span className="text-sm font-semibold truncate max-w-50 text-foreground group-hover:text-primary transition-colors">
           {alert.nomeCompleto || 'Beneficiário Anônimo'}
         </span>
@@ -95,11 +93,10 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
     navigate(`/app/cases/${id}`)
   }
 
-  // [CORREÇÃO TS] Validação e casting dos tipos para UpcomingAppointment
+  // Validação e normalização dos tipos para UpcomingAppointment
   const mappedAppointments: UpcomingAppointment[] = appointments
     .filter(apt => !!apt)
     .map((apt: any) => {
-      // Normaliza o tipo vindo do backend para os tipos aceitos pelo componente
       let tipoNormalizado: "ATENDIMENTO" | "VISITA" | "AUDIENCIA" = "ATENDIMENTO";
       const tipoRaw = apt.tipo ? String(apt.tipo).toUpperCase() : "";
       
@@ -119,10 +116,9 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
     });
 
   return (
-    // Altura calculada para ocupar a tela (Viewport Height)
     <div className="space-y-6 h-[calc(100vh-140px)] flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-500 pb-6 p-1">
       
-      {/* 1. SEÇÃO DE KPIs (Altura Fixa) */}
+      {/* 1. SEÇÃO DE KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 flex-none">
         <KPICard 
           title="Elaboração de PAF" 
@@ -150,7 +146,7 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
         />
         <button 
           onClick={() => navigate(ROUTES.CASES)}
-          className="flex flex-col justify-center items-center border-dashed border-2 border-border bg-transparent hover:bg-muted/50 hover:border-primary/50 transition-all cursor-pointer group rounded-xl shadow-sm h-full min-h-22.5"
+          className="flex flex-col justify-center items-center border-dashed border-2 border-border bg-transparent hover:bg-muted/50 hover:border-primary/50 transition-all cursor-pointer group rounded-xl shadow-sm h-full min-h-24"
         >
            <span className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-2">
              <FileText className="h-4 w-4"/> Ver Todos os Casos
@@ -158,7 +154,7 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
         </button>
       </div>
 
-      {/* 2. ÁREA DE CONTEÚDO (Grid Flexível) */}
+      {/* 2. ÁREA DE CONTEÚDO */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
         
         {/* COLUNA ESQUERDA (Sidebar) */}
@@ -179,7 +175,7 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
              </CardContent>
           </Card>
 
-          {/* Agenda (Ocupa espaço disponível) */}
+          {/* Agenda */}
           <div className="flex-1 min-h-0 flex flex-col">
             <UpcomingAppointments 
               data={mappedAppointments} 
@@ -189,10 +185,10 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
             />
           </div>
           
-          {/* Pendências do PAF (Altura Limitada) */}
+          {/* Pendências do PAF */}
           <Card className="flex flex-col border shadow-sm overflow-hidden bg-card flex-none max-h-[35%]">
-            <div className="px-4 py-3 border-b border-border bg-status-warning-bg/20 flex items-center justify-between shrink-0">
-               <div className="flex items-center gap-2 text-status-warning-fg">
+            <div className="px-4 py-3 border-b border-border bg-orange-50/20 dark:bg-orange-950/20 flex items-center justify-between shrink-0">
+               <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
                   <Activity className="h-4 w-4"/>
                   <h3 className="text-sm font-bold leading-none">Pendências do PAF</h3>
                </div>
@@ -205,7 +201,7 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
               <ScrollArea className="h-full">
                  {alerts.length === 0 ? (
                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2 p-6 text-center opacity-60">
-                     <CheckCircle2 className="h-8 w-8 text-status-success-fg"/>
+                     <CheckCircle2 className="h-8 w-8 text-emerald-500"/>
                      <div>
                        <p className="text-sm font-medium">PAFs atualizados!</p>
                        <p className="text-xs">Nenhuma revisão pendente.</p>
@@ -272,7 +268,6 @@ export function TechnicianWorkspace({ data }: { data?: OperationalWorkspaceData 
                 </div>
                 
                 {/* Conteúdo Scrollável Independente */}
-                {/* [CORREÇÃO TAILWIND] min-h-[500px] -> min-h-125 */}
                 <CardContent className="p-0 bg-muted/5 flex-1 relative min-h-125">
                    <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
                       <TabsContent value="reception" className="m-0 min-h-full">

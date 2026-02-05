@@ -4,9 +4,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
-import { Loader2 } from "lucide-react"; // Ícone de carregamento
+import { Loader2 } from "lucide-react"; 
 
-// Configurações e Contextos (Mantidos Eager/Imediatos)
+// Configurações e Contextos
 import { queryClient } from "./lib/react-query";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
@@ -18,13 +18,12 @@ import { SessionExpiryDialog } from "./components/common/SessionExpiryDialog";
 import { ROUTE_PATHS, ROUTES } from "./constants/app-routes"; 
 import { ProtectedRoute } from "./ProtectedRoute";
 
-// Layouts e Páginas Leves (Carregamento Imediato)
+// Layouts e Páginas Leves
 import { MainLayout } from "./components/layout/MainLayout";
 import { Login } from "./pages/Login";
 import { NotFound } from "./pages/NotFound";
 
-// --- LAZY IMPORTS (CORREÇÃO DE CRASH / PERFORMANCE) ---
-// Usamos .then(module => ({ default: module.NomeComponente })) para suportar exportações nomeadas
+// --- LAZY IMPORTS ---
 const Dashboard = lazy(() => import("./pages/dashboard/Dashboard").then(m => ({ default: m.Dashboard })));
 const Workspace = lazy(() => import("./pages/workspace/Workspace").then(m => ({ default: m.Workspace })));
 const Cases = lazy(() => import("./pages/Cases").then(m => ({ default: m.Cases })));
@@ -34,12 +33,11 @@ const Agenda = lazy(() => import("./pages/Agenda").then(m => ({ default: m.Agend
 const Reports = lazy(() => import("./pages/reports/Reports").then(m => ({ default: m.Reports })));
 const UserManagement = lazy(() => import("./pages/UserManagement").then(m => ({ default: m.UserManagement })));
 const TeamOverview = lazy(() => import("./pages/TeamOverview").then(m => ({ default: m.TeamOverview })));
-const GlobalAudit = lazy(() => import("./pages/GlobalAudit").then(m => ({ default: m.GlobalAudit })));
-const AdvancedAnalytics = lazy(() => import("./pages/AdvancedAnalytics").then(m => ({ default: m.AdvancedAnalytics })));
+// Nota: GlobalAudit e AdvancedAnalytics agora são carregados internamente pelo Dashboard
 const GroupManagement = lazy(() => import("./pages/GroupManagement").then(m => ({ default: m.GroupManagement })));
 const WaitingList = lazy(() => import("./pages/WaitingList").then(m => ({ default: m.WaitingList })));
 
-// --- COMPONENTE DE LOADING ---
+// Componente de Loading
 const PageLoader = () => (
   <div className="flex h-screen w-full items-center justify-center bg-background">
     <div className="flex flex-col items-center gap-2">
@@ -49,7 +47,7 @@ const PageLoader = () => (
   </div>
 )
 
-// --- ROTA PÚBLICA ---
+// Rota Pública
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isSessionLoading } = useAuth()
 
@@ -76,10 +74,8 @@ export function App() {
               <PrivacyProvider>
                 <ModalProvider>
                   <SidebarProvider>
-                    {/* Monitor global de sessão */}
                     <SessionExpiryDialog />
                     
-                    {/* Suspense envolve as rotas para permitir o carregamento assíncrono */}
                     <Suspense fallback={<PageLoader />}>
                       <Routes>
                         <Route path="/" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
@@ -94,6 +90,7 @@ export function App() {
                         />
 
                         <Route path={ROUTE_PATHS.APP} element={<MainLayout />}>
+                          {/* Home padrão agora é o Workspace para todos */}
                           <Route index element={<Navigate to={ROUTES.WORKSPACE} replace />} />
 
                           <Route 
@@ -108,13 +105,14 @@ export function App() {
                           <Route 
                             path={ROUTE_PATHS.DASHBOARD} 
                             element={
-                              <ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]}>
+                              // [CORREÇÃO] Apenas Gerente e Auditor acessam o Dashboard Geral
+                              <ProtectedRoute allowedRoles={["Gerente", "Auditor"]}>
                                 <Dashboard />
                               </ProtectedRoute>
                             } 
                           />
 
-                          {/* Rotas Gerais Protegidas */}
+                          {/* Rotas Gerais */}
                           <Route element={<ProtectedRoute allowedRoles={["Gerente", "Especialista", "Agente_Social", "Auditor"]} />}>
                             <Route path={ROUTE_PATHS.CASES} element={<Cases />} />
                             <Route path={ROUTE_PATHS.CASE_DETAIL} element={<CaseDetail />} />
@@ -128,8 +126,7 @@ export function App() {
                           {/* Rotas de Gerente/Auditor */}
                           <Route element={<ProtectedRoute allowedRoles={["Gerente", "Auditor"]} />}>
                             <Route path={ROUTE_PATHS.TEAM} element={<TeamOverview />} />
-                            <Route path="audit" element={<GlobalAudit />} />
-                            <Route path="analytics" element={<AdvancedAnalytics />} />
+                            {/* Analytics e Audit foram removidos daqui pois são abas do Dashboard */}
                           </Route>
 
                           {/* Rotas Apenas Gerente */}

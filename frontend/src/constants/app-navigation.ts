@@ -7,7 +7,6 @@ import {
 import { ROUTES } from './app-routes'
 import type { UserRole } from '@/types/user'
 
-// Define as seções permitidas para evitar erros de digitação
 export type NavSection = 'Meu Trabalho' | 'Gestão de Casos' | 'Administração'
 
 export interface NavLink {
@@ -18,7 +17,6 @@ export interface NavLink {
   readonly section: NavSection
 }
 
-// 'as const' torna o array e seus objetos totalmente imutáveis (Readonly)
 export const NAV_LINKS: readonly NavLink[] = [
   // --- SEÇÃO: MEU TRABALHO ---
   {
@@ -48,7 +46,8 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.DASHBOARD,
     icon: LayoutDashboard,
     label: 'Painel Geral',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    // [CORREÇÃO] Restrito apenas para Gestão e Auditoria
+    allowedRoles: ['Gerente', 'Auditor'],
     section: 'Gestão de Casos',
   },
   {
@@ -62,7 +61,7 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.TEAM_OVERVIEW,
     icon: Users,
     label: 'Gestão da Equipe',
-    allowedRoles: ['Gerente', 'Auditor'], // Apenas Gerente/Auditor veem
+    allowedRoles: ['Gerente', 'Auditor'],
     section: 'Gestão de Casos',
   },
   {
@@ -89,7 +88,7 @@ export const NAV_LINKS: readonly NavLink[] = [
     section: 'Administração',
   },
   {
-    to: ROUTES.AUDIT,
+    to: ROUTES.AUDIT, // Este link levará para o Dashboard com a aba Audit ativa (precisa ajustar lógica de rota depois se quiser deep link)
     icon: ShieldAlert,
     label: 'Auditoria de Logs',
     allowedRoles: ['Gerente', 'Auditor'],
@@ -104,5 +103,4 @@ export const NAV_LINKS: readonly NavLink[] = [
   },
 ] as const
 
-// Mantém compatibilidade com imports existentes
 export const navLinks = NAV_LINKS

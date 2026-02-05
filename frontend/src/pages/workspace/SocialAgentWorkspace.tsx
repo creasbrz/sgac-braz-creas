@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { 
   Users, AlertCircle, Calendar, UserPlus, Activity, 
-  CheckCircle2, Clock, Loader2, ArrowRight, FileText 
+  CheckCircle2, Clock, Loader2, ArrowRight
 } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -114,9 +114,9 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
         <aside className="flex flex-col h-full gap-4 overflow-hidden">
           
           {/* A. Botão de Ação */}
-          <Card className="flex-none bg-status-ai-bg border-status-ai-border shadow-sm group hover:border-status-ai-fg/30 transition-colors">
+          <Card className="flex-none bg-blue-50/50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800 shadow-sm group hover:border-blue-200 transition-colors">
             <CardContent className="p-4 flex flex-col gap-3">
-              <div className="flex items-center gap-3 text-status-ai-fg">
+              <div className="flex items-center gap-3 text-blue-700 dark:text-blue-300">
                 <div className="p-2 bg-background/50 rounded-lg shadow-sm">
                    <UserPlus className="h-5 w-5" />
                 </div>
@@ -126,7 +126,7 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                 </div>
               </div>
               <Button 
-                className="w-full shadow-sm bg-status-ai-fg hover:bg-status-ai-fg/90 text-white font-medium" 
+                className="w-full shadow-sm bg-blue-600 hover:bg-blue-700 text-white font-medium" 
                 onClick={() => navigate(ROUTES.WAITING_LIST)}
               >
                  Pegar da Fila Geral <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1"/>
@@ -136,19 +136,19 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
 
           {/* B. Agenda (Ocupa espaço restante) */}
           <div className="flex-1 min-h-0 flex flex-col">
-             <UpcomingAppointments 
-               data={appointments} 
-               title="Agenda Rápida" 
-               enableScroll={true}
-               className="h-full border-border/60 shadow-sm"
-             />
+              <UpcomingAppointments 
+                data={appointments} 
+                title="Agenda Rápida" 
+                enableScroll={true}
+                className="h-full border-border/60 shadow-sm"
+              />
           </div>
 
           {/* C. Alertas (Altura limitada) */}
-          <Card className="flex-none border-l-4 border-l-status-warning-fg shadow-sm flex flex-col overflow-hidden bg-card max-h-[35%]">
-            <CardHeader className="pb-2 border-b bg-status-warning-bg/30 px-4 py-3 shrink-0">
+          <Card className="flex-none border-l-4 border-l-orange-500 shadow-sm flex flex-col overflow-hidden bg-card max-h-[35%]">
+            <CardHeader className="pb-2 border-b bg-orange-50/30 dark:bg-orange-950/10 px-4 py-3 shrink-0">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-status-warning-fg">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-600 dark:text-orange-400">
                   <Activity className="h-4 w-4"/> 
                   Alertas e Pendências
                 </CardTitle>
@@ -161,11 +161,10 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
             </CardHeader>
             
             <CardContent className="p-0 overflow-hidden flex-1">
-              {/* max-h-62.5 = 250px */}
-              <ScrollArea className="h-full max-h-62.5">
+              <ScrollArea className="h-full max-h-60">
                 {alerts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-24 text-muted-foreground gap-2 opacity-60">
-                    <CheckCircle2 className="h-6 w-6 text-status-success-fg"/>
+                    <CheckCircle2 className="h-6 w-6 text-emerald-500"/>
                     <p className="text-xs font-medium">Tudo em dia!</p>
                   </div>
                 ) : (
@@ -183,14 +182,14 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                             disabled={isNavigating}
                             className={cn(
                               "w-full text-left p-3 transition-all hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted group relative",
-                              isCritical && "bg-status-error-bg/30 hover:bg-status-error-bg/50",
+                              isCritical && "bg-red-50/50 dark:bg-red-900/10 hover:bg-red-100/50",
                               isNavigating && "opacity-60 cursor-wait"
                             )}
                           >
                             <div className="flex justify-between items-start mb-1">
                               <span className={cn(
                                 "text-sm font-semibold truncate pr-2 transition-colors",
-                                isCritical ? "text-status-error-fg" : "text-foreground"
+                                isCritical ? "text-red-600 dark:text-red-400" : "text-foreground"
                               )}>
                                 {alert.nomeCompleto || 'Sem Nome'}
                               </span>
@@ -199,7 +198,7 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                             <div className="flex items-center gap-2 text-xs">
                               <div className={cn(
                                 "flex items-center gap-1 font-medium",
-                                isCritical ? "text-status-error-fg" : "text-status-warning-fg"
+                                isCritical ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"
                               )}>
                                 {isCritical ? <AlertCircle className="h-3 w-3"/> : <Clock className="h-3 w-3"/>}
                                 <span>{isCritical ? 'Crítico' : 'Pendente'}</span>
@@ -227,8 +226,9 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                 <div className="flex items-center justify-between mb-6">
                     <div className="space-y-1">
                       <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                        {/* Ícone fixo para evitar erro de importação */}
                         <div className="p-1.5 bg-primary/10 rounded-md">
-                           <FileText className="h-5 w-5 text-primary"/>
+                           <Activity className="h-5 w-5 text-primary"/>
                         </div>
                         Minhas Famílias
                       </h2>

@@ -131,6 +131,16 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
   const presentesCount = participantes.filter(p => p.presente).length
   const ausentesCount = participantes.filter(p => !p.presente).length
   
+  // [CORREÇÃO] Mapeamento de dados para o Relatório PDF
+  // O relatório espera 'nomeParticipante' na raiz, mas a API retorna dentro de 'caso'
+  const participantsForReport = participantes.map(p => ({
+    id: p.id,
+    casoId: p.caso.id,
+    nomeParticipante: p.caso.nomeCompleto, // <--- Aqui resolve o erro de tipo
+    presente: p.presente,
+    observacoes: p.observacoes
+  }))
+
   const filteredCandidates = candidates 
 
   return (
@@ -168,7 +178,8 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
               {group && (
                 <>
                   <PDFDownloadButton 
-                    document={<GroupAttendanceDoc group={group} participants={participantes} type="blank" />}
+                    // [CORREÇÃO] Passando a lista mapeada (participantsForReport) em vez de (participantes)
+                    document={<GroupAttendanceDoc group={group} participants={participantsForReport} type="blank" />}
                     fileName={`Lista_Frequencia_Branca_${group.tema.replace(/\s+/g, '_')}.pdf`}
                     label="Lista em Branco"
                     variant="outline"
@@ -176,7 +187,8 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
                     className="h-9"
                   />
                   <PDFDownloadButton 
-                    document={<GroupAttendanceDoc group={group} participants={participantes} type="filled" />}
+                    // [CORREÇÃO] Passando a lista mapeada aqui também
+                    document={<GroupAttendanceDoc group={group} participants={participantsForReport} type="filled" />}
                     fileName={`Relatorio_Execucao_${group.tema.replace(/\s+/g, '_')}.pdf`}
                     label="Relatório"
                     variant="outline"
@@ -324,8 +336,8 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
                           <div className={cn(
                             "h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-transparent transition-all",
                             p.presente 
-                              ? "bg-emerald-100 text-emerald-700 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-900/30" 
-                              : "bg-muted text-muted-foreground group-hover:bg-muted/80"
+                            ? "bg-emerald-100 text-emerald-700 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-900/30" 
+                            : "bg-muted text-muted-foreground group-hover:bg-muted/80"
                           )}>
                             {p.caso.nomeCompleto.charAt(0)}
                           </div>
@@ -342,8 +354,8 @@ export function GroupDetailsModal({ group, isOpen, onOpenChange }: GroupDetailsM
                           className={cn(
                             "h-8 text-xs min-w-27.5 transition-all font-medium ml-4",
                             p.presente 
-                              ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-sm" 
-                              : "text-muted-foreground hover:text-foreground border-dashed hover:border-solid hover:bg-muted"
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-sm" 
+                            : "text-muted-foreground hover:text-foreground border-dashed hover:border-solid hover:bg-muted"
                           )}
                         >
                           {p.presente ? (

@@ -1,71 +1,167 @@
 // frontend/src/components/reports/templates/ManagementDoc.tsx
-import { Text, View } from '@react-pdf/renderer';
-import { ReportLayout, styles } from './ReportLayout';
+import { Text, View, StyleSheet } from '@react-pdf/renderer';
+import { ReportLayout, styles as globalStyles } from './ReportLayout';
 import { ManagementReportData, StatData } from '@/types/case';
 
-interface ManagementDocProps {
-  data: ManagementReportData;
+// --- CONFIGURAÇÃO E CONSTANTES ---
+const COLORS = {
+  primary: '#111827',
+  blue: '#2563eb',
+  purple: '#7c3aed',
+  emerald: '#10b981',
+  bgLight: '#f9fafb',
+  textSecondary: '#6b7280'
+};
+
+// Estilos locais
+const localStyles = StyleSheet.create({
+  subTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    marginTop: 10
+  },
+  kpiLabel: {
+    fontSize: 9,
+    color: '#64748b',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  kpiValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  tableRowOdd: {
+    backgroundColor: COLORS.bgLight
+  }
+});
+
+// --- SUB-COMPONENTES ---
+
+// 1. KPI Box
+interface KpiBoxProps {
+  label: string;
+  value: string | number;
+  color?: string;
+  borderColor?: string;
 }
 
+const KpiBox = ({ label, value, color = COLORS.primary, borderColor = COLORS.primary }: KpiBoxProps) => (
+  <View style={[globalStyles.kpiContainer, { borderLeftWidth: 4, borderLeftColor: borderColor, flex: 1 }]}>
+    <Text style={localStyles.kpiLabel}>{label}</Text>
+    <Text style={[localStyles.kpiValue, { color }]}>{value}</Text>
+  </View>
+);
+
+// 2. Linha da Tabela
+interface TableRowProps {
+  isOdd: boolean;
+  cols: { text: string | number; width: string; align?: 'left' | 'right' | 'center'; bold?: boolean }[];
+}
+
+const TableRow = ({ isOdd, cols }: TableRowProps) => (
+  <View style={[globalStyles.row, isOdd ? localStyles.tableRowOdd : {}]}>
+    {cols.map((col, idx) => (
+      <Text
+        key={idx}
+        style={[
+          globalStyles.cell,
+          {
+            width: col.width,
+            textAlign: col.align || 'left',
+            fontWeight: col.bold ? 'bold' : 'normal',
+          }
+        ]}
+      >
+        {col.text}
+      </Text>
+    ))}
+  </View>
+);
+
+// 3. Tabela de Equipe (Refatorada)
 const TeamTable = ({ title, members }: { title: string, members: StatData[] }) => (
-  <View style={{ marginBottom: 15 }}>
-    <Text style={[styles.sectionTitle, { fontSize: 10, marginTop: 5 }]}>{title}</Text>
-    <View style={styles.table}>
-      <View style={[styles.row, styles.headerCell]}>
-        <Text style={[styles.cell, { width: '70%', fontWeight: 'bold' }]}>NOME DO PROFISSIONAL</Text>
-        <Text style={[styles.cell, styles.textCenter, { width: '30%', fontWeight: 'bold' }]}>CASOS ATIVOS</Text>
+  <View style={{ marginBottom: 15 }} wrap={false}>
+    <Text style={localStyles.subTitle}>{title}</Text>
+    <View style={globalStyles.table}>
+      
+      {/* Header */}
+      <View style={[globalStyles.row, globalStyles.headerCell]}>
+        <Text style={[globalStyles.cell, { width: '70%', fontWeight: 'bold' }]}>NOME DO PROFISSIONAL</Text>
+        <Text style={[globalStyles.cell, globalStyles.textCenter, { width: '30%', fontWeight: 'bold' }]}>CASOS ATIVOS</Text>
       </View>
+
+      {/* Rows */}
       {members.map((m, i) => (
-        <View key={i} style={[styles.row, i % 2 !== 0 ? { backgroundColor: '#f9fafb' } : {}]}>
-          <Text style={[styles.cell, { width: '70%' }]}>{m.name}</Text>
-          <Text style={[styles.cell, styles.textCenter, { width: '30%' }]}>{m.value}</Text>
-        </View>
+        <TableRow 
+          key={i}
+          isOdd={i % 2 !== 0}
+          cols={[
+            { text: m.name, width: '70%' },
+            { text: m.value, width: '30%', align: 'center', bold: true }
+          ]}
+        />
       ))}
+
       {members.length === 0 && (
-        <View style={styles.row}>
-          <Text style={[styles.cell, styles.textCenter, { width: '100%', fontStyle: 'italic', color: '#666', padding: 5 }]}>
-            Nenhum profissional registrado.
-          </Text>
-        </View>
+         <Text style={[globalStyles.cell, globalStyles.textCenter, { padding: 10, color: '#94a3b8', width: '100%', fontStyle: 'italic' }]}>
+           Nenhum profissional registrado nesta categoria.
+         </Text>
       )}
     </View>
   </View>
 );
 
-export const ManagementDoc = ({ data }: ManagementDocProps) => (
+// --- COMPONENTE PRINCIPAL ---
+
+export const ManagementDoc = ({ data }: { data: ManagementReportData }) => (
   <ReportLayout 
     title="Relatório de Gestão e Produtividade" 
-    subtitle={`Referência: ${data.periodo}`}
+    subtitle={`Período de Referência: ${data.periodo}`}
   >
     
     {/* 1. Visão Geral (KPIs) */}
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>1. RESUMO GERAL DA UNIDADE</Text>
+    <View style={globalStyles.section}>
+      <Text style={globalStyles.sectionTitle}>1. RESUMO GERAL DA UNIDADE</Text>
+      
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
         
-        <View style={[styles.kpiContainer, { flex: 1 }]}>
-          <Text style={styles.kpiLabel}>Total Ativos</Text>
-          <Text style={styles.kpiValue}>{data.stats.ativos}</Text>
-        </View>
-        <View style={[styles.kpiContainer, { flex: 1 }]}>
-          <Text style={styles.kpiLabel}>Em Acolhida</Text>
-          <Text style={styles.kpiValue}>{data.stats.acolhidas}</Text>
-        </View>
-        <View style={[styles.kpiContainer, { flex: 1 }]}>
-          <Text style={styles.kpiLabel}>Em Acomp. PAEFI</Text>
-          <Text style={styles.kpiValue}>{data.stats.paefi}</Text>
-        </View>
-        <View style={[styles.kpiContainer, { flex: 1, borderLeftWidth: 4, borderLeftColor: '#2563eb' }]}>
-           <Text style={styles.kpiLabel}>Novos (Mês)</Text>
-           <Text style={[styles.kpiValue, { color: '#2563eb' }]}>{data.stats.novos || '-'}</Text>
-        </View>
+        <KpiBox 
+          label="Total Ativos" 
+          value={data.stats.ativos} 
+          borderColor={COLORS.primary}
+        />
+        
+        <KpiBox 
+          label="Em Acolhida" 
+          value={data.stats.acolhidas} 
+          borderColor={COLORS.purple}
+          color={COLORS.purple}
+        />
+        
+        <KpiBox 
+          label="Acomp. PAEFI" 
+          value={data.stats.paefi} 
+          borderColor={COLORS.emerald}
+          color={COLORS.emerald}
+        />
+        
+        <KpiBox 
+          label="Novos (Mês)" 
+          value={data.stats.novos || '-'} 
+          borderColor={COLORS.blue}
+          color={COLORS.blue}
+        />
 
       </View>
     </View>
 
     {/* 2. Carga Horária / Distribuição */}
-    <View style={styles.section} wrap={false}>
-      <Text style={styles.sectionTitle}>2. DISTRIBUIÇÃO DA EQUIPE TÉCNICA</Text>
+    <View style={globalStyles.section} wrap={false}>
+      <Text style={globalStyles.sectionTitle}>2. DISTRIBUIÇÃO DA EQUIPE TÉCNICA</Text>
       
       <TeamTable 
         title="ESPECIALISTAS (TÉCNICOS DE REFERÊNCIA)" 
@@ -73,7 +169,7 @@ export const ManagementDoc = ({ data }: ManagementDocProps) => (
       />
 
       <TeamTable 
-        title="AGENTES SOCIAIS (ACOLHIDA/BUSCA ATIVA)" 
+        title="AGENTES SOCIAIS (ACOLHIDA E BUSCA ATIVA)" 
         members={data.cargaHoraria.agentes} 
       />
     </View>

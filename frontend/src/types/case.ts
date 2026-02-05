@@ -429,13 +429,22 @@ export interface RmaReportData {
   };
 }
 
+export interface DismissalReasonStat {
+  name: string
+  value: number
+}
+
+export interface DismissalTrendStat {
+  name: string
+  value: number
+}
+
+// Essa é a estrutura que o DismissalDoc espera (Estatísticas Agregadas)
 export interface DismissalReportData {
-  id: string
-  nomeCompleto: string
-  dataEntrada: string
-  dataDesligamento: string
-  tempoAcompanhamento: number // em dias
-  motivo: string
-  destino: string
-  tecnicoResponsavel: string
+  periodo: string
+  total: number
+  successRate: number
+  evasionRate: number
+  byReason: DismissalReasonStat[]
+  monthlyTrend: DismissalTrendStat[]
 }

@@ -1,127 +1,195 @@
 // frontend/src/components/reports/templates/DismissalDoc.tsx
 import { Text, View, StyleSheet } from '@react-pdf/renderer';
-import { ReportLayout, styles } from './ReportLayout'; 
+import { ReportLayout, styles as globalStyles } from './ReportLayout';
 import { DismissalReportData } from '@/types/case';
 
-interface DismissalDocProps {
-  data: DismissalReportData;
-}
+// --- CONFIGURAÇÃO E CONSTANTES ---
+const COLORS = {
+  success: '#16a34a',
+  danger: '#dc2626',
+  primary: '#111827',
+  secondary: '#4b5563',
+  bgLight: '#f9fafb',
+};
 
-// Estilos locais apenas para o layout específico desta página (Grid de KPIs)
+// Estilos locais específicos
 const localStyles = StyleSheet.create({
   kpiRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 15,
     marginBottom: 20,
+  },
+  kpiLabel: {
+    fontSize: 9,
+    color: '#64748b',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  kpiValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  tableRowOdd: {
+    backgroundColor: COLORS.bgLight
+  },
+  emptyState: {
+    fontSize: 9,
+    color: '#94a3b8',
+    fontStyle: 'italic',
+    padding: 10,
+    textAlign: 'center',
+    width: '100%',
   }
 });
 
+// --- SUB-COMPONENTES ---
+
+interface KpiBoxProps {
+  label: string;
+  value: string | number;
+  color?: string;
+  borderColor: string;
+}
+
+const KpiBox = ({ label, value, color = COLORS.primary, borderColor }: KpiBoxProps) => (
+  <View style={[globalStyles.kpiContainer, { borderLeftWidth: 4, borderLeftColor: borderColor, flex: 1 }]}>
+    <Text style={localStyles.kpiLabel}>{label}</Text>
+    <Text style={[localStyles.kpiValue, { color }]}>{value}</Text>
+  </View>
+);
+
+interface TableRowProps {
+  isOdd: boolean;
+  cols: { text: string | number; width: string; align?: 'left' | 'right' | 'center'; bold?: boolean }[];
+}
+
+const TableRow = ({ isOdd, cols }: TableRowProps) => (
+  <View style={[globalStyles.row, isOdd ? localStyles.tableRowOdd : {}]}>
+    {cols.map((col, idx) => (
+      <Text
+        key={idx}
+        style={[
+          globalStyles.cell,
+          {
+            width: col.width,
+            textAlign: col.align || 'left',
+            fontWeight: col.bold ? 'bold' : 'normal',
+          }
+        ]}
+      >
+        {col.text}
+      </Text>
+    ))}
+  </View>
+);
+
+// --- COMPONENTE PRINCIPAL ---
+
+interface DismissalDocProps {
+  data: DismissalReportData;
+}
+
 export const DismissalDoc = ({ data }: DismissalDocProps) => {
   // Ordenação para melhor leitura (Maior -> Menor)
+  // O TypeScript agora reconhece 'byReason' graças à correção no types/case.ts
   const sortedReasons = [...data.byReason].sort((a, b) => b.value - a.value);
 
-  // Cores locais
-  const colors = {
-    success: '#16a34a',
-    danger: '#dc2626',
-    secondary: '#4b5563',
-    primary: '#111827'
-  };
-
   return (
-    <ReportLayout 
-      title="Relatório Analítico de Desligamentos" 
+    <ReportLayout
+      title="Relatório Analítico de Desligamentos"
       subtitle={`Período de Análise: ${data.periodo}`}
     >
-      
-      {/* 1. KPIs */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>1. Indicadores de Desempenho</Text>
-        
-        {/* Container Flex (Local) */}
-        <View style={localStyles.kpiRow}>
-          
-          {/* Box (Do ReportLayout) + Customização de Borda */}
-          <View style={[styles.kpiContainer, { borderLeftWidth: 4, borderLeftColor: colors.primary, flex: 1 }]}>
-            <Text style={styles.kpiLabel}>Total Desligamentos</Text>
-            <Text style={styles.kpiValue}>{data.total}</Text>
-          </View>
-          
-          <View style={[styles.kpiContainer, { borderLeftWidth: 4, borderLeftColor: colors.success, flex: 1 }]}>
-            <Text style={styles.kpiLabel}>Taxa de Sucesso</Text>
-            <Text style={[styles.kpiValue, { color: colors.success }]}>
-              {data.successRate}%
-            </Text>
-          </View>
-          
-          <View style={[styles.kpiContainer, { borderLeftWidth: 4, borderLeftColor: colors.danger, flex: 1 }]}>
-            <Text style={styles.kpiLabel}>Índice de Evasão</Text>
-            <Text style={[styles.kpiValue, { color: colors.danger }]}>
-              {data.evasionRate}%
-            </Text>
-          </View>
 
+      {/* 1. KPIs */}
+      <View style={globalStyles.section}>
+        <Text style={globalStyles.sectionTitle}>1. Indicadores de Desempenho</Text>
+        
+        <View style={localStyles.kpiRow}>
+          <KpiBox
+            label="Total Desligamentos"
+            value={data.total}
+            borderColor={COLORS.primary}
+          />
+          
+          <KpiBox
+            label="Taxa de Sucesso"
+            value={`${data.successRate}%`}
+            color={COLORS.success}
+            borderColor={COLORS.success}
+          />
+          
+          <KpiBox
+            label="Índice de Evasão"
+            value={`${data.evasionRate}%`}
+            color={COLORS.danger}
+            borderColor={COLORS.danger}
+          />
         </View>
       </View>
 
       {/* 2. Motivos (Tabela) */}
-      <View style={styles.section} wrap={false}>
-        <Text style={styles.sectionTitle}>2. Motivos de Desligamento</Text>
-        <View style={styles.table}>
+      <View style={globalStyles.section} wrap={false}>
+        <Text style={globalStyles.sectionTitle}>2. Motivos de Desligamento</Text>
+        <View style={globalStyles.table}>
+          
           {/* Header */}
-          <View style={[styles.row, styles.headerCell]}>
-            <Text style={[styles.cell, { width: '70%', fontWeight: 'bold' }]}>MOTIVO REGISTRADO</Text>
-            <Text style={[styles.cell, styles.textCenter, { width: '15%', fontWeight: 'bold' }]}>QTD</Text>
-            <Text style={[styles.cell, styles.textRight, { width: '15%', fontWeight: 'bold' }]}>%</Text>
+          <View style={[globalStyles.row, globalStyles.headerCell]}>
+            <Text style={[globalStyles.cell, { width: '70%', fontWeight: 'bold' }]}>MOTIVO REGISTRADO</Text>
+            <Text style={[globalStyles.cell, globalStyles.textCenter, { width: '15%', fontWeight: 'bold' }]}>QTD</Text>
+            <Text style={[globalStyles.cell, globalStyles.textRight, { width: '15%', fontWeight: 'bold' }]}>%</Text>
           </View>
           
           {/* Rows */}
           {sortedReasons.map((r, i) => (
-            <View key={i} style={[styles.row, i % 2 !== 0 ? { backgroundColor: '#f9fafb' } : {}]}>
-              <Text style={[styles.cell, { width: '70%' }]}>{r.name}</Text>
-              <Text style={[styles.cell, styles.textCenter, { width: '15%' }]}>{r.value}</Text>
-              <Text style={[styles.cell, styles.textRight, { width: '15%' }]}>
-                {data.total > 0 ? ((r.value / data.total) * 100).toFixed(1) : 0}%
-              </Text>
-            </View>
+            <TableRow
+              key={i}
+              isOdd={i % 2 !== 0}
+              cols={[
+                { text: r.name, width: '70%' },
+                { text: r.value, width: '15%', align: 'center' },
+                { 
+                  text: data.total > 0 ? `${((r.value / data.total) * 100).toFixed(1)}%` : '0%', 
+                  width: '15%', 
+                  align: 'right' 
+                }
+              ]}
+            />
           ))}
 
-          {sortedReasons.length === 0 ? (
-            <View style={styles.row}>
-              <Text style={[styles.cell, styles.textCenter, { width: '100%', color: colors.secondary, padding: 10 }]}>
-                Nenhum registro encontrado no período.
-              </Text>
-            </View>
-          ) : null}
+          {sortedReasons.length === 0 && (
+            <Text style={localStyles.emptyState}>Nenhum registro encontrado no período.</Text>
+          )}
         </View>
       </View>
 
       {/* 3. Evolução Temporal */}
-      <View style={styles.section} wrap={false}>
-        <Text style={styles.sectionTitle}>3. Evolução Mensal</Text>
-        <View style={styles.table}>
+      <View style={globalStyles.section} wrap={false}>
+        <Text style={globalStyles.sectionTitle}>3. Evolução Mensal</Text>
+        <View style={globalStyles.table}>
+          
           {/* Header */}
-          <View style={[styles.row, styles.headerCell]}>
-            <Text style={[styles.cell, { width: '60%', fontWeight: 'bold' }]}>MÊS DE REFERÊNCIA</Text>
-            <Text style={[styles.cell, styles.textRight, { width: '40%', fontWeight: 'bold' }]}>VOLUME DE SAÍDAS</Text>
+          <View style={[globalStyles.row, globalStyles.headerCell]}>
+            <Text style={[globalStyles.cell, { width: '60%', fontWeight: 'bold' }]}>MÊS DE REFERÊNCIA</Text>
+            <Text style={[globalStyles.cell, globalStyles.textRight, { width: '40%', fontWeight: 'bold' }]}>VOLUME DE SAÍDAS</Text>
           </View>
           
           {/* Rows */}
           {data.monthlyTrend.map((m, i) => (
-            <View key={i} style={[styles.row, i % 2 !== 0 ? { backgroundColor: '#f9fafb' } : {}]}>
-              <Text style={[styles.cell, { width: '60%' }]}>{m.name}</Text>
-              <Text style={[styles.cell, styles.textRight, styles.bold, { width: '40%' }]}>{m.value}</Text>
-            </View>
+            <TableRow
+              key={i}
+              isOdd={i % 2 !== 0}
+              cols={[
+                { text: m.name, width: '60%' },
+                { text: m.value, width: '40%', align: 'right', bold: true }
+              ]}
+            />
           ))}
 
-          {data.monthlyTrend.length === 0 ? (
-            <View style={styles.row}>
-              <Text style={[styles.cell, styles.textCenter, { width: '100%', color: colors.secondary, padding: 10 }]}>
-                Sem dados para exibir.
-              </Text>
-            </View>
-          ) : null}
+          {data.monthlyTrend.length === 0 && (
+             <Text style={localStyles.emptyState}>Sem dados para exibir.</Text>
+          )}
         </View>
       </View>
 

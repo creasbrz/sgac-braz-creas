@@ -1,151 +1,37 @@
 // frontend/src/components/reports/templates/CaseProntuarioDoc.tsx
-import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer';
-import { CaseDetailData } from '@/types/case';
+import { Text, View, StyleSheet } from '@react-pdf/renderer';
 import { format } from 'date-fns';
+import { ReportLayout, styles as globalStyles } from './ReportLayout';
+import { CaseDetailData } from '@/types/case';
 
-// 1. REGISTRO DA FONTE (Mesma do Design System)
-Font.register({
-  family: 'Roboto',
-  fonts: [
-    { src: 'https://fonts.gstatic.com/s/roboto/v20/KFOmCnqEu92Fr1Mu4mxP.ttf', fontWeight: 'normal' },
-    { src: 'https://fonts.gstatic.com/s/roboto/v20/KFOlCnqEu92Fr1MmWUlfBBc9.ttf', fontWeight: 'bold' },
-    { src: 'https://fonts.gstatic.com/s/roboto/v20/KFOkCnqEu92Fr1Mu51xIIzIXKMny.ttf', fontStyle: 'italic' }
-  ]
-});
-
-// --- DESIGN TOKENS ---
-const theme = {
-  colors: {
-    primary: '#111827',     // Gray 900
-    secondary: '#4b5563',   // Gray 600
-    text: '#1f2937',        // Gray 800
-    border: '#e5e7eb',      // Gray 200
-    headerBg: '#f3f4f6',    // Gray 100
-  },
-  fontSizes: {
-    xs: 8,
-    sm: 9,
-    base: 10,
-    lg: 12,
-    xl: 16,
-  },
-};
-
-// --- ESTILOS ---
-const styles = StyleSheet.create({
-  page: {
-    padding: 30,
-    paddingTop: 40,
-    fontSize: theme.fontSizes.base,
-    fontFamily: 'Roboto',
-    color: theme.colors.text,
-    backgroundColor: '#ffffff',
-  },
-  // Cabeçalho
-  headerContainer: {
-    marginBottom: 25,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.colors.primary,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    fontSize: theme.fontSizes.xl,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    color: theme.colors.primary,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: theme.fontSizes.sm,
-    color: theme.colors.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  headerMeta: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    textAlign: 'right',
-  },
-  headerMetaText: {
-    fontSize: theme.fontSizes.xs,
-    color: theme.colors.secondary,
-    marginBottom: 2,
-  },
-  // Seções
-  section: {
-    marginBottom: 15,
-  },
-  sectionHeader: {
-    backgroundColor: theme.colors.headerBg,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.primary,
-  },
-  sectionTitle: {
-    fontSize: theme.fontSizes.lg,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    color: theme.colors.primary,
-  },
-  // Grid System (Substitui Tabela antiga)
-  row: {
-    flexDirection: 'row',
-    marginBottom: 6,
-    alignItems: 'flex-end',
-  },
+// --- ESTILOS LOCAIS ---
+// Apenas o que é específico deste relatório e não existe no global
+const localStyles = StyleSheet.create({
   fieldContainer: {
-    marginRight: 10,
+    marginBottom: 6,
+    paddingRight: 8,
   },
   label: {
-    fontSize: theme.fontSizes.xs,
-    color: theme.colors.secondary,
-    marginBottom: 2,
+    fontSize: 8,
+    color: '#64748b',
     textTransform: 'uppercase',
+    marginBottom: 2,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   value: {
-    fontSize: theme.fontSizes.base,
-    color: theme.colors.primary,
-    fontWeight: 'bold',
+    fontSize: 10,
+    color: '#1e293b',
+    fontFamily: 'Helvetica-Bold', // Destaque para valores no prontuário
   },
-  // Tabela Limpa (Para Família)
-  tableHeader: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.primary,
-    paddingBottom: 4,
-    marginBottom: 4,
-  },
-  tableHeaderCell: {
-    fontSize: theme.fontSizes.xs,
-    fontWeight: 'bold',
-    color: theme.colors.secondary,
-    textTransform: 'uppercase',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    paddingVertical: 4,
-  },
-  tableCell: {
-    fontSize: theme.fontSizes.base,
-    color: theme.colors.text,
-  },
-  // Helpers
-  emptyState: {
-    fontSize: theme.fontSizes.sm,
-    color: theme.colors.secondary,
-    fontStyle: 'italic',
-    padding: 5,
-  },
+  sectionGap: {
+    marginBottom: 12
+  }
 });
 
 // --- HELPERS DE FORMATAÇÃO ---
-const formatDateSafe = (date: Date | string | undefined | null) => {
+
+const formatDate = (date: Date | string | undefined | null) => {
   if (!date) return '-';
   try {
     return format(new Date(date), 'dd/MM/yyyy');
@@ -157,150 +43,156 @@ const formatCPF = (cpf: string | undefined | null) => {
   return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
 };
 
-const formatPhone = (phone: string | undefined | null) => {
-  if (!phone) return '-';
-  return phone.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3").replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-};
-
 const formatCurrency = (val: number | string | undefined | null) => {
   if (val === null || val === undefined || val === '') return 'R$ 0,00';
   const num = Number(val);
-  return isNaN(num) ? '-' : `R$ ${num.toFixed(2).replace('.', ',')}`;
+  return isNaN(num) ? '-' : `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 };
 
-// --- COMPONENTES AUXILIARES ---
+const formatPhone = (phone: string | undefined | null) => {
+  if (!phone) return '-';
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length === 11) return clean.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  if (clean.length === 10) return clean.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+  return phone;
+};
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Field = ({ label, value, width = 'auto' }: { label: string, value?: string | number | null, width?: any }) => (
-  <View style={[styles.fieldContainer, { width }]}>
-    <Text style={styles.label}>{label}</Text>
-    <Text style={styles.value}>{value || '-'}</Text>
+// --- SUB-COMPONENTES ---
+
+const InfoField = ({ label, value, width = 'auto' }: { label: string, value?: string | number | null, width?: string }) => (
+  <View style={[localStyles.fieldContainer, { width }]}>
+    <Text style={localStyles.label}>{label}</Text>
+    <Text style={localStyles.value}>{value || '-'}</Text>
   </View>
 );
 
-const SectionTitle = ({ title }: { title: string }) => (
-  <View style={styles.sectionHeader}>
-    <Text style={styles.sectionTitle}>{title}</Text>
-  </View>
+const SectionHeader = ({ title }: { title: string }) => (
+  <Text style={globalStyles.sectionTitle}>{title}</Text>
 );
+
+// --- COMPONENTE PRINCIPAL ---
 
 interface CaseDocProps {
   data: CaseDetailData;
 }
 
-export const CaseProntuarioDoc = ({ data }: CaseDocProps) => (
-  <Document>
-    <Page size="A4" style={styles.page}>
+export const CaseProntuarioDoc = ({ data }: CaseDocProps) => {
+
+  // Lógica de Endereço
+  const enderecoCompleto = [
+    data.endereco_logradouro,
+    data.endereco_complemento ? `(${data.endereco_complemento})` : null,
+    data.endereco_bairro,
+  ].filter(Boolean).join(', ');
+
+  const cidadeUf = [data.endereco_cidade, data.endereco_uf].filter(Boolean).join('/');
+
+  // Lógica de Telefone (Prioriza array de contatos, fallback para string antiga)
+  const telefonePrincipal = data.contatos && data.contatos.length > 0 
+    ? data.contatos[0].numero 
+    : data.telefone;
+
+  return (
+    <ReportLayout 
+      title="Prontuário Técnico"
+      subtitle={`Referência: ${data.nomeCompleto.toUpperCase()}`}
+    >
       
-      {/* CABEÇALHO */}
-      <View style={styles.headerContainer} fixed>
-        <View>
-          <Text style={styles.headerTitle}>Prontuário Técnico</Text>
-          <Text style={styles.headerSubtitle}>CREAS - Sistema de Gestão</Text>
-        </View>
-        <View style={styles.headerMeta}>
-          <Text style={styles.headerMetaText}>Beneficiário: {data.nomeCompleto.substring(0, 25).toUpperCase()}</Text>
-          <Text style={styles.headerMetaText}>Emissão: {format(new Date(), 'dd/MM/yyyy HH:mm')}</Text>
-        </View>
-      </View>
-
       {/* 1. IDENTIFICAÇÃO PESSOAL */}
-      <View style={styles.section}>
-        <SectionTitle title="1. Identificação Pessoal" />
+      <View style={globalStyles.section}>
+        <SectionHeader title="1. Identificação Pessoal" />
         
-        <View style={styles.row}>
-          <Field label="Nome Completo" value={data.nomeCompleto.toUpperCase()} width="60%" />
-          <Field label="CPF" value={formatCPF(data.cpf)} width="40%" />
+        <View style={globalStyles.row}>
+          <InfoField label="Nome Completo" value={data.nomeCompleto.toUpperCase()} width="60%" />
+          <InfoField label="CPF" value={formatCPF(data.cpf)} width="40%" />
         </View>
         
-        <View style={styles.row}>
-          <Field label="Nome Social" value={data.nomeSocial} width="40%" />
-          <Field label="Data Nasc." value={formatDateSafe(data.nascimento)} width="30%" />
-          <Field label="Sexo" value={data.sexo} width="30%" />
+        <View style={globalStyles.row}>
+          <InfoField label="Nome Social" value={data.nomeSocial} width="40%" />
+          <InfoField label="Data Nasc." value={formatDate(data.nascimento)} width="30%" />
+          <InfoField label="Sexo" value={data.sexo} width="30%" />
         </View>
 
-        <View style={styles.row}>
-          <Field label="Ocupação" value={data.ocupacao} width="40%" />
-          <Field label="Renda Individual" value={formatCurrency(data.renda)} width="30%" />
-          <Field label="Status" value={data.status?.replace(/_/g, ' ')} width="30%" />
+        <View style={globalStyles.row}>
+          <InfoField label="Ocupação" value={data.ocupacao} width="40%" />
+          <InfoField label="Renda Individual" value={formatCurrency(data.renda)} width="30%" />
+          <InfoField label="Status Atual" value={data.status?.replace(/_/g, ' ')} width="30%" />
         </View>
       </View>
 
       {/* 2. LOCALIZAÇÃO E CONTATO */}
-      <View style={styles.section}>
-        <SectionTitle title="2. Localização e Contato" />
+      <View style={globalStyles.section}>
+        <SectionHeader title="2. Localização e Contato" />
         
-        <View style={styles.row}>
-          <Field 
-            label="Endereço" 
-            value={`${data.endereco_logradouro || ''}, ${data.endereco_complemento || ''} - ${data.endereco_bairro || ''}`} 
-            width="70%" 
-          />
-          <Field label="CEP" value={data.endereco_cep} width="30%" />
+        <View style={globalStyles.row}>
+          <InfoField label="Endereço Resindencial" value={enderecoCompleto} width="70%" />
+          <InfoField label="CEP" value={data.endereco_cep} width="30%" />
         </View>
         
-        <View style={styles.row}>
-          <Field label="Cidade/UF" value={`${data.endereco_cidade || ''}/${data.endereco_uf || ''}`} width="50%" />
-          <Field 
-            label="Telefone" 
-            // Lógica de fallback para contatos antigos ou estrutura nova
-            value={data.contatos && Array.isArray(data.contatos) && data.contatos.length > 0 
-                ? `${formatPhone(data.contatos[0].numero)}` 
-                : formatPhone(data.telefone)} 
-            width="50%" 
-          />
+        <View style={globalStyles.row}>
+          <InfoField label="Cidade/UF" value={cidadeUf} width="40%" />
+          <InfoField label="Região Administrativa" value={data.endereco_ra} width="30%" />
+          <InfoField label="Telefone Principal" value={formatPhone(telefonePrincipal)} width="30%" />
         </View>
       </View>
 
-      {/* 3. DADOS TÉCNICOS */}
-      <View style={styles.section}>
-        <SectionTitle title="3. Dados do Atendimento" />
-        <View style={styles.row}>
-          <Field label="Data Entrada" value={formatDateSafe(data.dataEntrada)} width="33%" />
-          <Field label="Origem da Demanda" value={data.origem} width="33%" />
-          <Field label="Técnico Ref." value={data.especialistaPAEFI?.nome} width="33%" />
+      {/* 3. DADOS DO ATENDIMENTO */}
+      <View style={globalStyles.section}>
+        <SectionHeader title="3. Dados do Atendimento" />
+        
+        <View style={globalStyles.row}>
+          <InfoField label="Data de Entrada" value={formatDate(data.dataEntrada)} width="33%" />
+          <InfoField label="Origem da Demanda" value={data.origem} width="33%" />
+          <InfoField label="Técnico de Referência" value={data.especialistaPAEFI?.nome} width="33%" />
         </View>
-        <View style={styles.row}>
-          <Field label="Violações Identificadas" value={data.violacao?.join(', ')} width="100%" />
+        
+        <View style={globalStyles.row}>
+          <InfoField label="Violações Identificadas" value={data.violacao?.join(', ')} width="100%" />
         </View>
       </View>
 
       {/* 4. COMPOSIÇÃO FAMILIAR */}
-      <View style={styles.section} wrap={false}>
-        <SectionTitle title="4. Composição Familiar" />
+      <View style={globalStyles.section} wrap={false}>
+        <SectionHeader title="4. Composição Familiar" />
         
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderCell, { width: '40%' }]}>Nome</Text>
-          <Text style={[styles.tableHeaderCell, { width: '25%' }]}>Parentesco</Text>
-          <Text style={[styles.tableHeaderCell, { width: '15%', textAlign: 'center' }]}>Idade</Text>
-          <Text style={[styles.tableHeaderCell, { width: '20%', textAlign: 'right' }]}>Renda</Text>
-        </View>
-
-        {data.familia?.map((membro, i) => (
-          <View key={i} style={styles.tableRow}>
-            <Text style={[styles.tableCell, { width: '40%' }]}>{membro.nome}</Text>
-            <Text style={[styles.tableCell, { width: '25%' }]}>{membro.parentesco}</Text>
-            <Text style={[styles.tableCell, { width: '15%', textAlign: 'center' }]}>
-                {membro.idade ? `${membro.idade} anos` : '-'}
-            </Text>
-            <Text style={[styles.tableCell, { width: '20%', textAlign: 'right' }]}>
-                {formatCurrency(membro.renda)}
-            </Text>
+        <View style={globalStyles.table}>
+          {/* Header da Tabela */}
+          <View style={[globalStyles.row, globalStyles.headerCell]}>
+            <Text style={[globalStyles.cell, { width: '40%', fontWeight: 'bold' }]}>NOME</Text>
+            <Text style={[globalStyles.cell, { width: '25%', fontWeight: 'bold' }]}>PARENTESCO</Text>
+            <Text style={[globalStyles.cell, globalStyles.textCenter, { width: '15%', fontWeight: 'bold' }]}>IDADE</Text>
+            <Text style={[globalStyles.cell, globalStyles.textRight, { width: '20%', fontWeight: 'bold' }]}>RENDA</Text>
           </View>
-        ))}
 
-        {(!data.familia || data.familia.length === 0) ? (
-           <Text style={styles.emptyState}>Nenhum familiar cadastrado.</Text>
-        ) : null}
+          {/* Linhas da Tabela */}
+          {data.familia?.map((membro, i) => (
+            <View key={i} style={[globalStyles.row, i % 2 !== 0 ? { backgroundColor: '#f9fafb' } : {}]}>
+              <Text style={[globalStyles.cell, { width: '40%' }]}>{membro.nome}</Text>
+              <Text style={[globalStyles.cell, { width: '25%' }]}>{membro.parentesco}</Text>
+              <Text style={[globalStyles.cell, globalStyles.textCenter, { width: '15%' }]}>
+                {membro.idade ? `${membro.idade} anos` : '-'}
+              </Text>
+              <Text style={[globalStyles.cell, globalStyles.textRight, { width: '20%' }]}>
+                {formatCurrency(membro.renda)}
+              </Text>
+            </View>
+          ))}
+
+          {(!data.familia || data.familia.length === 0) && (
+            <Text style={[globalStyles.cell, globalStyles.textCenter, { padding: 10, color: '#94a3b8', width: '100%' }]}>
+              Nenhum familiar cadastrado.
+            </Text>
+          )}
+        </View>
+      </View>
+      
+      {/* Nota de Rodapé específica do Prontuário */}
+      <View style={{ marginTop: 20, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+         <Text style={{ fontSize: 8, color: '#64748b', textAlign: 'center' }}>
+            Este documento contém dados sensíveis protegidos pela LGPD. O sigilo é obrigatório.
+         </Text>
       </View>
 
-      {/* RODAPÉ */}
-      <Text 
-        style={{ position: 'absolute', bottom: 20, left: 30, right: 30, textAlign: 'center', fontSize: 8, color: theme.colors.secondary, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 10 }} 
-        render={({ pageNumber, totalPages }) => `Documento Confidencial - Página ${pageNumber} de ${totalPages}`} 
-        fixed 
-      />
-
-    </Page>
-  </Document>
-);
+    </ReportLayout>
+  );
+};

@@ -5,14 +5,12 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // --- DESIGN TOKENS (Fonte da Verdade Visual) ---
-// Copiado e unificado dos outros templates para garantir consistência total
 const theme = {
   colors: {
     primary: '#111827',     // Gray 900 (Títulos e Bordas Fortes)
     secondary: '#4b5563',   // Gray 600 (Textos secundários)
     text: '#1f2937',        // Gray 800 (Texto corrido)
     border: '#e5e7eb',      // Gray 200 (Divisórias internas)
-    borderStrong: '#000000',// Preto (Bordas externas/oficiais)
     headerBg: '#f3f4f6',    // Gray 100
     rowAlt: '#f9fafb',      // Gray 50
   },

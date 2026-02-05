@@ -44,17 +44,18 @@ const TYPE_COLORS: Record<string, string> = {
 // Schema do formulário
 const appointmentFormSchema = z.object({
   titulo: z.string().min(3, 'O título é muito curto.'),
-  tipo: z.string().default('Atendimento'),
+  // [CORREÇÃO] Removido .optional() para garantir string estrita
+  tipo: z.string().min(1, 'Selecione um tipo.'), 
   data: z.string().min(1, 'A data é obrigatória.'),
   time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Hora inválida.'),
-  casoId: z.string().uuid('Selecione um caso válido.'),
+  casoId: z.string().optional(), // Opcional, pois pode ser reunião interna
   observacoes: z.string().optional(),
 })
 
 type AppointmentFormData = z.infer<typeof appointmentFormSchema>
 
 interface NewAppointmentModalProps {
-  open: boolean // [CORREÇÃO] Adicionada prop explícita 'open'
+  open: boolean
   onOpenChange: (isOpen: boolean) => void
   defaultCaseId?: string | null
   defaultDate?: string
@@ -73,19 +74,25 @@ export function NewAppointmentModal({
   // Controle do Combobox
   const [openCombobox, setOpenCombobox] = useState(false)
 
-  // Busca casos (Otimização: pageSize razoável, idealmente deveria ser paginado via API no combobox, mas vamos manter simples por enquanto)
+  // Busca casos
   const { data: casesResponse, isLoading: isLoadingCases } = useQuery({
     queryKey: ['cases', 'select-list'],
     queryFn: async () => {
-      const response = await api.get('/cases', { params: { pageSize: 1000 } }) // Limite seguro
+      const response = await api.get('/cases', { params: { pageSize: 1000 } })
       return response.data
     },
-    staleTime: 1000 * 60 * 5, // 5 min cache
+    staleTime: 1000 * 60 * 5,
   })
 
+  // Extração robusta de dados
   const cases = useMemo(() => {
     if (!casesResponse) return []
-    return Array.isArray(casesResponse) ? casesResponse : (casesResponse.data || casesResponse.items || [])
+    if (Array.isArray(casesResponse)) return casesResponse
+    // @ts-ignore
+    if (Array.isArray(casesResponse.items)) return casesResponse.items
+    // @ts-ignore
+    if (Array.isArray(casesResponse.data)) return casesResponse.data
+    return []
   }, [casesResponse])
 
   const {
@@ -124,8 +131,8 @@ export function NewAppointmentModal({
 
       return await api.post('/appointments', {
         titulo: data.titulo,
-        tipo: data.tipo, // [NOVO] Enviando tipo
-        casoId: data.casoId,
+        tipo: data.tipo,
+        casoId: data.casoId, // Pode ser undefined/null, backend deve tratar
         observacoes: data.observacoes,
         data: isoDate,
       })
@@ -148,7 +155,8 @@ export function NewAppointmentModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      {/* [CORREÇÃO TAILWIND] sm:max-w-125 (500px) */}
+      <DialogContent className="sm:max-w-125">
         <DialogHeader>
           <DialogTitle>Novo Agendamento</DialogTitle>
           <DialogDescription>
@@ -156,6 +164,7 @@ export function NewAppointmentModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* [CORREÇÃO TS] Tipagem explícita no handleSubmit */}
         <form onSubmit={handleSubmit((data) => createAppointment(data))} className="space-y-5 py-2">
           
           {/* Título e Tipo */}
@@ -196,14 +205,14 @@ export function NewAppointmentModal({
                 />
               </div>
 
-              {/* Combobox de Caso (Substitui Select simples) */}
+              {/* Combobox de Caso */}
               <div className="space-y-1.5">
-                <Label>Vincular Caso</Label>
+                <Label>Vincular Caso (Opcional)</Label>
                 <Controller
                   name="casoId"
                   control={control}
                   render={({ field }) => (
-                    <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                    <Popover open={openCombobox} onOpenChange={setOpenCombobox} modal={true}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -219,7 +228,8 @@ export function NewAppointmentModal({
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[200px] p-0" align="start">
+                      {/* [CORREÇÃO TAILWIND] w-50 (200px) */}
+                      <PopoverContent className="w-50 p-0" align="start">
                         <Command>
                           <CommandInput placeholder="Buscar nome..." />
                           <CommandList>
@@ -292,7 +302,7 @@ export function NewAppointmentModal({
                 <Textarea
                   id="observacoes"
                   placeholder="Detalhes adicionais sobre o atendimento..."
-                  className="resize-none min-h-[80px]"
+                  className="resize-none min-h-20"
                   {...field}
                 />
               )}

@@ -2,19 +2,12 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { AlertService } from '../services/AlertService'
+import { AlertController } from '../controllers/AlertController'
 
-// Schema de Resposta (Documentação e Type Safety)
 const alertResponseSchema = z.object({
   id: z.string(),
   nomeCompleto: z.string(),
-  type: z.enum([
-    'PAF_NOT_STARTED', 
-    'PAF_STALLED', 
-    'PAF_REVIEW_OVERDUE', 
-    'NOT_STARTED_YET', 
-    'RECEPTION_DELAY'
-  ]),
+  type: z.enum(['PAF_NOT_STARTED', 'PAF_STALLED', 'PAF_REVIEW_OVERDUE', 'NOT_STARTED_YET', 'RECEPTION_DELAY']),
   days: z.number(),
   urgencia: z.string()
 })
@@ -29,25 +22,8 @@ export async function alertRoutes(app: FastifyInstance) {
   server.get('/alerts', {
     schema: {
       tags: ['Alertas'],
-      summary: 'Monitoramento de prazos e pendências (Sinais de Trânsito)',
-      response: {
-        200: z.array(alertResponseSchema)
-      }
+      summary: 'Monitoramento de prazos e pendências',
+      response: { 200: z.array(alertResponseSchema) }
     }
-  }, async (req, reply) => {
-    try {
-      // 1. Extração de Contexto
-      const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
-
-      // 2. Chamada ao Service (Regra de Negócio Pura)
-      const alerts = await AlertService.getAlertsForUser(userId, cargo)
-
-      // 3. Resposta
-      return reply.send(alerts)
-
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao processar alertas de monitoramento.' })
-    }
-  })
+  }, AlertController.list)
 }

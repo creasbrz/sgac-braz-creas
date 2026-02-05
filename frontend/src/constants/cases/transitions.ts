@@ -1,37 +1,48 @@
 // frontend/src/constants/cases/caseTransitions.ts
-import { type CaseStatusType } from './definitions'
+import type { CaseStatusType } from './definitions'
 import type { UserRole } from '@/types/user'
+
+// --- TIPOS ---
 
 export type ActionType = 'status' | 'assign' | 'close'
 
-// New type for Shadcn Button variants
-export type ActionVariant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+// Variantes padrão do Shadcn/UI (compatíveis com temas Tailwind v4)
+export type ActionVariant = 
+  | 'default' 
+  | 'destructive' 
+  | 'outline' 
+  | 'secondary' 
+  | 'ghost' 
+  | 'link'
 
 export interface StatusAction {
-  label: string
-  type: ActionType
-  nextStatus?: CaseStatusType
-  allowedRoles: UserRole[]
-  // [NEW] Maps directly to Shadcn Button 'variant' prop
-  variant: ActionVariant 
+  readonly label: string
+  readonly type: ActionType
+  readonly nextStatus?: CaseStatusType
+  readonly allowedRoles: readonly UserRole[]
+  readonly variant: ActionVariant
 }
 
-export const caseTransitions: Partial<
-  Record<CaseStatusType, StatusAction[]>
-> = {
+// --- CONFIGURAÇÃO DE TRANSIÇÕES ---
+
+/**
+ * Mapeamento estático de transições permitidas por status.
+ * 'as const' torna o objeto profundamente imutável (Readonly).
+ */
+export const CASE_TRANSITIONS: Partial<Record<CaseStatusType, readonly StatusAction[]>> = {
   AGUARDANDO_ACOLHIDA: [
     {
       label: 'Iniciar Acolhida',
       type: 'status',
       nextStatus: 'EM_ACOLHIDA',
       allowedRoles: ['Gerente', 'Agente_Social'],
-      variant: 'default', // Blue/Primary
+      variant: 'default', // Primary/Brand Color
     },
     {
       label: 'Desligamento Simplificado',
       type: 'close',
       allowedRoles: ['Gerente', 'Agente_Social'],
-      variant: 'secondary', // Gray/Neutral
+      variant: 'secondary', // Muted/Gray
     },
   ],
   EM_ACOLHIDA: [
@@ -52,9 +63,9 @@ export const caseTransitions: Partial<
   AGUARDANDO_DISTRIBUICAO: [
     {
       label: 'Atribuir Especialista',
-      type: 'assign', // Triggers the assignment modal
+      type: 'assign',
       allowedRoles: ['Gerente'],
-      variant: 'outline', // Distinct visual style for assignment
+      variant: 'outline', // Bordered action
     },
   ],
   EM_ACOLHIDA_ESPECIALIZADA: [
@@ -76,7 +87,7 @@ export const caseTransitions: Partial<
       label: 'Encerrar após Escuta',
       type: 'close',
       allowedRoles: ['Gerente', 'Especialista'],
-      variant: 'destructive', // Red/Danger
+      variant: 'destructive', // Semantic Error/Danger Color
     },
   ],
   EM_ACOMPANHAMENTO: [
@@ -118,21 +129,25 @@ export const caseTransitions: Partial<
       variant: 'outline',
     },
   ],
-}
+} as const
+
+// Mantendo compatibilidade com importações antigas se necessário
+export const caseTransitions = CASE_TRANSITIONS;
+
+// --- HELPER FUNCTIONS ---
 
 export function getAvailableActions(
   status: string | null | undefined,
   cargo: UserRole,
-): StatusAction[] {
+): readonly StatusAction[] {
   if (!status) return []
   
-  // Cast safe because we handle the undefined check above, 
-  // but be aware that if 'status' is a string not in CaseStatusType, 
-  // it will just return undefined from the object lookup, which we handle with || [].
-  const safeStatus = status as CaseStatusType
-  const possibleActions = caseTransitions[safeStatus] || []
+  // Type Guard implícito ao acessar o objeto
+  const actions = CASE_TRANSITIONS[status as CaseStatusType]
   
-  return possibleActions.filter(action => 
+  if (!actions) return []
+  
+  return actions.filter(action => 
     action.allowedRoles.includes(cargo)
   )
 }

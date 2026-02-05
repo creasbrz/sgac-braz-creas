@@ -12,14 +12,15 @@ import {
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
-import { getWhatsAppLink, type MessageTemplate } from "@/utils/whatsapp"
+// [CORREÇÃO 1] Importando o nome correto do tipo exportado
+import { getWhatsAppLink, type WhatsAppTemplateType } from "@/utils/whatsapp"
 
-// Estende as props do Button nativo do Shadcn para aceitar 'disabled', 'type', etc.
 interface WhatsAppButtonProps extends ButtonProps {
   phone: string | null | undefined
   name?: string
-  template?: MessageTemplate
-  data?: Record<string, any> // Tipagem mais segura que 'any'
+  // [CORREÇÃO 1] Usando o tipo correto
+  template?: WhatsAppTemplateType
+  data?: Record<string, unknown>
   label?: string
   tooltipText?: string
 }
@@ -34,61 +35,73 @@ export function WhatsAppButton({
   size = "sm",
   label,
   tooltipText = "Conversar no WhatsApp",
-  ...props // Captura outras props (onClick opcional, disabled, etc.)
+  disabled,
+  onClick,
+  ...props 
 }: WhatsAppButtonProps) {
 
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Impede que o clique propague para a linha da tabela ou card pai
-    e.stopPropagation()
+  const isDisabled = !phone || disabled
 
-    // Se houver um onClick passado via props, executa ele também
-    if (props.onClick) props.onClick(e)
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    if (onClick) onClick(e)
 
     if (!phone) {
-      toast.error("Telefone não cadastrado.")
-      return
+      return toast.error("Telefone não cadastrado.")
     }
 
-    const link = getWhatsAppLink(phone, template, { nome: name, ...data })
+    // [CORREÇÃO 2] Garantindo que 'nome' tenha um valor de fallback caso venha undefined
+    const link = getWhatsAppLink(phone, template, { 
+      nome: name || 'Usuário', 
+      ...data 
+    })
     
     if (!link) {
-      toast.error("Número de telefone inválido.")
-      return
+      return toast.error("Número de telefone inválido.")
     }
 
-    window.open(link, '_blank')
+    // Abertura segura de link externo
+    const newWindow = window.open(link, '_blank', 'noopener,noreferrer')
+    if (newWindow) {
+      newWindow.opener = null
+    }
   }
 
-  // Se não tiver telefone, renderizamos desabilitado ou null (dependendo da sua regra de negócio)
-  // Aqui optei por renderizar desabilitado para o usuário saber que a opção existe mas falta dados.
-  const isDisabled = !phone || props.disabled
-
-  // Definição de estilos baseados na variante para parecer com WhatsApp
-  const whatsappStyles = variant === 'default' 
-    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent" // Estilo Sólido
-    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200" // Estilo Outline/Ghost
-
+  // Estilos específicos para a marca WhatsApp (Emerald)
+  const isSolid = variant === 'default'
+  
   return (
     <TooltipProvider>
-      <Tooltip>
+      <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
-          <Button 
-            variant={variant} 
-            size={size} 
-            className={cn(
-              "transition-colors", 
-              !isDisabled && whatsappStyles, 
-              className
-            )}
-            onClick={handleClick}
-            disabled={isDisabled}
-            {...props}
-          >
-            <MessageCircle className={cn("h-4 w-4 shrink-0", label ? "mr-2" : "")} />
-            {label}
-          </Button>
+          {/* Wrapper span é necessário para o Tooltip aparecer 
+            mesmo quando o botão está disabled 
+          */}
+          <span className="inline-block" tabIndex={isDisabled ? 0 : -1}>
+            <Button 
+              variant={variant} 
+              size={size} 
+              disabled={isDisabled}
+              onClick={handleClick}
+              className={cn(
+                "transition-all duration-200",
+                // Estilos para variante Sólida (Default)
+                isSolid && !isDisabled && "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent hover:shadow-md",
+                // Estilos para variante Outline/Ghost
+                !isSolid && !isDisabled && "text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300",
+                // Estilos de desabilitado (mantém consistência com UI)
+                isDisabled && "opacity-50 cursor-not-allowed bg-muted text-muted-foreground",
+                className
+              )}
+              {...props}
+            >
+              <MessageCircle className={cn("h-4 w-4 shrink-0", label ? "mr-2" : "")} />
+              {label}
+            </Button>
+          </span>
         </TooltipTrigger>
-        <TooltipContent>
+        
+        <TooltipContent side="top">
           <p>{isDisabled ? "Sem telefone registrado" : tooltipText}</p>
         </TooltipContent>
       </Tooltip>

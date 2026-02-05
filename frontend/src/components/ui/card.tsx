@@ -1,13 +1,15 @@
+// frontend/src/components/ui/card.tsx
 import * as React from "react"
+
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
-/* COMPONENTES DE CARD                                                        */
+/* COMPONENTES DE CARD (Modernizado)                                          */
 /* -------------------------------------------------------------------------- */
 
 // 1. CARD BASE
-// Removemos o hover effect padrão para evitar "falsa aforância".
-// Se precisar de um card clicável, basta adicionar: "transition-all hover:shadow-md cursor-pointer" via className na instância.
+// Container principal. 
+// Nota: Adicione 'hover:shadow-md transition-shadow' na instância se o card for clicável.
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -24,23 +26,22 @@ const Card = React.forwardRef<
 Card.displayName = "Card"
 
 // 2. HEADER
-// Removemos o gradiente para um look mais clean e profissional.
-// O espaçamento (flex-col space-y-1.5) cuida da hierarquia entre Título e Descrição.
+// Responsável pelo espaçamento inicial.
+// [MODERNIZAÇÃO] Troca de space-y por gap para melhor controle flexbox.
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    className={cn("flex flex-col gap-1.5 p-6", className)}
     {...props}
   />
 ))
 CardHeader.displayName = "CardHeader"
 
 // 3. TITLE
-// Mantivemos h3 como padrão semântico, mas permitimos override.
-// tracking-tight deixa o título mais compacto e moderno.
+// Título semântico. Use 'leading-none' para títulos curtos e impactantes.
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
@@ -57,7 +58,7 @@ const CardTitle = React.forwardRef<
 CardTitle.displayName = "CardTitle"
 
 // 4. DESCRIPTION
-// text-muted-foreground garante que o contraste seja acessível mas visualmente distinto do título.
+// Texto de apoio. O 'text-sm' e 'muted-foreground' garantem hierarquia visual imediata.
 const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
@@ -71,7 +72,7 @@ const CardDescription = React.forwardRef<
 CardDescription.displayName = "CardDescription"
 
 // 5. CONTENT
-// p-6 padrão, mas pt-0 se houver header acima, para manter o ritmo vertical correto.
+// Corpo do card. O 'pt-0' é crucial para manter o ritmo vertical se houver header.
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -81,7 +82,7 @@ const CardContent = React.forwardRef<
 CardContent.displayName = "CardContent"
 
 // 6. FOOTER
-// Flexbox pronto para alinhar botões à direita ou esquerda.
+// Rodapé para ações. Flexbox padrão para alinhar botões.
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>

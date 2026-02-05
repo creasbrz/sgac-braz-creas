@@ -1,6 +1,6 @@
 // backend/src/services/AppointmentService.ts
 import { prisma } from '../lib/prisma'
-import { LogAction, Cargo, Agendamento } from '@prisma/client'
+import { LogAction, Cargo } from '@prisma/client'
 
 // Tipos normalizados para o Frontend
 interface CalendarEvent {
@@ -8,10 +8,11 @@ interface CalendarEvent {
   title: string
   start: Date
   end: Date | null
-  type: 'INDIVIDUAL' | 'GRUPO'
+  type: string // [CORREÇÃO] Alterado para string para aceitar os tipos reais (Visita, etc)
   resourceId?: string
   description?: string
   status: string
+  nomeCompleto?: string // [NOVO] Adicionado para exibir o nome no modal
 }
 
 interface CreateAppointmentDTO {
@@ -94,25 +95,29 @@ export class AppointmentService {
     // Mapeia Agendamentos Individuais
     events.push(...appointments.map(a => ({
       id: a.id,
-      title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
+      title: a.titulo, 
       start: a.data,
       end: null, // Agendamentos pontuais não costumam ter hora fim no sistema atual
-      type: 'INDIVIDUAL' as const,
+      // [CORREÇÃO] Passa o tipo real do banco para o frontend colorir corretamente
+      type: a.tipo || 'Atendimento', 
       resourceId: a.casoId || undefined,
       description: a.observacoes || '',
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      // [CORREÇÃO] Envia o nome real para substituir o "Assistido #ID"
+      nomeCompleto: a.caso?.nomeCompleto 
     })))
 
     // Mapeia Grupos
     events.push(...groups.map(g => ({
       id: g.id,
-      title: `[GRUPO] ${g.tema} (${g.tipo.replace('_', ' ')})`,
+      title: `[GRUPO] ${g.tema}`,
       start: g.dataRealizacao,
       end: null,
-      type: 'GRUPO' as const,
+      type: 'Grupo', // Mantém fixo para grupos
       resourceId: g.id,
       description: g.descricao || '',
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      nomeCompleto: undefined // Grupos geralmente não são vinculados a um único nome dessa forma
     })))
 
     // Ordenação cronológica

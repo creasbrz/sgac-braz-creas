@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { 
   Upload, FileSpreadsheet, AlertTriangle, CheckCircle, 
-  X, Loader2, Download, FileUp 
+  XCircle, Loader2, Download, FileUp 
 } from "lucide-react"
 
 import { api } from "@/lib/api"
@@ -42,10 +42,9 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
       const formData = new FormData()
       formData.append('file', file)
       
-      // 'Content-Type': undefined força o browser a gerar o boundary correto
       const res = await api.post('/import/cases', formData, {
         headers: {
-          'Content-Type': undefined
+          'Content-Type': undefined // Força o browser a gerar o boundary
         }
       })
       return res.data
@@ -148,23 +147,26 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+               <FileSpreadsheet className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
             Importação em Massa
           </DialogTitle>
           <DialogDescription>
-            Use o modelo padronizado (Excel). Agora com listas de seleção para facilitar o preenchimento de Categoria, RA e Urgência.
+            Envie sua planilha para criar múltiplos casos de uma vez.
           </DialogDescription>
         </DialogHeader>
 
         {!result ? (
           <div className="space-y-6 py-2">
+            
             {/* Upload Area */}
             <div 
               className={cn(
-                "relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer gap-3 group",
+                "relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer gap-4 group",
                 isDragOver 
-                  ? "border-primary bg-primary/5 scale-[1.01]" 
-                  : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30",
+                  ? "border-primary bg-primary/5 scale-[1.01] shadow-inner" 
+                  : "border-border hover:border-primary/50 hover:bg-muted/30",
                 isPending && "pointer-events-none opacity-60"
               )}
               onClick={() => fileInputRef.current?.click()}
@@ -181,10 +183,10 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               ) : (
                 <>
                   <div className={cn(
-                    "p-4 rounded-full bg-muted transition-colors group-hover:bg-primary/10",
-                    isDragOver && "bg-primary/20"
+                    "p-4 rounded-full bg-muted transition-colors group-hover:bg-primary/10 group-hover:text-primary",
+                    isDragOver && "bg-primary/20 text-primary"
                   )}>
-                    {isDragOver ? <FileUp className="h-8 w-8 text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground group-hover:text-primary" />}
+                    {isDragOver ? <FileUp className="h-8 w-8" /> : <Upload className="h-8 w-8 text-muted-foreground group-hover:text-primary" />}
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
@@ -206,16 +208,16 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               />
             </div>
 
-            {/* Template Download */}
-            <div className="bg-muted/30 rounded-lg p-4 space-y-3 border border-border/50">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
-                <div className="space-y-1">
-                  <p><strong>Dicas Importantes:</strong></p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Baixe o <strong>novo modelo</strong> para ter acesso às listas de seleção.</li>
-                    <li>O CPF é obrigatório (11 dígitos).</li>
-                    <li>Para <strong>Crianças/Adolescentes</strong>, preencha o Responsável Legal.</li>
+            {/* Template Download Section */}
+            <div className="bg-amber-50/50 dark:bg-amber-900/10 rounded-lg p-4 space-y-3 border border-amber-100 dark:border-amber-800/50">
+              <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                <div className="space-y-1.5 flex-1">
+                  <p className="font-semibold text-amber-800 dark:text-amber-200">Requisitos Importantes:</p>
+                  <ul className="list-disc pl-4 space-y-1 text-amber-700/80 dark:text-amber-300/80">
+                    <li>Utilize o <strong>modelo oficial</strong> para garantir a formatação.</li>
+                    <li>O <strong>CPF</strong> é obrigatório para a criação do caso.</li>
+                    <li>Para menores de idade, preencha o Responsável Legal.</li>
                   </ul>
                 </div>
               </div>
@@ -224,7 +226,7 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
                 size="sm" 
                 onClick={handleDownloadTemplate} 
                 disabled={isDownloading}
-                className="w-full text-xs h-9 border-dashed bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="w-full h-9 border-dashed border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:text-amber-900 dark:hover:text-amber-100"
               >
                 {isDownloading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
                 Baixar Modelo Oficial (.xlsx)
@@ -235,37 +237,38 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
           /* Result Screen */
           <div className="space-y-5 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800 text-center">
-                <div className="flex items-center justify-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-2xl">
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-center flex flex-col items-center justify-center">
+                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-3xl mb-1">
                   <CheckCircle className="h-6 w-6" /> {result.created}
                 </div>
-                <p className="text-xs font-medium text-emerald-600 dark:text-emerald-500 uppercase tracking-wide mt-1">Sucessos</p>
+                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">Sucessos</p>
               </div>
               
-              <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-lg border border-rose-100 dark:border-rose-800 text-center">
-                <div className="flex items-center justify-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-2xl">
-                  <X className="h-6 w-6" /> {result.errors}
+              <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-xl border border-rose-100 dark:border-rose-800 text-center flex flex-col items-center justify-center">
+                <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-3xl mb-1">
+                  <XCircle className="h-6 w-6" /> {result.errors}
                 </div>
-                <p className="text-xs font-medium text-rose-600 dark:text-rose-500 uppercase tracking-wide mt-1">Falhas</p>
+                <p className="text-[10px] font-bold text-rose-600 dark:text-rose-500 uppercase tracking-wider">Falhas</p>
               </div>
             </div>
 
             {/* Logs List */}
             {result.logs.length > 0 && (
               <Alert variant={result.errors > 0 ? "destructive" : "default"} className={cn(
+                "shadow-sm",
                 result.errors > 0 
                   ? "border-rose-200 bg-rose-50 dark:bg-rose-900/10 dark:border-rose-800"
-                  : "border-blue-200 bg-blue-50 dark:bg-blue-900/10"
+                  : "border-blue-200 bg-blue-50 dark:bg-blue-900/10 dark:border-blue-800"
               )}>
-                <AlertTitle className="flex items-center gap-2">
+                <AlertTitle className="flex items-center gap-2 font-semibold">
                    {result.errors > 0 ? <AlertTriangle className="h-4 w-4"/> : <CheckCircle className="h-4 w-4"/>}
                    Log de Processamento
                 </AlertTitle>
-                <AlertDescription className="mt-2">
-                  <ScrollArea className="h-32 w-full rounded border bg-background/50 p-2 text-xs font-mono">
-                    <ul className="space-y-1">
+                <AlertDescription className="mt-3">
+                  <ScrollArea className="h-40 w-full rounded-md border border-black/5 dark:border-white/10 bg-background/50 p-3">
+                    <ul className="space-y-1.5 text-xs font-mono">
                       {result.logs.map((log, i) => (
-                        <li key={i} className="border-b border-border/50 last:border-0 pb-1 last:pb-0">
+                        <li key={i} className="border-b border-border/40 last:border-0 pb-1.5 last:pb-0 wrap-break-word leading-relaxed">
                           {log}
                         </li>
                       ))}
@@ -275,8 +278,8 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
               </Alert>
             )}
 
-            <Button className="w-full" onClick={handleClose}>
-              Concluir
+            <Button className="w-full font-semibold" onClick={handleClose}>
+              Concluir Importação
             </Button>
           </div>
         )}

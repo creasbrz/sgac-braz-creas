@@ -1,3 +1,4 @@
+// frontend/src/components/case/tabs/ReferralsTab.tsx
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -158,14 +159,14 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
   // Renderização do Badge de Status
   const StatusBadge = ({ status }: { status: string }) => {
     const config = {
-      'CONCLUIDO': { bg: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2, text: 'Concluído' },
+      'CONCLUIDO': { bg: 'bg-status-success-bg text-status-success-fg border-status-success-border', icon: CheckCircle2, text: 'Concluído' },
       'CANCELADO': { bg: 'bg-muted text-muted-foreground border-border', icon: XCircle, text: 'Cancelado' },
-      'PENDENTE': { bg: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock, text: 'Pendente' }
+      'PENDENTE': { bg: 'bg-status-warning-bg text-status-warning-fg border-status-warning-border', icon: Clock, text: 'Pendente' }
     }
     const { bg, icon: Icon, text } = config[status as keyof typeof config] || config['PENDENTE']
     
     return (
-      <Badge variant="outline" className={cn("gap-1 font-medium border", bg)}>
+      <Badge variant="outline" className={cn("gap-1 font-medium border shadow-sm", bg)}>
         <Icon className="w-3 h-3" /> {text}
       </Badge>
     )
@@ -177,12 +178,12 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-base font-semibold flex items-center gap-2 text-foreground">
+          <h3 className="text-base font-bold flex items-center gap-2 text-foreground">
             <Network className="h-5 w-5 text-primary" /> Articulação em Rede
           </h3>
           <p className="text-sm text-muted-foreground">Encaminhamentos intersetoriais e acompanhamento.</p>
         </div>
-        <Button onClick={() => setIsAddOpen(true)} className="shadow-sm">
+        <Button onClick={() => setIsAddOpen(true)} className="shadow-sm font-semibold">
           <Plus className="mr-2 h-4 w-4" /> Novo Encaminhamento
         </Button>
       </div>
@@ -196,7 +197,7 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
         )}
         
         {!isLoading && referrals.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-16 text-muted-foreground bg-muted/5 border-2 border-dashed rounded-xl">
+          <div className="col-span-full flex flex-col items-center justify-center py-16 text-muted-foreground bg-muted/5 border-2 border-dashed border-border/60 rounded-xl">
             <Network className="h-10 w-10 opacity-20 mb-3" />
             <p className="font-medium">Nenhum encaminhamento registrado</p>
             <p className="text-xs">Registre solicitações para a rede de proteção.</p>
@@ -205,20 +206,20 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
 
         {referrals.map((ref) => {
           const statusColors = {
-            'PENDENTE': 'border-l-amber-500',
-            'CONCLUIDO': 'border-l-emerald-500',
+            'PENDENTE': 'border-l-status-warning-fg',
+            'CONCLUIDO': 'border-l-status-success-fg',
             'CANCELADO': 'border-l-muted-foreground'
           }
           const borderClass = statusColors[ref.status] || 'border-l-primary'
 
           return (
-            <Card key={ref.id} className={cn("border-l-[4px] shadow-sm hover:shadow-md transition-shadow group", borderClass)}>
+            <Card key={ref.id} className={cn("border-l-4 shadow-sm hover:shadow-md transition-shadow group bg-card", borderClass)}>
               <CardContent className="p-4 flex flex-col h-full gap-4">
                 
                 {/* Topo: Status e Metadados */}
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground bg-muted/50 mb-1">
+                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-muted/50 mb-1 border-border/50">
                       {ref.tipo.split(' ')[0]}
                     </Badge>
                     <h4 className="font-bold text-base flex items-center gap-2 text-foreground">
@@ -227,19 +228,19 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                     </h4>
                   </div>
                   
-                  {/* --- AQUI ESTAVA O ERRO --- */}
+                  {/* Menu de Ações */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2 text-muted-foreground">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2 text-muted-foreground hover:bg-muted">
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuLabel>Ações</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       {ref.status !== 'CONCLUIDO' && (
                          <DropdownMenuItem onClick={() => updateStatus({ id: ref.id, status: 'CONCLUIDO' })}>
-                           <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Marcar Concluído
+                           <CheckCircle2 className="mr-2 h-4 w-4 text-status-success-fg" /> Marcar Concluído
                          </DropdownMenuItem>
                       )}
                       {ref.status !== 'CANCELADO' && (
@@ -248,31 +249,30 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => removeReferral(ref.id)} className="text-destructive focus:text-destructive">
+                      <DropdownMenuItem onClick={() => removeReferral(ref.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                         <Trash2 className="mr-2 h-4 w-4" /> Excluir Registro
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {/* --------------------------- */}
                 </div>
 
                 {/* Corpo: Motivo */}
-                <div className="flex-1">
-                   <div className="bg-muted/30 p-3 rounded-md border border-muted/50">
+                <div className="flex-1 space-y-3">
+                   <div className="bg-muted/30 p-3 rounded-md border border-border/40">
                       <p className="text-sm text-foreground/90 italic leading-relaxed">"{ref.motivo}"</p>
                    </div>
                    
                    {/* Retorno */}
                    {ref.retorno && (
-                      <div className="mt-3 pl-3 border-l-2 border-emerald-300">
-                         <p className="text-xs font-bold text-emerald-700 uppercase mb-0.5">Retorno</p>
+                      <div className="pl-3 border-l-2 border-status-success-fg/50">
+                         <p className="text-xs font-bold text-status-success-fg uppercase mb-0.5">Retorno</p>
                          <p className="text-sm text-foreground/80">{ref.retorno}</p>
                       </div>
                    )}
                 </div>
 
                 {/* Rodapé */}
-                <div className="flex items-center justify-between pt-2 border-t mt-auto">
+                <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-auto">
                    <div className="flex flex-col text-xs text-muted-foreground">
                       <span className="flex items-center gap-1 font-medium">
                          <Calendar className="h-3 w-3" /> {format(new Date(ref.dataEnvio), "dd MMM yyyy", { locale: ptBR })}
@@ -290,27 +290,30 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
 
       {/* Dialog Novo Encaminhamento */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Novo Encaminhamento</DialogTitle>
+        <DialogContent className="sm:max-w-125 gap-0 p-0 overflow-hidden bg-background border-border">
+          <DialogHeader className="px-6 pt-6 pb-4 bg-muted/30 border-b border-border/60">
+            <DialogTitle className="flex items-center gap-2">
+               <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20"><Network className="h-4 w-4 text-primary"/></div>
+               Novo Encaminhamento
+            </DialogTitle>
             <DialogDescription>
               Registre uma articulação com a rede intersetorial.
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 p-6">
             <div className="space-y-2">
-              <Label>Rede / Setor</Label>
+              <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Rede / Setor</Label>
               <Select value={tipo} onValueChange={(val) => { setTipo(val); setInstituicao(''); }}>
-                <SelectTrigger><SelectValue placeholder="Selecione o eixo..." /></SelectTrigger>
-                <SelectContent className="max-h-[300px]">
+                <SelectTrigger className="bg-background"><SelectValue placeholder="Selecione o eixo..." /></SelectTrigger>
+                <SelectContent className="max-h-75">
                   {TIPOS_REDE.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label>Instituição de Destino</Label>
+              <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Instituição de Destino</Label>
               
               {/* COMPONENTE DE AUTOCOMPLETE (COMBOBOX) */}
               <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
@@ -319,14 +322,14 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                     variant="outline"
                     role="combobox"
                     aria-expanded={openCombobox}
-                    className="w-full justify-between font-normal text-left"
+                    className="w-full justify-between font-normal text-left bg-background hover:bg-accent hover:text-accent-foreground"
                     disabled={!tipo}
                   >
                     {instituicao || <span className="text-muted-foreground">Selecione ou digite...</span>}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[450px] p-0" align="start">
+                <PopoverContent className="w-112.5 p-0" align="start">
                   <Command>
                     <CommandInput placeholder="Buscar instituição..." />
                     <CommandList>
@@ -358,14 +361,14 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                     </CommandList>
                   </Command>
                   <div className="p-2 border-t bg-muted/20">
-                     <p className="text-[10px] text-muted-foreground mb-1.5 px-1 font-semibold">OUTRA INSTITUIÇÃO (DIGITE ABAIXO):</p>
-                     <input 
-                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        placeholder="Digite o nome manualmente..."
-                        value={instituicao}
-                        onChange={(e) => setInstituicao(e.target.value)}
-                        onKeyDown={(e) => e.stopPropagation()}
-                     />
+                      <p className="text-[10px] text-muted-foreground mb-1.5 px-1 font-bold uppercase tracking-wider">Outra Instituição (Digite Abaixo):</p>
+                      <input 
+                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                         placeholder="Digite o nome manualmente..."
+                         value={instituicao}
+                         onChange={(e) => setInstituicao(e.target.value)}
+                         onKeyDown={(e) => e.stopPropagation()}
+                      />
                   </div>
                 </PopoverContent>
               </Popover>
@@ -376,23 +379,23 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
             </div>
 
             <div className="space-y-2">
-              <Label>Motivo da Solicitação</Label>
+              <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Motivo da Solicitação</Label>
               <Textarea 
                 placeholder="Descreva a demanda, documentos necessários ou objetivo do encaminhamento..." 
                 value={motivo} 
                 onChange={e => setMotivo(e.target.value)} 
                 rows={4}
-                className="resize-none"
+                className="resize-none bg-background focus-visible:ring-primary/20"
               />
-              <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                 <AlertCircle className="h-3 w-3" /> Seja breve e objetivo.
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/30 p-1.5 rounded border border-border/40 w-fit">
+                 <AlertCircle className="h-3 w-3 text-primary" /> Seja breve e objetivo.
               </p>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsAddOpen(false)}>Cancelar</Button>
-            <Button onClick={() => addReferral()} disabled={isPending || !instituicao || !motivo}>
+          <DialogFooter className="px-6 py-4 bg-muted/10 border-t border-border/40">
+            <Button variant="ghost" onClick={() => setIsAddOpen(false)} className="hover:bg-muted/50">Cancelar</Button>
+            <Button onClick={() => addReferral()} disabled={isPending || !instituicao || !motivo} className="shadow-sm font-semibold">
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Registrar
             </Button>
           </DialogFooter>

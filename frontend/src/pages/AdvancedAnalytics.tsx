@@ -1,10 +1,11 @@
 // frontend/src/pages/AdvancedAnalytics.tsx
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { format } from "date-fns"
+import { z } from "zod"
+import { toast } from "sonner"
 
-// Gráficos (Recharts via Shadcn Charts)
+// Gráficos (Recharts via Shadcn)
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   PieChart, Pie, Label, BarChart, Bar, LabelList, Cell
@@ -13,14 +14,15 @@ import {
 // Ícones e UI
 import { 
   AlertTriangle, Clock, TrendingUp, FileBarChart, 
-  Activity, Briefcase, Calendar
+  Activity, Briefcase, Calendar, RefreshCw
 } from "lucide-react"
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
 import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 
 // Shadcn Charts
 import { 
@@ -35,56 +37,59 @@ import {
 // PDF Imports
 import { PDFDownloadButton } from "@/components/reports/PDFDownloadButton"
 import { AnalyticsReportDoc } from "@/components/reports/templates/AnalyticsReportDoc"
-import type { AnalyticsReportData } from "@/types/case"
 
-// --- CONFIGURAÇÃO DE GRÁFICOS ESTÁTICOS ---
+// --- SCHEMAS DE VALIDAÇÃO (ZOD) ---
+const TrendDataSchema = z.object({
+  name: z.string(),
+  novos: z.number().default(0),
+  fechados: z.number().default(0),
+})
 
+const PieDataSchema = z.object({
+  name: z.string(),
+  value: z.number(),
+})
+
+const InsightSchema = z.object({
+  type: z.enum(['success', 'warning', 'info']).default('info'),
+  title: z.string(),
+  description: z.string(),
+})
+
+const AdvancedStatsSchema = z.object({
+  avgHandlingTime: z.number().default(0),
+  totalActive: z.number().default(0),
+  trendData: z.array(TrendDataSchema).default([]),
+  pieData: z.array(PieDataSchema).default([]),
+  insights: z.array(InsightSchema).default([]),
+})
+
+const ProductivityItemSchema = z.object({
+  name: z.string(),
+  value: z.number().default(0),
+})
+
+// --- CONFIGURAÇÃO DE GRÁFICOS (Design System) ---
 const trendChartConfig = {
   novos: {
     label: "Novos Casos",
-    color: "hsl(var(--chart-2))", // Azul/Primary
+    color: "hsl(var(--chart-1))", 
   },
   fechados: {
     label: "Desligamentos",
-    color: "hsl(var(--chart-1))", // Verde/Secondary
+    color: "hsl(var(--chart-2))", 
   },
 } satisfies ChartConfig
 
 const productivityChartConfig = {
   value: {
     label: "Intervenções",
-    color: "hsl(var(--chart-3))", // Roxo
+    color: "hsl(var(--primary))",
   },
 } satisfies ChartConfig
 
-// --- INTERFACES ---
-interface TrendData { 
-  name: string; 
-  novos: number; 
-  fechados: number; 
-  [key: string]: any 
-}
-
-interface PieData { 
-  name: string; 
-  value: number; 
-  fill?: string;
-  realLabel?: string;
-}
-
-interface Insight { 
-  type: 'success' | 'warning' | 'info'; 
-  title: string; 
-  description: string 
-}
-
-interface ProductivityItem { 
-  name: string; 
-  value: number; 
-}
-
-// --- UTILITÁRIOS ---
-function linearRegressionForecast(xs: number[], ys: number[]): number | null {
+// --- UTILITÁRIOS PUROS ---
+function calculateRegression(xs: number[], ys: number[]): number | null {
   if (xs.length < 2) return null
   const n = xs.length
   const meanX = xs.reduce((a, b) => a + b, 0) / n
@@ -92,276 +97,261 @@ function linearRegressionForecast(xs: number[], ys: number[]): number | null {
   let num = 0
   let den = 0
   for (let i = 0; i < n; i++) {
-    num += (xs[i] - meanX) * (ys[i] - meanY)
-    den += (xs[i] - meanX) ** 2
+    const diffX = xs[i] - meanX
+    num += diffX * (ys[i] - meanY)
+    den += diffX ** 2
   }
   if (den === 0) return null
   const m = num / den
   const b = meanY - m * meanX
-  const nextX = xs[n - 1] + 1
-  return m * nextX + b
+  return m * (xs[n - 1] + 1) + b
 }
 
-function AnalyticsSkeleton() {
-  return (
-    <div className="space-y-6 animate-pulse p-1">
-      <div className="flex justify-between items-center mb-8">
-        <div className="space-y-2">
-           <div className="h-8 w-64 bg-muted rounded-md" />
-           <div className="h-4 w-96 bg-muted rounded-md" />
-        </div>
-        <div className="h-9 w-32 bg-muted rounded-md" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[0,1,2].map(i => <div key={i} className="h-32 rounded-xl bg-muted/20 border border-border/50" />)}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 h-[400px] rounded-xl bg-muted/10 border border-border/50" />
-        <div className="h-[400px] rounded-xl bg-muted/10 border border-border/50" />
-      </div>
-    </div>
-  )
-}
-
+// --- COMPONENTE PRINCIPAL ---
 export function AdvancedAnalytics() {
   const [periodMonths, setPeriodMonths] = useState<number>(12)
-  
-  // 1. Query Principal
-  const { data: dataRaw, isLoading, isError } = useQuery({
+
+  // 1. Data Fetching
+  const statsQuery = useQuery({
     queryKey: ["stats", "advanced", periodMonths],
     queryFn: async () => {
-      try {
-        const res = await api.get("/stats/advanced", { params: { months: periodMonths } })
-        return res.data
-      } catch (error) {
-        console.warn("API Offline: Usando fallback.")
-        return { avgHandlingTime: 45, totalActive: 128, trendData: [], pieData: [], insights: [] }
-      }
+      const { data } = await api.get("/stats/advanced", { params: { months: periodMonths } })
+      return AdvancedStatsSchema.parse(data)
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
+  })
+
+  const prodQuery = useQuery({
+    queryKey: ["stats", "productivity", periodMonths],
+    queryFn: async () => {
+      const { data } = await api.get("/stats/productivity", { params: { mode: 'performance', months: periodMonths } })
+      return z.array(ProductivityItemSchema).parse(data)
     },
     staleTime: 1000 * 60 * 5,
   })
 
-  // 2. Query Secundária (Produtividade)
-  const { data: productivityRaw } = useQuery<ProductivityItem[]>({
-    queryKey: ["stats", "productivity", periodMonths],
-    queryFn: async () => {
-      try {
-        const res = await api.get("/stats/productivity", { params: { mode: 'performance', months: periodMonths } })
-        return res.data
-      } catch { return [] }
+  // Feedback de erro gracioso
+  useEffect(() => {
+    if (statsQuery.isError || prodQuery.isError) {
+      toast.error("Erro ao sincronizar dados analíticos", {
+        description: "Exibindo dados em cache ou estado vazio."
+      })
     }
-  })
+  }, [statsQuery.isError, prodQuery.isError])
 
-  // 3. Processamento de Dados (Memo)
-  const data = useMemo(() => {
-    const rawPieData = (Array.isArray(dataRaw?.pieData) ? dataRaw.pieData : []) as PieData[]
+  // 2. Data Processing (Memoized)
+  const processedData = useMemo(() => {
+    const rawData = statsQuery.data || AdvancedStatsSchema.parse({})
+    const rawProd = prodQuery.data || []
+
+    // Processamento do Pie Chart (Violações)
     const violationCounts: Record<string, number> = {}
-
-    // Agrupamento
-    rawPieData.forEach((item: any) => {
-      const categories = item.name.split(',').map((s: string) => s.trim())
-      categories.forEach((cat: string) => {
-        if (cat) violationCounts[cat] = (violationCounts[cat] || 0) + item.value
+    rawData.pieData.forEach((item) => {
+      item.name.split(',').forEach((cat) => {
+        const trimmed = cat.trim()
+        if (trimmed) violationCounts[trimmed] = (violationCounts[trimmed] || 0) + item.value
       })
     })
 
-    const dynamicViolationConfig: ChartConfig = {
-      occurrences: { label: "Ocorrências" },
-    }
-
-    const processedPieData = Object.entries(violationCounts)
-      .map(([realName, value], index) => {
-        const color = `hsl(var(--chart-${(index % 5) + 1}))`
-        const safeKey = `segment_${index}` // Chave segura para o config do gráfico
-        
-        // Adiciona ao config dinamicamente
-        dynamicViolationConfig[safeKey] = {
-          label: realName,
-          color: color
-        }
-
-        return { 
-          name: safeKey, // Usa a chave segura para o gráfico
-          realLabel: realName, // Usa o nome real para tooltip/legenda
-          value, 
-          fill: color 
-        }
-      })
+    const pieChartData = Object.entries(violationCounts)
+      .map(([realName, value], index) => ({
+        name: `segment_${index}`,
+        realLabel: realName,
+        value,
+        fill: `hsl(var(--chart-${(index % 5) + 1}))` // Cores cíclicas do tema
+      }))
       .sort((a, b) => b.value - a.value)
 
-    return {
-      avgHandlingTime: dataRaw?.avgHandlingTime || 0,
-      totalActive: dataRaw?.totalActive || 0,
-      trendData: (Array.isArray(dataRaw?.trendData) ? dataRaw.trendData : []) as TrendData[],
-      pieData: processedPieData,
-      violationConfig: dynamicViolationConfig, 
-      insights: (Array.isArray(dataRaw?.insights) ? dataRaw.insights : []) as Insight[]
-    }
-  }, [dataRaw])
+    // Configuração Dinâmica para Tooltips do Chart
+    const dynamicConfig: ChartConfig = { occurrences: { label: "Ocorrências" } }
+    pieChartData.forEach(item => {
+      dynamicConfig[item.name] = { label: item.realLabel, color: item.fill }
+    })
 
-  const productivity = useMemo(() => Array.isArray(productivityRaw) ? productivityRaw : [], [productivityRaw])
+    // Previsão Linear (IA Simples)
+    const xs: number[] = []
+    const ys: number[] = []
+    rawData.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
+    const forecastValue = calculateRegression(xs, ys)
 
-  // 4. Métricas Derivadas e Previsão
-  const forecast = useMemo(() => {
-    const xs: number[] = [], ys: number[] = []
-    data.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
-    return linearRegressionForecast(xs, ys)
-  }, [data.trendData])
+    const totalViolations = pieChartData.reduce((acc, curr) => acc + curr.value, 0)
 
-  const totalViolations = useMemo(() => data.pieData.reduce((acc, curr) => acc + curr.value, 0), [data.pieData])
-
-  const formattedInsights = useMemo(() => 
-    data.insights.map(i => `${i.title}: ${i.description}`), 
-  [data.insights])
-
-  // Preparação de dados para o PDF
-  const reportData: AnalyticsReportData | null = useMemo(() => {
-    if (!dataRaw) return null;
-    
-    return {
-        periodo: periodMonths,
-        kpis: {
-        tempoMedio: data.avgHandlingTime,
-        ativosPaefi: data.totalActive,
-        previsaoNovos: forecast
-        },
-        insights: data.insights,
-        fluxo: data.trendData.map(d => ({ name: d.name, novos: d.novos, fechados: d.fechados })),
-        violacoes: data.pieData.map(p => ({ 
-        name: p.realLabel || p.name, 
+    // Formatação para Relatório PDF
+    const reportData = {
+      periodo: periodMonths,
+      kpis: {
+        tempoMedio: rawData.avgHandlingTime,
+        ativosPaefi: rawData.totalActive,
+        previsaoNovos: forecastValue
+      },
+      insights: rawData.insights,
+      fluxo: rawData.trendData,
+      violacoes: pieChartData.map(p => ({
+        name: p.realLabel,
         value: p.value,
         percent: totalViolations > 0 ? (p.value / totalViolations) * 100 : 0
-        })),
-        produtividade: productivity.map(p => ({ name: p.name, value: p.value }))
+      })),
+      produtividade: rawProd
     }
-  }, [data, productivity, periodMonths, forecast, totalViolations, dataRaw]);
 
-  if (isLoading) return <AnalyticsSkeleton />
-  
-  if (isError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center p-6">
-        <AlertTriangle className="h-12 w-12 text-destructive mb-4 opacity-50" />
-        <h3 className="text-lg font-semibold text-foreground">Falha na conexão</h3>
-        <p className="text-muted-foreground mb-4">Não foi possível carregar os dados analíticos.</p>
-        <Button variant="outline" onClick={() => window.location.reload()}>Tentar Novamente</Button>
-      </div>
-    )
-  }
+    return {
+      kpis: rawData,
+      pieChartData,
+      violationConfig: dynamicConfig,
+      forecast: forecastValue,
+      totalViolations,
+      productivity: rawProd,
+      reportData,
+      formattedInsights: rawData.insights.map(i => `${i.title}: ${i.description}`)
+    }
+  }, [statsQuery.data, prodQuery.data, periodMonths])
+
+  const isLoading = statsQuery.isLoading || prodQuery.isLoading
 
   return (
-    <div className="space-y-8 p-4 md:p-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
+    <div className="space-y-8 p-6 md:p-8 max-w-400 mx-auto animate-in fade-in duration-700">
       
-      {/* HEADER DE CONTROLE */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b pb-6">
-        <div className="space-y-1.5">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Inteligência de Dados</h1>
-          <p className="text-muted-foreground text-sm flex items-center gap-2">
-             <Activity className="w-4 h-4" /> Monitoramento estratégico e preditivo da unidade.
+      {/* HEADER "GLASS" */}
+      <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-8 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            Inteligência de Dados
+            {statsQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Análise estratégica e preditiva da unidade.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Controls Container */}
-          <div className="flex items-center gap-2 p-1 bg-background border rounded-lg shadow-sm">
-            <Calendar className="w-4 h-4 text-muted-foreground ml-2" />
-            <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
-              <SelectTrigger className="w-[160px] border-0 focus:ring-0 shadow-none h-9 bg-transparent font-medium text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="3">Últimos 3 Meses</SelectItem>
-                <SelectItem value="6">Últimos 6 Meses</SelectItem>
-                <SelectItem value="12">Últimos 12 Meses</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex items-center gap-3">
+          <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
+            <SelectTrigger className="w-45 bg-background border-border/60 shadow-sm h-9">
+              <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="3">Últimos 3 Meses</SelectItem>
+              <SelectItem value="6">Últimos 6 Meses</SelectItem>
+              <SelectItem value="12">Últimos 12 Meses</SelectItem>
+            </SelectContent>
+          </Select>
           
-          {reportData && (
-            <PDFDownloadButton 
-                document={<AnalyticsReportDoc data={reportData} />}
-                fileName={`Report_Inteligencia_${periodMonths}M_${format(new Date(), 'yyyyMMdd')}.pdf`}
-                label="Exportar PDF"
-                variant="default" 
-                size="sm"
-            />
-          )}
+          <div className="hidden sm:block">
+            {statsQuery.data && (
+                <PDFDownloadButton 
+                    document={<AnalyticsReportDoc data={processedData.reportData} />}
+                    fileName={`Relatorio_Sintetico_${periodMonths}M.pdf`}
+                    label="Exportar PDF"
+                    variant="outline" 
+                    size="sm"
+                    className="h-9"
+                />
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ÁREA DE EXIBIÇÃO */}
-      <div className="space-y-6">
-        
-        {/* 1. KPIs */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <DashboardStatCard 
-            title="Tempo Médio de Resolução" 
-            value={data.avgHandlingTime} 
-            description="Dias desde a triagem até o desligamento" 
-            icon={Clock} 
-            variant="blue" 
-            index={0}
-          />
-          <DashboardStatCard 
-            title="Casos Ativos (PAEFI)" 
-            value={data.totalActive} 
-            description="Famílias em acompanhamento contínuo" 
-            icon={FileBarChart} 
-            variant="purple" 
-            index={1}
-          />
-          <DashboardStatCard 
-            title="Novos Casos (Período)" 
-            value={data.trendData.reduce((acc, curr) => acc + curr.novos, 0)} 
-            description={`Entradas nos últimos ${periodMonths} meses`} 
-            icon={TrendingUp} 
-            variant="green" 
-            index={2}
-          />
-        </section>
+      {/* KPI GRID */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {isLoading ? (
+           Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+        ) : (
+          <>
+            <DashboardStatCard 
+              title="Tempo Médio Resolução" 
+              value={processedData.kpis.avgHandlingTime} 
+              description="Dias triagem até desligamento" 
+              icon={Clock} 
+              variant="default" 
+            />
+            <DashboardStatCard 
+              title="Casos Ativos (PAEFI)" 
+              value={processedData.kpis.totalActive} 
+              description="Famílias em acompanhamento" 
+              icon={Activity} 
+              variant="default"
+            />
+            <DashboardStatCard 
+              title="Novos Casos" 
+              value={processedData.kpis.trendData.reduce((acc, curr) => acc + curr.novos, 0)} 
+              description={`Total no período (${periodMonths}m)`} 
+              icon={FileBarChart} 
+              variant="default"
+            />
+             {/* Card de Previsão IA - Gradiente Suave */}
+             <Card className="flex flex-col justify-between border-l-4 border-l-primary shadow-sm bg-linear-to-br from-background to-muted/20">
+                <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Previsão (IA)</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                    <div className="text-2xl font-bold flex items-baseline gap-1">
+                        ~{Math.round(processedData.forecast || 0)}
+                        <span className="text-xs font-normal text-muted-foreground">novos casos/mês</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Tendência linear baseada no histórico.</p>
+                </CardContent>
+             </Card>
+          </>
+        )}
+      </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* 2. GRÁFICO DE TENDÊNCIA (Linha) */}
-          <Card className="lg:col-span-2 shadow-sm border-border/60 flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-primary"/> Fluxo de Atendimentos
-              </CardTitle>
-              <CardDescription>Evolução de entradas e saídas no período selecionado</CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[350px]">
-              <ChartContainer config={trendChartConfig} className="h-[350px] w-full">
-                  <LineChart data={data.trendData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
+      {/* BENTO GRID LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* 1. GRÁFICO PRINCIPAL (Fluxo) */}
+        <Card className="lg:col-span-8 shadow-sm border-border/50 flex flex-col h-125">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+                <div>
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                        {/* Ícone usando cor do Chart-1 para consistência */}
+                        <TrendingUp className="h-5 w-5 text-[hsl(var(--chart-1))]"/> Fluxo de Atendimentos
+                    </CardTitle>
+                    <CardDescription>Comparativo de entradas vs. saídas</CardDescription>
+                </div>
+                {!isLoading && (
+                    <Badge variant="outline" className="font-mono text-xs">
+                        LIVE DATA
+                    </Badge>
+                )}
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 min-h-0 pb-2">
+            {isLoading ? <Skeleton className="w-full h-full rounded-lg" /> : (
+                <ChartContainer config={trendChartConfig} className="w-full h-full">
+                <LineChart data={processedData.kpis.trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
                     <XAxis 
                         dataKey="name" 
                         tickLine={false} 
                         axisLine={false} 
                         tickMargin={12} 
-                        fontSize={12} 
+                        fontSize={12}
                         stroke="hsl(var(--muted-foreground))"
-                        padding={{ left: 20, right: 20 }}
                     />
                     <YAxis 
                         tickLine={false} 
                         axisLine={false} 
-                        fontSize={12} 
+                        fontSize={12}
                         stroke="hsl(var(--muted-foreground))"
                         width={30}
                     />
-                    <ChartTooltip content={<ChartTooltipContent indicator="line" className="w-48" />} />
-                    
-                    <ChartLegend content={<ChartLegendContent payload={[]} />} />
-                    
-                    {/* CORREÇÃO: Removido 'dot={...}' e usado 'dot={false}' para visual limpo */}
+                    <ChartTooltip 
+                        content={
+                            <ChartTooltipContent 
+                                indicator="line" 
+                                className="bg-background/95 backdrop-blur border-border/50 shadow-xl" 
+                            />
+                        } 
+                    />
                     <Line 
                         type="monotone" 
                         dataKey="novos" 
                         stroke="var(--color-novos)" 
                         strokeWidth={3} 
-                        dot={false} 
-                        activeDot={{ r: 6, strokeWidth: 0, fill: "var(--color-novos)" }} 
+                        dot={false}
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        animationDuration={1500}
                     />
                     <Line 
                         type="monotone" 
@@ -370,163 +360,132 @@ export function AdvancedAnalytics() {
                         strokeWidth={2} 
                         strokeDasharray="4 4" 
                         dot={false}
-                        activeDot={{ r: 5, strokeWidth: 0, fill: "var(--color-fechados)" }} 
                     />
-                  </LineChart>
-              </ChartContainer>
-              
-              {forecast && (
-                <div className="mt-4 p-3 bg-muted/50 rounded-lg border border-border/50 flex items-center gap-3 text-sm text-muted-foreground">
-                   <div className="p-1.5 bg-background rounded-md shadow-sm">
-                      <Activity className="h-4 w-4 text-primary" />
-                   </div>
-                   <span>
-                      Previsão (IA): Tendência de <strong>{Math.round(forecast)} novos casos</strong> para o próximo mês.
-                   </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <ChartLegend content={<ChartLegendContent />} className="pt-4" />
+                </LineChart>
+                </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* 3. INSIGHTS IA */}
-          <div className="h-full">
-            <SmartInsightsCard 
-              insights={formattedInsights} 
-              isLoading={isLoading} 
-              className="h-full border-border/50 shadow-sm"
-            />
-          </div>
+        {/* 2. INSIGHTS IA (Lateral) */}
+        <div className="lg:col-span-4 flex flex-col h-125">
+           <SmartInsightsCard 
+             insights={processedData.formattedInsights} 
+             isLoading={isLoading} 
+             className="h-full border-border/50 shadow-sm"
+           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* 4. DONUT CHART (Violações) */}
-          <Card className="shadow-sm border-border/60 flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-500"/> Tipificação das Violações
-              </CardTitle>
-              <CardDescription>Distribuição percentual por natureza</CardDescription>
+        {/* 3. GRÁFICO DE PIZZA (Violações) */}
+        <Card className="lg:col-span-5 shadow-sm border-border/50 h-100 flex flex-col">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                    {/* Ícone usando cor do Chart-4 (geralmente Amber/Orange) para alerta */}
+                    <AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-4))]"/> Tipificação de Violações
+                </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1">
-              <div className="h-[350px] w-full flex items-center justify-center">
-                {data.pieData.length > 0 ? (
-                  <ChartContainer config={data.violationConfig} className="mx-auto aspect-square h-full">
-                    <PieChart>
-                      <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel className="w-40" />} />
-                      <Pie 
-                        data={data.pieData} 
-                        dataKey="value" 
-                        nameKey="name" 
-                        innerRadius={80} 
-                        outerRadius={110}
-                        strokeWidth={4}
-                        stroke="hsl(var(--card))"
-                        paddingAngle={2}
-                      >
-                        {data.pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                       <Label
-  content={({ viewBox }) => {
-    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-      return (
-        <text
-          x={viewBox.cx}
-          y={viewBox.cy}
-          textAnchor="middle"
-          dominantBaseline="middle"
-        >
-          {/* Número Principal: dy="-10" para subir um pouco do centro exato */}
-          <tspan
-            x={viewBox.cx}
-            y={viewBox.cy}
-            dy="-0.3em" 
-            className="fill-foreground text-4xl font-bold tracking-tight"
-          >
-            {totalViolations}
-          </tspan>
-          
-          {/* Legenda: dy="24" para ficar abaixo do número */}
-          <tspan
-            x={viewBox.cx}
-            y={viewBox.cy}
-            dy="1.5em"
-            className="fill-muted-foreground text-xs font-semibold uppercase tracking-wider"
-          >
-            OCORRÊNCIAS
-          </tspan>
-        </text>
-      )
-    }
-  }}
-/>
-                      </Pie>
-                      <ChartLegend 
-                        content={<ChartLegendContent payload={[]} nameKey="realLabel" />} 
-                        className="-translate-y-2 flex-wrap gap-3 [&>*]:basis-auto" 
-                      />
-                    </PieChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-muted-foreground opacity-60">
-                    <FileBarChart className="h-10 w-10 mb-2 stroke-1" />
-                    <p className="text-sm">Nenhuma violação tipificada.</p>
-                  </div>
+            <CardContent className="flex-1 flex items-center justify-center">
+                {isLoading ? <Skeleton className="h-64 w-64 rounded-full" /> : (
+                    processedData.pieChartData.length > 0 ? (
+                        <ChartContainer config={processedData.violationConfig} className="aspect-square h-full max-h-75">
+                            <PieChart>
+                                <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                                <Pie 
+                                    data={processedData.pieChartData} 
+                                    dataKey="value" 
+                                    nameKey="name" 
+                                    innerRadius={70} 
+                                    outerRadius={100} 
+                                    strokeWidth={2}
+                                    stroke="hsl(var(--background))"
+                                    paddingAngle={3}
+                                >
+                                     {processedData.pieChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                    <Label
+                                        content={({ viewBox }) => {
+                                            if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                                                return (
+                                                    <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                                                        <tspan x={viewBox.cx} y={viewBox.cy} dy="-0.2em" className="fill-foreground text-3xl font-bold">
+                                                            {processedData.totalViolations}
+                                                        </tspan>
+                                                        <tspan x={viewBox.cx} y={viewBox.cy} dy="1.4em" className="fill-muted-foreground text-xs font-semibold uppercase">
+                                                            Ocorrências
+                                                        </tspan>
+                                                    </text>
+                                                )
+                                            }
+                                        }}
+                                    />
+                                </Pie>
+                                <ChartLegend 
+                                    content={<ChartLegendContent nameKey="realLabel" />} 
+                                    className="-translate-y-2 flex-wrap gap-2 text-xs" 
+                                />
+                            </PieChart>
+                        </ChartContainer>
+                    ) : (
+                        <div className="text-center text-muted-foreground text-sm">Nenhum dado disponível.</div>
+                    )
                 )}
-              </div>
             </CardContent>
-          </Card>
+        </Card>
 
-          {/* 5. BAR CHART (Produtividade) */}
-          <Card className="shadow-sm border-border/60 flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Briefcase className="h-5 w-5 text-primary"/> Produtividade Técnica
-              </CardTitle>
-              <CardDescription>Intervenções registradas por técnico</CardDescription>
+        {/* 4. GRÁFICO DE BARRAS (Produtividade) - Versão Compacta Corrigida */}
+        <Card className="lg:col-span-7 shadow-sm border-border/50 h-100 flex flex-col">
+             <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                    {/* Ícone usando cor Primary (Azul) */}
+                    <Briefcase className="h-4 w-4 text-primary"/> Produtividade Técnica
+                </CardTitle>
+                <CardDescription>Intervenções registradas por técnico</CardDescription>
             </CardHeader>
-            <CardContent className="flex-1">
-              <div className="h-[350px] w-full">
-                {productivity.length > 0 ? (
-                  <ChartContainer config={productivityChartConfig} className="w-full h-full">
-                    <BarChart accessibilityLayer data={productivity} layout="vertical" margin={{ left: 0, right: 40, top: 0, bottom: 0 }}>
-                      <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4} />
-                      <YAxis 
-                        dataKey="name" 
-                        type="category" 
-                        tickLine={false} 
-                        axisLine={false} 
-                        width={110}
-                        fontSize={13}
-                        tick={{fill: 'hsl(var(--foreground))', fontWeight: 500}} 
-                        className="text-sm"
-                      />
-                      <XAxis type="number" hide />
-                      <ChartTooltip 
-                        cursor={{fill: 'hsl(var(--muted))', opacity: 0.1}} 
-                        content={<ChartTooltipContent indicator="dashed" />}
-                      />
-                      <Bar dataKey="value" fill="var(--color-value)" radius={[0, 4, 4, 0]} barSize={32}>
-                        <LabelList 
-                          dataKey="value" 
-                          position="right" 
-                          className="fill-foreground font-bold text-sm" 
-                          formatter={(v: any) => v > 0 ? v : ''} 
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-60">
-                    <Briefcase className="h-10 w-10 mb-2 stroke-1" />
-                    <p className="text-sm">Sem registros de produtividade.</p>
-                  </div>
-                )}
-              </div>
+            <CardContent className="flex-1 min-h-0 p-4"> 
+                 {isLoading ? <Skeleton className="w-full h-full" /> : (
+                    <ChartContainer config={productivityChartConfig} className="w-full h-full">
+                        <BarChart 
+                            accessibilityLayer 
+                            data={processedData.productivity} 
+                            layout="vertical" 
+                            barCategoryGap="15%" 
+                            margin={{ left: -10, right: 40, top: 0, bottom: 0 }}
+                        >
+                            <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.3} />
+                            <YAxis 
+                                dataKey="name" 
+                                type="category" 
+                                tickLine={false} 
+                                axisLine={false}
+                                width={110}
+                                className="text-[11px] font-medium"
+                                interval={0} 
+                            />
+                            <XAxis type="number" hide />
+                            <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+                            
+                            <Bar 
+                                dataKey="value" 
+                                fill="var(--color-value)" 
+                                radius={[0, 3, 3, 0]} 
+                                barSize={16} 
+                                className="opacity-90 hover:opacity-100 transition-opacity"
+                            >
+                                <LabelList 
+                                    dataKey="value" 
+                                    position="right" 
+                                    className="fill-foreground font-bold text-[10px]"
+                                    formatter={(value: any) => (Number(value) > 0 ? value : "")}
+                                />
+                            </Bar>
+                        </BarChart>
+                    </ChartContainer>
+                 )}
             </CardContent>
-          </Card>
-        </div>
+        </Card>
+
       </div>
     </div>
   )

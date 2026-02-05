@@ -12,7 +12,7 @@ import { getErrorMessage } from '@/utils/error'
 import { closeCaseFormSchema } from '@/schemas/caseSchemas'
 import { LISTA_MOTIVOS_DESLIGAMENTO, LISTA_DESTINOS } from '@/constants/cases/definitions'
 import { ROUTES } from '@/constants/app-routes'
-import { formatProcessoSei } from "@/utils/formatters" // [IMPORTANTE]
+import { formatProcessoSei } from "@/utils/formatters"
 
 import { Button } from '@/components/ui/button'
 import {
@@ -96,111 +96,119 @@ export function CloseCaseModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <Archive className="h-5 w-5" />
             Desligamento de Caso
           </DialogTitle>
           <DialogDescription>
-            Essa ação encerra o acompanhamento técnico (PAEFI). O prontuário ficará disponível apenas para consulta no Arquivo Morto.
+            Essa ação encerra o acompanhamento técnico (PAEFI). O prontuário ficará disponível apenas para consulta no Casos Desligados.
           </DialogDescription>
         </DialogHeader>
 
-        {/* [CORREÇÃO] APLICAÇÃO DA MÁSCARA NO NÚMERO SEI */}
+        {/* ALERTA SEI PENDENTE */}
         {numeroSei && !seiRespondido && (
-          <Alert className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-800">
+          <Alert className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800/50 my-2">
             <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            <AlertTitle className="ml-2 font-bold">Resposta ao SEI Pendente</AlertTitle>
-            <AlertDescription className="ml-2 text-xs mt-1">
-              O processo <strong>{formatProcessoSei(numeroSei)}</strong> consta como não respondido. 
-              <br/>Lembre-se de enviar o ofício de resposta ao órgão demandante informando o desligamento.
-            </AlertDescription>
+            <div className="ml-2">
+              <AlertTitle className="font-bold">Resposta ao SEI Pendente</AlertTitle>
+              <AlertDescription className="text-xs mt-1 opacity-90">
+                O processo <strong className="font-mono">{formatProcessoSei(numeroSei)}</strong> consta como não respondido. 
+                <br/>Lembre-se de enviar o ofício de resposta ao órgão demandante informando o desligamento.
+              </AlertDescription>
+            </div>
           </Alert>
         )}
 
+        {/* ALERTA GERAL - CORRIGIDO AQUI */}
+        {/* Usamos cores explícitas (red-900 sobre red-50) para garantir leitura */}
         {(!numeroSei || seiRespondido) && (
-          <Alert variant="destructive" className="my-2 bg-destructive/5 border-destructive/20 text-destructive-foreground">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Atenção</AlertTitle>
-            <AlertDescription>
-              Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
-            </AlertDescription>
+          <Alert className="my-2 bg-red-50 text-red-900 border-red-200 dark:bg-red-900/10 dark:text-red-200 dark:border-red-900/30">
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+            <div className="ml-2">
+              <AlertTitle className="font-semibold">Atenção</AlertTitle>
+              <AlertDescription className="text-xs opacity-90 font-medium">
+                Certifique-se de que todas as evoluções e documentos pendentes foram registrados antes de prosseguir.
+              </AlertDescription>
+            </div>
           </Alert>
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-2">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
             
-            <FormField
-              control={form.control}
-              name="motivoDesligamento"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <FileX className="h-3.5 w-3.5 text-muted-foreground" />
-                    Motivo do Desligamento
-                  </FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o motivo principal..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="max-h-[250px]">
-                      {LISTA_MOTIVOS_DESLIGAMENTO.map((motivo) => (
-                        <SelectItem key={motivo} value={motivo} className="text-sm">
-                          {motivo}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-6 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="motivoDesligamento"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                      <FileX className="h-3.5 w-3.5" />
+                      Motivo do Desligamento
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="bg-background">
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-60">
+                        {LISTA_MOTIVOS_DESLIGAMENTO.map((motivo) => (
+                          <SelectItem key={motivo} value={motivo} className="text-sm">
+                            {motivo}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="destinoDesligamento"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                    Destino / Encaminhamento
-                  </FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Para onde a família foi encaminhada?" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {LISTA_DESTINOS.map((destino) => (
-                        <SelectItem key={destino} value={destino}>
-                          {destino}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="destinoDesligamento"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Destino / Encaminhamento
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="bg-background">
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-60">
+                        {LISTA_DESTINOS.map((destino) => (
+                          <SelectItem key={destino} value={destino}>
+                            {destino}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
               name="parecerFinal"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
+                  <FormLabel className="flex items-center gap-2 text-muted-foreground">
+                    <PenTool className="h-3.5 w-3.5" />
                     Parecer Técnico Final
                   </FormLabel>
                   <FormControl>
                     <Textarea
                       rows={5}
-                      className="resize-none"
+                      className="resize-none bg-background leading-relaxed"
                       placeholder="Faça uma síntese das intervenções realizadas, resultados alcançados e justificativa técnica para o encerramento..."
                       {...field}
                     />
@@ -210,7 +218,7 @@ export function CloseCaseModal({
               )}
             />
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <DialogFooter className="gap-2 sm:gap-0 sm:justify-end">
               <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
                 Cancelar
               </Button>
@@ -218,10 +226,17 @@ export function CloseCaseModal({
                 type="submit" 
                 variant="destructive" 
                 disabled={isPending}
-                className="bg-destructive hover:bg-destructive/90"
+                className="bg-destructive hover:bg-destructive/90 min-w-45"
               >
-                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />} 
-                Confirmar Desligamento
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...
+                  </>
+                ) : (
+                  <>
+                    <Archive className="mr-2 h-4 w-4" /> Confirmar Desligamento
+                  </>
+                )} 
               </Button>
             </DialogFooter>
           </form>

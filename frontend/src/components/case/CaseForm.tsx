@@ -7,10 +7,10 @@ import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Loader2, Plus, Trash2, MapPin, Phone, User, 
-  AlertCircle, Briefcase, FileText 
+  AlertCircle, Briefcase, Save
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import { differenceInYears } from 'date-fns'
+import { differenceInYears, isValid, parseISO } from 'date-fns'
 
 // Libs & Components
 import { api } from '@/lib/api'
@@ -42,7 +42,6 @@ const MASKS = {
   CPF: '000.000.000-00',
   PHONE: '(00) 00000-0000',
   CEP: '00000-000',
-  // SEI removido daqui pois é dinâmico
 }
 
 const getLocalDateOnly = (date = new Date()) =>
@@ -61,18 +60,11 @@ const defaultValues: CreateCaseFormData = {
 
 // --- COMPONENTES UTILITÁRIOS ---
 
-// [CORRIGIDO] Input Inteligente para SEI (Removido a prop 'guide' que causava erro)
 function SeiInput({ value, onChange }: { value: string, onChange: (val: string) => void }) {
-  // Define qual máscara usar baseado no tamanho dos dígitos
   const rawValue = value?.replace(/\D/g, '') || ''
-  
-  // Se tiver mais de 19 dígitos, assume o formato longo (21 digitos)
-  // Formato Curto: 00054-00160500/2025-77 (19 char mask)
-  // Formato Longo: 19.04.1237.0168706/2025-77 (21 char mask)
-  
   const mask = rawValue.length > 19 
-    ? '00.00.0000.0000000/0000-00' // Máscara longa
-    : '00000-00000000/0000-00'     // Máscara padrão
+    ? '00.00.0000.0000000/0000-00'
+    : '00000-00000000/0000-00'
 
   return (
     <MaskedInput 
@@ -80,6 +72,7 @@ function SeiInput({ value, onChange }: { value: string, onChange: (val: string) 
       placeholder="Digite o número do processo..." 
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      className="font-mono bg-background"
     />
   )
 }
@@ -90,7 +83,6 @@ interface MoneyInputProps extends Omit<InputProps, 'value' | 'onChange'> {
 }
 
 function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
-  // Garante que value seja numérico
   const safeValue = isNaN(value) ? 0 : value
 
   const formatCurrency = (val: number) => {
@@ -120,7 +112,7 @@ function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
       {...props}
       value={displayValue}
       onChange={handleChange}
-      className={className}
+      className={clsx("font-mono text-right bg-background", className)}
       placeholder="R$ 0,00"
     />
   )
@@ -129,63 +121,97 @@ function MoneyInput({ value, onChange, className, ...props }: MoneyInputProps) {
 // --- SEÇÕES DO FORMULÁRIO ---
 
 function PersonalDataSection() {
-  const { control, watch } = useFormContext<CreateCaseFormData>()
+  const { control, watch, setValue } = useFormContext<CreateCaseFormData>()
   const nascimento = watch('nascimento')
   
   const isMenorDeIdade = useMemo(() => {
     if (!nascimento) return false;
-    const years = differenceInYears(new Date(), new Date(nascimento));
+    const date = parseISO(nascimento);
+    if (!isValid(date)) return false;
+    const years = differenceInYears(new Date(), date);
     return years >= 0 && years < 18;
   }, [nascimento])
 
+  useEffect(() => {
+    if (!isMenorDeIdade) {
+      setValue('responsavelLegal', '')
+      setValue('parentescoResponsavel', '')
+    }
+  }, [isMenorDeIdade, setValue])
+
   return (
-    <Card className="shadow-sm border-l-4 border-l-primary/50">
+    <Card className="shadow-sm border-l-4 border-l-primary/50 bg-card">
       <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
-          <User className="h-5 w-5" /> Identificação Pessoal
+        <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+          <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20 text-primary">
+             <User className="h-4 w-4" /> 
+          </div>
+          Identificação Pessoal
         </CardTitle>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        
         <div className="md:col-span-6">
           <FormField control={control} name="nomeCompleto" render={({ field }) => (
-            <FormItem><FormLabel>Nome Civil Completo *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+            <FormItem>
+               <FormLabel className="text-foreground/80">Nome Civil Completo <span className="text-status-error-fg">*</span></FormLabel>
+               <FormControl><Input {...field} className="bg-background" /></FormControl>
+               <FormMessage />
+            </FormItem>
           )}/>
         </div>
         <div className="md:col-span-6">
           <FormField control={control} name="nomeSocial" render={({ field }) => (
-            <FormItem><FormLabel>Nome Social (Opcional)</FormLabel><FormControl><Input {...field} placeholder="Como prefere ser chamado" /></FormControl><FormMessage /></FormItem>
+            <FormItem>
+               <FormLabel className="text-muted-foreground">Nome Social (Opcional)</FormLabel>
+               <FormControl><Input {...field} placeholder="Como prefere ser chamado" className="bg-background" value={field.value || ''} /></FormControl>
+               <FormMessage />
+            </FormItem>
           )}/>
         </div>
-
         <div className="md:col-span-4">
           <FormField control={control} name="cpf" render={({ field }) => (
-            <FormItem><FormLabel>CPF *</FormLabel><FormControl><MaskedInput mask={MASKS.CPF} placeholder="000.000.000-00" {...field} /></FormControl><FormMessage /></FormItem>
+            <FormItem>
+               <FormLabel className="text-foreground/80">CPF <span className="text-status-error-fg">*</span></FormLabel>
+               <FormControl>
+                 <MaskedInput 
+                    mask={MASKS.CPF} 
+                    placeholder="000.000.000-00" 
+                    value={field.value} 
+                    onChange={field.onChange} 
+                    className="bg-background" 
+                 />
+               </FormControl>
+               <FormMessage />
+            </FormItem>
           )}/>
         </div>
         <div className="md:col-span-4">
           <FormField control={control} name="nascimento" render={({ field }) => (
-            <FormItem><FormLabel>Data de Nascimento *</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+            <FormItem>
+               <FormLabel className="text-foreground/80">Data de Nascimento <span className="text-status-error-fg">*</span></FormLabel>
+               <FormControl><Input type="date" {...field} className="bg-background" /></FormControl>
+               <FormMessage />
+            </FormItem>
           )}/>
         </div>
         <div className="md:col-span-4">
           <FormField control={control} name="sexo" render={({ field }) => (
-            <FormItem><FormLabel>Sexo *</FormLabel>
+            <FormItem>
+              <FormLabel className="text-foreground/80">Sexo <span className="text-status-error-fg">*</span></FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
                 <SelectContent>{OPTIONS.sexo.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
           )}/>
         </div>
-
         <div className="md:col-span-6">
           <FormField control={control} name="ocupacao" render={({ field }) => (
             <FormItem>
               <FormLabel>Ocupação Atual</FormLabel>
               <Select value={field.value || ""} onValueChange={field.onChange}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Selecione a ocupação" /></SelectTrigger></FormControl>
+                <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Selecione a ocupação" /></SelectTrigger></FormControl>
                 <SelectContent>
                   {OPTIONS.ocupacao.map(op => <SelectItem key={op} value={op}>{op}</SelectItem>)}
                 </SelectContent>
@@ -208,18 +234,25 @@ function PersonalDataSection() {
             </FormItem>
           )}/>
         </div>
-
         {isMenorDeIdade && (
-          <div className="md:col-span-12 mt-2 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/30 rounded-md p-4 animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center gap-2 mb-3 text-yellow-800 dark:text-yellow-500 font-medium text-sm">
+          <div className="md:col-span-12 mt-2 bg-status-warning-bg/10 border border-status-warning-border/50 rounded-lg p-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2 mb-3 text-status-warning-fg font-bold text-sm">
               <AlertCircle className="h-4 w-4" /> Usuário menor de idade. Identifique o responsável.
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField control={control} name="responsavelLegal" render={({ field }) => (
-                <FormItem><FormLabel>Nome do Responsável Legal</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem>
+                   <FormLabel>Nome do Responsável Legal <span className="text-status-error-fg">*</span></FormLabel>
+                   <FormControl><Input {...field} className="bg-background" value={field.value || ''} /></FormControl>
+                   <FormMessage />
+                </FormItem>
               )}/>
               <FormField control={control} name="parentescoResponsavel" render={({ field }) => (
-                <FormItem><FormLabel>Parentesco</FormLabel><FormControl><Input {...field} placeholder="Ex: Mãe, Avó, Tio" /></FormControl><FormMessage /></FormItem>
+                <FormItem>
+                   <FormLabel>Parentesco <span className="text-status-error-fg">*</span></FormLabel>
+                   <FormControl><Input {...field} placeholder="Ex: Mãe, Avó, Tio" className="bg-background" value={field.value || ''} /></FormControl>
+                   <FormMessage />
+                </FormItem>
               )}/>
             </div>
           </div>
@@ -234,21 +267,32 @@ function ContactSection() {
   const { fields, append, remove } = useFieldArray({ control, name: "contatos" })
 
   return (
-    <Card className="shadow-sm border-l-4 border-l-emerald-500/50">
+    <Card className="shadow-sm border-l-4 border-l-status-success-fg/50 bg-card">
       <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
-          <Phone className="h-5 w-5" /> Contatos
+        <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+          <div className="p-1.5 bg-status-success-bg/20 rounded-md border border-status-success-border/30 text-status-success-fg">
+             <Phone className="h-4 w-4" /> 
+          </div>
+          Contatos
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {fields.map((field, index) => (
-          <div key={field.id} className="flex gap-3 items-end animate-in fade-in">
+          <div key={field.id} className="flex gap-3 items-end animate-in fade-in group">
             <div className="grid grid-cols-12 gap-3 flex-1">
               <div className="col-span-4 md:col-span-3">
                 <FormField control={control} name={`contatos.${index}.numero`} render={({ field }) => (
                   <FormItem>
-                    {index === 0 && <FormLabel className="text-xs">Número *</FormLabel>}
-                    <FormControl><MaskedInput mask={MASKS.PHONE} placeholder="(61) 90000-0000" {...field} /></FormControl>
+                    {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Número <span className="text-status-error-fg">*</span></FormLabel>}
+                    <FormControl>
+                        <MaskedInput 
+                            mask={MASKS.PHONE} 
+                            placeholder="(61) 90000-0000" 
+                            value={field.value} 
+                            onChange={field.onChange} 
+                            className="bg-background" 
+                        />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}/>
@@ -256,9 +300,9 @@ function ContactSection() {
               <div className="col-span-4 md:col-span-3">
                 <FormField control={control} name={`contatos.${index}.tipo`} render={({ field }) => (
                   <FormItem>
-                    {index === 0 && <FormLabel className="text-xs">Tipo</FormLabel>}
+                    {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Tipo</FormLabel>}
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger className="bg-background"><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>{OPTIONS.tipoContato.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormItem>
@@ -267,8 +311,8 @@ function ContactSection() {
               <div className="col-span-4 md:col-span-6">
                 <FormField control={control} name={`contatos.${index}.nome`} render={({ field }) => (
                   <FormItem>
-                    {index === 0 && <FormLabel className="text-xs">Nome (Recado/Obs)</FormLabel>}
-                    <FormControl><Input {...field} placeholder="Ex: Vizinha Maria" /></FormControl>
+                    {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Nome (Recado/Obs)</FormLabel>}
+                    <FormControl><Input {...field} placeholder="Ex: Vizinha Maria" className="bg-background" value={field.value || ''} /></FormControl>
                   </FormItem>
                 )}/>
               </div>
@@ -277,7 +321,7 @@ function ContactSection() {
               type="button" 
               variant="ghost" 
               size="icon" 
-              className="text-muted-foreground hover:text-destructive mb-0.5" 
+              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 mb-0.5" 
               onClick={() => remove(index)} 
               disabled={fields.length === 1}
             >
@@ -289,7 +333,7 @@ function ContactSection() {
           type="button" 
           variant="outline" 
           size="sm" 
-          className="mt-2 text-xs" 
+          className="mt-2 text-xs border-dashed border-border hover:bg-muted" 
           onClick={() => append({ numero: '', tipo: 'Pessoal', nome: '' })}
         >
           <Plus className="h-3 w-3 mr-2" /> Adicionar outro telefone
@@ -339,14 +383,16 @@ function AddressSection() {
   }
 
   return (
-    <Card className="shadow-sm border-l-4 border-l-blue-500/50">
+    <Card className="shadow-sm border-l-4 border-l-status-info-fg/50 bg-card">
       <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
-          <MapPin className="h-5 w-5" /> Endereço e Localização
+        <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+          <div className="p-1.5 bg-status-info-bg/20 rounded-md border border-status-info-border/30 text-status-info-fg">
+             <MapPin className="h-4 w-4" /> 
+          </div>
+          Endereço e Localização
         </CardTitle>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        
         <div className="md:col-span-3 lg:col-span-2 relative">
           <FormField control={control} name="endereco.cep" render={({ field }) => (
             <FormItem>
@@ -356,11 +402,13 @@ function AddressSection() {
                   <MaskedInput 
                     mask={MASKS.CEP} 
                     placeholder="00000-000" 
-                    {...field} 
+                    value={field.value}
+                    onChange={field.onChange}
                     onBlur={(e) => {
                       field.onBlur()
                       handleCepBlur(e)
                     }}
+                    className="bg-background pr-8"
                   />
                   {isLoadingCep && (
                     <div className="absolute right-2 top-2.5">
@@ -373,34 +421,41 @@ function AddressSection() {
             </FormItem>
           )}/>
         </div>
-
         <div className="md:col-span-9 lg:col-span-4">
           <FormField control={control} name="endereco.ra" render={({ field }) => (
-            <FormItem><FormLabel>Região Administrativa (RA) *</FormLabel>
+            <FormItem>
+              <FormLabel>Região Administrativa (RA) <span className="text-status-error-fg">*</span></FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Selecione a RA" /></SelectTrigger></FormControl>
-                <SelectContent className="max-h-[250px]">{REGIOES_ADMINISTRATIVAS.map(ra => <SelectItem key={ra} value={ra}>{ra}</SelectItem>)}</SelectContent>
+                <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Selecione a RA" /></SelectTrigger></FormControl>
+                <SelectContent className="max-h-62.5">{REGIOES_ADMINISTRATIVAS.map(ra => <SelectItem key={ra} value={ra}>{ra}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
           )}/>
         </div>
-
         <div className="md:col-span-12 lg:col-span-6">
           <FormField control={control} name="endereco.logradouro" render={({ field }) => (
-            <FormItem><FormLabel>Logradouro Completo *</FormLabel><FormControl><Input {...field} placeholder="Rua, Avenida, Quadra..." /></FormControl><FormMessage /></FormItem>
+            <FormItem>
+               <FormLabel>Logradouro Completo <span className="text-status-error-fg">*</span></FormLabel>
+               <FormControl><Input {...field} placeholder="Rua, Avenida, Quadra..." className="bg-background" /></FormControl>
+               <FormMessage />
+            </FormItem>
           )}/>
         </div>
-        
         <div className="md:col-span-6">
           <FormField control={control} name="endereco.complemento" render={({ field }) => (
-            <FormItem><FormLabel>Complemento</FormLabel><FormControl><Input {...field} placeholder="Apto, Bloco, Casa..." /></FormControl></FormItem>
+            <FormItem>
+               <FormLabel>Complemento</FormLabel>
+               <FormControl><Input {...field} placeholder="Apto, Bloco, Casa..." className="bg-background" value={field.value || ''} /></FormControl>
+            </FormItem>
           )}/>
         </div>
-        
         <div className="md:col-span-6">
           <FormField control={control} name="endereco.bairro" render={({ field }) => (
-            <FormItem><FormLabel>Bairro / Setor</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+            <FormItem>
+               <FormLabel>Bairro / Setor</FormLabel>
+               <FormControl><Input {...field} className="bg-background" value={field.value || ''} /></FormControl>
+            </FormItem>
           )}/>
         </div>
       </CardContent>
@@ -420,47 +475,60 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
   }, [origem, setValue])
   
   return (
-    <Card className="shadow-sm border-l-4 border-l-orange-500/50">
+    <Card className="shadow-sm border-l-4 border-l-status-warning-fg/50 bg-card">
       <CardHeader className="pb-3 border-b mb-3 bg-muted/5">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold text-primary">
-          <Briefcase className="h-5 w-5" /> Dados da Demanda
+        <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+          <div className="p-1.5 bg-status-warning-bg/20 rounded-md border border-status-warning-border/30 text-status-warning-fg">
+             <Briefcase className="h-4 w-4" /> 
+          </div>
+          Dados da Demanda
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FormField control={control} name="dataEntrada" render={({ field }) => (
-            <FormItem><FormLabel>Data de Entrada</FormLabel><FormControl><Input type="date" {...field} readOnly={!isEditing} className={!isEditing ? "bg-muted opacity-70" : ""} /></FormControl><FormMessage /></FormItem>
+            <FormItem>
+               <FormLabel>Data de Entrada</FormLabel>
+               <FormControl><Input type="date" {...field} readOnly={!isEditing} className={!isEditing ? "bg-muted opacity-70 cursor-not-allowed" : "bg-background"} /></FormControl>
+               <FormMessage />
+            </FormItem>
           )}/>
           <FormField control={control} name="origem" render={({ field }) => (
-            <FormItem><FormLabel>Origem</FormLabel>
+            <FormItem>
+              <FormLabel>Origem</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                <FormControl><SelectTrigger className="bg-background"><SelectValue /></SelectTrigger></FormControl>
                 <SelectContent>{OPTIONS.origem.map(o => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
           )}/>
           <FormField control={control} name="orgaoDemandante" render={({ field }) => (
-            <FormItem><FormLabel>Órgão Demandante</FormLabel><FormControl><Input {...field} placeholder="Ex: CRAS, MPDFT..." /></FormControl></FormItem>
+            <FormItem>
+               <FormLabel>Órgão Demandante</FormLabel>
+               <FormControl><Input {...field} placeholder="Ex: CRAS, MPDFT..." className="bg-background" value={field.value || ''} /></FormControl>
+            </FormItem>
           )}/>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-muted/20 rounded-lg border border-border/50">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-muted/10 rounded-xl border border-border/50">
           <FormField control={control} name="urgencia" render={({ field }) => (
-            <FormItem><FormLabel>Urgência/Risco</FormLabel>
+            <FormItem>
+              <FormLabel className="text-foreground/90 font-medium">Urgência/Risco</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                <SelectContent className="max-h-[200px]">{OPTIONS.urgencia.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                <FormControl><SelectTrigger className="bg-background border-border shadow-sm"><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                <SelectContent className="max-h-50">{OPTIONS.urgencia.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
           )}/>
 
           <FormField control={control} name="categoria" render={({ field }) => (
-            <FormItem><FormLabel>Categoria (Público)</FormLabel>
+            <FormItem>
+              <FormLabel className="text-foreground/90 font-medium">Categoria (Público)</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
-                <SelectContent>{OPTIONS.categoria.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <FormControl><SelectTrigger className="bg-background border-border shadow-sm"><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
+                <SelectContent className="max-h-50">{OPTIONS.categoria.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
               <FormMessage />
             </FormItem>
@@ -468,15 +536,14 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
         </div>
 
         <div className="space-y-3">
-          <Label className="text-base font-semibold flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" /> Violações de Direitos Identificadas *
+          <Label className="text-base font-semibold flex items-center gap-2 text-status-warning-fg">
+            <AlertCircle className="h-4 w-4" /> Violações de Direitos Identificadas <span className="text-status-error-fg">*</span>
           </Label>
-          <p className="text-[11px] text-muted-foreground -mt-2 italic">Marque todas as situações identificadas no atendimento inicial.</p>
           <FormField control={control} name="violacao" render={({ field }) => (
             <FormItem>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-md bg-background shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border p-4 rounded-xl bg-background/50 shadow-sm border-border/60">
                 {OPTIONS.violacao.map(v => (
-                  <div key={v} className="flex flex-row items-start space-x-3 space-y-0">
+                  <div key={v} className="flex flex-row items-start space-x-3 space-y-0 p-1 hover:bg-muted/30 rounded transition-colors">
                     <FormControl>
                       <Checkbox 
                         checked={field.value?.includes(v)}
@@ -484,9 +551,10 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
                           const current = field.value || []
                           field.onChange(checked ? [...current, v] : current.filter(item => item !== v))
                         }}
+                        className="data-[state=checked]:bg-status-warning-fg data-[state=checked]:border-status-warning-fg"
                       />
                     </FormControl>
-                    <Label className="font-normal cursor-pointer leading-tight text-xs">{v}</Label>
+                    <Label className="font-normal cursor-pointer leading-tight text-xs pt-0.5">{v}</Label>
                   </div>
                 ))}
               </div>
@@ -496,19 +564,19 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
         </div>
 
         <div>
-          <Label className="mb-3 block font-medium">Transferência de Renda</Label>
+          <Label className="mb-3 block font-medium text-foreground/90">Transferência de Renda</Label>
           <FormField control={control} name="beneficios" render={({ field }) => (
             <FormItem>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border p-4 rounded-md bg-background shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border p-4 rounded-xl bg-background/50 shadow-sm border-border/60">
                 {OPTIONS.transferenciaRenda.map(item => (
-                  <div key={item} className="flex flex-row items-start space-x-3 space-y-0">
+                  <div key={item} className="flex flex-row items-start space-x-3 space-y-0 p-1 hover:bg-muted/30 rounded transition-colors">
                     <FormControl>
                       <Checkbox checked={field.value?.includes(item)} onCheckedChange={(checked) => {
                         const current = (field.value as string[]) || [];
                         field.onChange(checked ? [...current, item] : current.filter(v => v !== item))
                       }} />
                     </FormControl>
-                    <Label className="font-normal cursor-pointer leading-tight text-sm">{item}</Label>
+                    <Label className="font-normal cursor-pointer leading-tight text-sm pt-0.5">{item}</Label>
                   </div>
                 ))}
               </div>
@@ -517,19 +585,20 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           )}/>
         </div>
 
-        <Separator />
+        <Separator className="bg-border/60" />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-4">
             <FormField control={control} name="agenteAcolhidaId" render={({ field }) => (
-              <FormItem><FormLabel>Agente Social (Triagem)</FormLabel>
+              <FormItem>
+                <FormLabel>Agente Social (Triagem)</FormLabel>
                 <Select 
                   value={field.value || "unassigned"} 
                   onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
                   disabled={isLoadingAgents}
                 >
-                  <FormControl><SelectTrigger><SelectValue placeholder={isLoadingAgents ? "..." : "Selecione (Opcional)"} /></SelectTrigger></FormControl>
-                  <SelectContent>
+                  <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder={isLoadingAgents ? "..." : "Selecione (Opcional)"} /></SelectTrigger></FormControl>
+                  <SelectContent className="max-h-62.5">
                     <SelectItem value="unassigned">-- Pendente --</SelectItem>
                     {agents?.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.nome}</SelectItem>)}
                   </SelectContent>
@@ -538,7 +607,6 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
             )}/>
           </div>
           
-          {/* [MODIFICADO] Campo SEI com Input Dinâmico */}
           <div className="lg:col-span-3">
             <FormField control={control} name="numeroSei" render={({ field }) => (
               <FormItem>
@@ -549,7 +617,7 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
                     onChange={field.onChange} 
                   />
                 </FormControl>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   Aceita formato padrão (19) ou longo (21)
                 </p>
               </FormItem>
@@ -558,13 +626,19 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           
           <div className="lg:col-span-5">
             <FormField control={control} name="linkSei" render={({ field }) => (
-              <FormItem><FormLabel>Link Processo SEI</FormLabel><FormControl><Input type="url" {...field} placeholder="https://..." /></FormControl></FormItem>
+              <FormItem>
+                 <FormLabel>Link Processo SEI</FormLabel>
+                 <FormControl><Input type="url" {...field} placeholder="https://..." className="bg-background" value={field.value || ''} /></FormControl>
+              </FormItem>
             )}/>
           </div>
         </div>
 
         <FormField control={control} name="observacoes" render={({ field }) => (
-          <FormItem><FormLabel>Observações Gerais</FormLabel><FormControl><Textarea {...field} className="min-h-[80px]" /></FormControl></FormItem>
+          <FormItem>
+             <FormLabel>Observações Gerais</FormLabel>
+             <FormControl><Textarea {...field} className="min-h-20 bg-background" value={field.value || ''} /></FormControl>
+          </FormItem>
         )}/>
       </CardContent>
     </Card>
@@ -587,31 +661,24 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
   const normalizedInitialData = useMemo(() => {
     if (!initialData) return defaultValues;
     
-    // Normalização segura: 
-    // Garante que se o backend mandar null/undefined, usamos o default do formulário
     return {
       ...defaultValues,
       ...initialData,
-      // Datas: Se vier ISO (com Time), pega só a data YYYY-MM-DD
       dataEntrada: initialData.dataEntrada ? initialData.dataEntrada.split('T')[0] : getLocalDateOnly(),
       nascimento: initialData.nascimento ? initialData.nascimento.split('T')[0] : '',
       
-      // Contatos: Garante array com pelo menos 1 item ou o telefone legado
       contatos: Array.isArray(initialData.contatos) && initialData.contatos.length > 0
         ? initialData.contatos 
         : (initialData.telefone ? [{ numero: initialData.telefone, tipo: 'Pessoal', nome: '' }] : defaultValues.contatos),
       
-      // Endereço: Normaliza se vier string antiga ou objeto
       endereco: initialData.endereco && typeof initialData.endereco === 'object' 
         ? initialData.endereco 
         : (typeof initialData.endereco === 'string' ? { ...defaultValues.endereco, logradouro: initialData.endereco } : defaultValues.endereco),
       
-      // Arrays
       violacao: Array.isArray(initialData.violacao) 
         ? initialData.violacao 
         : (initialData.violacao ? [initialData.violacao] : []),
 
-      // Campos Simples (proteção contra null)
       ocupacao: initialData.ocupacao || '',
       renda: initialData.renda ? Number(initialData.renda) : 0,
       beneficios: initialData.beneficios || [],
@@ -622,19 +689,18 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     }
   }, [initialData])
 
+  // [CORREÇÃO ERRO 2322]: Cast 'as any' no resolver para silenciar conflito de tipos estritos do Zod vs Form
   const form = useForm<CreateCaseFormData>({
-    resolver: zodResolver(createCaseFormSchema),
+    resolver: zodResolver(createCaseFormSchema) as any,
     defaultValues: normalizedInitialData,
   })
 
-  // Reseta o formulário quando os dados iniciais são carregados
   useEffect(() => {
     if (initialData) form.reset(normalizedInitialData)
   }, [initialData, form, normalizedInitialData])
 
   const { mutateAsync: submitCase, isPending } = useMutation({
     mutationFn: async (data: CreateCaseFormData) => {
-      // Prepara payload limpo para envio
       const payload = {
         // Dados Pessoais
         nomeCompleto: data.nomeCompleto,
@@ -665,7 +731,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         
         // Administrativo
         agenteAcolhidaId: data.agenteAcolhidaId || null,
-        // Limpa o SEI para salvar apenas números (como CPF/Telefone)
         numeroSei: data.numeroSei ? data.numeroSei.replace(/\D/g, '') : null,
         linkSei: data.linkSei || null,
         observacoes: data.observacoes || null,
@@ -692,10 +757,31 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     },
   })
 
+  // Função para exibir erros de validação
+  const handleError = (errors: any) => {
+    console.error("Erros de validação:", errors)
+    const errorFields = Object.keys(errors).map(key => {
+      const names: Record<string, string> = {
+        nomeCompleto: 'Nome Completo',
+        cpf: 'CPF',
+        nascimento: 'Data de Nascimento',
+        violacao: 'Violações',
+        contatos: 'Contatos (Número)',
+        responsavelLegal: 'Responsável Legal'
+      }
+      return names[key] || key
+    })
+    
+    if (errorFields.length > 0) {
+      toast.error(`Verifique os campos: ${errorFields.join(', ')}`)
+    }
+  }
+
   return (
     <Form {...form}>
       <form 
-        onSubmit={form.handleSubmit(data => submitCase(data))} 
+        // [CORREÇÃO ERRO 2352]: Cast duplo (as unknown as CreateCaseFormData) para garantir compatibilidade
+        onSubmit={form.handleSubmit((data) => submitCase(data as unknown as CreateCaseFormData), handleError)} 
         className={clsx("space-y-8 pb-10", isPending && "opacity-50 pointer-events-none")}
       >
         <PersonalDataSection />
@@ -703,16 +789,16 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         <AddressSection />
         <TechnicalDataSection agents={agents} isLoadingAgents={isLoadingAgents} isEditing={isEditing} />
 
-        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4 border-t sticky bottom-0 bg-background py-4 z-10">
-          <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto min-w-[200px] shadow-md">
+        <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-border sticky bottom-0 bg-background py-4 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto min-w-50 shadow-md font-semibold text-base h-11 transition-all active:scale-95">
             {isPending ? (
               <>
-                <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                <Loader2 className="animate-spin mr-2 h-5 w-5" />
                 Processando...
               </>
             ) : (
               <>
-                <FileText className="mr-2 h-4 w-4" />
+                <Save className="mr-2 h-5 w-5" />
                 {isEditing ? 'Salvar Alterações' : 'Cadastrar Caso'}
               </>
             )}

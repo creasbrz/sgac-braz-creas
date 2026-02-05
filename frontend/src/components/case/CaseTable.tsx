@@ -14,7 +14,7 @@ import { twMerge } from 'tailwind-merge'
 import { api } from '@/lib/api'
 import { ROUTES } from '@/constants/app-routes'
 import { formatCPF } from '@/utils/formatters'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { getUrgencyColor } from '@/constants/cases/styles' 
 
 import { Button } from '@/components/ui/button'
@@ -33,9 +33,41 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// [CORREÇÃO 1] Helper para formatar o endereço (String ou Objeto)
+const formatCaseAddress = (endereco: string | AddressData | null | undefined) => {
+  if (!endereco) return null
+
+  // Se for string antiga/legado
+  if (typeof endereco === 'string') return endereco
+
+  // Se for objeto estruturado (conforme CaseForm)
+  const parts = [
+    endereco.logradouro,
+    endereco.complemento,
+    endereco.bairro,
+    endereco.ra // Região Administrativa é importante
+  ].filter(part => part && part.trim() !== '')
+
+  if (parts.length === 0) return null
+  
+  // Ex: "QNM 10 Conjunto A, Ceilândia"
+  return parts.join(', ')
+}
+
 // ----------------------------------------------------------------------
 // TYPES
 // ----------------------------------------------------------------------
+
+// [CORREÇÃO 2] Interface para o Objeto de Endereço
+interface AddressData {
+  logradouro?: string
+  complemento?: string
+  bairro?: string
+  cidade?: string
+  uf?: string
+  cep?: string
+  ra?: string
+}
 
 interface ExtendedCaseSummary { 
   id: string
@@ -48,7 +80,8 @@ interface ExtendedCaseSummary {
   urgencia: string
   violacao?: string[] | string | null 
   sexo?: string
-  endereco?: string 
+  // [CORREÇÃO 3] Aceita string ou objeto AddressData
+  endereco?: string | AddressData | null 
   agenteAcolhida?: { nome: string }
   especialistaPAEFI?: { nome: string }
 }
@@ -101,19 +134,19 @@ const ViolationTags = ({ rawViolations }: { rawViolations?: string[] | string | 
   const remaining = list.length - 2
 
   return (
-    <div className="flex flex-wrap justify-start items-center gap-1">
+    <div className="flex flex-wrap justify-start items-center gap-1.5">
       {displayItems.map((v, i) => (
         <Badge 
           key={i} 
           variant="outline" 
-          className="max-w-[120px] truncate border-transparent bg-muted/50 px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+          className="max-w-30 truncate border-border bg-muted/50 px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover:bg-muted"
           title={v}
         >
           {v}
         </Badge>
       ))}
       {remaining > 0 && (
-        <span className="text-[10px] font-medium text-muted-foreground/80 ml-1" title={list.slice(2).join(', ')}>
+        <span className="text-[10px] font-bold text-muted-foreground/80 bg-muted/30 px-1.5 rounded-sm" title={list.slice(2).join(', ')}>
           +{remaining}
         </span>
       )}
@@ -142,7 +175,7 @@ const SortableColumn = ({
     <TableHead 
       className={cn(
         "cursor-pointer select-none transition-colors hover:bg-muted/50 hover:text-foreground h-10", 
-        isActive && "text-foreground font-medium",
+        isActive && "text-foreground font-semibold bg-muted/20",
         align === 'center' && "text-center",
         align === 'right' && "text-right",
         className
@@ -168,17 +201,17 @@ const SortableColumn = ({
 }
 
 const EmptyState = ({ onClear }: { onClear: () => void }) => (
-  <div className="flex min-h-[400px] flex-col items-center justify-center space-y-3 rounded-md bg-muted/5 p-8 text-center animate-in fade-in zoom-in-95 duration-300">
-    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+  <div className="flex min-h-100 flex-col items-center justify-center space-y-3 rounded-md bg-muted/5 p-8 text-center animate-in fade-in zoom-in-95 duration-300 border-2 border-dashed border-border/50">
+    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted shadow-sm">
       <SearchX className="h-6 w-6 text-muted-foreground" />
     </div>
     <div className="space-y-1">
-      <h3 className="text-lg font-semibold tracking-tight">Nenhum caso encontrado</h3>
+      <h3 className="text-lg font-semibold tracking-tight text-foreground">Nenhum caso encontrado</h3>
       <p className="text-sm text-muted-foreground max-w-xs mx-auto">
         Não conseguimos encontrar registros com os filtros atuais.
       </p>
     </div>
-    <Button variant="outline" size="sm" onClick={onClear} className="mt-4">
+    <Button variant="outline" size="sm" onClick={onClear} className="mt-4 shadow-sm">
       Limpar filtros
     </Button>
   </div>
@@ -186,14 +219,14 @@ const EmptyState = ({ onClear }: { onClear: () => void }) => (
 
 const TableRowSkeleton = ({ isManager }: { isManager: boolean }) => (
   <TableRow>
-    <TableCell><Skeleton className="h-5 w-40" /><Skeleton className="h-3 w-24 mt-2" /></TableCell>
-    <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+    <TableCell><Skeleton className="h-5 w-40 mb-1" /><Skeleton className="h-3 w-24 opacity-60" /></TableCell>
+    <TableCell><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
     <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-    {isManager && <TableCell><div className="mx-auto h-6 w-24 rounded-full bg-muted/50" /></TableCell>}
-    {isManager && <TableCell><div className="flex gap-1"><Skeleton className="h-5 w-16" /></div></TableCell>}
+    {isManager && <TableCell><div className="mx-auto h-5 w-20 rounded-full bg-muted/50" /></TableCell>}
+    {isManager && <TableCell><div className="flex gap-1"><Skeleton className="h-5 w-16" /><Skeleton className="h-5 w-12" /></div></TableCell>}
     <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
     <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-    <TableCell><div className="mx-auto h-6 w-20 rounded-full bg-muted/50" /></TableCell>
+    <TableCell><div className="mx-auto h-6 w-24 rounded-full bg-muted/50" /></TableCell>
     <TableCell><Skeleton className="h-8 w-8 rounded-md ml-auto" /></TableCell>
   </TableRow>
 )
@@ -214,7 +247,6 @@ export function CaseTable({
   const [searchParams, setSearchParams] = useSearchParams()
   const currentPage = Number(searchParams.get('page') ?? '1')
   
-  // [CORREÇÃO] Adicionado o setter setIsExporting
   const [isExporting, setIsExporting] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [sorting, setSorting] = useState<SortingState | null>(null)
@@ -273,28 +305,25 @@ export function CaseTable({
 
   const handlePageChange = (page: number) => setSearchParams(prev => { prev.set('page', String(page)); return prev })
 
-  // [CORREÇÃO] Implementação real da exportação via Blob
   const handleExport = async () => {
     try {
       setIsExporting(true)
       const response = await api.get('/cases/export', {
-        responseType: 'blob', // Importante para arquivos binários
+        responseType: 'blob', 
       })
 
-      // Criar URL temporária para download
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
+      const formattedDate = format(new Date(), 'yyyy-MM-dd')
       link.href = url
-      link.setAttribute('download', `Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
+      link.setAttribute('download', `Exportacao_Casos_${formattedDate}.xlsx`)
       document.body.appendChild(link)
       link.click()
       
-      // Limpeza
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Erro ao exportar:', error)
-      // Aqui você pode adicionar um toast de erro se disponível
     } finally {
       setIsExporting(false)
     }
@@ -330,7 +359,7 @@ export function CaseTable({
           
           {showImportExport && (
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="h-9 gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="h-9 gap-2 shadow-sm">
                 <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> 
                 <span className="hidden sm:inline">Importar</span>
               </Button>
@@ -339,10 +368,9 @@ export function CaseTable({
                 size="sm" 
                 onClick={handleExport} 
                 disabled={isExporting} 
-                className="h-9 gap-2"
+                className="h-9 gap-2 shadow-sm"
               >
-                {/* Ícone animado ou estático dependendo do estado */}
-                <FileDown className={cn("h-4 w-4", isExporting && "animate-bounce")} /> 
+                <FileDown className={cn("h-4 w-4 text-blue-600", isExporting && "animate-bounce")} /> 
                 <span className="hidden sm:inline">{isExporting ? 'Exportando...' : 'Exportar'}</span>
               </Button>
             </div>
@@ -350,26 +378,26 @@ export function CaseTable({
         </div>
       )}
 
-      <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
         <DataTableFilters filters={activeFilters} setFilters={handleFilterChange} onClear={clearFilters} />
         <div className="mt-2 flex justify-end xl:mt-0">
           <SavedFilters currentFilters={activeFilters} onApply={applySavedFilter} />
         </div>
       </div>
 
-      <div className="flex-1 rounded-md border bg-card shadow-sm overflow-hidden flex flex-col">
+      <div className="flex-1 rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col">
         <div className="flex-1 overflow-auto relative">
           <Table>
-            <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm">
-              <TableRow className="hover:bg-transparent border-b-input">
-                <SortableColumn label="Nome / Endereço" field="nomeCompleto" sorting={sorting} onToggle={toggleSort} className="pl-4 min-w-[200px]" />
-                <SortableColumn label="Sexo" field="sexo" sorting={sorting} onToggle={toggleSort} align="center" className="w-[80px]" />
-                <TableHead className="w-[130px] whitespace-nowrap">CPF</TableHead>
+            <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm shadow-sm">
+              <TableRow className="hover:bg-transparent border-b-border/60">
+                <SortableColumn label="Nome / Endereço" field="nomeCompleto" sorting={sorting} onToggle={toggleSort} className="pl-6 min-w-55" />
+                <SortableColumn label="Sexo" field="sexo" sorting={sorting} onToggle={toggleSort} align="center" className="w-20" />
+                <TableHead className="w-35 whitespace-nowrap text-muted-foreground font-medium">CPF</TableHead>
                 
                 {!isArchiveMode && (
                   <>
-                    <SortableColumn label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-[140px]" />
-                    <TableHead className="w-[200px] whitespace-nowrap">Violação</TableHead>
+                    <SortableColumn label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-35" />
+                    <TableHead className="w-55 whitespace-nowrap text-muted-foreground font-medium">Violação</TableHead>
                   </>
                 )}
 
@@ -379,17 +407,17 @@ export function CaseTable({
                   sorting={sorting} 
                   onToggle={toggleSort}
                   align="right"
-                  className="w-[140px] pr-6" 
+                  className="w-35 pr-6" 
                 />
                 
-                {isArchiveMode && <TableHead className="whitespace-nowrap w-[150px]">Motivo</TableHead>}
-                <TableHead className="whitespace-nowrap w-[150px]">Responsável</TableHead>
+                {isArchiveMode && <TableHead className="whitespace-nowrap w-37.5 text-muted-foreground font-medium">Motivo</TableHead>}
+                <TableHead className="whitespace-nowrap w-40 text-muted-foreground font-medium">Responsável</TableHead>
                 
                 {!isArchiveMode && (
-                   <SortableColumn label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-[140px]" />
+                   <SortableColumn label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-40" />
                 )}
                 
-                <TableHead className="w-[50px]"></TableHead>
+                <TableHead className="w-12.5"></TableHead>
               </TableRow>
             </TableHeader>
             
@@ -403,106 +431,113 @@ export function CaseTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                result?.items.map((item) => (
-                  <TableRow key={item.id} className="group transition-colors hover:bg-muted/40">
-                    <TableCell className="py-3 pl-4 align-top">
-                      <div className="flex flex-col gap-0.5">
-                        <Link 
-                          to={ROUTES.CASE_DETAIL(item.id)} 
-                          className="font-medium text-foreground transition-colors hover:text-primary hover:underline underline-offset-4 line-clamp-1"
-                          title={item.nomeCompleto}
-                        >
-                          {item.nomeCompleto}
-                        </Link>
-                        {item.endereco ? (
-                          <span className="truncate text-xs text-muted-foreground max-w-[250px]" title={item.endereco}>
-                             {item.endereco}
-                          </span>
-                        ) : (
-                          <span className="text-xs italic text-muted-foreground/50">Sem endereço</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    
-                    <TableCell className="text-xs text-muted-foreground text-center align-top pt-3.5">
-                      {item.sexo || '-'}
-                    </TableCell>
-                    
-                    <TableCell className="text-xs font-mono text-muted-foreground tabular-nums align-top pt-3.5">
-                      {formatCPF(item.cpf)}
-                    </TableCell>
-                    
-                    {!isArchiveMode && (
-                      <>
-                        <TableCell className="text-center align-top pt-3">
-                          <Badge 
-                            variant="outline" 
-                            className={cn(
-                              "whitespace-nowrap w-fit mx-auto border px-2.5 py-0.5 text-[10px] font-semibold uppercase shadow-none",
-                              getUrgencyColor(item.urgencia)
-                            )}
+                result?.items.map((item) => {
+                  // [CORREÇÃO 4] Processa o endereço antes de renderizar
+                  const formattedAddress = formatCaseAddress(item.endereco)
+
+                  return (
+                    <TableRow key={item.id} className="group transition-colors hover:bg-muted/30 border-b-border/40">
+                      <TableCell className="py-3 pl-6 align-top">
+                        <div className="flex flex-col gap-0.5">
+                          <Link 
+                            to={ROUTES.CASE_DETAIL(item.id)} 
+                            className="font-semibold text-foreground transition-colors hover:text-primary hover:underline underline-offset-4 line-clamp-1"
+                            title={item.nomeCompleto}
                           >
-                            {item.urgencia}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-2 align-top pt-3">
-                          <ViolationTags rawViolations={item.violacao} />
-                        </TableCell>
-                      </>
-                    )}
-
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums text-right pr-6 align-top pt-3.5">
-                      {isArchiveMode 
-                        ? (item.dataDesligamento ? format(new Date(item.dataDesligamento), 'dd/MM/yyyy') : '-')
-                        : (
-                          <span title={format(new Date(item.dataEntrada), "dd 'de' MMMM, HH:mm", { locale: ptBR })}>
-                             {formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })}
-                          </span>
-                        )
-                      }
-                    </TableCell>
-
-                    {isArchiveMode && (
-                      <TableCell className="align-top pt-3.5">
-                        <div className="max-w-[140px] truncate text-xs text-muted-foreground" title={item.motivoDesligamento}>
-                          {item.motivoDesligamento ?? '-'}
+                            {item.nomeCompleto}
+                          </Link>
+                          
+                          {/* [CORREÇÃO 5] Renderiza a string formatada */}
+                          {formattedAddress ? (
+                            <span className="truncate text-xs text-muted-foreground/80 max-w-62.5" title={formattedAddress}>
+                              {formattedAddress}
+                            </span>
+                          ) : (
+                            <span className="text-xs italic text-muted-foreground/40">Sem endereço</span>
+                          )}
                         </div>
                       </TableCell>
-                    )}
-
-                    <TableCell className="text-xs font-medium text-foreground/80 align-top pt-3.5">
-                      {item.status === 'EM_ACOMPANHAMENTO' || (isArchiveMode && item.especialistaPAEFI) 
-                        ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? '-' 
-                        : item.agenteAcolhida?.nome?.split(' ')[0] ?? '-'
-                      }
-                    </TableCell>
-                    
-                    {!isArchiveMode && (
-                      <TableCell className="text-center align-top pt-2.5">
-                        <div className="flex justify-center">
-                          <CaseStatusBadge status={item.status} />
-                        </div>
+                      
+                      <TableCell className="text-xs text-muted-foreground text-center align-top pt-3.5 font-medium">
+                        {item.sexo || '-'}
                       </TableCell>
-                    )}
-                    
-                    <TableCell className="pr-4 text-right align-top pt-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity data-[state=open]:opacity-100">
-                              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link to={ROUTES.CASE_DETAIL(item.id)} className="cursor-pointer">
-                              <Edit className="mr-2 h-4 w-4" /> Ver Detalhes
-                            </Link>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      
+                      <TableCell className="text-xs font-mono text-muted-foreground tabular-nums align-top pt-3.5">
+                        {formatCPF(item.cpf)}
+                      </TableCell>
+                      
+                      {!isArchiveMode && (
+                        <>
+                          <TableCell className="text-center align-top pt-3">
+                            <Badge 
+                              variant="outline" 
+                              className={cn(
+                                "whitespace-nowrap w-fit mx-auto border px-2.5 py-0.5 text-[10px] font-bold uppercase shadow-none bg-opacity-10",
+                                getUrgencyColor(item.urgencia)
+                              )}
+                            >
+                              {item.urgencia}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-2 align-top pt-3">
+                            <ViolationTags rawViolations={item.violacao} />
+                          </TableCell>
+                        </>
+                      )}
+
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums text-right pr-6 align-top pt-3.5">
+                        {isArchiveMode 
+                          ? (item.dataDesligamento ? format(new Date(item.dataDesligamento), 'dd/MM/yyyy') : '-')
+                          : (
+                            <span title={format(new Date(item.dataEntrada), "dd 'de' MMMM, HH:mm", { locale: ptBR })} className="font-medium">
+                              {formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })}
+                            </span>
+                          )
+                        }
+                      </TableCell>
+
+                      {isArchiveMode && (
+                        <TableCell className="align-top pt-3.5">
+                          <div className="truncate text-xs text-muted-foreground max-w-35" title={item.motivoDesligamento}>
+                            {item.motivoDesligamento ?? '-'}
+                          </div>
+                        </TableCell>
+                      )}
+
+                      <TableCell className="text-xs font-medium text-foreground/80 align-top pt-3.5">
+                        {item.status === 'EM_ACOMPANHAMENTO' || (isArchiveMode && item.especialistaPAEFI) 
+                          ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? <span className="text-muted-foreground/40 italic">-</span>
+                          : item.agenteAcolhida?.nome?.split(' ')[0] ?? <span className="text-muted-foreground/40 italic">-</span>
+                        }
+                      </TableCell>
+                      
+                      {!isArchiveMode && (
+                        <TableCell className="text-center align-top pt-2.5">
+                          <div className="flex justify-center">
+                            <CaseStatusBadge status={item.status} />
+                          </div>
+                        </TableCell>
+                      )}
+                      
+                      <TableCell className="pr-4 text-right align-top pt-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity data-[state=open]:opacity-100 hover:bg-muted">
+                                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link to={ROUTES.CASE_DETAIL(item.id)} className="cursor-pointer font-medium">
+                                <Edit className="mr-2 h-4 w-4 text-primary" /> Ver Detalhes
+                              </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
@@ -510,7 +545,7 @@ export function CaseTable({
       </div>
 
       {result && result.total > 0 && (
-        <div className="border-t pt-2">
+        <div className="border-t border-border/40 pt-4">
            <Pagination 
              currentPage={currentPage} 
              totalPages={result.totalPages} 

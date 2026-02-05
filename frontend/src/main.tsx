@@ -1,21 +1,22 @@
 // frontend/src/main.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { App } from './App'
 
-// Agora SÓ usa o index.css (que contém todo o tema)
-import "./styles/index.css";
+// TAILWIND V4 ENTRY POINT
+// Importa o CSS global que contém as diretivas @import "tailwindcss" e @theme
+import './styles/index.css'
 
-const container = document.getElementById("root");
+const container = document.getElementById('root')
 
+// Fail-safe para garantir que a aplicação não tente montar no vazio
 if (!container) {
-  throw new Error("Elemento #root não encontrado no index.html");
+  throw new Error("Erro Crítico: Elemento #root não encontrado no index.html")
 }
 
-const root = createRoot(container);
-
-root.render(
+// Renderização React 18+
+createRoot(container).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
-);
+)

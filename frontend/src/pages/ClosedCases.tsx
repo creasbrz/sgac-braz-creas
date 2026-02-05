@@ -1,5 +1,5 @@
 // frontend/src/pages/ClosedCases.tsx
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { 
   Archive, ShieldCheck, FileClock, 
   History, FolderArchive, Lock 
@@ -39,15 +39,15 @@ export function ClosedCases() {
 
   if (isSessionLoading) {
     return (
-      <div className="space-y-6 p-1 animate-pulse">
-        <div className="flex items-center gap-4">
-           <Skeleton className="h-12 w-12 rounded-lg" />
+      <div className="flex flex-col h-[calc(100vh-6rem)] gap-6 p-6 animate-pulse">
+        <div className="flex items-center gap-4 border-b border-border pb-6">
+           <Skeleton className="h-12 w-12 rounded-xl" />
            <div className="space-y-2">
-             <Skeleton className="h-6 w-48" />
-             <Skeleton className="h-4 w-64" />
+             <Skeleton className="h-6 w-64" />
+             <Skeleton className="h-4 w-96" />
            </div>
         </div>
-        <Skeleton className="h-[400px] w-full rounded-xl" />
+        <Skeleton className="flex-1 w-full rounded-xl border border-dashed border-border" />
       </div>
     )
   }
@@ -55,7 +55,7 @@ export function ClosedCases() {
   if (!user) return null
 
   const config = ARCHIVE_CONFIG[user.cargo as keyof typeof ARCHIVE_CONFIG] || {
-    title: 'Arquivo Morto',
+    title: 'Desligados',
     description: 'Consulta de casos encerrados.',
     icon: Archive
   }
@@ -63,50 +63,56 @@ export function ClosedCases() {
   const Icon = config.icon
 
   return (
-    // [FIX 1] Definimos uma altura fixa calculada para a página inteira
-    // Isso força o container a ocupar a tela e permite que os filhos usem flex-1 corretamente
-    <div className="flex flex-col h-[calc(100vh-6rem)] gap-6 animate-in fade-in duration-500">
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden animate-in fade-in duration-500">
       
       {/* HEADER "ARQUIVO" */}
-      <div className="flex-none flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
-        <div className="flex items-start gap-4">
-          <div className="p-3 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm text-slate-600 dark:text-slate-400">
-            <Icon className="h-6 w-6" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                {config.title}
-              </h1>
-              <Badge variant="outline" className="border-dashed border-slate-300 text-slate-500 bg-slate-50 dark:bg-slate-900/20 dark:text-slate-400 font-normal gap-1.5 py-0.5">
-                <Lock className="h-3 w-3" /> Somente Leitura
-              </Badge>
+      <div className="flex-none p-6 pb-2">
+         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-muted/30 rounded-xl border border-border shadow-sm text-muted-foreground">
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                    {config.title}
+                  </h1>
+                  <Badge variant="outline" className="border-dashed border-border text-muted-foreground bg-muted/30 font-medium gap-1.5 py-0.5 shadow-none">
+                    <Lock className="h-3 w-3 opacity-70" /> Somente Leitura
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground flex items-center gap-2 leading-none">
+                  <FileClock className="h-3.5 w-3.5 opacity-70" />
+                  {config.description}
+                </p>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <FileClock className="h-3.5 w-3.5 opacity-70" />
-              {config.description}
-            </p>
-          </div>
-        </div>
+         </div>
       </div>
 
-      {/* ÁREA DE CONTEÚDO (CARD) */}
-      {/* [FIX 2] Flex-1 aqui faz o card crescer até o fundo da tela definida no container pai */}
-      <Card className="flex-1 flex flex-col overflow-hidden border-dashed border-2 border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/10 shadow-sm">
-        
-        {/* [FIX 3] Removemos 'absolute' e usamos flexbox normal para evitar colapso */}
-        <CardContent className="flex-1 p-0 flex flex-col min-h-0">
-          <CaseTable
-            endpoint="/cases/closed"
-            title="" 
-            description=""
-            defaultView="all"
-            // [FIX 4] Estilização para fundir a tabela com o card de arquivo
-            // Removemos bordas e sombras da tabela interna para não duplicar com o card externo
-            className="h-full border-none shadow-none bg-transparent"
-          />
-        </CardContent>
-      </Card>
+      {/* ÁREA DE CONTEÚDO */}
+      <div className="flex-1 p-6 pt-4 overflow-hidden flex flex-col min-h-0">
+          <Card className="flex-1 flex flex-col overflow-hidden border-2 border-dashed border-border bg-muted/10 shadow-none rounded-xl">
+            <CardContent className="flex-1 p-0 flex flex-col min-h-0 relative">
+              
+              {/* Overlay Decorativo de "Arquivo" */}
+              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                 <Archive className="h-64 w-64 text-foreground rotate-12" />
+              </div>
+
+              <div className="flex-1 overflow-y-auto z-10 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+                  <CaseTable
+                    endpoint="/cases/closed"
+                    title="" 
+                    description=""
+                    defaultView="all"
+                    // Estilização para fundir a tabela com o card de arquivo de forma transparente
+                    className="border-none shadow-none bg-transparent"
+                  />
+              </div>
+            </CardContent>
+          </Card>
+      </div>
     </div>
   )
 }

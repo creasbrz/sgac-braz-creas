@@ -23,11 +23,11 @@ function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 function InfoField({ icon: Icon, label, value, className }: { icon: any, label: string, value: React.ReactNode, className?: string }) {
   return (
     <div className={cn("space-y-1.5", className)}>
-      <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5 opacity-80">
         <Icon className="h-3 w-3" /> {label}
       </span>
-      <div className="font-medium text-sm text-foreground break-words bg-muted/30 p-2 rounded-md border border-muted/50 min-h-[40px] flex items-center">
-        {value || <span className="text-muted-foreground italic font-normal">Não informado</span>}
+      <div className="font-medium text-sm text-foreground wrap-break-word bg-muted/40 p-2.5 rounded-lg border border-border/40 min-h-10.5 flex items-center shadow-sm">
+        {value || <span className="text-muted-foreground/60 italic font-normal text-xs">Não informado</span>}
       </div>
     </div>
   )
@@ -46,15 +46,21 @@ function TeamMemberRow({
   colorClass: string 
 }) {
   const initial = member?.nome ? member.nome.charAt(0).toUpperCase() : "?"
-  const statusColor = member ? colorClass : "bg-muted text-muted-foreground"
+  // Se não tiver membro, usa cor neutra
+  const statusColor = member ? colorClass : "bg-muted text-muted-foreground border-border"
   
   return (
-    <div className="flex items-center justify-between py-1">
-      <div className="flex flex-col">
-        <span className="text-[10px] uppercase font-bold text-muted-foreground">{role}</span>
-        <span className="text-sm font-medium">{member?.nome || "Pendente"}</span>
+    <div className="flex items-center justify-between py-1.5 group">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide">{role}</span>
+        <span className={cn("text-sm font-medium transition-colors", !member && "text-muted-foreground italic font-normal")}>
+           {member?.nome || "Pendente"}
+        </span>
       </div>
-      <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold border-2 border-background shadow-sm", statusColor)}>
+      <div className={cn(
+        "h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold border-2 shadow-sm transition-transform group-hover:scale-105", 
+        statusColor
+      )}>
         {member ? initial : <Clock className="h-4 w-4" />}
       </div>
     </div>
@@ -77,7 +83,7 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
           <Badge 
             key={v} 
             variant="outline" 
-            className="bg-destructive/5 text-destructive border-destructive/20 px-2 py-0.5 text-xs font-medium hover:bg-destructive/10 transition-colors"
+            className="bg-status-error-bg/10 text-status-error-fg border-status-error-border/30 px-2.5 py-1 text-xs font-medium hover:bg-status-error-bg/20 transition-colors shadow-sm"
           >
             <AlertTriangle className="w-3 h-3 mr-1.5" />
             {v}
@@ -88,33 +94,41 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-6">
       
       {/* --- COLUNA ESQUERDA (2/3): Detalhes Técnicos --- */}
       <div className="lg:col-span-2 space-y-6">
-        <Card className="shadow-sm border-l-[3px] border-l-primary h-full">
-          <CardHeader className="pb-3 border-b bg-muted/5">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" /> Ficha Técnica do Prontuário
+        <Card className="shadow-sm border-l-4 border-l-primary h-full overflow-hidden bg-card">
+          <CardHeader className="pb-4 border-b border-border/40 bg-muted/5">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20">
+                 <FileText className="h-4 w-4 text-primary" /> 
+              </div>
+              Ficha Técnica do Prontuário
             </CardTitle>
           </CardHeader>
           
-          <CardContent className="pt-6 space-y-6">
+          <CardContent className="pt-6 space-y-8">
             
             {/* 1. Seção de Violações Identificadas */}
-            <div className="space-y-2">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5">
-                <AlertTriangle className="h-3 w-3" /> Violações de Direitos Detectadas
+            <div className="space-y-3">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1.5 pl-1">
+                <AlertTriangle className="h-3 w-3 text-status-warning-fg" /> Violações de Direitos Detectadas
               </span>
-              <div className="bg-muted/20 p-3 rounded-lg border border-muted/50 min-h-[50px]">
+              <div className={cn(
+                "p-4 rounded-xl border min-h-15 transition-colors",
+                caseData.violacao?.length ? "bg-status-error-bg/5 border-status-error-border/20" : "bg-muted/20 border-border/40 border-dashed"
+              )}>
                 {renderViolations() || (
-                   <span className="text-muted-foreground italic text-sm">Nenhuma violação selecionada</span>
+                   <div className="flex items-center justify-center h-full gap-2 text-muted-foreground/60 italic text-sm">
+                      <Shield className="h-4 w-4 opacity-50" /> Nenhuma violação selecionada
+                   </div>
                 )}
               </div>
             </div>
 
-            {/* 2. [NOVO] Gerenciador do SEI (Número, Link e Status de Resposta) */}
-            <div className="py-1">
+            {/* 2. Gerenciador do SEI (Número, Link e Status de Resposta) */}
+            <div className="py-2">
               <SeiManager 
                 caseId={caseData.id}
                 numeroSei={caseData.numeroSei}
@@ -152,19 +166,19 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                 icon={Wallet} 
                 label="Renda Individual" 
                 value={caseData.renda ? Number(caseData.renda).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null} 
-                className="text-emerald-700 font-medium"
+                className="text-status-success-fg"
               />
             </div>
 
             {/* 5. Área de Observações Críticas */}
             {caseData.observacoes && (
-              <div className="mt-2">
-                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-lg p-4 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-400" />
-                  <h4 className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <div className="pt-2">
+                <div className="bg-status-warning-bg/10 border border-status-warning-border/30 rounded-xl p-5 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-status-warning-fg" />
+                  <h4 className="text-xs font-bold text-status-warning-fg uppercase tracking-wider mb-2 flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5" /> Notas Técnicas de Atenção
                   </h4>
-                  <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                  <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap pl-1">
                     {caseData.observacoes}
                   </p>
                 </div>
@@ -178,35 +192,37 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
       <div className="space-y-6">
         
         {/* Card da Equipe de Referência */}
-        <Card className="shadow-sm overflow-hidden">
-          <CardHeader className="pb-3 border-b bg-muted/5">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Shield className="h-4 w-4 text-primary" /> Equipe de Referência
+        <Card className="shadow-sm overflow-hidden border-border bg-card">
+          <CardHeader className="pb-3 border-b border-border/40 bg-muted/5">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <div className="p-1.5 bg-primary/10 rounded text-primary"><Shield className="h-3.5 w-3.5" /></div>
+              Equipe de Referência
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-4 space-y-3">
+          <CardContent className="pt-4 space-y-4">
              <TeamMemberRow 
                 role="Agente de Acolhida" 
                 member={caseData.agenteAcolhida} 
-                colorClass="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300" 
+                colorClass="bg-status-success-bg text-status-success-fg border-status-success-border" 
              />
-             <Separator />
+             <Separator className="bg-border/40" />
              <TeamMemberRow 
                 role="Técnico PAEFI" 
                 member={caseData.especialistaPAEFI} 
-                colorClass="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
+                colorClass="bg-status-info-bg text-status-info-fg border-status-info-border" 
              />
           </CardContent>
         </Card>
 
         {/* Card de Benefícios */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3 border-b bg-muted/5">
-            <CardTitle className="text-sm font-semibold flex items-center justify-between">
+        <Card className="shadow-sm border-border bg-card">
+          <CardHeader className="pb-3 border-b border-border/40 bg-muted/5">
+            <CardTitle className="text-sm font-bold flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-primary" /> Benefícios Ativos
+                <div className="p-1.5 bg-status-success-bg rounded text-status-success-fg"><CheckCircle2 className="h-3.5 w-3.5" /></div>
+                Benefícios Ativos
               </div>
-              <Badge variant="outline" className="text-[10px] h-5">{caseData.beneficios?.length || 0}</Badge>
+              <Badge variant="outline" className="text-[10px] h-5 bg-background shadow-sm">{caseData.beneficios?.length || 0}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
@@ -216,13 +232,13 @@ export function OverviewTab({ caseData }: { caseData: CaseDetailData }) {
                   <Badge 
                     key={b} 
                     variant="secondary" 
-                    className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] py-0.5"
+                    className="bg-status-success-bg/10 text-status-success-fg hover:bg-status-success-bg/20 border-status-success-border/30 text-[10px] py-1 px-2.5 shadow-sm"
                   >
                     {b}
                   </Badge>
                 ))
               ) : (
-                <div className="text-center w-full py-6 text-muted-foreground text-xs italic bg-muted/30 rounded-md border border-dashed">
+                <div className="text-center w-full py-8 text-muted-foreground text-xs italic bg-muted/20 rounded-xl border border-dashed border-border/60">
                   Nenhum benefício vinculado.
                 </div>
               )}

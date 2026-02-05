@@ -1,26 +1,26 @@
+// frontend/src/App.tsx
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 import { queryClient } from "./lib/react-query";
-import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ModalProvider } from "./contexts/ModalContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
-import { ThemeProvider } from "./components/common/theme-provider";
+import { ThemeProvider } from "./components/common/theme-provider"; 
 import ErrorBoundary from "./components/ui/error-boundary";
+import { SessionExpiryDialog } from "./components/common/SessionExpiryDialog"; // [V1.2] NOVO
 
-// [CORREÇÃO] Importando do novo arquivo app-routes.ts
 import { ROUTE_PATHS, ROUTES } from "./constants/app-routes"; 
 import { ProtectedRoute } from "./ProtectedRoute";
 import { MainLayout } from "./components/layout/MainLayout";
 import { Login } from "./pages/Login";
 
-// Orquestradores
+// ... (Imports de páginas mantidos iguais) ...
 import { Dashboard } from "./pages/dashboard/Dashboard";
 import { Workspace } from "./pages/workspace/Workspace";
-
 import { Cases } from "./pages/Cases";
 import { ClosedCases } from "./pages/ClosedCases";
 import { CaseDetail } from "./pages/CaseDetail";
@@ -35,7 +35,7 @@ import { GroupManagement } from "./pages/GroupManagement";
 import { WaitingList } from "./pages/WaitingList";
 
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isSessionLoading } = useAuthContext()
+  const { isAuthenticated, isSessionLoading } = useAuth()
 
   if (isSessionLoading) return null
   if (isAuthenticated) {
@@ -47,15 +47,24 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+      <ThemeProvider 
+        attribute="class" 
+        defaultTheme="system" 
+        enableSystem
+        disableTransitionOnChange
+        storageKey="vite-ui-theme"
+      >
         <ErrorBoundary>
           <BrowserRouter>
             <AuthProvider>
               <PrivacyProvider>
                 <ModalProvider>
                   <SidebarProvider>
+                    {/* [V1.2] Monitor global de sessão */}
+                    <SessionExpiryDialog />
+                    
                     <Routes>
-                      
+                      {/* ... (Rotas mantidas iguais) ... */}
                       <Route path="/" element={<Navigate to={ROUTE_PATHS.LOGIN} replace />} />
 
                       <Route 
@@ -119,7 +128,8 @@ export function App() {
             </AuthProvider>
           </BrowserRouter>
         </ErrorBoundary>
-        <Toaster richColors />
+        
+        <Toaster richColors closeButton />
         <ReactQueryDevtools initialIsOpen={false} />
       </ThemeProvider>
     </QueryClientProvider>

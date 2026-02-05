@@ -1,4 +1,4 @@
-// frontend/src/components/Pagination.tsx
+// frontend/src/components/common/Pagination.tsx
 import {
   ChevronLeft,
   ChevronRight,
@@ -37,6 +37,7 @@ export function Pagination({
 }: PaginationProps) {
   
   // --- SANITIZAÇÃO DOS VALORES ---
+  // Garante que nunca teremos NaN ou 0 bugado
   const safeTotalPages = Math.max(1, totalPages || 1)
   const safePage = Math.max(1, Math.min(currentPage || 1, safeTotalPages))
   
@@ -51,7 +52,7 @@ export function Pagination({
     <div className="flex flex-col-reverse items-center justify-between gap-4 px-2 py-2 sm:flex-row w-full">
       
       {/* Esquerda: Informação de Contagem */}
-      <div className="flex-1 text-sm text-muted-foreground">
+      <div className="flex-1 text-sm text-muted-foreground text-center sm:text-left">
         {totalItems > 0 ? (
           <span>
             Mostrando <strong>{startItem}-{endItem}</strong> de <strong>{totalItems}</strong> resultados
@@ -74,13 +75,13 @@ export function Pagination({
                 onPageSizeChange(Number(value))
               }}
             >
-              <SelectTrigger className="h-8 w-[70px]">
+              <SelectTrigger className="h-8 w-16 sm:w-20">
                 <SelectValue placeholder={pageSize} />
               </SelectTrigger>
               <SelectContent side="top">
-                {pageSizeOptions.map((pageSize) => (
-                  <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize}
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={`${size}`}>
+                    {size}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -89,7 +90,7 @@ export function Pagination({
         )}
 
         {/* Indicador de Página */}
-        <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+        <div className="flex w-24 items-center justify-center text-sm font-medium">
           Página {safePage} de {safeTotalPages}
         </div>
 

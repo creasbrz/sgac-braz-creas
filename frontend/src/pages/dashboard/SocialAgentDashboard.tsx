@@ -1,3 +1,4 @@
+// frontend/src/pages/dashboard/SocialAgentDashboard.tsx
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { 
@@ -43,27 +44,54 @@ interface CaseItem {
 // --- COMPONENTS ---
 
 const AgentStatCard = ({ title, value, icon: Icon, description, variant = 'default' }: StatCardProps) => {
+  // Mapeamento para Tokens Semânticos
   const variants = {
-    default: "text-primary bg-primary/10 border-primary/20",
-    purple: "text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800",
-    blue: "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800",
-    emerald: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+    default: {
+      container: "bg-primary/5 border-primary/20",
+      icon: "text-primary bg-background border-primary/20",
+      text: "text-primary",
+      stripe: "bg-primary"
+    },
+    purple: {
+      // Usando Status AI (Violet)
+      container: "bg-status-ai-bg/50 border-status-ai-border",
+      icon: "text-status-ai-fg bg-status-ai-bg border-status-ai-border",
+      text: "text-status-ai-fg",
+      stripe: "bg-status-ai-fg"
+    },
+    blue: {
+      // Usando Status Info (Blue)
+      container: "bg-status-info-bg/50 border-status-info-border",
+      icon: "text-status-info-fg bg-status-info-bg border-status-info-border",
+      text: "text-status-info-fg",
+      stripe: "bg-status-info-fg"
+    },
+    emerald: {
+      // Usando Status Success (Emerald)
+      container: "bg-status-success-bg/50 border-status-success-border",
+      icon: "text-status-success-fg bg-status-success-bg border-status-success-border",
+      text: "text-status-success-fg",
+      stripe: "bg-status-success-fg"
+    },
   }
 
-  const activeStyle = variants[variant]
+  const style = variants[variant]
 
   return (
-    <Card className="overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border-border/60 group">
+    <Card className={cn("overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border relative group", style.container)}>
+      {/* Faixa lateral colorida no hover */}
+      <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", style.stripe)} />
+      
       <div className="p-6 flex items-start justify-between">
-        <div className="space-y-1">
+        <div className="space-y-1 relative z-10">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">{title}</p>
           <div className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{value}</div>
           {description && (
             <p className="text-xs text-muted-foreground font-medium pt-1 line-clamp-1">{description}</p>
           )}
         </div>
-        <div className={cn("p-3 rounded-xl transition-colors border", activeStyle)}>
-          <Icon className="w-5 h-5" />
+        <div className={cn("p-2.5 rounded-xl transition-colors border shadow-sm", style.icon)}>
+          <Icon className="w-5 h-5" strokeWidth={2.5} />
         </div>
       </div>
     </Card>
@@ -92,21 +120,21 @@ export function SocialAgentDashboard() {
          {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full"/>)}
        </div>
        <div className="grid lg:grid-cols-3 gap-6">
-         <Skeleton className="h-[400px] lg:col-span-2 rounded-xl"/>
-         <Skeleton className="h-[400px] rounded-xl"/>
+         <Skeleton className="h-100 lg:col-span-2 rounded-xl"/>
+         <Skeleton className="h-100 rounded-xl"/>
        </div>
     </div>
   )
 
   // --- ERROR STATE ---
   if (isError) return (
-    <div className="flex flex-col items-center justify-center h-64 p-6 text-center border border-dashed rounded-lg bg-muted/30">
-      <AlertCircle className="h-10 w-10 text-destructive mb-3" />
-      <p className="text-sm font-medium text-destructive">Não foi possível carregar o painel.</p>
+    <div className="flex flex-col items-center justify-center h-64 p-6 text-center border border-dashed rounded-lg bg-status-error-bg/10 border-status-error-border text-status-error-fg">
+      <AlertCircle className="h-10 w-10 mb-3 opacity-80" />
+      <p className="text-sm font-medium">Não foi possível carregar o painel.</p>
     </div>
   )
 
-  // Container Animation Variants
+  // Animation Variants
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { 
@@ -171,62 +199,64 @@ export function SocialAgentDashboard() {
              data={summary?.appointments?.slice(0, 5)} 
              title="Minha Agenda do Dia"
              enableScroll={false}
-             className="h-full min-h-[400px]" // Garante altura consistente
+             className="h-full min-h-112.5 shadow-sm border-border/60"
           />
         </motion.div>
 
         {/* 3. MINHA FILA DE AÇÃO */}
         <motion.div variants={itemVariants} className="h-full">
-          <Card className="h-full flex flex-col shadow-sm border-border/60 bg-card">
-            <CardHeader className="pb-3 border-b bg-muted/20">
+          <Card className="h-full flex flex-col shadow-sm border-border/60 bg-card overflow-hidden">
+            <CardHeader className="pb-3 px-5 py-4 shrink-0 border-b border-border/40">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold flex items-center gap-2 text-foreground">
-                  <div className="p-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-md">
-                    <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" /> 
+                <CardTitle className="text-base font-bold flex items-center gap-2.5 text-foreground">
+                  {/* Ícone Semântico (AI/Violet para Fila Inteligente) */}
+                  <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-status-ai-bg border border-status-ai-border text-status-ai-fg">
+                    <Clock className="h-4 w-4" /> 
                   </div>
                   Minha Fila
                 </CardTitle>
-                <Badge variant="outline" className="text-xs font-normal">
-                  {waitingList?.length || 0} aguardando
+                <Badge variant="outline" className="text-[10px] font-normal h-5 px-1.5">
+                  {waitingList?.length || 0}
                 </Badge>
               </div>
-              <CardDescription className="line-clamp-1">
+              <CardDescription className="line-clamp-1 text-xs mt-1">
                 Usuários aguardando sua primeira escuta.
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="flex-1 p-0 overflow-hidden">
+            <CardContent className="flex-1 p-0 overflow-hidden min-h-75">
               {waitingList && waitingList.length > 0 ? (
-                <ul className="divide-y divide-border/50">
+                <ul className="divide-y divide-border/40">
                   {waitingList.slice(0, 5).map((c: CaseItem) => (
                     <li key={c.id}>
                       <Link to={ROUTES.CASE_DETAIL(c.id)} className="block group">
-                        <div className="p-4 hover:bg-muted/40 transition-colors flex items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0 space-y-1">
+                        <div className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between gap-4">
+                          <div className="flex-1 min-w-0 space-y-1.5">
                             <div className="flex items-center gap-2">
                               <p className="font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
                                 {c.nomeCompleto}
                               </p>
                               {c.urgencia && (
                                 <span className={cn(
-                                  "text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border",
-                                  c.urgencia === 'GRAVISSIMA' ? "bg-red-100 text-red-700 border-red-200" :
-                                  c.urgencia === 'MUITO_GRAVE' ? "bg-orange-100 text-orange-700 border-orange-200" :
-                                  "bg-slate-100 text-slate-600 border-slate-200"
+                                  "text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border",
+                                  // Mapeamento de Urgência para Tokens Semânticos
+                                  c.urgencia === 'GRAVISSIMA' ? "bg-status-error-bg text-status-error-fg border-status-error-border" :
+                                  c.urgencia === 'MUITO_GRAVE' ? "bg-status-warning-bg text-status-warning-fg border-status-warning-border" :
+                                  "bg-status-neutral-bg text-status-neutral-fg border-status-neutral-border"
                                 )}>
-                                  {c.urgencia}
+                                  {c.urgencia.replace('_', ' ')}
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />
+                                <Clock className="h-3 w-3 opacity-70" />
                                 <span>
-                                  aguardando há {formatDistanceToNow(new Date(c.dataEntrada), { locale: ptBR })}
+                                  há {formatDistanceToNow(new Date(c.dataEntrada), { locale: ptBR })}
                                 </span>
                             </div>
                           </div>
                           
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-all -translate-x-1 group-hover:translate-x-0">
                             <ArrowRight className="h-4 w-4" />
                             <span className="sr-only">Ver caso</span>
                           </Button>
@@ -236,9 +266,9 @@ export function SocialAgentDashboard() {
                   ))}
                 </ul>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-muted-foreground gap-3">
-                   <div className="p-4 bg-muted/50 rounded-full">
-                     <UserCheck className="h-8 w-8 opacity-40"/>
+                <div className="flex flex-col items-center justify-center h-full min-h-62.5 text-muted-foreground gap-3">
+                   <div className="p-4 bg-status-neutral-bg border border-status-neutral-border rounded-full">
+                     <UserCheck className="h-8 w-8 text-status-neutral-fg opacity-60"/>
                    </div>
                    <p className="text-sm font-medium">Sua fila está vazia</p>
                 </div>
@@ -247,7 +277,7 @@ export function SocialAgentDashboard() {
 
             <CardFooter className="p-4 border-t bg-muted/5">
               <Link to={ROUTES.WAITING_LIST} className="w-full">
-                <Button className="w-full gap-2 shadow-sm" variant="default">
+                <Button className="w-full gap-2 shadow-sm border border-primary/20" variant="default">
                    <Briefcase className="h-4 w-4" />
                    Iniciar Triagem
                 </Button>

@@ -7,10 +7,8 @@ ESTRUTURA GERAL (Frontend):
 ├── eslint.config.js
 ├── index.html
 ├── package.json
-├── postcss.config.cjs
 ├── public
 ├── src
-├── tailwind.config.cjs
 ├── tsconfig.app.json
 ├── tsconfig.json
 ├── tsconfig.node.json
@@ -31,6 +29,7 @@ ESTRUTURA GERAL (Backend):
 ==================================================================
 FILE: frontend\src\components\ui\accordion.tsx
 ==================================================================
+// frontend/src/components/ui/accordion.tsx
 import * as React from "react"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { ChevronDown } from "lucide-react"
@@ -45,7 +44,7 @@ const AccordionItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={cn("border-b", className)}
+    className={cn("border-b border-border", className)}
     {...props}
   />
 ))
@@ -59,13 +58,17 @@ const AccordionTrigger = React.forwardRef<
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
+        "flex flex-1 items-center justify-between py-4 font-medium transition-all",
+        "text-left text-sm hover:text-primary", // [MODERNO] Alinhamento à esquerda e hover colorido
+        "[&[data-state=open]>svg]:rotate-180 data-[state=open]:text-primary", // [MODERNO] Destaque quando aberto
         className
       )}
       {...props}
     >
       {children}
-      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 text-muted-foreground" />
+      <ChevronDown 
+        className="h-4 w-4 shrink-0 transition-transform duration-200 text-muted-foreground/50 group-hover:text-primary" 
+      />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
 ))
@@ -80,7 +83,9 @@ const AccordionContent = React.forwardRef<
     className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
     {...props}
   >
-    <div className={cn("pb-4 pt-0", className)}>{children}</div>
+    <div className={cn("pb-4 pt-0 text-muted-foreground", className)}>
+      {children}
+    </div>
   </AccordionPrimitive.Content>
 ))
 AccordionContent.displayName = AccordionPrimitive.Content.displayName
@@ -90,6 +95,7 @@ export { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
 ==================================================================
 FILE: frontend\src\components\ui\alert-dialog.tsx
 ==================================================================
+// frontend/src/components/ui/alert-dialog.tsx
 import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
@@ -106,7 +112,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -124,7 +130,14 @@ const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-card p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        // [MODERNIZAÇÃO] Classes canônicas e layout responsivo refinado
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border border-border bg-card p-6 shadow-lg duration-200",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+        "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+        "sm:rounded-lg",
         className
       )}
       {...props}
@@ -153,7 +166,8 @@ const AlertDialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      // [MODERNIZAÇÃO] Uso de gap para espaçamento consistente
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-2",
       className
     )}
     {...props}
@@ -167,7 +181,7 @@ const AlertDialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold", className)}
+    className={cn("text-lg font-semibold text-foreground", className)}
     {...props}
   />
 ))
@@ -179,7 +193,7 @@ const AlertDialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm text-muted-foreground leading-relaxed", className)}
     {...props}
   />
 ))
@@ -230,6 +244,7 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\alert.tsx
 ==================================================================
+// frontend/src/components/ui/alert.tsx
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { 
@@ -244,24 +259,24 @@ import {
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
-/* 1. PRIMITIVOS                               */
+/* 1. VARIANTS & STYLES                                                       */
 /* -------------------------------------------------------------------------- */
-// (Mantivemos a base sólida e acessível da resposta anterior)
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 pl-12 shadow-sm transition-all duration-200 animate-in fade-in slide-in-from-top-1 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:h-5 [&>svg]:w-5",
+  "relative w-full rounded-lg border p-4 pl-12 shadow-sm transition-all duration-300 animate-in fade-in slide-in-from-top-1 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:h-5 [&>svg]:w-5",
   {
     variants: {
       variant: {
-        default: "bg-background text-foreground",
+        default: 
+          "bg-background text-foreground border-border",
         destructive:
-          "border-destructive/50 bg-destructive/5 text-destructive dark:border-destructive [&>svg]:text-destructive",
+          "border-destructive/50 bg-destructive/10 text-destructive dark:border-destructive [&>svg]:text-destructive",
         success: 
-          "border-emerald-500/50 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400",
+          "border-emerald-500/30 bg-emerald-50/50 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400",
         warning: 
-          "border-amber-500/50 bg-amber-50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400",
+          "border-amber-500/30 bg-amber-50/50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-300 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400",
         info: 
-          "border-blue-500/50 bg-blue-50 text-blue-900 dark:bg-blue-950/20 dark:text-blue-200 [&>svg]:text-blue-600 dark:[&>svg]:text-blue-400",
+          "border-blue-500/30 bg-blue-50/50 text-blue-900 dark:bg-blue-950/20 dark:text-blue-300 [&>svg]:text-blue-600 dark:[&>svg]:text-blue-400",
       },
     },
     defaultVariants: {
@@ -269,6 +284,10 @@ const alertVariants = cva(
     },
   }
 )
+
+/* -------------------------------------------------------------------------- */
+/* 2. PRIMITIVES                                                              */
+/* -------------------------------------------------------------------------- */
 
 const Alert = React.forwardRef<
   HTMLDivElement,
@@ -301,14 +320,14 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm opacity-90 [&_p]:leading-relaxed", className)}
+    className={cn("text-sm opacity-90 [&_p]:leading-relaxed font-normal", className)}
     {...props}
   />
 ))
 AlertDescription.displayName = "AlertDescription"
 
 /* -------------------------------------------------------------------------- */
-/* 2. SMART COMPONENT (NOVO)                         */
+/* 3. SMART COMPONENT (Wrapper Inteligente)                                   */
 /* -------------------------------------------------------------------------- */
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -319,16 +338,19 @@ const ICON_MAP: Record<string, LucideIcon> = {
   info: Info,
 }
 
-interface SmartAlertProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof alertVariants> {
-  title: string
-  description?: React.ReactNode // ReactNode permite passar strings ou JSX (links, bold, etc)
-  icon?: LucideIcon // Opcional: permite override manual
+// [CORREÇÃO] Omitir 'title' de HTMLAttributes para evitar conflito com ReactNode
+export interface SmartAlertProps 
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title">, 
+  VariantProps<typeof alertVariants> 
+{
+  title: React.ReactNode
+  description?: React.ReactNode
+  icon?: LucideIcon
 }
 
 const SmartAlert = React.forwardRef<HTMLDivElement, SmartAlertProps>(
   ({ className, variant = "default", title, description, icon: IconOverride, ...props }, ref) => {
     
-    // Lógica: Usa o ícone passado via prop OU o ícone padrão do mapa
     const IconComponent = IconOverride || ICON_MAP[variant || "default"] || ICON_MAP.default
 
     return (
@@ -347,7 +369,9 @@ export { Alert, AlertTitle, AlertDescription, SmartAlert }
 ==================================================================
 FILE: frontend\src\components\ui\avatar.tsx
 ==================================================================
+// frontend/src/components/ui/avatar.tsx
 import * as React from "react"
+import * as AvatarPrimitive from "@radix-ui/react-avatar"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -357,114 +381,131 @@ import { cn } from "@/lib/utils"
 /* -------------------------------------------------------------------------- */
 
 const avatarVariants = cva(
-  "relative flex shrink-0 overflow-hidden rounded-full border border-border/10 shadow-sm transition-opacity", 
+  "relative flex shrink-0 overflow-hidden border border-border/50 shadow-sm transition-all",
   {
     variants: {
       size: {
-        xs: "h-6 w-6 text-[10px]", // Para tabelas densas
-        sm: "h-8 w-8 text-xs",     // Para headers compactos
-        default: "h-10 w-10 text-sm", // Padrão
-        lg: "h-14 w-14 text-base", // Para cartões de perfil
-        xl: "h-20 w-20 text-xl",   // Para páginas de perfil detalhadas
+        xs: "h-6 w-6 text-[10px]",      // Tabelas densas
+        sm: "h-8 w-8 text-xs",          // Headers/Listas
+        default: "h-10 w-10 text-sm",   // Padrão
+        lg: "h-14 w-14 text-base",      // Cards de destaque
+        xl: "h-20 w-20 text-xl",        // Perfil detalhado
+        "2xl": "h-32 w-32 text-3xl",    // Upload de foto
+      },
+      shape: {
+        circle: "rounded-full",
+        square: "rounded-md",
       },
     },
     defaultVariants: {
       size: "default",
+      shape: "circle",
     },
   }
 )
 
 /* -------------------------------------------------------------------------- */
-/* 2. PRIMITIVOS (MODERNIZADOS)                                               */
+/* 2. PRIMITIVOS (Radix UI Wrapper)                                           */
 /* -------------------------------------------------------------------------- */
 
-interface AvatarProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+export interface AvatarProps
+  extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>,
     VariantProps<typeof avatarVariants> {}
 
-const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
-  ({ className, size, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(avatarVariants({ size }), className)}
-      {...props}
-    />
-  )
-)
-Avatar.displayName = "Avatar"
+const Avatar = React.forwardRef<
+  React.ElementRef<typeof AvatarPrimitive.Root>,
+  AvatarProps
+>(({ className, size, shape, ...props }, ref) => (
+  <AvatarPrimitive.Root
+    ref={ref}
+    className={cn(avatarVariants({ size, shape }), className)}
+    {...props}
+  />
+))
+Avatar.displayName = AvatarPrimitive.Root.displayName
 
 const AvatarImage = React.forwardRef<
-  HTMLImageElement,
-  React.ImgHTMLAttributes<HTMLImageElement>
+  React.ElementRef<typeof AvatarPrimitive.Image>,
+  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
 >(({ className, ...props }, ref) => (
-  <img
+  <AvatarPrimitive.Image
     ref={ref}
-    // UX FIX: 'object-cover' impede distorção da imagem
-    // UI: 'aspect-square' garante a proporção 1:1
     className={cn("aspect-square h-full w-full object-cover", className)}
     {...props}
   />
 ))
-AvatarImage.displayName = "AvatarImage"
+AvatarImage.displayName = AvatarPrimitive.Image.displayName
 
 const AvatarFallback = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
+  React.ElementRef<typeof AvatarPrimitive.Fallback>,
+  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback>
 >(({ className, ...props }, ref) => (
-  <div
+  <AvatarPrimitive.Fallback
     ref={ref}
-    // UI: bg-muted + text-muted-foreground cria um visual neutro e acessível
-    // Font-medium para garantir legibilidade das iniciais
     className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-muted font-medium text-muted-foreground animate-in fade-in duration-300",
+      "flex h-full w-full items-center justify-center bg-primary/10 text-primary font-semibold",
+      "animate-in fade-in duration-300",
       className
     )}
     {...props}
   />
 ))
-AvatarFallback.displayName = "AvatarFallback"
+AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName
 
 /* -------------------------------------------------------------------------- */
-/* 3. SMART COMPONENT (NOVO)                                                  */
+/* 3. SMART COMPONENT (Intelligent Wrapper)                                   */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Gera iniciais de forma inteligente:
+ * "João Silva" -> "JS"
+ * "Maria" -> "MA"
+ * "Pedro de Alcântara" -> "PA"
+ */
+const getInitials = (name?: string, fallback = "??") => {
+  if (!name) return fallback
+  
+  const parts = name.trim().split(/\s+/)
+  
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2).toUpperCase()
+  }
+  
+  // Pega a primeira letra do primeiro nome e a primeira do último
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 interface SmartAvatarProps extends AvatarProps {
   src?: string | null
   alt?: string
-  name?: string // Usado para gerar iniciais se a imagem falhar
-  fallback?: string // Override manual das iniciais
+  name?: string 
+  fallback?: string 
 }
 
-const SmartAvatar = React.forwardRef<HTMLDivElement, SmartAvatarProps>(
-  ({ src, alt, name, fallback, className, size, ...props }, ref) => {
-    
-    // Helper para gerar iniciais (Ex: "João Silva" -> "JS")
-    // Se não houver nome, usa "??"
-    const initials = React.useMemo(() => {
-      if (fallback) return fallback
-      if (!name) return "??"
-      
-      return name
-        .split(" ")
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase()
-    }, [name, fallback])
+const SmartAvatar = React.forwardRef<
+  React.ElementRef<typeof AvatarPrimitive.Root>,
+  SmartAvatarProps
+>(({ src, alt, name, fallback, className, size, shape, ...props }, ref) => {
+  
+  const initials = React.useMemo(
+    () => getInitials(name, fallback), 
+    [name, fallback]
+  )
 
-    return (
-      <Avatar ref={ref} size={size} className={className} {...props}>
-        {/* Renderiza a imagem apenas se src existir */}
-        {src && <AvatarImage src={src} alt={alt || name || "Avatar"} />}
-        
-        {/* O Fallback do Radix (ou Shadcn) é inteligente: 
-            ele aparece automaticamente enquanto a imagem carrega ou se der erro. 
-            Aqui garantimos que ele tenha um conteúdo útil (iniciais). */}
-        <AvatarFallback>{initials}</AvatarFallback>
-      </Avatar>
-    )
-  }
-)
+  return (
+    <Avatar ref={ref} size={size} shape={shape} className={className} {...props}>
+      {src && (
+        <AvatarImage 
+          src={src} 
+          alt={alt || name || "Avatar do usuário"} 
+        />
+      )}
+      <AvatarFallback delayMs={600}>
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  )
+})
 SmartAvatar.displayName = "SmartAvatar"
 
 export { Avatar, AvatarImage, AvatarFallback, SmartAvatar }
@@ -472,52 +513,51 @@ export { Avatar, AvatarImage, AvatarFallback, SmartAvatar }
 ==================================================================
 FILE: frontend\src\components\ui\badge.tsx
 ==================================================================
+// frontend/src/components/ui/badge.tsx
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
-/* DESIGN SYSTEM NOTES:                                                       */
-/* 1. Cores "Subtle" (ex: bg-emerald-500/15) são preferidas para status.      */
-/* 2. 'rounded-full' ajuda a diferenciar visualmente Badges de Buttons.       */
-/* 3. Adicionado aliases (destructive/secondary) para compatibilidade.        */
+/* DESIGN SYSTEM: BADGES                                                      */
 /* -------------------------------------------------------------------------- */
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 whitespace-nowrap",
   {
     variants: {
       variant: {
-        // --- STANDARD / COMPATIBILITY ---
-        default: 
+        // --- 1. UI VARIANTS (Hierarquia) ---
+        default:
           "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
         
-        secondary: // Alias para 'muted' (padrão shadcn)
+        secondary:
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         
-        destructive: // Alias para 'danger' (padrão shadcn)
-          "border-transparent bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:text-red-400",
+        destructive:
+          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         
-        outline: 
+        outline:
           "text-foreground",
+
+        // --- 2. SEMANTIC VARIANTS (Status - Estilo 'Subtle') ---
+        // Usamos opacidade no BG (/15) para manter harmonia com o tema
+        
+        success:
+          "border-transparent bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-400 hover:bg-emerald-500/25",
+        
+        warning:
+          "border-transparent bg-amber-500/15 text-amber-700 dark:bg-amber-500/25 dark:text-amber-400 hover:bg-amber-500/25",
+        
+        info:
+          "border-transparent bg-blue-500/15 text-blue-700 dark:bg-blue-500/25 dark:text-blue-400 hover:bg-blue-500/25",
+        
+        danger:
+          "border-transparent bg-red-500/15 text-red-700 dark:bg-red-500/25 dark:text-red-400 hover:bg-red-500/25",
           
-        // --- SEMANTIC VARIANTS (Estilo 'Subtle') ---
-        
-        info: 
-          "border-transparent bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 dark:text-blue-400",
-        
-        success: 
-          "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400",
-        
-        warning: 
-          "border-transparent bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:text-amber-400",
-        
-        danger: 
-          "border-transparent bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:text-red-400",
-          
-        muted: 
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        neutral:
+          "border-transparent bg-slate-500/15 text-slate-700 dark:bg-slate-500/25 dark:text-slate-400 hover:bg-slate-500/25",
       },
     },
     defaultVariants: {
@@ -541,19 +581,30 @@ export { Badge, badgeVariants }
 ==================================================================
 FILE: frontend\src\components\ui\breadcrumb.tsx
 ==================================================================
+// frontend/src/components/ui/breadcrumb.tsx
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { ChevronRight, MoreHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/* -------------------------------------------------------------------------- */
+/* 1. CONTAINER PRINCIPAL                                                     */
+/* -------------------------------------------------------------------------- */
+
 const Breadcrumb = React.forwardRef<
   HTMLElement,
   React.ComponentPropsWithoutRef<"nav"> & {
     separator?: React.ReactNode
   }
->(({ ...props }, ref) => <nav ref={ref} aria-label="breadcrumb" {...props} />)
+>(({ ...props }, ref) => (
+  <nav ref={ref} aria-label="breadcrumb" {...props} />
+))
 Breadcrumb.displayName = "Breadcrumb"
+
+/* -------------------------------------------------------------------------- */
+/* 2. LISTA E ITENS                                                           */
+/* -------------------------------------------------------------------------- */
 
 const BreadcrumbList = React.forwardRef<
   HTMLOListElement,
@@ -562,7 +613,7 @@ const BreadcrumbList = React.forwardRef<
   <ol
     ref={ref}
     className={cn(
-      "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5",
+      "flex flex-wrap items-center gap-1.5 break-word text-sm text-muted-foreground sm:gap-2.5",
       className
     )}
     {...props}
@@ -582,6 +633,10 @@ const BreadcrumbItem = React.forwardRef<
 ))
 BreadcrumbItem.displayName = "BreadcrumbItem"
 
+/* -------------------------------------------------------------------------- */
+/* 3. LINKS E PÁGINA ATIVA                                                    */
+/* -------------------------------------------------------------------------- */
+
 const BreadcrumbLink = React.forwardRef<
   HTMLAnchorElement,
   React.ComponentPropsWithoutRef<"a"> & {
@@ -593,7 +648,11 @@ const BreadcrumbLink = React.forwardRef<
   return (
     <Comp
       ref={ref}
-      className={cn("transition-colors hover:text-foreground", className)}
+      className={cn(
+        // Adicionado underline no hover para affordance de clique claro
+        "transition-colors hover:text-foreground hover:underline underline-offset-4 decoration-primary/50",
+        className
+      )}
       {...props}
     />
   )
@@ -609,11 +668,16 @@ const BreadcrumbPage = React.forwardRef<
     role="link"
     aria-disabled="true"
     aria-current="page"
-    className={cn("font-normal text-foreground", className)}
+    // Mudança: font-semibold para destacar a localização atual
+    className={cn("font-semibold text-foreground", className)}
     {...props}
   />
 ))
 BreadcrumbPage.displayName = "BreadcrumbPage"
+
+/* -------------------------------------------------------------------------- */
+/* 4. ELEMENTOS VISUAIS (SEPARADOR E ELIPSES)                                 */
+/* -------------------------------------------------------------------------- */
 
 const BreadcrumbSeparator = ({
   children,
@@ -623,7 +687,8 @@ const BreadcrumbSeparator = ({
   <li
     role="presentation"
     aria-hidden="true"
-    className={cn("[&>svg]:w-3.5 [&>svg]:h-3.5", className)}
+    // Garante que o ícone seja sutil e pequeno
+    className={cn("[&>svg]:w-3.5 [&>svg]:h-3.5 text-muted-foreground/50", className)}
     {...props}
   >
     {children ?? <ChevronRight />}
@@ -638,14 +703,15 @@ const BreadcrumbEllipsis = ({
   <span
     role="presentation"
     aria-hidden="true"
-    className={cn("flex h-9 w-9 items-center justify-center", className)}
+    className={cn("flex h-9 w-9 items-center justify-center text-muted-foreground", className)}
     {...props}
   >
     <MoreHorizontal className="h-4 w-4" />
-    <span className="sr-only">More</span>
+    <span className="sr-only">Mais opções</span>
   </span>
 )
-BreadcrumbEllipsis.displayName = "BreadcrumbElipssis"
+// [CORREÇÃO] Typos no displayName original
+BreadcrumbEllipsis.displayName = "BreadcrumbEllipsis"
 
 export {
   Breadcrumb,
@@ -657,87 +723,87 @@ export {
   BreadcrumbEllipsis,
 }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\button.tsx
 ==================================================================
+// frontend/src/components/ui/button.tsx
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { Loader2 } from "lucide-react" // Importação necessária para o loading
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
-/* UX & MOTION NOTES:                                                         */
-/* 1. active:scale-95 -> Cria sensação tátil de clique.                       */
-/* 2. gap-2 -> Garante espaçamento uniforme entre ícones e texto.             */
-/* 3. [&_svg]:pointer-events-none -> Evita bugs de clique em ícones.          */
-/* 4. [&_svg]:size-4 -> Padroniza o tamanho de qualquer ícone filho.          */
+/* DESIGN TOKENS & MOTION                                                     */
 /* -------------------------------------------------------------------------- */
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 active:scale-95",
-  {
-    variants: {
-      variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-        outline:
-          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground active:scale-100", // Ghost geralmente não escala ou escala menos
-        link: "text-primary underline-offset-4 hover:underline active:scale-100",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  {
+    variants: {
+      variant: {
+        default:
+          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.98]",
+        destructive:
+          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 active:scale-[0.98]",
+        outline:
+          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground active:scale-[0.98]",
+        secondary:
+          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 active:scale-[0.98]",
+        ghost: 
+          "hover:bg-accent hover:text-accent-foreground active:scale-[0.98]",
+        link: 
+          "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
 )
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean
-  isLoading?: boolean // Nova prop para DX
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+  isLoading?: boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, isLoading = false, children, disabled, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
+  ({ className, variant, size, asChild = false, isLoading = false, children, disabled, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button"
 
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        // A11y & Logic: Se estiver carregando, desabilita automaticamente
-        disabled={isLoading || disabled}
-        {...props}
-      >
-        {/* Renderização Condicional do Spinner */}
-        {isLoading ? (
-          <>
-            <Loader2 className="animate-spin" />
-            {/* Opcional: Você pode esconder o children ou deixá-lo visível ao lado */}
-            {children}
-          </>
-        ) : (
-          children
-        )}
-      </Comp>
-    )
-  }
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        disabled={isLoading || disabled}
+        aria-busy={isLoading} // Acessibilidade: Indica processamento
+        {...props}
+      >
+        {isLoading ? (
+          <>
+            {/*               TRUQUE DE UX: 
+              Posiciona o loader absolutamente no centro para não alterar a largura do botão.
+              O conteúdo original fica invisível (opacity-0) para manter o "shape" do botão.
+            */}
+            <Loader2 className="absolute h-4 w-4 animate-spin" />
+            <span className="opacity-0 flex items-center gap-2">{children}</span>
+          </>
+        ) : (
+          children
+        )}
+      </Comp>
+    )
+  }
 )
 Button.displayName = "Button"
 
@@ -746,16 +812,18 @@ export { Button, buttonVariants }
 ==================================================================
 FILE: frontend\src\components\ui\card.tsx
 ==================================================================
+// frontend/src/components/ui/card.tsx
 import * as React from "react"
+
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
-/* COMPONENTES DE CARD                                                        */
+/* COMPONENTES DE CARD (Modernizado)                                          */
 /* -------------------------------------------------------------------------- */
 
 // 1. CARD BASE
-// Removemos o hover effect padrão para evitar "falsa aforância".
-// Se precisar de um card clicável, basta adicionar: "transition-all hover:shadow-md cursor-pointer" via className na instância.
+// Container principal. 
+// Nota: Adicione 'hover:shadow-md transition-shadow' na instância se o card for clicável.
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -772,23 +840,22 @@ const Card = React.forwardRef<
 Card.displayName = "Card"
 
 // 2. HEADER
-// Removemos o gradiente para um look mais clean e profissional.
-// O espaçamento (flex-col space-y-1.5) cuida da hierarquia entre Título e Descrição.
+// Responsável pelo espaçamento inicial.
+// [MODERNIZAÇÃO] Troca de space-y por gap para melhor controle flexbox.
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    className={cn("flex flex-col gap-1.5 p-6", className)}
     {...props}
   />
 ))
 CardHeader.displayName = "CardHeader"
 
 // 3. TITLE
-// Mantivemos h3 como padrão semântico, mas permitimos override.
-// tracking-tight deixa o título mais compacto e moderno.
+// Título semântico. Use 'leading-none' para títulos curtos e impactantes.
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
@@ -805,7 +872,7 @@ const CardTitle = React.forwardRef<
 CardTitle.displayName = "CardTitle"
 
 // 4. DESCRIPTION
-// text-muted-foreground garante que o contraste seja acessível mas visualmente distinto do título.
+// Texto de apoio. O 'text-sm' e 'muted-foreground' garantem hierarquia visual imediata.
 const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
@@ -819,7 +886,7 @@ const CardDescription = React.forwardRef<
 CardDescription.displayName = "CardDescription"
 
 // 5. CONTENT
-// p-6 padrão, mas pt-0 se houver header acima, para manter o ritmo vertical correto.
+// Corpo do card. O 'pt-0' é crucial para manter o ritmo vertical se houver header.
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -829,7 +896,7 @@ const CardContent = React.forwardRef<
 CardContent.displayName = "CardContent"
 
 // 6. FOOTER
-// Flexbox pronto para alinhar botões à direita ou esquerda.
+// Rodapé para ações. Flexbox padrão para alinhar botões.
 const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -882,6 +949,10 @@ function useChart() {
   return context
 }
 
+/* -------------------------------------------------------------------------- */
+/* CONTAINER                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const ChartContainer = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
@@ -900,7 +971,19 @@ const ChartContainer = React.forwardRef<
         data-chart={chartId}
         ref={ref}
         className={cn(
-          "flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-none [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-sector]:outline-none [&_.recharts-surface]:outline-none",
+          "flex aspect-video justify-center text-xs",
+          "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground",
+          "[&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50",
+          "[&_.recharts-curve.recharts-tooltip-cursor]:stroke-border",
+          "[&_.recharts-dot[stroke='#fff']]:stroke-transparent",
+          "[&_.recharts-layer]:outline-none",
+          "[&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border",
+          "[&_.recharts-radial-bar-background-sector]:fill-muted",
+          "[&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted",
+          "[&_.recharts-reference-line_[stroke='#ccc']]:stroke-border",
+          "[&_.recharts-sector[stroke='#fff']]:stroke-transparent",
+          "[&_.recharts-sector]:outline-none",
+          "[&_.recharts-surface]:outline-none",
           className
         )}
         {...props}
@@ -948,21 +1031,30 @@ ${colorConfig
   )
 }
 
+/* -------------------------------------------------------------------------- */
+/* TOOLTIP                                                                    */
+/* -------------------------------------------------------------------------- */
+
 const ChartTooltip = RechartsPrimitive.Tooltip
 
+// [CORREÇÃO] Tipagem explícita para as props injetadas pelo Recharts
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
-      hideLabel?: boolean
-      hideIndicator?: boolean
-      indicator?: "line" | "dot" | "dashed"
-      nameKey?: string
-      labelKey?: string
-      // [CORREÇÃO] 'any' aceita tanto arrays mutáveis quanto readonly do Recharts
-      payload?: any
-      label?: any
-    }
+  React.ComponentProps<"div"> & {
+    hideLabel?: boolean
+    hideIndicator?: boolean
+    indicator?: "line" | "dot" | "dashed"
+    nameKey?: string
+    labelKey?: string
+    // Props injetadas pelo Recharts
+    active?: boolean
+    payload?: any[]
+    label?: any
+    formatter?: any
+    color?: string
+    labelFormatter?: (label: any, payload: any[]) => React.ReactNode
+    labelClassName?: string
+  }
 >(
   (
     {
@@ -1030,7 +1122,7 @@ const ChartTooltipContent = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          "grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
+          "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background/95 backdrop-blur-sm px-2.5 py-1.5 text-xs shadow-xl transition-all",
           className
         )}
       >
@@ -1109,6 +1201,10 @@ const ChartTooltipContent = React.forwardRef<
 )
 ChartTooltipContent.displayName = "ChartTooltip"
 
+/* -------------------------------------------------------------------------- */
+/* LEGEND                                                                     */
+/* -------------------------------------------------------------------------- */
+
 const ChartLegend = RechartsPrimitive.Legend
 
 const ChartLegendContent = React.forwardRef<
@@ -1116,7 +1212,6 @@ const ChartLegendContent = React.forwardRef<
   React.ComponentProps<"div"> & {
     hideIcon?: boolean
     nameKey?: string
-    // [CORREÇÃO] 'any' aceita tanto arrays mutáveis quanto readonly do Recharts
     payload?: any
     verticalAlign?: "top" | "middle" | "bottom"
   }
@@ -1173,7 +1268,10 @@ const ChartLegendContent = React.forwardRef<
 )
 ChartLegendContent.displayName = "ChartLegend"
 
-// Helper to extract item config from a payload.
+/* -------------------------------------------------------------------------- */
+/* UTILS                                                                      */
+/* -------------------------------------------------------------------------- */
+
 function getPayloadConfigFromPayload(
   config: ChartConfig,
   payload: unknown,
@@ -1224,6 +1322,7 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\checkbox.tsx
 ==================================================================
+// frontend/src/components/ui/checkbox.tsx
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import { Check } from "lucide-react"
@@ -1237,37 +1336,31 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      // LAYOUT & DIMENSIONS
-      // Aumentado para h-5 w-5 (20px) para melhor hit-area
-      "peer h-5 w-5 shrink-0 rounded-md border shadow-sm",
+      // BASE LAYOUT
+      // 'size-4' (16px) é o padrão para interfaces densas/desktop.
+      // 'rounded-sm' diferencia visualmente de Radio Buttons.
+      "peer size-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
       
-      // COLORS & STATES
-      // Padrão: border-input (neutro). Checked: bg-primary + border-primary.
-      "border-input bg-background ring-offset-background transition-colors",
-      "data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=checked]:text-primary-foreground",
-      
-      // FOCUS & A11Y
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-      
-      // DISABLED
-      "disabled:cursor-not-allowed disabled:opacity-50",
+      // STATES
+      // Unchecked: Fundo transparente/background.
+      // Checked: Fundo primário, Texto claro.
+      "data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
       
       className
     )}
     {...props}
   >
     <CheckboxPrimitive.Indicator
-      className={cn(
-        "flex items-center justify-center text-current",
-        // MICRO-INTERAÇÃO: O ícone surge com um zoom rápido e suave
-        "animate-in zoom-in-50 duration-200"
-      )}
+      className={cn("flex items-center justify-center text-current")}
     >
-      {/* Icon adjustments:
-         1. h-3.5 w-3.5: Um pouco menor que a caixa para dar respiro (whitespace).
-         2. strokeWidth={3.5}: Traço mais grosso para melhor leitura em fundo colorido.
+      {/* MICRO-INTERAÇÃO:
+         O ícone tem um 'zoom in' rápido ao ser marcado.
+         strokeWidth={3} garante legibilidade em tamanhos pequenos.
       */}
-      <Check className="h-3.5 w-3.5" strokeWidth={3.5} />
+      <Check 
+        className="size-3.5 animate-in zoom-in-50 duration-200" 
+        strokeWidth={3} 
+      />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ))
@@ -1278,6 +1371,7 @@ export { Checkbox }
 ==================================================================
 FILE: frontend\src\components\ui\command.tsx
 ==================================================================
+// frontend/src/components/ui/command.tsx
 import * as React from "react"
 import { type DialogProps } from "@radix-ui/react-dialog"
 import { Command as CommandPrimitive } from "cmdk"
@@ -1309,21 +1403,24 @@ Command.displayName = CommandPrimitive.displayName
 /* 2. COMMAND DIALOG (MODAL WRAPPER)                                          */
 /* -------------------------------------------------------------------------- */
 
-const CommandDialog = ({ children, ...props }: DialogProps) => {
+interface CommandDialogProps extends DialogProps {}
+
+const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   return (
     <Dialog {...props}>
       <DialogContent className="overflow-hidden p-0 shadow-lg">
-        <Command className={cn(
-          // UX FIX: Classes organizadas para facilitar manutenção.
-          // Ajustes para garantir que, dentro do modal, os itens sejam maiores (touch-friendly)
-          "[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
-          "[&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0",
-          "[&_[cmdk-group]]:px-2",
-          "[&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5", 
-          "[&_[cmdk-input]]:h-14", // Input maior no modal para destaque
-          "[&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3", // Itens com mais área de clique
-          "[&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
-        )}>
+        <Command
+          className={cn(
+            // UX: Ajustes para Modal - Sintaxe canônica do Tailwind
+            "**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
+            "**:[[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0",
+            "**:[[cmdk-group]]:px-2",
+            "**:[[cmdk-input-wrapper]_svg]:h-5 **:[[cmdk-input-wrapper]_svg]:w-5",
+            "**:[[cmdk-input]]:h-14", // Input maior no modal
+            "**:[[cmdk-item]]:px-2 **:[[cmdk-item]]:py-3", // Touch friendly
+            "**:[[cmdk-item]_svg]:h-5 **:[[cmdk-item]_svg]:w-5"
+          )}
+        >
           {children}
         </Command>
       </DialogContent>
@@ -1343,7 +1440,6 @@ const CommandInput = React.forwardRef<
     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
-      // UX: h-11 (44px) é um padrão melhor para inputs de busca principal
       className={cn(
         "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className
@@ -1364,8 +1460,8 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    // UX: Scrollbar estilizada ou oculta para visual mais limpo
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+    // [CORREÇÃO] max-h-[300px] -> max-h-75
+    className={cn("max-h-75 overflow-y-auto overflow-x-hidden", className)}
     {...props}
   />
 ))
@@ -1394,7 +1490,10 @@ const CommandGroup = React.forwardRef<
   <CommandPrimitive.Group
     ref={ref}
     className={cn(
-      "overflow-hidden p-1 text-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
+      "overflow-hidden p-1 text-foreground",
+      // Sintaxe canônica para seletores internos
+      "**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5",
+      "**:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
       className
     )}
     {...props}
@@ -1421,17 +1520,14 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      // Layout Base
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none",
-      // UI: Adicionado transition-colors para suavidade no hover/seleção
-      "transition-colors duration-200", 
+      // Layout
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none gap-2",
       // States
+      "aria-selected:bg-accent aria-selected:text-accent-foreground",
       "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
       "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
-      // Icon sizing (Usei seletor genérico para pegar qualquer ícone Lucide)
+      // Icons
       "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-      // UX: Cursor pointer ajuda a indicar interatividade quando usado com mouse
-      "cursor-pointer",
       className
     )}
     {...props}
@@ -1470,6 +1566,7 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\dialog.tsx
 ==================================================================
+// frontend/src/components/ui/dialog.tsx
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
@@ -1484,8 +1581,7 @@ const DialogClose = DialogPrimitive.Close
 /* -------------------------------------------------------------------------- */
 /* OVERLAY                                                                    */
 /* -------------------------------------------------------------------------- */
-// UX: bg-black/80 cria um contraste melhor que bg-background/80, 
-// focando totalmente a atenção do usuário no conteúdo do modal.
+// UX: bg-black/80 garante foco total no conteúdo do modal.
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -1515,11 +1611,11 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        // Layout & Position
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
-        // Visuals (Shadow-2xl para maior profundidade)
+        // [MODERNIZAÇÃO] Classes canônicas para posicionamento centralizado
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4",
+        // Visual
         "border bg-background p-6 shadow-2xl duration-200 sm:rounded-lg",
-        // Animations (Zoom & Slide sutis)
+        // Animações
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -1531,11 +1627,11 @@ const DialogContent = React.forwardRef<
     >
       {children}
       
-      {/* Botão de Fechar: Maior área de toque e feedback visual */}
+      {/* Botão de Fechar Melhorado */}
       <DialogPrimitive.Close 
         className={cn(
-          "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity",
-          "hover:opacity-100 hover:bg-accent hover:text-accent-foreground p-1", // UX Improvements
+          "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-all",
+          "hover:opacity-100 hover:bg-accent hover:text-accent-foreground p-1.5", 
           "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
           "disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
         )}
@@ -1571,7 +1667,8 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      // [MODERNIZAÇÃO] gap-2 substitui space-x-2 para flexibilidade
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-2",
       className
     )}
     {...props}
@@ -1589,7 +1686,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "text-lg font-semibold leading-none tracking-tight text-foreground",
       className
     )}
     {...props}
@@ -1633,16 +1730,15 @@ import { Check, ChevronRight, Circle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const DropdownMenu = DropdownMenuPrimitive.Root
-
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
-
 const DropdownMenuGroup = DropdownMenuPrimitive.Group
-
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal
-
 const DropdownMenuSub = DropdownMenuPrimitive.Sub
-
 const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
+
+/* -------------------------------------------------------------------------- */
+/* SUB-MENU                                                                   */
+/* -------------------------------------------------------------------------- */
 
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
@@ -1660,11 +1756,10 @@ const DropdownMenuSubTrigger = React.forwardRef<
     {...props}
   >
     {children}
-    <ChevronRight className="ml-auto h-4 w-4" />
+    <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/70" />
   </DropdownMenuPrimitive.SubTrigger>
 ))
-DropdownMenuSubTrigger.displayName =
-  DropdownMenuPrimitive.SubTrigger.displayName
+DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName
 
 const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
@@ -1673,14 +1768,22 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+      "z-50 min-w-32 overflow-hidden rounded-md border border-border/50 bg-popover p-1 text-popover-foreground shadow-lg",
+      "data-[state=open]:animate-in data-[state=closed]:animate-out",
+      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+      "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
+      "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
       className
     )}
     {...props}
   />
 ))
-DropdownMenuSubContent.displayName =
-  DropdownMenuPrimitive.SubContent.displayName
+DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName
+
+/* -------------------------------------------------------------------------- */
+/* CONTENT                                                                    */
+/* -------------------------------------------------------------------------- */
 
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
@@ -1691,7 +1794,12 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "z-50 min-w-32 overflow-hidden rounded-md border border-border/50 bg-popover p-1 text-popover-foreground shadow-md",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
+        "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
       {...props}
@@ -1699,6 +1807,10 @@ const DropdownMenuContent = React.forwardRef<
   </DropdownMenuPrimitive.Portal>
 ))
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName
+
+/* -------------------------------------------------------------------------- */
+/* ITEMS                                                                      */
+/* -------------------------------------------------------------------------- */
 
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
@@ -1709,7 +1821,9 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground",
+      // [CORREÇÃO] Sintaxe canônica data-disabled
+      "data-disabled:pointer-events-none data-disabled:opacity-50",
       inset && "pl-8",
       className
     )}
@@ -1725,7 +1839,9 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground",
+      // [CORREÇÃO] Sintaxe canônica data-disabled
+      "data-disabled:pointer-events-none data-disabled:opacity-50",
       className
     )}
     checked={checked}
@@ -1749,7 +1865,9 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground",
+      // [CORREÇÃO] Sintaxe canônica data-disabled
+      "data-disabled:pointer-events-none data-disabled:opacity-50",
       className
     )}
     {...props}
@@ -1764,7 +1882,10 @@ const DropdownMenuRadioItem = React.forwardRef<
 ))
 DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName
 
-// [AQUI ESTAVA FALTANDO] 
+/* -------------------------------------------------------------------------- */
+/* LABELS & UTILS                                                             */
+/* -------------------------------------------------------------------------- */
+
 const DropdownMenuLabel = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Label>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> & {
@@ -1783,14 +1904,13 @@ const DropdownMenuLabel = React.forwardRef<
 ))
 DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName
 
-// [E ESTE TAMBÉM PODE ESTAR FALTANDO]
 const DropdownMenuSeparator = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    className={cn("-mx-1 my-1 h-px bg-border", className)}
     {...props}
   />
 ))
@@ -1816,8 +1936,8 @@ export {
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
   DropdownMenuRadioItem,
-  DropdownMenuLabel, // Agora exportado corretamente
-  DropdownMenuSeparator, // Agora exportado corretamente
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuGroup,
   DropdownMenuPortal,
@@ -1830,107 +1950,163 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\error-boundary.tsx
 ==================================================================
-import { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+// frontend/src/components/ui/error-boundary.tsx
+import { Component, ErrorInfo, ReactNode, useState } from "react"
+import { AlertTriangle, Home, RefreshCw, Copy, CheckCircle2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+
+/* -------------------------------------------------------------------------- */
+/* 1. INTERFACES & PROPS                                                      */
+/* -------------------------------------------------------------------------- */
 
 interface Props {
-  children?: ReactNode;
+  children?: ReactNode
+  fallback?: ReactNode // Permite injetar uma UI de erro customizada
 }
 
 interface State {
-  hasError: boolean;
-  error: Error | null;
+  hasError: boolean
+  error: Error | null
+  errorInfo: ErrorInfo | null
 }
+
+/* -------------------------------------------------------------------------- */
+/* 2. COMPONENTE DE UI (Functional - Apresentação)                            */
+/* -------------------------------------------------------------------------- */
+
+const ErrorState = ({ error, reset }: { error: Error | null, reset: () => void }) => {
+  const [copied, setCopied] = useState(false)
+  const isDev = import.meta.env.MODE === 'development'
+
+  const handleCopyError = () => {
+    if (error) {
+      navigator.clipboard.writeText(`${error.name}: ${error.message}\n\n${error.stack}`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleReload = () => window.location.reload()
+  const handleHome = () => window.location.href = '/'
+
+  return (
+    <div className="min-h-[80vh] flex items-center justify-center p-4 animate-in fade-in duration-500">
+      <Card className="w-full max-w-lg shadow-xl border-destructive/10 bg-background/95 backdrop-blur">
+        <CardHeader className="text-center pb-2">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10 ring-8 ring-destructive/5">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
+          </div>
+          <CardTitle className="text-2xl font-bold tracking-tight">Algo não saiu como esperado</CardTitle>
+          <CardDescription className="text-base mt-2">
+            Encontramos um erro crítico que impediu o carregamento desta seção.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-6 pt-6">
+          {/* Mensagem Amigável */}
+          <div className="rounded-md bg-muted/50 p-4 text-sm text-muted-foreground text-center">
+            Nossa equipe foi notificada. Tente recarregar a página ou voltar para o início.
+          </div>
+
+          {/* Área Técnica (Expansível) */}
+          {error && (
+            <details className="group rounded-lg border border-border text-left text-sm">
+              <summary className="flex cursor-pointer items-center justify-between rounded-t-lg bg-muted/30 px-4 py-2 font-medium transition-colors hover:bg-muted/50 group-open:border-b">
+                <span className="text-destructive font-mono">Detalhes do Erro {isDev ? '(Debug)' : ''}</span>
+                <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                  {isDev ? 'Clique para ver' : 'Apenas técnicos'}
+                </span>
+              </summary>
+              <div className="relative bg-slate-950 p-4 font-mono text-xs text-slate-50 dark:bg-black">
+                <div className="absolute right-2 top-2">
+                   <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-800"
+                    onClick={handleCopyError}
+                    title="Copiar Log"
+                   >
+                     {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                   </Button>
+                </div>
+                {/* [CORREÇÃO] max-h-[200px] -> max-h-50 */}
+                <div className="overflow-auto max-h-50 pr-2 scrollbar-thin scrollbar-thumb-slate-700">
+                  <p className="font-bold text-red-400 mb-2">{error.toString()}</p>
+                  <pre className="opacity-70 whitespace-pre-wrap break-all">
+                    {error.stack}
+                  </pre>
+                </div>
+              </div>
+            </details>
+          )}
+        </CardContent>
+
+        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:justify-center pt-2 pb-8">
+          {/* [CORREÇÃO] min-w-[140px] -> min-w-35 */}
+          <Button onClick={reset} variant="default" className="w-full sm:w-auto min-w-35">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Tentar Novamente
+          </Button>
+          
+          <div className="flex gap-3 w-full sm:w-auto">
+             <Button onClick={handleReload} variant="outline" className="flex-1 sm:w-auto">
+               Recarregar
+             </Button>
+             <Button onClick={handleHome} variant="ghost" className="flex-1 sm:w-auto">
+               <Home className="mr-2 h-4 w-4" />
+               Início
+             </Button>
+          </div>
+        </CardFooter>
+      </Card>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* 3. LOGIC CONTROLLER (Class Component)                                      */
+/* -------------------------------------------------------------------------- */
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
-  };
+    errorInfo: null
+  }
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, errorInfo: null }
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    console.error('[ErrorBoundary] Uncaught error:', error, errorInfo)
+    this.setState({ errorInfo })
   }
 
-  private handleReload = () => {
-    window.location.reload();
-  };
-
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
-  };
+    this.setState({ hasError: false, error: null, errorInfo: null })
+  }
 
   public render() {
     if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
-          <Card className="w-full max-w-md shadow-lg border-destructive/20">
-            <CardHeader className="text-center pb-2">
-              <div className="mx-auto w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
-                <AlertTriangle className="h-6 w-6 text-destructive" />
-              </div>
-              <CardTitle className="text-xl">Ops! Algo deu errado.</CardTitle>
-              <CardDescription>
-                Ocorreu um erro inesperado na execução da aplicação.
-              </CardDescription>
-            </CardHeader>
-            
-            <CardContent className="text-center space-y-6">
-              <p className="text-sm text-muted-foreground">
-                Nossa equipe técnica foi notificada automaticamente.
-                Você pode tentar recuperar a sessão ou recarregar a página.
-              </p>
-              
-              {/* Área de Debug (Apenas em Desenvolvimento) */}
-              {/* @ts-ignore: Ignorando verificação estrita de tipo para variável de ambiente no CI */}
-              {import.meta.env.MODE === 'development' && this.state.error && (
-                <div className="bg-slate-100 dark:bg-slate-900 p-3 rounded-md text-left overflow-auto max-h-40 border text-xs font-mono">
-                  <p className="text-destructive font-bold mb-1">Stack Trace:</p>
-                  <span className="text-slate-600 dark:text-slate-400">
-                    {this.state.error.toString()}
-                  </span>
-                </div>
-              )}
+      if (this.props.fallback) {
+        return this.props.fallback
+      }
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-                <Button 
-                  onClick={this.handleReset} 
-                  variant="outline" 
-                  className="w-full sm:w-auto"
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Tentar Novamente
-                </Button>
-                
-                <Button 
-                  onClick={this.handleReload} 
-                  className="w-full sm:w-auto"
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Recarregar Página
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      );
+      return <ErrorState error={this.state.error} reset={this.handleReset} />
     }
 
-    return this.props.children;
+    return this.props.children
   }
 }
 
-export default ErrorBoundary;
+export default ErrorBoundary
 
 ==================================================================
 FILE: frontend\src\components\ui\form.tsx
 ==================================================================
+// frontend/src/components/ui/form.tsx
 "use client"
 
 import * as React from "react"
@@ -1949,6 +2125,10 @@ import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 
 const Form = FormProvider
+
+/* -------------------------------------------------------------------------- */
+/* CONTEXTOS E HOOKS                                                          */
+/* -------------------------------------------------------------------------- */
 
 type FormFieldContextValue<
   TFieldValues extends FieldValues = FieldValues,
@@ -1978,11 +2158,11 @@ const useFormField = () => {
   const { getFieldState, formState } = useFormContext()
 
   if (!fieldContext) {
-    throw new Error("useFormField should be used within <FormField>")
+    throw new Error("useFormField deve ser usado dentro de <FormField>")
   }
 
   if (!itemContext) {
-    throw new Error("useFormField should be used within <FormItem>")
+    throw new Error("useFormField deve ser usado dentro de <FormItem>")
   }
 
   const fieldState = getFieldState(fieldContext.name, formState)
@@ -2005,6 +2185,10 @@ type FormItemContextValue = {
 
 const FormItemContext = React.createContext<FormItemContextValue | null>(null)
 
+/* -------------------------------------------------------------------------- */
+/* COMPONENTES DE UI                                                          */
+/* -------------------------------------------------------------------------- */
+
 const FormItem = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -2013,7 +2197,11 @@ const FormItem = React.forwardRef<
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div ref={ref} className={cn("space-y-2", className)} {...props} />
+      <div 
+        ref={ref} 
+        className={cn("space-y-2", className)} 
+        {...props} 
+      />
     </FormItemContext.Provider>
   )
 })
@@ -2028,7 +2216,11 @@ const FormLabel = React.forwardRef<
   return (
     <Label
       ref={ref}
-      className={cn(error && "text-destructive", className)}
+      className={cn(
+        // Feedback visual: Muda a cor se houver erro
+        error && "text-destructive",
+        className
+      )}
       htmlFor={formItemId}
       {...props}
     />
@@ -2090,7 +2282,11 @@ const FormMessage = React.forwardRef<
     <p
       ref={ref}
       id={formMessageId}
-      className={cn("text-[0.8rem] font-medium text-destructive", className)}
+      // MODERNIZAÇÃO: Adicionado animate-in para suavizar a aparição do erro
+      className={cn(
+        "text-[0.8rem] font-medium text-destructive animate-in slide-in-from-top-1 fade-in-0 duration-200",
+        className
+      )}
       {...props}
     >
       {body}
@@ -2110,11 +2306,12 @@ export {
   FormField,
 }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\input.tsx
 ==================================================================
+// frontend/src/components/ui/input.tsx
 import * as React from "react"
+
 import { cn } from "@/lib/utils"
 
 export interface InputProps
@@ -2126,8 +2323,24 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <input
         type={type}
         className={cn(
-          // [CORREÇÃO] Adicionado 'text-foreground' para garantir contraste correto
-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+          // BASE LAYOUT & TYPOGRAPHY
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background",
+          
+          // VISUALS & MOTION
+          // shadow-sm: Profundidade sutil
+          // transition-colors: Suaviza a entrada do foco/border
+          "shadow-sm transition-colors duration-200",
+          
+          // FILE INPUTS
+          "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+          
+          // PLACEHOLDER
+          "placeholder:text-muted-foreground",
+          
+          // STATES (Focus & Disabled)
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          
           className
         )}
         ref={ref}
@@ -2143,54 +2356,114 @@ export { Input }
 ==================================================================
 FILE: frontend\src\components\ui\label.tsx
 ==================================================================
+// frontend/src/components/ui/label.tsx
+"use client"
+
+import * as React from "react"
+import * as LabelPrimitive from "@radix-ui/react-label"
+import { cva, type VariantProps } from "class-variance-authority"
+
 import { cn } from "@/lib/utils"
 
-export function Label({ className, ...props }: any) {
-  return (
-    <label
-      className={cn("text-sm font-medium text-foreground", className)}
-      {...props}
-    />
-  )
-}
+const labelVariants = cva(
+  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+)
 
+const Label = React.forwardRef<
+  React.ElementRef<typeof LabelPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
+    VariantProps<typeof labelVariants>
+>(({ className, ...props }, ref) => (
+  <LabelPrimitive.Root
+    ref={ref}
+    className={cn(labelVariants(), className)}
+    {...props}
+  />
+))
+Label.displayName = LabelPrimitive.Root.displayName
+
+export { Label }
 
 ==================================================================
 FILE: frontend\src\components\ui\masked-input.tsx
 ==================================================================
+// frontend/src/components/ui/masked-input.tsx
 import * as React from "react"
 import { IMaskInput } from "react-imask"
+
 import { cn } from "@/lib/utils"
+
+/* -------------------------------------------------------------------------- */
+/* TYPES                                                                      */
+/* -------------------------------------------------------------------------- */
 
 interface MaskedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   mask: string | object
-  onAccept?: (value: string) => void
+  unmask?: boolean // Padrão: true (Retorna o valor cru/raw)
+  onAccept?: (value: string, mask: any) => void
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void
-  // Permite passar definições customizadas se necessário
   definitions?: any
+  // Radix/Shadcn pattern: asChild não é suportado aqui pois IMaskInput é o wrapper
 }
 
+/* -------------------------------------------------------------------------- */
+/* COMPONENT                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const MaskedInput = React.forwardRef<HTMLInputElement, MaskedInputProps>(
-  ({ className, mask, onAccept, onChange, ...props }, ref) => {
+  ({ className, mask, unmask = true, onAccept, onChange, ...props }, ref) => {
     return (
       <IMaskInput
+        // Ref forwarding para o elemento input interno do IMask
+        inputRef={ref as React.RefObject<HTMLInputElement>}
+        
+        // Configuração da Máscara
+        mask={mask}
+        unmask={unmask} // 'true' remove formatação (ex: '12345678900'), 'false' mantém (ex: '123.456.789-00')
+        
+        // Estilização: Cópia exata do componente Input padrão para consistência
         className={cn(
-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          // Layout & Typography
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background",
+          // File Inputs
+          "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+          // Placeholder
+          "placeholder:text-muted-foreground",
+          // Visuals & Motion
+          "shadow-sm transition-colors duration-200",
+          // States
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+          "disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
-        mask={mask}
-        unmask={true} // Limpa a formatação ao enviar para o state do React
-        onAccept={(value: any) => {
-          if (onChange) onChange({ target: { value } } as React.ChangeEvent<HTMLInputElement>)
-          if (onAccept) onAccept(value)
+        
+        // Event Handling: Adapta o evento do IMask para o padrão React/HTML
+        onAccept={(value: string, maskRef: any) => {
+          if (onChange) {
+            // Cria um evento sintético para bibliotecas como React Hook Form
+            const event = {
+              target: {
+                name: props.name,
+                value: value,
+              },
+            } as React.ChangeEvent<HTMLInputElement>
+            
+            onChange(event)
+          }
+          
+          if (onAccept) {
+            onAccept(value, maskRef)
+          }
         }}
-        inputRef={ref as any} 
+        
         {...props as any}
       />
     )
   }
 )
+
 MaskedInput.displayName = "MaskedInput"
+
 export { MaskedInput }
 
 ==================================================================
@@ -2206,7 +2479,7 @@ import { ButtonProps, buttonVariants } from "@/components/ui/button"
 const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => (
   <nav
     role="navigation"
-    aria-label="pagination"
+    aria-label="paginação"
     className={cn("mx-auto flex w-full justify-center", className)}
     {...props}
   />
@@ -2251,25 +2524,30 @@ const PaginationLink = ({
         variant: isActive ? "outline" : "ghost",
         size,
       }),
+      // Motion: Adiciona transição suave no hover
+      "transition-all duration-200",
+      // Active State: Garante destaque visual se estiver ativo
+      isActive && "border-primary/50 bg-accent text-accent-foreground pointer-events-none",
       className
     )}
     {...props}
   />
 )
-PaginationLink.displayName = "PaginationLink" // Correção aqui
+PaginationLink.displayName = "PaginationLink"
 
 const PaginationPrevious = ({
   className,
   ...props
 }: React.ComponentProps<typeof PaginationLink>) => (
   <PaginationLink
-    aria-label="Go to previous page"
+    aria-label="Ir para página anterior"
     size="default"
     className={cn("gap-1 pl-2.5", className)}
     {...props}
   >
-    <ChevronLeft className="h-4 w-4" />
-    <span>Anterior</span>
+    <ChevronLeft className="size-4" />
+    {/* Responsividade: Texto escondido em mobile */}
+    <span className="hidden sm:block">Anterior</span>
   </PaginationLink>
 )
 PaginationPrevious.displayName = "PaginationPrevious"
@@ -2279,13 +2557,14 @@ const PaginationNext = ({
   ...props
 }: React.ComponentProps<typeof PaginationLink>) => (
   <PaginationLink
-    aria-label="Go to next page"
+    aria-label="Ir para próxima página"
     size="default"
     className={cn("gap-1 pr-2.5", className)}
     {...props}
   >
-    <span>Próxima</span>
-    <ChevronRight className="h-4 w-4" />
+    {/* Responsividade: Texto escondido em mobile */}
+    <span className="hidden sm:block">Próxima</span>
+    <ChevronRight className="size-4" />
   </PaginationLink>
 )
 PaginationNext.displayName = "PaginationNext"
@@ -2299,8 +2578,8 @@ const PaginationEllipsis = ({
     className={cn("flex h-9 w-9 items-center justify-center", className)}
     {...props}
   >
-    <MoreHorizontal className="h-4 w-4" />
-    <span className="sr-only">More pages</span>
+    <MoreHorizontal className="size-4 text-muted-foreground" />
+    <span className="sr-only">Mais páginas</span>
   </span>
 )
 PaginationEllipsis.displayName = "PaginationEllipsis"
@@ -2315,11 +2594,10 @@ export {
   PaginationPrevious,
 }
 
-
-
 ==================================================================
 FILE: frontend\src\components\ui\popover.tsx
 ==================================================================
+// frontend/src/components/ui/popover.tsx
 import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
@@ -2341,7 +2619,24 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-popover-content-transform-origin]",
+        // LAYOUT & STYLE
+        // shadow-lg: Garante destaque sobre o conteúdo (Popovers flutuam).
+        // min-w-[...]: Evita popovers colapsados demais.
+        "z-50 w-72 rounded-md border border-border/50 bg-popover p-4 text-popover-foreground shadow-lg outline-none",
+        
+        // ANIMATIONS (Entrada e Saída Suaves)
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        
+        // SLIDE DIRECTIONS (Movimento direcional sutil)
+        "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
+        "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        
+        // Não remova isso: Garante que o zoom saia do ponto de origem correto
+        // origin-[var(...)] é uma sintaxe válida do Tailwind para variáveis CSS
+        "origin-(--radix-popover-content-transform-origin)",
+        
         className
       )}
       {...props}
@@ -2352,47 +2647,59 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName
 
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\progress.tsx
 ==================================================================
 // frontend/src/components/ui/progress.tsx
+"use client"
+
 import * as React from "react"
+import * as ProgressPrimitive from "@radix-ui/react-progress"
+
 import { cn } from "@/lib/utils"
 
-interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
-  value?: number | null
-  indicatorClassName?: string
-}
-
-const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value, indicatorClassName, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(
-        "relative h-4 w-full overflow-hidden rounded-full bg-secondary",
-        className
-      )}
-      {...props}
-    >
-      <div
-        className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
-        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-      />
-    </div>
-  )
-)
-Progress.displayName = "Progress"
+const Progress = React.forwardRef<
+  React.ElementRef<typeof ProgressPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
+>(({ className, value, ...props }, ref) => (
+  <ProgressPrimitive.Root
+    ref={ref}
+    className={cn(
+      // CONTAINER
+      // h-2 (8px) é o novo padrão 'sleek'.
+      // overflow-hidden + rounded-full garante que a barra interna não vaze.
+      "relative h-2 w-full overflow-hidden rounded-full bg-secondary/20",
+      className
+    )}
+    {...props}
+  >
+    <ProgressPrimitive.Indicator
+      // BARRA DE PREENCHIMENTO
+      // transition-transform é mais performático que transition-all.
+      // duration-500 + ease-in-out cria um efeito de "fluido" ao carregar.
+      className="h-full w-full flex-1 bg-primary transition-transform duration-500 ease-in-out"
+      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+    />
+  </ProgressPrimitive.Root>
+))
+Progress.displayName = ProgressPrimitive.Root.displayName
 
 export { Progress }
 
 ==================================================================
 FILE: frontend\src\components\ui\scroll-area.tsx
 ==================================================================
+// frontend/src/components/ui/scroll-area.tsx
+"use client"
+
 import * as React from "react"
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
 import { cn } from "@/lib/utils"
+
+/* -------------------------------------------------------------------------- */
+/* SCROLL AREA (ROOT)                                                         */
+/* -------------------------------------------------------------------------- */
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
@@ -2406,32 +2713,63 @@ const ScrollArea = React.forwardRef<
     <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
       {children}
     </ScrollAreaPrimitive.Viewport>
-    <ScrollAreaPrimitive.Scrollbar
-      orientation="vertical"
-      className="flex touch-none select-none p-0.5"
-    >
-      <ScrollAreaPrimitive.Thumb className="flex-1 rounded-full bg-border" />
-    </ScrollAreaPrimitive.Scrollbar>
+    <ScrollBar />
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>
 ))
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
 
-export { ScrollArea }
+/* -------------------------------------------------------------------------- */
+/* SCROLL BAR (COMPONENT)                                                     */
+/* -------------------------------------------------------------------------- */
 
+const ScrollBar = React.forwardRef<
+  React.ElementRef<typeof ScrollAreaPrimitive.Scrollbar>,
+  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Scrollbar>
+>(({ className, orientation = "vertical", ...props }, ref) => (
+  <ScrollAreaPrimitive.Scrollbar
+    ref={ref}
+    orientation={orientation}
+    className={cn(
+      "flex touch-none select-none transition-colors",
+      // Vertical: Fica na direita, largura fixa
+      orientation === "vertical" &&
+        "h-full w-2.5 border-l border-l-transparent p-px",
+      // Horizontal: Fica embaixo, altura fixa
+      orientation === "horizontal" &&
+        "h-2.5 flex-col border-t border-t-transparent p-px",
+      className
+    )}
+    {...props}
+  >
+    <ScrollAreaPrimitive.Thumb 
+      className="relative flex-1 rounded-full bg-border" 
+    />
+  </ScrollAreaPrimitive.Scrollbar>
+))
+ScrollBar.displayName = ScrollAreaPrimitive.Scrollbar.displayName
+
+export { ScrollArea, ScrollBar }
 
 ==================================================================
 FILE: frontend\src\components\ui\select.tsx
 ==================================================================
+// frontend/src/components/ui/select.tsx
+"use client"
+
 import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
-import { Check, ChevronDown } from "lucide-react"
+import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
 const Select = SelectPrimitive.Root
 const SelectGroup = SelectPrimitive.Group
 const SelectValue = SelectPrimitive.Value
+
+/* -------------------------------------------------------------------------- */
+/* TRIGGER                                                                    */
+/* -------------------------------------------------------------------------- */
 
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
@@ -2440,8 +2778,15 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      // [CORREÇÃO] Adicionado 'text-foreground'
-      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+      // LAYOUT & BASE
+      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
+      // TYPOGRAPHY & TRUNCATE
+      "placeholder:text-muted-foreground text-foreground [&>span]:line-clamp-1",
+      // STATES
+      "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+      "disabled:cursor-not-allowed disabled:opacity-50",
+      // VISUALS
+      "shadow-sm transition-colors",
       className
     )}
     {...props}
@@ -2454,6 +2799,49 @@ const SelectTrigger = React.forwardRef<
 ))
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
 
+/* -------------------------------------------------------------------------- */
+/* SCROLL BUTTONS (UX Improvement)                                            */
+/* -------------------------------------------------------------------------- */
+
+const SelectScrollUpButton = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.ScrollUpButton
+    ref={ref}
+    className={cn(
+      "flex cursor-default items-center justify-center py-1 opacity-50",
+      className
+    )}
+    {...props}
+  >
+    <ChevronUp className="h-4 w-4" />
+  </SelectPrimitive.ScrollUpButton>
+))
+SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName
+
+const SelectScrollDownButton = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.ScrollDownButton
+    ref={ref}
+    className={cn(
+      "flex cursor-default items-center justify-center py-1 opacity-50",
+      className
+    )}
+    {...props}
+  >
+    <ChevronDown className="h-4 w-4" />
+  </SelectPrimitive.ScrollDownButton>
+))
+SelectScrollDownButton.displayName =
+  SelectPrimitive.ScrollDownButton.displayName
+
+/* -------------------------------------------------------------------------- */
+/* CONTENT                                                                    */
+/* -------------------------------------------------------------------------- */
+
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
@@ -2462,7 +2850,15 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        // LAYOUT
+        "relative z-50 max-h-96 min-w-32 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
+        // ANIMATIONS
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
+        "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        // POSITIONING
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className
@@ -2470,19 +2866,25 @@ const SelectContent = React.forwardRef<
       position={position}
       {...props}
     >
+      <SelectScrollUpButton />
       <SelectPrimitive.Viewport
         className={cn(
           "p-1",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+            "h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width)"
         )}
       >
         {children}
       </SelectPrimitive.Viewport>
+      <SelectScrollDownButton />
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
 ))
 SelectContent.displayName = SelectPrimitive.Content.displayName
+
+/* -------------------------------------------------------------------------- */
+/* ITEMS & LABELS                                                             */
+/* -------------------------------------------------------------------------- */
 
 const SelectLabel = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Label>,
@@ -2490,7 +2892,7 @@ const SelectLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Label
     ref={ref}
-    className={cn("py-1.5 pl-8 pr-2 text-sm font-semibold text-popover-foreground", className)}
+    className={cn("py-1.5 pl-8 pr-2 text-sm font-semibold", className)}
     {...props}
   />
 ))
@@ -2503,7 +2905,9 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground",
+      // [CORREÇÃO] Sintaxe canônica
+      "data-disabled:pointer-events-none data-disabled:opacity-50",
       className
     )}
     {...props}
@@ -2525,7 +2929,8 @@ const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    // [CORREÇÃO] bg-border
+    className={cn("-mx-1 my-1 h-px bg-border", className)}
     {...props}
   />
 ))
@@ -2540,28 +2945,59 @@ export {
   SelectLabel,
   SelectItem,
   SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
 }
 
 ==================================================================
 FILE: frontend\src\components\ui\separator.tsx
 ==================================================================
-export function Separator({ className = "", ...props }: any) {
-  return (
-    <div
-      className={`w-full h-px bg-border ${className}`}
+// frontend/src/components/ui/separator.tsx
+"use client"
+
+import * as React from "react"
+import * as SeparatorPrimitive from "@radix-ui/react-separator"
+
+import { cn } from "@/lib/utils"
+
+const Separator = React.forwardRef<
+  React.ElementRef<typeof SeparatorPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
+>(
+  (
+    { className, orientation = "horizontal", decorative = true, ...props },
+    ref
+  ) => (
+    <SeparatorPrimitive.Root
+      ref={ref}
+      decorative={decorative}
+      orientation={orientation}
+      className={cn(
+        // Base
+        "shrink-0 bg-border",
+        // Orientação Horizontal (Padrão)
+        orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
+        className
+      )}
       {...props}
     />
   )
-}
+)
+Separator.displayName = SeparatorPrimitive.Root.displayName
 
+export { Separator }
 
 ==================================================================
 FILE: frontend\src\components\ui\sheet.tsx
 ==================================================================
 // frontend/src/components/ui/sheet.tsx
+"use client"
+
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
+import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
+
 import { cn } from "@/lib/utils"
 
 const Sheet = SheetPrimitive.Root
@@ -2569,13 +3005,17 @@ const SheetTrigger = SheetPrimitive.Trigger
 const SheetClose = SheetPrimitive.Close
 const SheetPortal = SheetPrimitive.Portal
 
+/* -------------------------------------------------------------------------- */
+/* OVERLAY                                                                    */
+/* -------------------------------------------------------------------------- */
+
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -2584,31 +3024,61 @@ const SheetOverlay = React.forwardRef<
 ))
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
 
-const sheetVariants = cn(
+/* -------------------------------------------------------------------------- */
+/* VARIANTS (Positioning Logic)                                               */
+/* -------------------------------------------------------------------------- */
+
+const sheetVariants = cva(
   "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
-  "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm"
+  {
+    variants: {
+      side: {
+        top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+        bottom:
+          "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+        left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
+        right:
+          "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+      },
+    },
+    defaultVariants: {
+      side: "right",
+    },
+  }
 )
+
+/* -------------------------------------------------------------------------- */
+/* CONTENT                                                                    */
+/* -------------------------------------------------------------------------- */
+
+interface SheetContentProps
+  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+    VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & { side?: "left" | "right" | "top" | "bottom" }
+  SheetContentProps
 >(({ side = "right", className, children, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
-      className={cn(sheetVariants, className)}
+      className={cn(sheetVariants({ side }), className)}
       {...props}
     >
       {children}
       <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
         <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">Fechar</span>
       </SheetPrimitive.Close>
     </SheetPrimitive.Content>
   </SheetPortal>
 ))
 SheetContent.displayName = SheetPrimitive.Content.displayName
+
+/* -------------------------------------------------------------------------- */
+/* HEADER & FOOTER                                                            */
+/* -------------------------------------------------------------------------- */
 
 const SheetHeader = ({
   className,
@@ -2637,6 +3107,10 @@ const SheetFooter = ({
   />
 )
 SheetFooter.displayName = "SheetFooter"
+
+/* -------------------------------------------------------------------------- */
+/* TITLE & DESCRIPTION                                                        */
+/* -------------------------------------------------------------------------- */
 
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
@@ -2678,6 +3152,8 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\skeleton.tsx
 ==================================================================
+// frontend/src/components/ui/skeleton.tsx
+import * as React from "react" // Importação explícita para segurança de tipagem
 import { cn } from "@/lib/utils"
 
 function Skeleton({
@@ -2686,7 +3162,12 @@ function Skeleton({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-muted/50", className)}
+      className={cn(
+        // 'animate-pulse' cria o efeito de carregamento.
+        // 'bg-muted' adapta-se melhor a temas dark/light do que 'bg-muted/50'.
+        "animate-pulse rounded-md bg-muted",
+        className
+      )}
       {...props}
     />
   )
@@ -2698,19 +3179,24 @@ export { Skeleton }
 FILE: frontend\src\components\ui\sonner.tsx
 ==================================================================
 // frontend/src/components/ui/sonner.tsx
+"use client"
+
+import { useTheme } from "next-themes"
 import { Toaster as Sonner } from "sonner"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme = "system" } = useTheme()
+
   return (
     <Sonner
-      theme={'system'}
+      theme={theme as ToasterProps["theme"]}
       className="toaster group"
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-card group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
+            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
           description: "group-[.toast]:text-muted-foreground",
           actionButton:
             "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
@@ -2725,11 +3211,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
 export { Toaster }
 
-
-
 ==================================================================
 FILE: frontend\src\components\ui\switch.tsx
 ==================================================================
+// frontend/src/components/ui/switch.tsx
+"use client"
+
 import * as React from "react"
 import * as SwitchPrimitives from "@radix-ui/react-switch"
 
@@ -2741,7 +3228,22 @@ const Switch = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SwitchPrimitives.Root
     className={cn(
-      "peer inline-flex h-[24px] w-[44px] shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input",
+      // LAYOUT & SIZING
+      // h-6 w-11 substitui valores arbitrários [24px] e [44px]
+      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent",
+      
+      // MOTION
+      "transition-colors duration-200",
+      
+      // FOCUS STATE
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      
+      // DISABLED STATE
+      "disabled:cursor-not-allowed disabled:opacity-50",
+      
+      // CHECKED/UNCHECKED STATES
+      "data-[state=checked]:bg-primary data-[state=unchecked]:bg-input",
+      
       className
     )}
     {...props}
@@ -2749,7 +3251,12 @@ const Switch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+        // THUMB SIZING & STYLE
+        // size-5 (20px) encaixa perfeitamente no container h-6 (24px) com bordas
+        "pointer-events-none block size-5 rounded-full bg-background shadow-sm ring-0",
+        
+        // ANIMATION (Translate X: 20px)
+        "transition-transform duration-200 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
       )}
     />
   </SwitchPrimitives.Root>
@@ -2765,11 +3272,15 @@ FILE: frontend\src\components\ui\table.tsx
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+/* -------------------------------------------------------------------------- */
+/* TABLE ROOT                                                                 */
+/* -------------------------------------------------------------------------- */
+
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto h-full max-h-[calc(100vh-220px)] border rounded-md shadow-sm bg-card">
+  <div className="relative w-full overflow-auto">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
@@ -2779,18 +3290,24 @@ const Table = React.forwardRef<
 ))
 Table.displayName = "Table"
 
+/* -------------------------------------------------------------------------- */
+/* HEADER & BODY                                                              */
+/* -------------------------------------------------------------------------- */
+
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead 
-    ref={ref} 
+  <thead
+    ref={ref}
     className={cn(
-      "bg-muted/50 sticky top-0 z-10 backdrop-blur-sm supports-[backdrop-filter]:bg-background/60", // Sticky Mágico
-      "[&_tr]:border-b", 
+      // [STICKY] Garante que o header fique fixo no topo
+      // bg-background/90 + backdrop-blur cria o efeito "vidro" sem perder legibilidade
+      "sticky top-0 z-10 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60",
+      "[&_tr]:border-b",
       className
-    )} 
-    {...props} 
+    )}
+    {...props}
   />
 ))
 TableHeader.displayName = "TableHeader"
@@ -2807,6 +3324,10 @@ const TableBody = React.forwardRef<
 ))
 TableBody.displayName = "TableBody"
 
+/* -------------------------------------------------------------------------- */
+/* FOOTER & CAPTION                                                           */
+/* -------------------------------------------------------------------------- */
+
 const TableFooter = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
@@ -2822,6 +3343,22 @@ const TableFooter = React.forwardRef<
 ))
 TableFooter.displayName = "TableFooter"
 
+const TableCaption = React.forwardRef<
+  HTMLTableCaptionElement,
+  React.HTMLAttributes<HTMLTableCaptionElement>
+>(({ className, ...props }, ref) => (
+  <caption
+    ref={ref}
+    className={cn("mt-4 text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+TableCaption.displayName = "TableCaption"
+
+/* -------------------------------------------------------------------------- */
+/* ROW & CELL                                                                 */
+/* -------------------------------------------------------------------------- */
+
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
@@ -2829,7 +3366,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b transition-colors hover:bg-muted/30 data-[state=selected]:bg-muted", // Hover mais suave
+      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
       className
     )}
     {...props}
@@ -2844,7 +3381,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-11 px-4 text-left align-middle font-semibold text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap", // Altura e fonte ajustadas
+      "h-10 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap",
       className
     )}
     {...props}
@@ -2864,18 +3401,6 @@ const TableCell = React.forwardRef<
 ))
 TableCell.displayName = "TableCell"
 
-const TableCaption = React.forwardRef<
-  HTMLTableCaptionElement,
-  React.HTMLAttributes<HTMLTableCaptionElement>
->(({ className, ...props }, ref) => (
-  <caption
-    ref={ref}
-    className={cn("mt-4 text-sm text-muted-foreground", className)}
-    {...props}
-  />
-))
-TableCaption.displayName = "TableCaption"
-
 export {
   Table,
   TableHeader,
@@ -2890,20 +3415,16 @@ export {
 ==================================================================
 FILE: frontend\src\components\ui\tabs.tsx
 ==================================================================
-// frontend/src/components/ui/tabs.tsx — Componente de abas atualizado, modernizado e com melhorias visuais e acessibilidade.
+// frontend/src/components/ui/tabs.tsx
+"use client"
 
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 
 import { cn } from "@/lib/utils"
 
-// Mantém o Root original, pois já é estável e robusto.
 const Tabs = TabsPrimitive.Root
 
-/**
- * TabsList — Agora com melhor contraste, padding mais equilibrado,
- * suporte a dark mode fluido e bordas suavizadas (rounded-lg).
- */
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
@@ -2911,8 +3432,8 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-lg bg-muted/60 backdrop-blur-sm p-1 text-muted-foreground shadow-sm",
-      "border border-border/40 dark:border-border/20",
+      // LAYOUT & BACKGROUND
+      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
       className
     )}
     {...props}
@@ -2920,10 +3441,6 @@ const TabsList = React.forwardRef<
 ))
 TabsList.displayName = TabsPrimitive.List.displayName
 
-/**
- * TabsTrigger — Agora com destaque mais elegante quando ativo, transição suave,
- * sombra sutil, foco mais visível e comportamento moderno responsivo.
- */
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -2931,13 +3448,18 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5",
-      "text-sm font-medium transition-all duration-200",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
-      "data-[state=active]:bg-background data-[state=active]:text-foreground",
-      "data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/40",
-      "hover:bg-accent/50",
+      // BASE LAYOUT
+      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all",
+      
+      // FOCUS STATE (Acessibilidade)
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      
+      // DISABLED STATE
       "disabled:pointer-events-none disabled:opacity-50",
+      
+      // ACTIVE STATE (Shadow & Color)
+      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+      
       className
     )}
     {...props}
@@ -2945,10 +3467,6 @@ const TabsTrigger = React.forwardRef<
 ))
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
 
-/**
- * TabsContent — Recebe melhorias de spacing, animação suave de entrada
- * e foco acessível aprimorado.
- */
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
@@ -2956,9 +3474,15 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-3 outline-none",
-      "animate-fade-in data-[state=inactive]:animate-fade-out",
-      "focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
+      // LAYOUT
+      "mt-2 ring-offset-background",
+      
+      // FOCUS
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      
+      // ANIMATION (Micro-interação de entrada)
+      "data-[state=active]:animate-in data-[state=active]:fade-in-0 data-[state=active]:zoom-in-95 duration-200",
+      
       className
     )}
     {...props}
@@ -2968,12 +3492,12 @@ TabsContent.displayName = TabsPrimitive.Content.displayName
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
 
-
 ==================================================================
 FILE: frontend\src\components\ui\textarea.tsx
 ==================================================================
 // frontend/src/components/ui/textarea.tsx
 import * as React from "react"
+
 import { cn } from "@/lib/utils"
 
 export interface TextareaProps
@@ -2984,8 +3508,22 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <textarea
         className={cn(
-          // [CORREÇÃO] Alterado 'ring-offset-2' para 'ring-offset-0' para evitar corte em modais
-          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+          // LAYOUT & BASE
+          "flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background",
+          
+          // TYPOGRAPHY
+          "text-foreground placeholder:text-muted-foreground",
+          
+          // VISUALS & MOTION
+          "shadow-sm transition-colors duration-200",
+          
+          // FOCUS STATE
+          // Mantendo ring-offset-0 para evitar cortes em modais, conforme sua correção anterior
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+          
+          // DISABLED STATE
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          
           className
         )}
         ref={ref}
@@ -3002,6 +3540,8 @@ export { Textarea }
 FILE: frontend\src\components\ui\tooltip.tsx
 ==================================================================
 // frontend/src/components/ui/tooltip.tsx
+"use client"
+
 import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 
@@ -3021,7 +3561,22 @@ const TooltipContent = React.forwardRef<
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+      // LAYOUT & STYLE
+      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 shadow-md",
+      
+      // TYPOGRAPHY
+      "text-sm text-popover-foreground font-medium",
+      
+      // ANIMATION (Entrada e Saída)
+      "animate-in fade-in-0 zoom-in-95",
+      "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+      
+      // SLIDE ANIMATION (Direcional)
+      "data-[side=bottom]:slide-in-from-top-2",
+      "data-[side=left]:slide-in-from-right-2",
+      "data-[side=right]:slide-in-from-left-2",
+      "data-[side=top]:slide-in-from-bottom-2",
+      
       className
     )}
     {...props}
@@ -3031,20 +3586,22 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 
-
 ==================================================================
 FILE: frontend\src\components\common\CommandMenu.tsx
 ==================================================================
 // frontend/src/components/layout/CommandMenu.tsx
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, keepPreviousData } from "@tanstack/react-query"
 import { 
   Calendar, Settings, LayoutDashboard, Users, PlusCircle, LogOut, 
-  AlertTriangle, FileText, Loader2, type LucideIcon, Search
+  AlertTriangle, FileText, Loader2, Search, type LucideIcon, 
+  Briefcase,
+  ArrowRight,
+  User
 } from "lucide-react"
 
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { 
   Command, 
   CommandEmpty, 
@@ -3055,14 +3612,24 @@ import {
   CommandSeparator, 
   CommandShortcut 
 } from "@/components/ui/command"
+import { Badge } from "@/components/ui/badge"
 
-import { useAuth } from "@/hooks/useAuth"
-import { useModal } from "@/hooks/useModal"
+import { useAuth } from "@/contexts/AuthContext"
+import { useModal } from "@/contexts/ModalContext" // Caminho corrigido
 import { api } from "@/lib/api"
-import { useDebounce } from "@/hooks/useDebounce" // Assumindo que você tem ou criarei abaixo
+import { useDebounce } from "@/hooks/useDebounce"
 
-// --- TIPAGEM ---
+// --- TYPES ---
+
+interface CaseSearchResult {
+  id: string
+  nomeCompleto: string
+  cpf: string
+  status?: string
+}
+
 type CommandAction = {
+  id: string
   label: string
   icon: LucideIcon
   shortcut?: string
@@ -3072,6 +3639,7 @@ type CommandAction = {
 }
 
 type CommandSection = {
+  id: string
   heading: string
   items: CommandAction[]
 }
@@ -3079,88 +3647,92 @@ type CommandSection = {
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
-  const debouncedQuery = useDebounce(query, 300) // Delay de 300ms
+  const debouncedQuery = useDebounce(query, 300)
   
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { openNewCaseModal } = useModal()
 
-  // --- BUSCA GLOBAL (Server-Side) ---
-  const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['search-cases-global', debouncedQuery],
-    queryFn: async () => {
-      if (!debouncedQuery || debouncedQuery.length < 3) return []
-      const res = await api.get('/cases', { 
-        params: { q: debouncedQuery, pageSize: 5, view: 'all' } 
-      })
-      return res.data.data || res.data.items || []
-    },
-    enabled: open && debouncedQuery.length >= 3,
-    staleTime: 1000 * 60 * 2 // Cache por 2 minutos
-  })
-
-  // --- CONFIGURAÇÃO DE COMANDOS ---
-  const COMMAND_GROUPS: CommandSection[] = React.useMemo(() => [
+  // --- 1. CONFIGURAÇÃO DE ROTAS E COMANDOS ---
+  const commandGroups: CommandSection[] = React.useMemo(() => [
     {
+      id: "actions",
       heading: "Ações Rápidas",
       items: [
         {
-          label: "Novo Caso",
+          id: "new-case",
+          label: "Novo Prontuário",
           icon: PlusCircle,
           shortcut: "⌘N",
-          keywords: ["criar", "adicionar", "atendimento"],
+          keywords: ["criar", "adicionar", "atendimento", "caso"],
           action: () => openNewCaseModal(),
           roles: ['Agente_Social', 'Especialista', 'Gerente']
         },
         {
+          id: "agenda",
           label: "Minha Agenda",
           icon: Calendar,
           keywords: ["compromissos", "calendario"],
-          action: () => navigate("/dashboard/agenda")
+          action: () => navigate("/app/agenda")
         }
       ]
     },
     {
+      id: "navigation",
       heading: "Navegação",
       items: [
         {
-          label: "Dashboard",
+          id: "nav-workspace",
+          label: "Minha Mesa (Início)",
           icon: LayoutDashboard,
-          keywords: ["inicio", "home", "estatisticas"],
-          action: () => navigate("/dashboard")
+          keywords: ["inicio", "home", "dashboard"],
+          action: () => navigate("/app/workspace")
         },
         {
+          id: "nav-cases",
           label: "Gestão de Casos",
-          icon: Users,
+          icon: Briefcase,
           keywords: ["familias", "prontuarios", "lista"],
-          action: () => navigate("/dashboard/cases")
+          action: () => navigate("/app/cases")
         },
         {
+          id: "nav-waiting",
           label: "Fila de Espera",
           icon: AlertTriangle,
           keywords: ["paefi", "demanda", "pendencias"],
-          action: () => navigate("/dashboard/waiting-list")
+          action: () => navigate("/app/waiting-list")
         },
         {
+          id: "nav-groups",
           label: "Grupos e Oficinas",
           icon: Users,
-          keywords: ["coletivo", "reuniao"],
-          action: () => navigate("/dashboard/groups")
+          keywords: ["coletivo", "reuniao", "scfv"],
+          action: () => navigate("/app/groups")
         }
       ]
     },
     {
+      id: "system",
       heading: "Sistema",
       items: [
         {
-          label: "Gestão de Usuários",
+          id: "sys-users",
+          label: "Admin: Usuários",
           icon: Settings,
-          keywords: ["admin", "usuarios", "equipe"],
-          action: () => navigate("/dashboard/users"),
+          keywords: ["admin", "permissoes", "equipe"],
+          action: () => navigate("/app/admin/users"),
           roles: ['Gerente']
         },
         {
-          label: "Sair do Sistema",
+          id: "sys-profile",
+          label: "Meu Perfil",
+          icon: User,
+          keywords: ["conta", "senha", "dados"],
+          action: () => navigate("/app/profile")
+        },
+        {
+          id: "sys-logout",
+          label: "Sair",
           icon: LogOut,
           keywords: ["logout", "deslogar"],
           action: () => logout?.()
@@ -3169,16 +3741,47 @@ export function CommandMenu() {
     }
   ], [navigate, openNewCaseModal, logout])
 
-  // Atalhos Globais
+  // --- 2. BUSCA GLOBAL (Server-Side) ---
+  const { data: searchResults, isLoading: isSearching } = useQuery<CaseSearchResult[]>({
+    queryKey: ['search-cases-global', debouncedQuery],
+    queryFn: async () => {
+      if (!debouncedQuery || debouncedQuery.length < 3) return []
+      try {
+        const res = await api.get('/cases', { 
+          params: { q: debouncedQuery, pageSize: 5, view: 'all' } 
+        })
+        return res.data.data || res.data.items || []
+      } catch (error) {
+        return []
+      }
+    },
+    enabled: open && debouncedQuery.length >= 3,
+    placeholderData: keepPreviousData
+  })
+
+  // --- 3. FILTRAGEM LOCAL ---
+  const filteredGroups = React.useMemo(() => {
+    const lowerQuery = query.toLowerCase()
+    return commandGroups.map(group => ({
+      ...group,
+      items: group.items.filter(item => {
+        if (item.roles && user && !item.roles.includes(user.cargo)) return false
+        if (!query) return true
+        return item.label.toLowerCase().includes(lowerQuery) || 
+               item.keywords?.some(k => k.includes(lowerQuery))
+      })
+    })).filter(group => group.items.length > 0)
+  }, [query, commandGroups, user])
+
+  // --- 4. ATALHOS ---
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         setOpen((open) => !open)
       }
-      // Atalho para Novo Caso (Ctrl+N)
       if (e.key === "n" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-         if (user && ['Agente_Social', 'Especialista', 'Gerente'].includes(user.cargo)) {
+         if (user) {
            e.preventDefault()
            setOpen(false)
            openNewCaseModal()
@@ -3194,96 +3797,136 @@ export function CommandMenu() {
     command()
   }, [])
 
-  const canAccess = (roles?: string[]) => {
-    if (!roles) return true
-    return user && roles.includes(user.cargo)
-  }
-
-  // Lógica para mostrar resultados da busca OU comandos padrão
-  const showSearchResults = query.length >= 3;
-
   return (
     <>
-      <p className="fixed bottom-4 right-4 text-xs text-muted-foreground hidden lg:flex items-center gap-2 bg-background/80 p-2 rounded-md border backdrop-blur-sm pointer-events-none z-50 shadow-sm print:hidden animate-in fade-in slide-in-from-bottom-2">
-        <span className="font-medium">Comandos</span>
-        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm">
+      {/* TRIGGER BUTTON (Floating) */}
+      <button 
+        onClick={() => setOpen(true)}
+        className="fixed bottom-5 right-5 hidden lg:flex items-center gap-2 px-3 py-2 bg-background/90 hover:bg-background border border-border/60 backdrop-blur-md rounded-full shadow-lg transition-all hover:scale-105 active:scale-95 z-50 group ring-1 ring-border/50 hover:ring-primary/20"
+      >
+        <div className="bg-primary/10 p-1.5 rounded-full group-hover:bg-primary/20 transition-colors text-primary">
+            <Search className="h-4 w-4" />
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground pr-1 transition-colors">
+          Navegar
+        </span>
+        <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-border/60 bg-muted/50 px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
           <span className="text-xs">⌘</span>K
         </kbd>
-      </p>
+      </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="overflow-hidden p-0 shadow-xl max-w-[550px] gap-0">
+        <DialogContent className="overflow-hidden p-0 shadow-2xl max-w-2xl gap-0 border-none bg-transparent">
+          <DialogTitle className="sr-only">Menu de Comandos</DialogTitle>
+          
           <Command 
-            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
-            shouldFilter={!showSearchResults} // Desativa filtro local quando busca remota está ativa
+            className="rounded-xl border border-border bg-popover shadow-xl overflow-hidden"
+            shouldFilter={false} // Filtro manual
+            loop
           >
-            <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
-              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            {/* HEADER & INPUT */}
+            <div className="relative border-b border-border/40 bg-muted/10">
               <CommandInput 
-                placeholder="Busque por nome, CPF ou digite um comando..." 
+                placeholder="O que você procura? (Ex: 'Silva', 'Novo Caso', 'Agenda')" 
                 value={query}
                 onValueChange={setQuery}
-                className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-14 text-base px-4 border-none focus:ring-0 bg-transparent"
               />
+              {isSearching && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 text-xs text-muted-foreground animate-pulse bg-background/80 px-2 py-1 rounded-md">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span>Buscando...</span>
+                </div>
+              )}
             </div>
             
-            <CommandList className="max-h-[300px] overflow-y-auto overflow-x-hidden">
-              <CommandEmpty className="py-6 text-center text-sm">
-                {isSearching ? (
-                  <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" /> 
-                    <span>Buscando prontuários...</span>
-                  </div>
-                ) : (
-                  query.length > 0 ? "Nenhum resultado encontrado." : "Comece a digitar..."
-                )}
+            {/* [CORREÇÃO TAILWIND] max-h-125 (500px) */}
+            <CommandList className="max-h-125 overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+              <CommandEmpty className="py-12 text-center text-sm">
+                <div className="flex flex-col items-center gap-3 text-muted-foreground/60">
+                   <div className="bg-muted p-4 rounded-full">
+                      <Search className="h-8 w-8 opacity-40" />
+                   </div>
+                   <p className="font-medium">{query.length < 3 ? "Digite para buscar..." : "Nenhum resultado encontrado."}</p>
+                </div>
               </CommandEmpty>
 
-              {/* MODO BUSCA: Exibe apenas resultados da API */}
-              {showSearchResults && searchResults && (
-                <CommandGroup heading="Prontuários Encontrados">
-                  {searchResults.map((caso: any) => (
+              {/* --- RESULTADOS DE API (Prontuários) --- */}
+              {query.length >= 3 && searchResults && searchResults.length > 0 && (
+                <CommandGroup heading="Prontuários e Casos">
+                  {searchResults.map((caso) => (
                     <CommandItem
                       key={caso.id}
-                      onSelect={() => runCommand(() => navigate(`/dashboard/cases/${caso.id}`))}
-                      value={`${caso.nomeCompleto} ${caso.cpf}`} // Value composto para garantir match se o filtro estiver ativo
-                      className="aria-selected:bg-primary/10"
+                      onSelect={() => runCommand(() => navigate(`/app/cases/${caso.id}`))}
+                      value={`${caso.nomeCompleto}-${caso.id}`} 
+                      className="group flex items-center justify-between py-3 px-3 mx-2 rounded-md aria-selected:bg-primary/10 data-[selected=true]:bg-primary/10 border border-transparent aria-selected:border-primary/20 transition-all cursor-pointer mb-1"
                     >
-                      <FileText className="mr-2 h-4 w-4 text-primary" />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{caso.nomeCompleto}</span>
-                        <span className="text-[10px] text-muted-foreground font-mono">CPF: {caso.cpf}</span>
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 group-aria-selected:bg-blue-200 dark:group-aria-selected:bg-blue-500/30 transition-colors">
+                          <FileText className="h-4.5 w-4.5" />
+                        </div>
+                        <div className="flex flex-col truncate">
+                          <span className="font-semibold text-sm truncate text-foreground group-aria-selected:text-primary transition-colors">
+                            {caso.nomeCompleto}
+                          </span>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground group-aria-selected:text-muted-foreground/80">
+                            <span className="font-mono bg-muted/50 px-1.5 rounded border border-border/50">{caso.cpf}</span>
+                            {caso.status && (
+                               <Badge variant="outline" className="text-[10px] h-4 px-1.5 py-0 border-border/60 bg-background/50">
+                                 {caso.status}
+                               </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center text-muted-foreground/40 group-aria-selected:text-primary/70 transition-colors">
+                          <span className="text-[10px] mr-2 hidden sm:inline-block font-medium uppercase tracking-wider">Abrir</span>
+                          <ArrowRight className="h-4 w-4" />
                       </div>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               )}
-              
-              {/* MODO COMANDOS: Exibe menus estáticos (se não houver busca ativa ou busca curta) */}
-              {!showSearchResults && COMMAND_GROUPS.map((group, groupIndex) => {
-                const authorizedItems = group.items.filter(item => canAccess(item.roles))
-                if (authorizedItems.length === 0) return null
 
-                return (
-                  <React.Fragment key={group.heading}>
-                    {groupIndex > 0 && <CommandSeparator /> }
-                    <CommandGroup heading={group.heading}>
-                      {authorizedItems.map((item) => (
-                        <CommandItem 
-                          key={item.label} 
-                          onSelect={() => runCommand(item.action)}
-                          value={item.label} // Importante para o filtro local funcionar
-                        >
-                          <item.icon className="mr-2 h-4 w-4 opacity-70" />
-                          <span>{item.label}</span>
-                          {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </React.Fragment>
-                )
-              })}
+              {/* Separador Condicional */}
+              {query.length >= 3 && (searchResults?.length ?? 0) > 0 && (
+                 <CommandSeparator className="my-2 mx-2 bg-border/40" />
+              )}
+
+              {/* --- COMANDOS DO SISTEMA --- */}
+              <div className="grid sm:grid-cols-2 gap-2 px-2 pb-2">
+                {filteredGroups.map((group) => (
+                  <CommandGroup key={group.id} heading={group.heading} className="p-0">
+                    {group.items.map((item) => (
+                      <CommandItem 
+                        key={item.id} 
+                        onSelect={() => runCommand(item.action)}
+                        value={item.label}
+                        className="py-2.5 px-3 rounded-md aria-selected:bg-muted aria-selected:text-foreground cursor-pointer transition-colors"
+                      >
+                        <item.icon className="mr-3 h-4 w-4 text-muted-foreground/70 group-aria-selected:text-primary" />
+                        <span className="flex-1 font-medium text-sm">{item.label}</span>
+                        {item.shortcut && <CommandShortcut className="bg-background px-1.5 py-0.5 rounded border border-border/60 text-[10px] font-mono shadow-sm">{item.shortcut}</CommandShortcut>}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))}
+              </div>
+
             </CommandList>
+            
+            {/* FOOTER FIXO */}
+            <div className="border-t border-border/40 bg-muted/20 p-2 px-4 text-[10px] text-muted-foreground flex justify-between items-center backdrop-blur-sm">
+               <div className="flex gap-4">
+                  <span className="flex items-center gap-1.5"><kbd className="bg-background border border-border/60 rounded px-1.5 py-0.5 font-mono shadow-sm">↑↓</kbd> Navegar</span>
+                  <span className="flex items-center gap-1.5"><kbd className="bg-background border border-border/60 rounded px-1.5 py-0.5 font-mono shadow-sm">↵</kbd> Selecionar</span>
+               </div>
+               <div className="font-medium">
+                  SGAC <span className="opacity-50 font-normal">v2.0</span>
+               </div>
+            </div>
+
           </Command>
         </DialogContent>
       </Dialog>
@@ -3294,7 +3937,7 @@ export function CommandMenu() {
 ==================================================================
 FILE: frontend\src\components\common\DataTableFilters.tsx
 ==================================================================
-// frontend/src/components/DataTableFilters.tsx
+// frontend/src/components/common/DataTableFilters.tsx
 import { 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select"
@@ -3304,6 +3947,7 @@ import {
   X, Filter, AlertTriangle, Tag, Users, Fingerprint, Activity 
 } from "lucide-react"
 import { OPTIONS } from "@/constants/options"
+import { cn } from "@/lib/utils"
 
 // Tipagem estrita dos filtros
 export interface FilterState {
@@ -3318,53 +3962,57 @@ interface FiltersProps {
   filters: FilterState
   setFilters: (key: keyof FilterState, value: string) => void
   onClear: () => void
+  className?: string
 }
 
-// Helper para normalizar opções (converte string[] para {label, value}[])
-const normalizeOptions = (options: any[]) => {
+// Helper para normalizar opções
+// Aceita strings simples ou objetos {label, value}
+// Lida com readonly arrays (as const)
+const normalizeOptions = (options: readonly any[] | any[]) => {
   return options.map(opt => {
     if (typeof opt === 'string') return { label: opt, value: opt }
     return opt // Assume que já é { label, value }
   })
 }
 
-export function DataTableFilters({ filters, setFilters, onClear }: FiltersProps) {
+export function DataTableFilters({ filters, setFilters, onClear, className }: FiltersProps) {
   
-  // Configuração Centralizada dos Filtros
+  // Configuração dos Filtros
+  // Usando classes padrão do Tailwind v4 (w-40 = 160px, w-32 = 128px)
   const FILTER_CONFIG = [
     {
       key: 'status',
       label: 'Status',
       icon: Activity,
-      width: 'w-[160px]',
-      options: OPTIONS.status // Já é objeto {label, value}
+      width: 'w-40', 
+      options: OPTIONS.status 
     },
     {
       key: 'urgencia',
       label: 'Urgência',
       icon: AlertTriangle,
-      width: 'w-[160px]',
+      width: 'w-40',
       options: normalizeOptions(OPTIONS.urgencia)
     },
     {
       key: 'violacao',
       label: 'Violação',
       icon: Fingerprint,
-      width: 'w-[160px]',
+      width: 'w-40',
       options: normalizeOptions(OPTIONS.violacao)
     },
     {
       key: 'categoria',
       label: 'Categoria',
       icon: Tag,
-      width: 'w-[150px]',
+      width: 'w-40', 
       options: normalizeOptions(OPTIONS.categoria)
     },
     {
       key: 'sexo',
       label: 'Sexo',
       icon: Users,
-      width: 'w-[130px]',
+      width: 'w-32',
       options: normalizeOptions(OPTIONS.sexo)
     }
   ] as const
@@ -3374,34 +4022,39 @@ export function DataTableFilters({ filters, setFilters, onClear }: FiltersProps)
   const hasActiveFilters = activeFilterCount > 0
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-4 p-1">
+    <div className={cn("flex flex-wrap items-center gap-2 p-1", className)}>
       
-      {/* Label visual (Opcional, mas ajuda no contexto) */}
+      {/* Label visual */}
       <div className="flex items-center text-sm font-medium text-muted-foreground mr-2">
         <Filter className="mr-2 h-4 w-4" />
         Filtros
       </div>
 
-      {/* Loop de Renderização dos Selects */}
+      {/* Renderização dos Selects */}
       {FILTER_CONFIG.map((config) => (
         <Select 
           key={config.key} 
           value={filters[config.key as keyof FilterState]} 
           onValueChange={(val) => setFilters(config.key as keyof FilterState, val)}
         >
-          <SelectTrigger className={`${config.width} h-9 bg-background border-dashed hover:border-solid transition-all`}>
+          <SelectTrigger 
+            className={cn(
+              "h-9 bg-background border-dashed hover:border-solid transition-all text-xs sm:text-sm",
+              config.width
+            )}
+          >
             <div className="flex items-center gap-2 truncate">
-              <config.icon className="h-3.5 w-3.5 text-muted-foreground" />
+              <config.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <SelectValue placeholder={config.label} />
             </div>
           </SelectTrigger>
-          <SelectContent className="max-h-[300px]">
-            <SelectItem value="all" className="text-muted-foreground font-medium">
+          <SelectContent className="max-h-80">
+            <SelectItem value="all" className="text-muted-foreground font-medium text-xs sm:text-sm">
               Todos
             </SelectItem>
             <Separator className="my-1 opacity-50"/>
             {config.options.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
+              <SelectItem key={opt.value} value={opt.value} className="text-xs sm:text-sm">
                 {opt.label}
               </SelectItem>
             ))}
@@ -3409,15 +4062,15 @@ export function DataTableFilters({ filters, setFilters, onClear }: FiltersProps)
         </Select>
       ))}
 
-      {/* Botão de Limpar (Só aparece se houver filtros) */}
+      {/* Botão de Limpar */}
       {hasActiveFilters && (
         <>
-          <div className="h-6 w-px bg-border mx-2 hidden sm:block" /> {/* Separador vertical */}
+          <div className="h-6 w-px bg-border mx-2 hidden sm:block" />
           <Button 
             variant="ghost" 
             size="sm" 
             onClick={onClear} 
-            className="h-9 px-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+            className="h-9 px-3 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs sm:text-sm"
           >
             <X className="mr-2 h-4 w-4" /> 
             Limpar ({activeFilterCount})
@@ -3431,7 +4084,7 @@ export function DataTableFilters({ filters, setFilters, onClear }: FiltersProps)
 ==================================================================
 FILE: frontend\src\components\common\Pagination.tsx
 ==================================================================
-// frontend/src/components/Pagination.tsx
+// frontend/src/components/common/Pagination.tsx
 import {
   ChevronLeft,
   ChevronRight,
@@ -3470,6 +4123,7 @@ export function Pagination({
 }: PaginationProps) {
   
   // --- SANITIZAÇÃO DOS VALORES ---
+  // Garante que nunca teremos NaN ou 0 bugado
   const safeTotalPages = Math.max(1, totalPages || 1)
   const safePage = Math.max(1, Math.min(currentPage || 1, safeTotalPages))
   
@@ -3484,7 +4138,7 @@ export function Pagination({
     <div className="flex flex-col-reverse items-center justify-between gap-4 px-2 py-2 sm:flex-row w-full">
       
       {/* Esquerda: Informação de Contagem */}
-      <div className="flex-1 text-sm text-muted-foreground">
+      <div className="flex-1 text-sm text-muted-foreground text-center sm:text-left">
         {totalItems > 0 ? (
           <span>
             Mostrando <strong>{startItem}-{endItem}</strong> de <strong>{totalItems}</strong> resultados
@@ -3507,13 +4161,13 @@ export function Pagination({
                 onPageSizeChange(Number(value))
               }}
             >
-              <SelectTrigger className="h-8 w-[70px]">
+              <SelectTrigger className="h-8 w-16 sm:w-20">
                 <SelectValue placeholder={pageSize} />
               </SelectTrigger>
               <SelectContent side="top">
-                {pageSizeOptions.map((pageSize) => (
-                  <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize}
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={`${size}`}>
+                    {size}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -3522,7 +4176,7 @@ export function Pagination({
         )}
 
         {/* Indicador de Página */}
-        <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+        <div className="flex w-24 items-center justify-center text-sm font-medium">
           Página {safePage} de {safeTotalPages}
         </div>
 
@@ -3576,7 +4230,7 @@ export function Pagination({
 ==================================================================
 FILE: frontend\src\components\common\SavedFilters.tsx
 ==================================================================
-// frontend/src/components/SavedFilters.tsx
+// frontend/src/components/common/SavedFilters.tsx
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Bookmark, Trash2, Save, Loader2, Star, FilterX } from "lucide-react"
@@ -3668,7 +4322,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
         </Button>
       </PopoverTrigger>
       
-      <PopoverContent align="start" className="w-[320px] p-0 shadow-lg">
+      <PopoverContent align="end" className="w-80 p-0 shadow-lg border-border/60">
         {/* Cabeçalho e Input */}
         <div className="p-4 bg-muted/10 space-y-3">
           <div className="space-y-1">
@@ -3702,7 +4356,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
         <Separator />
 
         {/* Lista de Filtros */}
-        <ScrollArea className="h-[220px]">
+        <ScrollArea className="h-55">
           <div className="p-2 space-y-1">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
@@ -3718,7 +4372,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
               filters.map((f) => (
                 <div 
                   key={f.id} 
-                  className="flex items-center justify-between group rounded-md p-2 hover:bg-accent cursor-pointer transition-all border border-transparent hover:border-border"
+                  className="flex items-center justify-between group rounded-md p-2 hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/50"
                   onClick={() => { 
                     onApply(f.config)
                     setIsOpen(false)
@@ -3762,86 +4416,29 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
 FILE: frontend\src\components\common\theme-provider.tsx
 ==================================================================
 // frontend/src/components/theme-provider.tsx
-import { createContext, useContext, useEffect, useState } from "react"
+"use client"
 
-type Theme = "dark" | "light" | "system"
+import { ThemeProvider as NextThemesProvider, useTheme as useNextTheme } from "next-themes"
+import { type ThemeProviderProps } from "next-themes"
 
-interface ThemeProviderProps {
-  children: React.ReactNode
-  defaultTheme?: Theme
-  storageKey?: string
+export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
 }
 
-interface ThemeProviderState {
-  theme: Theme
-  setTheme: (theme: Theme) => void
-}
-
-const initialState: ThemeProviderState = {
-  theme: "system",
-  setTheme: () => null,
-}
-
-const ThemeContext = createContext<ThemeProviderState>(initialState)
-
-export function ThemeProvider({
-  children,
-  defaultTheme = "system",
-  storageKey = "vite-ui-theme",
-}: ThemeProviderProps) {
-  
-  const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem(storageKey) as Theme) || defaultTheme
-  })
-
-  useEffect(() => {
-    const root = window.document.documentElement
-
-    root.classList.remove("light", "dark")
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-
-      root.classList.add(systemTheme)
-      return
-    }
-
-    root.classList.add(theme)
-  }, [theme])
-
-  const value = {
-    theme,
-    setTheme: (newTheme: Theme) => {
-      localStorage.setItem(storageKey, newTheme)
-      setTheme(newTheme)
-    },
-  }
-
-  // CORREÇÃO: Removido {...props} que causava o erro
-  return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
-  )
-}
-
-export const useTheme = () => {
-  const context = useContext(ThemeContext)
-
-  if (context === undefined)
-    throw new Error("useTheme must be used within a ThemeProvider")
-
-  return context
-}
+// Re-exportar o hook permite importar tudo de um único lugar (@/components/theme-provider)
+export const useTheme = useNextTheme
 
 ==================================================================
 FILE: frontend\src\components\common\ThemeToggle.tsx
 ==================================================================
 // frontend/src/components/ThemeToggle.tsx
-import { Moon, Sun, Monitor, Check } from "lucide-react"
+"use client"
+
+import * as React from "react"
+import { Moon, Sun, Monitor, Check, type LucideIcon } from "lucide-react"
+// [CORREÇÃO] Ajuste do caminho para o arquivo criado anteriormente
+import { useTheme } from "@/components/common/theme-provider"
+
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -3849,49 +4446,81 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-// Ajuste o caminho abaixo conforme onde você salvou o provider (ex: '@/components/theme-provider')
-import { useTheme } from "@/components/common/theme-provider"
+import { cn } from "@/lib/utils"
+
+type ThemeOption = {
+  value: string
+  label: string
+  Icon: LucideIcon
+}
+
+const themeOptions: ThemeOption[] = [
+  { value: "light", label: "Claro", Icon: Sun },
+  { value: "dark", label: "Escuro", Icon: Moon },
+  { value: "system", label: "Sistema", Icon: Monitor },
+]
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
+  const { setTheme, theme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+
+  // Evita erro de hidratação (hydration mismatch)
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return (
+      <Button variant="outline" size="icon" disabled className="opacity-50">
+        <Sun className="h-[1.2rem] w-[1.2rem]" />
+      </Button>
+    )
+  }
+
+  // Define se é modo escuro baseado no tema resolvido (inclui preferência do sistema)
+  const isDark = resolvedTheme === "dark"
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+        <Button variant="outline" size="icon" className="relative border-border">
+          {/* SOLUÇÃO DO ÍCONE PRESO:
+            Controlamos as classes via JS (isDark) em vez de apenas CSS (dark:).
+            Isso garante que o ícone sempre corresponda à realidade do tema.
+          */}
+          <Sun 
+            className={cn(
+              "h-[1.2rem] w-[1.2rem] transition-all duration-300 absolute",
+              isDark ? "rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100"
+            )} 
+          />
+          <Moon 
+            className={cn(
+              "h-[1.2rem] w-[1.2rem] transition-all duration-300 absolute",
+              isDark ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-0 opacity-0"
+            )} 
+          />
           <span className="sr-only">Alternar tema</span>
         </Button>
       </DropdownMenuTrigger>
       
       <DropdownMenuContent align="end">
-        <DropdownMenuItem 
-          onClick={() => setTheme("light")}
-          className="cursor-pointer"
-        >
-          <Sun className="mr-2 h-4 w-4" />
-          <span>Claro</span>
-          {theme === "light" && <Check className="ml-auto h-4 w-4" />}
-        </DropdownMenuItem>
-
-        <DropdownMenuItem 
-          onClick={() => setTheme("dark")}
-          className="cursor-pointer"
-        >
-          <Moon className="mr-2 h-4 w-4" />
-          <span>Escuro</span>
-          {theme === "dark" && <Check className="ml-auto h-4 w-4" />}
-        </DropdownMenuItem>
-
-        <DropdownMenuItem 
-          onClick={() => setTheme("system")}
-          className="cursor-pointer"
-        >
-          <Monitor className="mr-2 h-4 w-4" />
-          <span>Sistema</span>
-          {theme === "system" && <Check className="ml-auto h-4 w-4" />}
-        </DropdownMenuItem>
+        {themeOptions.map(({ value, label, Icon }) => (
+          <DropdownMenuItem
+            key={value}
+            onClick={() => setTheme(value)}
+            className="cursor-pointer gap-2"
+          >
+            <Icon className="h-4 w-4 text-muted-foreground" />
+            <span>{label}</span>
+            <Check
+              className={cn(
+                "ml-auto h-4 w-4 transition-opacity",
+                theme === value ? "opacity-100" : "opacity-0"
+              )}
+            />
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -3916,12 +4545,11 @@ import { cn } from "@/lib/utils"
 
 import { getWhatsAppLink, type MessageTemplate } from "@/utils/whatsapp"
 
-// Estende as props do Button nativo do Shadcn para aceitar 'disabled', 'type', etc.
 interface WhatsAppButtonProps extends ButtonProps {
   phone: string | null | undefined
   name?: string
   template?: MessageTemplate
-  data?: Record<string, any> // Tipagem mais segura que 'any'
+  data?: Record<string, unknown>
   label?: string
   tooltipText?: string
 }
@@ -3936,61 +4564,65 @@ export function WhatsAppButton({
   size = "sm",
   label,
   tooltipText = "Conversar no WhatsApp",
-  ...props // Captura outras props (onClick opcional, disabled, etc.)
+  disabled,
+  onClick,
+  ...props 
 }: WhatsAppButtonProps) {
 
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Impede que o clique propague para a linha da tabela ou card pai
-    e.stopPropagation()
+  const isDisabled = !phone || disabled
 
-    // Se houver um onClick passado via props, executa ele também
-    if (props.onClick) props.onClick(e)
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    if (onClick) onClick(e)
 
     if (!phone) {
-      toast.error("Telefone não cadastrado.")
-      return
+      return toast.error("Telefone não cadastrado.")
     }
 
     const link = getWhatsAppLink(phone, template, { nome: name, ...data })
     
     if (!link) {
-      toast.error("Número de telefone inválido.")
-      return
+      return toast.error("Número de telefone inválido.")
     }
 
     window.open(link, '_blank')
   }
 
-  // Se não tiver telefone, renderizamos desabilitado ou null (dependendo da sua regra de negócio)
-  // Aqui optei por renderizar desabilitado para o usuário saber que a opção existe mas falta dados.
-  const isDisabled = !phone || props.disabled
-
-  // Definição de estilos baseados na variante para parecer com WhatsApp
-  const whatsappStyles = variant === 'default' 
-    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent" // Estilo Sólido
-    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200" // Estilo Outline/Ghost
-
+  // Estilos específicos para a marca WhatsApp (Emerald)
+  const isSolid = variant === 'default'
+  
   return (
     <TooltipProvider>
-      <Tooltip>
+      <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
-          <Button 
-            variant={variant} 
-            size={size} 
-            className={cn(
-              "transition-colors", 
-              !isDisabled && whatsappStyles, 
-              className
-            )}
-            onClick={handleClick}
-            disabled={isDisabled}
-            {...props}
-          >
-            <MessageCircle className={cn("h-4 w-4 shrink-0", label ? "mr-2" : "")} />
-            {label}
-          </Button>
+          {/* Wrapper span é necessário para o Tooltip aparecer 
+            mesmo quando o botão está disabled 
+          */}
+          <span className="inline-block" tabIndex={isDisabled ? 0 : -1}>
+            <Button 
+              variant={variant} 
+              size={size} 
+              disabled={isDisabled}
+              onClick={handleClick}
+              className={cn(
+                "transition-all duration-200",
+                // Estilos para variante Sólida (Default)
+                isSolid && !isDisabled && "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent hover:shadow-md",
+                // Estilos para variante Outline/Ghost
+                !isSolid && !isDisabled && "text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300",
+                // Estilos de desabilitado (mantém consistência com UI)
+                isDisabled && "opacity-50 cursor-not-allowed bg-muted text-muted-foreground",
+                className
+              )}
+              {...props}
+            >
+              <MessageCircle className={cn("h-4 w-4 shrink-0", label ? "mr-2" : "")} />
+              {label}
+            </Button>
+          </span>
         </TooltipTrigger>
-        <TooltipContent>
+        
+        <TooltipContent side="top">
           <p>{isDisabled ? "Sem telefone registrado" : tooltipText}</p>
         </TooltipContent>
       </Tooltip>

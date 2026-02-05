@@ -1,7 +1,14 @@
+// frontend/src/components/ui/scroll-area.tsx
+"use client"
+
 import * as React from "react"
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
 import { cn } from "@/lib/utils"
+
+/* -------------------------------------------------------------------------- */
+/* SCROLL AREA (ROOT)                                                         */
+/* -------------------------------------------------------------------------- */
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
@@ -15,15 +22,40 @@ const ScrollArea = React.forwardRef<
     <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
       {children}
     </ScrollAreaPrimitive.Viewport>
-    <ScrollAreaPrimitive.Scrollbar
-      orientation="vertical"
-      className="flex touch-none select-none p-0.5"
-    >
-      <ScrollAreaPrimitive.Thumb className="flex-1 rounded-full bg-border" />
-    </ScrollAreaPrimitive.Scrollbar>
+    <ScrollBar />
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>
 ))
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
 
-export { ScrollArea }
+/* -------------------------------------------------------------------------- */
+/* SCROLL BAR (COMPONENT)                                                     */
+/* -------------------------------------------------------------------------- */
+
+const ScrollBar = React.forwardRef<
+  React.ElementRef<typeof ScrollAreaPrimitive.Scrollbar>,
+  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Scrollbar>
+>(({ className, orientation = "vertical", ...props }, ref) => (
+  <ScrollAreaPrimitive.Scrollbar
+    ref={ref}
+    orientation={orientation}
+    className={cn(
+      "flex touch-none select-none transition-colors",
+      // Vertical: Fica na direita, largura fixa
+      orientation === "vertical" &&
+        "h-full w-2.5 border-l border-l-transparent p-px",
+      // Horizontal: Fica embaixo, altura fixa
+      orientation === "horizontal" &&
+        "h-2.5 flex-col border-t border-t-transparent p-px",
+      className
+    )}
+    {...props}
+  >
+    <ScrollAreaPrimitive.Thumb 
+      className="relative flex-1 rounded-full bg-border" 
+    />
+  </ScrollAreaPrimitive.Scrollbar>
+))
+ScrollBar.displayName = ScrollAreaPrimitive.Scrollbar.displayName
+
+export { ScrollArea, ScrollBar }

@@ -50,7 +50,10 @@ export async function statsRoutes(app: FastifyInstance) {
     schema: { tags: ['Dashboard'], summary: 'Relatório avançado de vigilância' }
   }, async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
-    if (!['Gerente', 'Especialista'].includes(cargo)) return reply.status(403).send({ message: "Acesso restrito." })
+    // Ajuste aqui para permitir que cargos relevantes acessem
+    if (!['Gerente', 'Especialista', 'Auditor'].includes(cargo)) {
+       return reply.status(403).send({ message: "Acesso restrito." })
+    }
 
     const result = await StatsService.getVigilanceStats()
     return reply.send(result)

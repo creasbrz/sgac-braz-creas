@@ -4,14 +4,15 @@ import { useQuery } from "@tanstack/react-query"
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, LabelList, Cell, Label
 } from "recharts"
-import { FileX, CheckCircle2, Ban, MapPin, PieChart as PieIcon, AlertTriangle } from "lucide-react"
+import { FileX, CheckCircle2, Ban, MapPin, PieChart as PieIcon, AlertTriangle, Download, FileOutput } from "lucide-react"
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 
+// [CORREÇÃO] Removido CardFooter não utilizado
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AlertDescription } from '@/components/ui/alert'
-import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
 import { 
   ChartConfig, 
   ChartContainer, 
@@ -28,19 +29,73 @@ import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
 import { DismissalDoc } from '@/components/reports/templates/DismissalDoc'
 import type { DismissalReportData } from '@/types/case'
 
-// --- CHART CONFIG ---
-const reasonChartConfig = {
-  value: {
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// --- CONFIGURAÇÃO DOS GRÁFICOS ---
+const chartConfig = {
+  cases: {
     label: "Casos",
   },
 } satisfies ChartConfig
 
-const destinationChartConfig = {
-  value: {
-    label: "Encaminhamentos",
-    color: "hsl(var(--chart-2))", // Emerald/Green theme
-  },
-} satisfies ChartConfig
+// --- COMPONENTE DE CARD LOCAL (Design System) ---
+interface StatCardProps {
+  title: string
+  value: string | number
+  description?: string
+  icon: any
+  variant?: 'default' | 'success' | 'error' | 'warning'
+}
+
+const StatCard = ({ title, value, description, icon: Icon, variant = 'default' }: StatCardProps) => {
+  const variants = {
+    default: {
+      container: "border-border/60",
+      icon: "text-primary bg-primary/10",
+      stripe: "bg-primary"
+    },
+    success: {
+      container: "border-status-success-border",
+      icon: "text-status-success-fg bg-status-success-bg",
+      stripe: "bg-status-success-fg"
+    },
+    error: {
+      container: "border-status-error-border",
+      icon: "text-status-error-fg bg-status-error-bg",
+      stripe: "bg-status-error-fg"
+    },
+    warning: {
+      container: "border-status-warning-border",
+      icon: "text-status-warning-fg bg-status-warning-bg",
+      stripe: "bg-status-warning-fg"
+    },
+  }
+
+  const style = variants[variant] || variants.default
+
+  return (
+    <Card className={cn("overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border relative group", style.container)}>
+      <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", style.stripe)} />
+      <div className="p-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1 relative z-10">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">{title}</p>
+            <div className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{value}</div>
+          </div>
+          <div className={cn("p-3 rounded-xl transition-colors border shadow-sm", style.icon)}>
+            <Icon className="w-5 h-5" strokeWidth={2.5} />
+          </div>
+        </div>
+        {description && (
+          <p className="text-xs text-muted-foreground font-medium mt-3">{description}</p>
+        )}
+      </div>
+    </Card>
+  )
+}
 
 // Interface interna da Resposta da API
 interface DismissalApiResponse {
@@ -53,7 +108,6 @@ interface DismissalApiResponse {
 export function DismissalAnalytics() {
   const [months, setMonths] = useState(12)
 
-  // 1. Busca os dados brutos da API
   const { data, isLoading, isError, refetch } = useQuery<DismissalApiResponse>({
     queryKey: ["reports", "dismissals", months],
     queryFn: async () => {
@@ -63,7 +117,6 @@ export function DismissalAnalytics() {
     retry: 1
   })
 
-  // 2. Calcula Estatísticas
   const stats = useMemo(() => {
     if (!data || data.total === 0) return { successRate: 0, evasionRate: 0 }
 
@@ -86,7 +139,6 @@ export function DismissalAnalytics() {
     }
   }, [data])
 
-  // 3. Prepara dados para o PDF
   const pdfData: DismissalReportData | null = useMemo(() => {
     if (!data) return null;
     return {
@@ -99,7 +151,6 @@ export function DismissalAnalytics() {
     }
   }, [data, months, stats]);
 
-  // 4. Processamento de Cores para Gráficos
   const reasonData = useMemo(() => {
     if (!data?.byMotivo) return []
     return data.byMotivo.map((item, index) => ({
@@ -110,19 +161,20 @@ export function DismissalAnalytics() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-1">
+      <div className="space-y-6 p-1 animate-pulse">
         <div className="flex justify-between items-center">
-           <Skeleton className="h-8 w-48" />
-           <Skeleton className="h-9 w-32" />
+           <Skeleton className="h-8 w-48 rounded-lg" />
+           <Skeleton className="h-9 w-32 rounded-lg" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-[400px] w-full" />
-          <Skeleton className="h-[400px] w-full" />
+          {/* [CORREÇÃO] h-[400px] -> h-100 */}
+          <Skeleton className="h-100 w-full rounded-xl" />
+          <Skeleton className="h-100 w-full rounded-xl" />
         </div>
       </div>
     )
@@ -130,13 +182,14 @@ export function DismissalAnalytics() {
 
   if (isError || !data) {
     return (
-      <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed rounded-xl bg-destructive/5 text-destructive animate-in fade-in">
-        <div className="text-center p-4">
-          <AlertTriangle className="h-10 w-10 mx-auto mb-2 opacity-50" />
-          <AlertDescription className="font-medium mb-4 block">
-            Erro na Análise
-          </AlertDescription>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
+      <div className="h-64 flex flex-col items-center justify-center border border-dashed border-status-error-border rounded-xl bg-status-error-bg/10 text-status-error-fg animate-in fade-in">
+        <div className="text-center p-6">
+          <div className="bg-status-error-bg p-3 rounded-full inline-flex mb-3">
+             <AlertTriangle className="h-8 w-8 text-status-error-fg" />
+          </div>
+          <h3 className="text-lg font-bold mb-1">Erro na Análise</h3>
+          <p className="text-sm opacity-80 mb-4">Não foi possível carregar os dados de desligamento.</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="border-status-error-border hover:bg-status-error-bg">
             Tentar novamente
           </Button>
         </div>
@@ -146,9 +199,9 @@ export function DismissalAnalytics() {
 
   if (data.total === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[50vh] space-y-4 text-center border-2 border-dashed rounded-xl bg-muted/10 animate-in fade-in">
-        <div className="p-4 bg-muted/50 rounded-full">
-          <FileX className="h-10 w-10 text-muted-foreground opacity-50" />
+      <div className="flex flex-col items-center justify-center h-[50vh] space-y-4 text-center border border-dashed border-border rounded-xl bg-muted/5 animate-in fade-in">
+        <div className="p-4 bg-muted/30 rounded-full">
+          <FileX className="h-10 w-10 text-muted-foreground/50" />
         </div>
         <div>
           <h3 className="text-lg font-semibold text-foreground">Nenhum desligamento</h3>
@@ -157,7 +210,8 @@ export function DismissalAnalytics() {
           </p>
         </div>
         <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-            <SelectTrigger className="w-[180px]">
+            {/* [CORREÇÃO] w-[180px] -> w-45 */}
+            <SelectTrigger className="w-45 bg-background">
                 <SelectValue placeholder="Período" />
             </SelectTrigger>
             <SelectContent>
@@ -170,17 +224,24 @@ export function DismissalAnalytics() {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-500">
       
       {/* HEADER & CONTROLS */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/40 pb-6">
         <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Indicadores de Desligamento</h2>
-            <p className="text-sm text-muted-foreground mt-1">Análise qualitativa dos encerramentos e destinos.</p>
+            <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <div className="p-2 bg-status-neutral-bg rounded-lg border border-status-neutral-border">
+                   <FileOutput className="h-5 w-5 text-status-neutral-fg" />
+                </div>
+                Indicadores de Desligamento
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1 pl-1">Análise qualitativa dos encerramentos e destinos pós-alta.</p>
         </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+        
+        <div className="flex flex-wrap gap-3 w-full sm:w-auto items-center">
             <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-                <SelectTrigger className="w-full sm:w-[140px] h-9">
+                {/* [CORREÇÃO] sm:w-[140px] -> sm:w-35 */}
+                <SelectTrigger className="w-full sm:w-35 h-9 bg-background">
                     <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent>
@@ -193,83 +254,99 @@ export function DismissalAnalytics() {
             
             {/* Botão de PDF */}
             {pdfData && (
-              <div className="flex">
-                  <PDFDownloadButton 
-                    document={<DismissalDoc data={pdfData} />}
-                    fileName={`Desligamentos_${months}meses.pdf`}
-                    label="Exportar PDF"
-                    variant="outline"
-                    size="sm"
-                  />
-              </div>
+              <PDFDownloadButton 
+                document={<DismissalDoc data={pdfData} />}
+                fileName={`Desligamentos_${months}meses.pdf`}
+                label="PDF"
+                variant="outline"
+                size="sm"
+                className="h-9 shadow-sm"
+                icon={<Download className="h-4 w-4" />}
+              />
             )}
         </div>
       </div>
 
       {/* 1. KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <DashboardStatCard 
+        <StatCard 
           title="Total de Desligamentos" 
           value={data.total} 
           description="Casos encerrados no período"
           icon={FileX} 
           variant="default" 
         />
-        <DashboardStatCard 
+        <StatCard 
           title="Taxa de Sucesso" 
           value={`${stats.successRate}%`} 
-          description="Autonomia alcançada"
+          description="Autonomia alcançada (Minimização)"
           icon={CheckCircle2} 
-          variant="green" 
+          variant="success" 
         />
-        <DashboardStatCard 
+        <StatCard 
           title="Taxa de Evasão" 
           value={`${stats.evasionRate}%`} 
           description="Recusa ou não localizado"
           icon={Ban} 
-          variant="rose" 
+          variant="error" 
         />
       </div>
 
       {/* 2. CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Motivos (Pie Chart - Modernizado) */}
-        <Card className="flex flex-col shadow-sm border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
+        {/* Motivos (Donut Chart Moderno) */}
+        <Card className="flex flex-col shadow-sm border-border/60 bg-card overflow-hidden">
+          <CardHeader className="pb-2 border-b border-border/40 bg-muted/10">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
               <PieIcon className="h-4 w-4 text-primary"/> Motivos do Desligamento
             </CardTitle>
-            <CardDescription>Distribuição proporcional por causa.</CardDescription>
+            <CardDescription className="text-xs">Distribuição proporcional por causa de encerramento.</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 min-h-[350px]">
-            <ChartContainer config={reasonChartConfig} className="mx-auto aspect-square max-h-[350px]">
+          {/* [CORREÇÃO] min-h-[350px] -> min-h-87.5 */}
+          <CardContent className="flex-1 min-h-87.5 p-6">
+            {/* [CORREÇÃO] max-h-[300px] -> max-h-75 */}
+            <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-75 w-full">
               <PieChart>
                 <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                 <Pie
                   data={reasonData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={80} // Donut Style
-                  strokeWidth={3}
-                  stroke="hsl(var(--card))" // Borda na cor do card para separar
-                  paddingAngle={1}
+                  innerRadius={70} 
+                  strokeWidth={4}
+                  stroke="hsl(var(--background))" 
+                  paddingAngle={2}
                 >
-                  {/* Cores Personalizadas */}
                   {reasonData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                   
-                  {/* Label Central */}
+                  {/* [CORREÇÃO] Label Centralizado com coordenadas explícitas do viewBox */}
                   <Label 
                     content={({ viewBox }) => {
                       if (viewBox && "cx" in viewBox && "cy" in viewBox) {
                         return (
-                          <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                            <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-4xl font-bold tracking-tight">
+                          <text 
+                            x={viewBox.cx} 
+                            y={viewBox.cy} 
+                            textAnchor="middle" 
+                            dominantBaseline="middle"
+                          >
+                            <tspan 
+                              x={viewBox.cx} 
+                              y={viewBox.cy} 
+                              dy="-0.5em" /* Ajuste fino vertical para o número */
+                              className="fill-foreground text-4xl font-bold tracking-tighter"
+                            >
                               {data.total}
                             </tspan>
-                            <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs font-semibold uppercase tracking-wider">
+                            <tspan 
+                              x={viewBox.cx} 
+                              y={viewBox.cy} 
+                              dy="1.5em" /* Ajuste fino vertical para o texto */
+                              className="fill-muted-foreground text-xs font-semibold uppercase tracking-wider"
+                            >
                               CASOS
                             </tspan>
                           </text>
@@ -278,10 +355,9 @@ export function DismissalAnalytics() {
                     }}
                   />
                 </Pie>
-                {/* [CORREÇÃO] Adicionado payload={[]} para satisfazer o TypeScript no Recharts v3 */}
                 <ChartLegend 
                   content={<ChartLegendContent nameKey="name" payload={[]} />} 
-                  className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-auto [&>*]:justify-center" 
+                  className="-translate-y-2 flex-wrap gap-2 text-xs font-medium mt-4" 
                 />
               </PieChart>
             </ChartContainer>
@@ -289,51 +365,56 @@ export function DismissalAnalytics() {
         </Card>
 
         {/* Destinos (Bar Chart Horizontal) */}
-        <Card className="flex flex-col shadow-sm border-border/60">
-          <CardHeader className="pb-2">
+        <Card className="flex flex-col shadow-sm border-border/60 bg-card overflow-hidden">
+          <CardHeader className="pb-2 border-b border-border/40 bg-muted/10">
             <div className="flex items-center justify-between">
                 <div>
-                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-emerald-500"/> Destinos Pós-Alta
                     </CardTitle>
-                    <CardDescription>Encaminhamentos realizados.</CardDescription>
+                    <CardDescription className="text-xs">Encaminhamentos realizados após o desligamento.</CardDescription>
                 </div>
             </div>
           </CardHeader>
-          <CardContent className="flex-1 min-h-[350px]">
-            <ChartContainer config={destinationChartConfig} className="w-full h-full">
+          {/* [CORREÇÃO] min-h-[350px] -> min-h-87.5 */}
+          <CardContent className="flex-1 min-h-87.5 p-6">
+            {/* [CORREÇÃO] max-h-[300px] -> max-h-75 */}
+            <ChartContainer config={chartConfig} className="w-full h-full max-h-75">
               <BarChart 
                 accessibilityLayer
                 data={data.byDestino} 
                 layout="vertical" 
-                margin={{ left: 0, right: 30, top: 10, bottom: 0 }}
+                margin={{ left: 0, right: 40, top: 0, bottom: 0 }}
+                barCategoryGap="20%"
               >
-                <CartesianGrid horizontal={true} vertical={false} strokeDasharray="3 3" strokeOpacity={0.4} />
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4} />
                 <XAxis type="number" hide />
                 <YAxis 
                     dataKey="name" 
                     type="category" 
-                    width={130} 
+                    width={120} 
                     tickLine={false} 
                     axisLine={false} 
                     tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
-                    // Truncate
-                    tickFormatter={(val) => val.length > 20 ? `${val.slice(0, 20)}...` : val}
+                    // Truncate longo
+                    tickFormatter={(val) => val.length > 18 ? `${val.slice(0, 18)}...` : val}
                 />
                 <ChartTooltip 
                     cursor={{fill: 'hsl(var(--muted)/0.2)', radius: 4}} 
-                    content={<ChartTooltipContent indicator="dashed" />} 
+                    content={<ChartTooltipContent indicator="line" />} 
                 />
                 <Bar 
                   dataKey="value" 
-                  fill="var(--color-value)" 
+                  fill="hsl(var(--chart-2))" 
                   radius={[0, 4, 4, 0]} 
-                  barSize={24}
+                  barSize={20}
+                  className="opacity-90 hover:opacity-100 transition-opacity"
                 >
                   <LabelList 
                     dataKey="value" 
                     position="right" 
                     className="fill-foreground font-bold text-xs" 
+                    formatter={(val: any) => Number(val) > 0 ? val : ''}
                   />
                 </Bar>
               </BarChart>

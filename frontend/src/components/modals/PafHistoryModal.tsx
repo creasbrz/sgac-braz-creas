@@ -4,7 +4,8 @@ import { format, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { 
   Loader2, History, AlertCircle, FileText, Target, 
-  Lightbulb, Calendar, User, GitCommit} from 'lucide-react'
+  Lightbulb, Calendar, User, GitCommit
+} from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { PafVersion } from '@/types/case'
@@ -51,14 +52,14 @@ interface HistoryItemProps {
 
 function HistoryItem({ version, versionNumber, isLast }: HistoryItemProps) {
   return (
-    <div className="relative pl-8 pb-1">
+    <div className="relative pl-8 pb-1 group">
       {/* Linha da Timeline */}
       {!isLast && (
-        <div className="absolute left-[11px] top-6 bottom-[-24px] w-px bg-border group-hover:bg-primary/30 transition-colors" />
+        <div className="absolute left-2.75 top-6 -bottom-6 w-px bg-border group-hover:bg-primary/40 transition-colors" />
       )}
       
       {/* Marcador (Dot) */}
-      <div className="absolute left-[4px] top-5 h-3.5 w-3.5 rounded-full border-2 border-primary bg-background z-10 shadow-sm" />
+      <div className="absolute left-1 top-5 h-3.5 w-3.5 rounded-full border-2 border-primary bg-background z-10 shadow-sm transition-transform group-hover:scale-110" />
 
       <AccordionItem 
         value={version.id} 
@@ -95,7 +96,7 @@ function HistoryItem({ version, versionNumber, isLast }: HistoryItemProps) {
               <h4 className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground tracking-wider">
                 <FileText className="h-3.5 w-3.5" /> Diagnóstico
               </h4>
-              <div className="text-sm leading-relaxed p-3 bg-background rounded-md border text-foreground/90 whitespace-pre-wrap">
+              <div className="text-sm leading-relaxed p-3 bg-background rounded-md border text-foreground/90 whitespace-pre-wrap shadow-sm">
                 {version.diagnostico || <EmptyField />}
               </div>
             </div>
@@ -105,7 +106,7 @@ function HistoryItem({ version, versionNumber, isLast }: HistoryItemProps) {
               <h4 className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground tracking-wider">
                 <Target className="h-3.5 w-3.5" /> Objetivos
               </h4>
-              <div className="text-sm leading-relaxed p-3 bg-background rounded-md border text-foreground/90 whitespace-pre-wrap">
+              <div className="text-sm leading-relaxed p-3 bg-background rounded-md border text-foreground/90 whitespace-pre-wrap shadow-sm">
                 {version.objetivos || <EmptyField />}
               </div>
             </div>
@@ -115,12 +116,12 @@ function HistoryItem({ version, versionNumber, isLast }: HistoryItemProps) {
               <h4 className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground tracking-wider">
                 <Lightbulb className="h-3.5 w-3.5" /> Estratégias
               </h4>
-              <div className="text-sm leading-relaxed p-3 bg-background rounded-md border text-foreground/90 whitespace-pre-wrap">
+              <div className="text-sm leading-relaxed p-3 bg-background rounded-md border text-foreground/90 whitespace-pre-wrap shadow-sm">
                 {version.estrategias || <EmptyField />}
               </div>
             </div>
 
-            <Separator />
+            <Separator className="bg-border/60" />
 
             {/* Rodapé: Prazo */}
             <div className="flex items-center justify-between pt-1">
@@ -128,7 +129,7 @@ function HistoryItem({ version, versionNumber, isLast }: HistoryItemProps) {
                 <Calendar className="h-3.5 w-3.5" />
                 <span>Prazo pactuado nesta versão:</span>
               </div>
-              <Badge variant="secondary" className="font-mono text-xs">
+              <Badge variant="secondary" className="font-mono text-xs border-border/50 bg-background">
                 {formatDate(version.deadline, 'dd/MM/yyyy')}
               </Badge>
             </div>
@@ -156,15 +157,17 @@ export function PafHistoryModal({ caseId, isOpen, onOpenChange }: PafHistoryModa
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-background">
         
         {/* Header */}
-        <DialogHeader className="p-6 pb-4 border-b bg-muted/10 z-10 shadow-sm">
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            <History className="h-5 w-5 text-primary" />
+        <DialogHeader className="p-6 pb-4 border-b bg-muted/10 z-10 shadow-sm shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
+            <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20 text-primary">
+               <History className="h-5 w-5" />
+            </div>
             Histórico do PAF
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-muted-foreground/80">
             Linha do tempo das repactuações e alterações do plano.
           </DialogDescription>
         </DialogHeader>
@@ -188,12 +191,12 @@ export function PafHistoryModal({ caseId, isOpen, onOpenChange }: PafHistoryModa
             </div>
           ) : !hasHistory ? (
             <div className="flex flex-col items-center justify-center h-full py-12 gap-3 text-muted-foreground/60">
-              <div className="bg-muted/30 p-4 rounded-full">
+              <div className="bg-muted/30 p-4 rounded-full border border-border/50">
                 <GitCommit className="h-8 w-8 opacity-50" />
               </div>
-              <div className="text-center">
+              <div className="text-center space-y-1">
                 <p className="font-medium text-foreground">Nenhuma versão anterior</p>
-                <p className="text-xs max-w-[200px] mt-1">O histórico será criado automaticamente após a primeira repactuação do plano.</p>
+                <p className="text-xs max-w-50 mt-1 mx-auto">O histórico será criado automaticamente após a primeira repactuação do plano.</p>
               </div>
             </div>
           ) : (

@@ -1,34 +1,78 @@
+// frontend/src/components/ui/masked-input.tsx
 import * as React from "react"
 import { IMaskInput } from "react-imask"
+
 import { cn } from "@/lib/utils"
+
+/* -------------------------------------------------------------------------- */
+/* TYPES                                                                      */
+/* -------------------------------------------------------------------------- */
 
 interface MaskedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   mask: string | object
-  onAccept?: (value: string) => void
+  unmask?: boolean // Padrão: true (Retorna o valor cru/raw)
+  onAccept?: (value: string, mask: any) => void
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void
-  // Permite passar definições customizadas se necessário
   definitions?: any
+  // Radix/Shadcn pattern: asChild não é suportado aqui pois IMaskInput é o wrapper
 }
 
+/* -------------------------------------------------------------------------- */
+/* COMPONENT                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const MaskedInput = React.forwardRef<HTMLInputElement, MaskedInputProps>(
-  ({ className, mask, onAccept, onChange, ...props }, ref) => {
+  ({ className, mask, unmask = true, onAccept, onChange, ...props }, ref) => {
     return (
       <IMaskInput
+        // Ref forwarding para o elemento input interno do IMask
+        inputRef={ref as React.RefObject<HTMLInputElement>}
+        
+        // Configuração da Máscara
+        mask={mask}
+        unmask={unmask} // 'true' remove formatação (ex: '12345678900'), 'false' mantém (ex: '123.456.789-00')
+        
+        // Estilização: Cópia exata do componente Input padrão para consistência
         className={cn(
-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          // Layout & Typography
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background",
+          // File Inputs
+          "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+          // Placeholder
+          "placeholder:text-muted-foreground",
+          // Visuals & Motion
+          "shadow-sm transition-colors duration-200",
+          // States
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0",
+          "disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
-        mask={mask}
-        unmask={true} // Limpa a formatação ao enviar para o state do React
-        onAccept={(value: any) => {
-          if (onChange) onChange({ target: { value } } as React.ChangeEvent<HTMLInputElement>)
-          if (onAccept) onAccept(value)
+        
+        // Event Handling: Adapta o evento do IMask para o padrão React/HTML
+        onAccept={(value: string, maskRef: any) => {
+          if (onChange) {
+            // Cria um evento sintético para bibliotecas como React Hook Form
+            const event = {
+              target: {
+                name: props.name,
+                value: value,
+              },
+            } as React.ChangeEvent<HTMLInputElement>
+            
+            onChange(event)
+          }
+          
+          if (onAccept) {
+            onAccept(value, maskRef)
+          }
         }}
-        inputRef={ref as any} 
+        
         {...props as any}
       />
     )
   }
 )
+
 MaskedInput.displayName = "MaskedInput"
+
 export { MaskedInput }

@@ -1,3 +1,4 @@
+// frontend/src/components/ui/form.tsx
 "use client"
 
 import * as React from "react"
@@ -16,6 +17,10 @@ import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 
 const Form = FormProvider
+
+/* -------------------------------------------------------------------------- */
+/* CONTEXTOS E HOOKS                                                          */
+/* -------------------------------------------------------------------------- */
 
 type FormFieldContextValue<
   TFieldValues extends FieldValues = FieldValues,
@@ -45,11 +50,11 @@ const useFormField = () => {
   const { getFieldState, formState } = useFormContext()
 
   if (!fieldContext) {
-    throw new Error("useFormField should be used within <FormField>")
+    throw new Error("useFormField deve ser usado dentro de <FormField>")
   }
 
   if (!itemContext) {
-    throw new Error("useFormField should be used within <FormItem>")
+    throw new Error("useFormField deve ser usado dentro de <FormItem>")
   }
 
   const fieldState = getFieldState(fieldContext.name, formState)
@@ -72,6 +77,10 @@ type FormItemContextValue = {
 
 const FormItemContext = React.createContext<FormItemContextValue | null>(null)
 
+/* -------------------------------------------------------------------------- */
+/* COMPONENTES DE UI                                                          */
+/* -------------------------------------------------------------------------- */
+
 const FormItem = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -80,7 +89,11 @@ const FormItem = React.forwardRef<
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div ref={ref} className={cn("space-y-2", className)} {...props} />
+      <div 
+        ref={ref} 
+        className={cn("space-y-2", className)} 
+        {...props} 
+      />
     </FormItemContext.Provider>
   )
 })
@@ -95,7 +108,11 @@ const FormLabel = React.forwardRef<
   return (
     <Label
       ref={ref}
-      className={cn(error && "text-destructive", className)}
+      className={cn(
+        // Feedback visual: Muda a cor se houver erro
+        error && "text-destructive",
+        className
+      )}
       htmlFor={formItemId}
       {...props}
     />
@@ -157,7 +174,11 @@ const FormMessage = React.forwardRef<
     <p
       ref={ref}
       id={formMessageId}
-      className={cn("text-[0.8rem] font-medium text-destructive", className)}
+      // MODERNIZAÇÃO: Adicionado animate-in para suavizar a aparição do erro
+      className={cn(
+        "text-[0.8rem] font-medium text-destructive animate-in slide-in-from-top-1 fade-in-0 duration-200",
+        className
+      )}
       {...props}
     >
       {body}

@@ -1,52 +1,53 @@
 // frontend/src/components/reports/PDFDownloadButton.tsx
 import React, { useEffect, useState } from 'react';
 import { PDFDownloadLink } from '@react-pdf/renderer';
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonProps } from '@/components/ui/button';
 import { Printer, Loader2, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-interface PDFButtonProps {
-  document: React.ReactElement;
+interface PDFDownloadButtonProps extends ButtonProps {
+  // [CORREÇÃO] <any> permite que o PDFDownloadLink aceite o componente Document sem conflito de tipos
+  document: React.ReactElement<any>; 
   fileName: string;
   label?: string;
-  size?: 'sm' | 'default' | 'lg' | 'icon';
-  variant?: 'default' | 'outline' | 'ghost' | 'secondary' | 'destructive';
-  className?: string; // [CORREÇÃO] Adicionado para permitir estilização externa
+  icon?: React.ReactNode;
 }
 
 export function PDFDownloadButton({ 
   document, 
   fileName, 
   label = "PDF", 
-  size = "sm",
+  icon,
+  className,
   variant = "outline",
-  className 
-}: PDFButtonProps) {
+  size = "sm",
+  disabled,
+  ...props 
+}: PDFDownloadButtonProps) {
+  
   const [isClient, setIsClient] = useState(false);
 
-  // Garante que o react-pdf só execute no cliente para evitar erros de SSR/Hydration
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Estado inicial de carregamento (antes de montar)
   if (!isClient) {
     return (
-      <Button variant={variant} size={size} disabled className={className}>
-        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+      <Button variant={variant} size={size} disabled className={cn("gap-2", className)} {...props}>
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Carregando...
       </Button>
     );
   }
 
   return (
-    <PDFDownloadLink document={document} fileName={fileName}>
+    <PDFDownloadLink document={document} fileName={fileName} className="text-decoration-none">
       {({ loading, error }) => {
-        // Tratamento de erro visual caso a geração falhe (ex: erro de fonte)
         if (error) {
           console.error("Erro na geração do PDF:", error);
           return (
-            <Button variant="destructive" size={size} disabled className={className}>
-              <AlertCircle className="mr-2 h-3.5 w-3.5" />
+            <Button variant="destructive" size={size} disabled className={cn("gap-2", className)} {...props}>
+              <AlertCircle className="h-3.5 w-3.5" />
               Erro ao Gerar
             </Button>
           );
@@ -56,17 +57,18 @@ export function PDFDownloadButton({
           <Button 
             variant={variant} 
             size={size} 
-            disabled={loading} 
-            className={className}
+            disabled={loading || disabled} 
+            className={cn("gap-2", className)}
+            {...props}
           >
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                Gerando...
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {label}
               </>
             ) : (
               <>
-                <Printer className="mr-2 h-3.5 w-3.5" />
+                {icon || <Printer className="h-3.5 w-3.5" />}
                 {label}
               </>
             )}

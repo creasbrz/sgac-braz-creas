@@ -1,19 +1,59 @@
 // frontend/src/types/case.ts
 import { CaseStatusType } from '@/constants/cases/definitions'
 
-// --- TIPOS AUXILIARES ---
+// ==========================================
+// 1. TIPOS PRIMITIVOS E ENUMS
+// ==========================================
 
 export type CaseStatus = CaseStatusType;
 
+/**
+ * Origem da demanda conforme tipologia do SUAS.
+ * @see Prisma Enum 'CaseOrigin'
+ */
 export type CaseOrigin = 
   | 'ESPONTANEA' 
   | 'DOCUMENTAL' 
   | 'REFERENCIADA' 
   | 'BUSCA_ATIVA';
 
-export type ContactType = 'Pessoal' | 'Residencial' | 'Trabalho' | 'Vizinho' | 'Parente' | 'Outro';
+export type ContactType = 
+  | 'Pessoal' 
+  | 'Residencial' 
+  | 'Trabalho' 
+  | 'Vizinho' 
+  | 'Parente' 
+  | 'Outro';
 
-// --- SUB-INTERFACES ---
+export type ServiceDeliverableStatus = 
+  | 'SOLICITADO' 
+  | 'CONCEDIDO' 
+  | 'NEGADO' 
+  | 'ENTREGUE' 
+  | 'PENDENTE' 
+  | 'CANCELADO';
+
+export type ReferralStatus = 
+  | 'PENDENTE' 
+  | 'CONCLUIDO' 
+  | 'NEGADO' 
+  | 'CANCELADO';
+
+// --- Utilitários Genéricos ---
+
+export interface UserOption {
+  id: string
+  nome: string
+}
+
+export interface StatData {
+  name: string
+  value: number
+}
+
+// ==========================================
+// 2. OBJETOS DE VALOR E SUB-ENTIDADES
+// ==========================================
 
 export interface Contact {
   numero: string
@@ -28,11 +68,14 @@ export interface EconomicData {
   rendaPerCapita: number
 }
 
+/**
+ * Representa um Benefício Eventual ou Transferência de Renda.
+ */
 export interface ServiceDeliverable {
   id: string
   tipo: string
-  status: 'SOLICITADO' | 'CONCEDIDO' | 'NEGADO' | 'ENTREGUE' | 'PENDENTE' | 'CANCELADO'
-  dataSolicitacao: string
+  status: ServiceDeliverableStatus
+  dataSolicitacao: string // ISO Date
   dataEntrega?: string | null
   observacoes?: string | null
   responsavel?: { nome: string }
@@ -56,19 +99,19 @@ export interface FamilyMember {
 export interface CaseAttachment {
   id: string
   nome: string
-  tipo: string
+  tipo: string // MIME type ou extensão
   url: string
-  tamanho?: number
+  tamanho?: number // em bytes
   createdAt: string
   autor: { nome: string }
 }
 
 export interface Referral {
   id: string
-  tipo: string
+  tipo: string // Ex: Saúde, Educação
   instituicao: string
   motivo: string
-  status: 'PENDENTE' | 'CONCLUIDO' | 'NEGADO' | 'CANCELADO'
+  status: ReferralStatus
   dataEnvio: string
   retorno?: string | null
   createdAt: string
@@ -93,12 +136,16 @@ export interface Evolution {
   autor: { id: string; nome: string; cargo?: string }
 }
 
+// ==========================================
+// 3. PAF (PLANO DE ACOMPANHAMENTO FAMILIAR)
+// ==========================================
+
 export interface PafVersion {
   id: string
   diagnostico: string
   objetivos: string
   estrategias: string
-  deadline: string
+  deadline: string // Data prevista para reavaliação
   savedAt: string
   autor: { nome: string }
   versaoNumero?: number
@@ -116,35 +163,33 @@ export interface PafData {
   autor: { id: string; nome: string }
 }
 
-export interface UserOption {
-  id: string
-  nome: string
-}
+// ==========================================
+// 4. ENTIDADES PRINCIPAIS (AGGREGATES)
+// ==========================================
 
-// --- INTERFACES PRINCIPAIS ---
-
+/**
+ * Objeto completo do Prontuário para visualização detalhada.
+ */
 export interface CaseDetailData {
   id: string
   createdAt: string
   updatedAt: string
 
-  // 1. Identificação
+  // --- Identificação ---
   nomeCompleto: string
   nomeSocial?: string | null
   cpf: string
-  nascimento: string
+  nascimento: string // ISO Date
   sexo: string
   
-  // Sócio-econômico do Titular
+  // --- Sócio-econômico ---
   ocupacao?: string | null
   renda?: number | null
   dadosEconomicos?: EconomicData
 
-  // 2. Contatos e Endereço
+  // --- Contatos e Localização ---
   contatos?: Contact[] 
   telefone?: string | null 
-  
-  // Endereço Detalhado
   endereco?: string | null 
   endereco_logradouro?: string | null
   endereco_complemento?: string | null
@@ -156,34 +201,32 @@ export interface CaseDetailData {
   latitude?: number | null
   longitude?: number | null
 
-  // 3. Responsável (Menores)
+  // --- Responsável (para menores de idade) ---
   responsavelLegal?: string | null
   parentescoResponsavel?: string | null
 
-  // 4. Dados Técnicos
+  // --- Dados Técnicos da Demanda ---
   dataEntrada: string
-  urgencia: string
+  urgencia: 'BAIXA' | 'MEDIA' | 'ALTA' | string
   violacao: string[] 
-  categoria: string
-  orgaoDemandante: string
+  categoria: string // Ex: PAEFI, PAIF
+  orgaoDemandante: string 
   origem: CaseOrigin
   status: CaseStatus
 
-  // 5. Administrativo
+  // --- Administrativo / SEI ---
   numeroSei: string | null
   linkSei: string | null
   observacoes: string | null
-  
-  // [NOVOS CAMPOS] Controle de Resposta SEI
   seiRespondido: boolean
   dataRespostaSei: string | null
   
-  // 6. Relacionamentos (Objetos)
+  // --- Equipe Técnica ---
   criadoPor: { nome: string }
   agenteAcolhida: { id: string, nome: string } | null
   especialistaPAEFI: { id: string, nome: string } | null
 
-  // 7. Listas (Includes do Prisma)
+  // --- Relacionamentos ---
   beneficios: string[] 
   logs: CaseLog[]
   familia?: FamilyMember[]
@@ -193,7 +236,7 @@ export interface CaseDetailData {
   anexos?: CaseAttachment[]
   paf?: PafData | null
 
-  // 8. Desligamento
+  // --- Dados de Desligamento ---
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
@@ -201,6 +244,9 @@ export interface CaseDetailData {
   dataDesligamento?: string | null
 }
 
+/**
+ * Objeto resumido para listagens e tabelas.
+ */
 export interface CaseSummary {
   id: string
   nomeCompleto: string
@@ -221,126 +267,63 @@ export interface CaseSummary {
   especialistaPAEFI: { nome: string } | null
 }
 
-// --- INTERFACES DE RELATÓRIOS (PDF & DASHBOARDS) ---
-
-export interface StatData {
-  name: string
-  value: number
-}
+// ==========================================
+// 5. RELATÓRIOS E INTEGRAÇÃO BI
+// ==========================================
 
 export interface UrgencyStatData extends StatData {
-  weight: number
+  weight: number // Peso para cálculo de prioridade
 }
 
-// --- ESTRUTURAS DO RMA OFICIAL ---
-
-export interface AgeBreakdown {
-  masculino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
-  feminino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
-  total: number;
+export interface MapPointData {
+  id: string
+  lat: number
+  lng: number
+  intensity: number // 0 a 1 para heatmap
+  label: string
+  violacao?: string[]
+  categoria?: string
+  endereco?: string | null
 }
 
-export interface ChildBreakdown {
-  masculino: { a0_6: number; a7_12: number; a13_17: number };
-  feminino: { a0_6: number; a7_12: number; a13_17: number };
-  total: number;
+export interface ObservatoryData {
+  evolutionData: { name: string; novos: number; desligados: number }[]
+  violationData: StatData[]
+  urgencyData: UrgencyStatData[]
+  
+  // Fluxos de Rede
+  originData: StatData[]
+  networkData: StatData[]
+  entryTypeData: StatData[]
+
+  benefitsData: StatData[]
+  
+  collectiveData: { 
+    totalGroups: number;
+    totalParticipants: number;
+    avgAttendance: number;
+  }
+  
+  efficiencyData: { 
+    avgPermanence: number; 
+    avgWaitTime: number; 
+    retentionRate?: number;
+    totalClosed: number 
+  }
+  
+  // Demografia
+  ageData: StatData[]
+  sexData: StatData[]
+  
+  // Território
+  mapData: MapPointData[]
 }
-
-export interface ChildLaborBreakdown {
-  masculino: { a0_12: number; a13_15: number };
-  feminino: { a0_12: number; a13_15: number };
-  total: number;
-}
-
-export interface RmaReportData {
-  periodo?: string;
-  bloco1: {
-    // A - Volume
-    a1_total_acompanhamento: number;
-    a2_novos_casos: number;
-    
-    // B - Perfil
-    b1_bolsa_familia: number;
-    b2_bpc: number;
-    b3_trabalho_infantil: number;
-    b4_acolhimento: number;
-    b5_drogas: number;
-    b6_vitimas: AgeBreakdown;
-    b7_mse: number;
-
-    // C - Crianças
-    c1_infamiliar: ChildBreakdown;
-    c2_abuso: ChildBreakdown;
-    c3_exploracao: ChildBreakdown;
-    c4_negligencia: ChildBreakdown;
-    c5_trabalho_infantil: ChildLaborBreakdown;
-
-    // D - Idosos
-    d1_violencia: number;
-    d2_negligencia: number;
-
-    // E - PCD
-    e1_violencia: AgeBreakdown;
-    e2_negligencia: AgeBreakdown;
-
-    // F - Mulheres
-    f1_mulheres: number;
-
-    // G - Tráfico
-    g1_trafico: AgeBreakdown;
-
-    // H - Discriminação
-    h1_discriminacao: number;
-
-    // I - Pop Rua
-    i1_rua: AgeBreakdown;
-  };
-  bloco2: {
-    m1_individual: number;
-    m2_grupo: number;
-    m3_cras: number;
-    m4_visitas: number;
-  };
-}
-
-// --- OUTROS RELATÓRIOS ---
 
 export interface ManagementReportData {
   periodo: string
   stats: { ativos: number; acolhidas: number; paefi: number; novos: number; desligados: number }
   cargaHoraria: { agentes: StatData[]; especialistas: StatData[] }
   vigilancia?: { violacoes: StatData[]; demografia: StatData[]; territorio?: StatData[] }
-}
-
-export interface ObservatoryData {
-  evolutionData: { name: string; novos: number; desligados: number }[]
-  violationData: StatData[]
-  urgencyData: UrgencyStatData[] 
-  originData: StatData[]
-  networkData: StatData[]
-  benefitsData: StatData[]
-  collectiveData: { 
-    totalGroups: number;
-    totalParticipants: number;
-    avgAttendance: number;
-  }
-  efficiencyData: { 
-    avgPermanence: number; 
-    avgWaitTime: number; 
-    retentionRate: number; 
-    totalClosed: number 
-  }
-  ageData: StatData[]
-  sexData: StatData[]
-}
-
-export interface DismissalReportData {
-  periodo: string
-  total: number
-  successRate: number
-  evasionRate: number
-  byReason: StatData[]
-  monthlyTrend: StatData[]
 }
 
 export interface InsightData {
@@ -371,4 +354,77 @@ export interface AnalyticsReportData {
     name: string;
     value: number;
   }[];
+}
+
+// ==========================================
+// 6. RMA (REGISTRO MENSAL DE ATENDIMENTOS)
+// ==========================================
+
+export interface AgeBreakdown {
+  masculino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
+  feminino: { a0_12: number; a13_17: number; a18_59: number; a60_mais: number };
+  total: number;
+}
+
+export interface ChildBreakdown {
+  masculino: { a0_6: number; a7_12: number; a13_17: number };
+  feminino: { a0_6: number; a7_12: number; a13_17: number };
+  total: number;
+}
+
+export interface ChildLaborBreakdown {
+  masculino: { a0_12: number; a13_15: number };
+  feminino: { a0_12: number; a13_15: number };
+  total: number;
+}
+
+export interface RmaReportData {
+  periodo?: string;
+  bloco1: {
+    // A - Volume de Atendimentos
+    a1_total_acompanhamento: number;
+    a2_novos_casos: number;
+    
+    // B - Perfil das Famílias
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
+    b6_vitimas: AgeBreakdown;
+    b7_mse: number;
+
+    // C - Crianças e Adolescentes em Serviço
+    c1_infamiliar: ChildBreakdown;
+    c2_abuso: ChildBreakdown;
+    c3_exploracao: ChildBreakdown;
+    c4_negligencia: ChildBreakdown;
+    c5_trabalho_infantil: ChildLaborBreakdown;
+
+    // D - Idosos
+    d1_violencia: number;
+    d2_negligencia: number;
+
+    // E - PCD (Pessoas com Deficiência)
+    e1_violencia: AgeBreakdown;
+    e2_negligencia: AgeBreakdown;
+
+    // F - Mulheres
+    f1_mulheres: number;
+
+    // G - Tráfico de Pessoas
+    g1_trafico: AgeBreakdown;
+
+    // H - Discriminação
+    h1_discriminacao: number;
+
+    // I - População em Situação de Rua
+    i1_rua: AgeBreakdown;
+  };
+  bloco2: {
+    m1_individual: number;
+    m2_grupo: number;
+    m3_cras: number;
+    m4_visitas: number;
+  };
 }

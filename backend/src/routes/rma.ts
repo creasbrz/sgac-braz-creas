@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { CaseStatus } from '@prisma/client'
 import { RMAService } from '../services/RMAService'
+import { cache } from '../lib/cache' // [NOVO]
 
 export async function rmaRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
@@ -22,12 +23,21 @@ export async function rmaRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const { month, year } = request.query
+      
+      // [CACHE V1.1] Chave de cache baseada no período
+      const cacheKey = `rma_report:${year}:${month}`
+      const cachedReport = cache.get(cacheKey)
+      
+      if (cachedReport) {
+        reply.header('X-Cache', 'HIT')
+        return reply.send(cachedReport)
+      }
+
       const dateRef = new Date(year, month - 1, 1)
       const startDate = startOfMonth(dateRef)
       const endDate = endOfMonth(dateRef)
 
       // 1. Busca Eficiente de Dados (Paralelismo)
-      // Utiliza Promise.all para otimizar o tempo de resposta do servidor
       const [activeCases, newCases, evolucoesCount, groupParticipants, referralsCRAS, visitasCount] = await Promise.all([
         // A.1: Estoque de Casos Ativos no PAEFI
         prisma.case.findMany({
@@ -78,7 +88,6 @@ export async function rmaRoutes(app: FastifyInstance) {
       ])
 
       // 2. Processamento de Regras de Negócio
-      // Delega o cálculo estatístico para o Service dedicado
       const rmaData = RMAService.calculate(activeCases, newCases, endDate)
 
       // 3. Montagem da Resposta
@@ -91,6 +100,11 @@ export async function rmaRoutes(app: FastifyInstance) {
           m4_visitas: visitasCount
         }
       }
+
+      // [CACHE V1.1] Salva por 1 hora. RMA de meses passados não muda, do mês atual muda pouco em 1h.
+      // Em um cenário ideal, invalidaríamos ao adicionar evoluções, mas 1h é aceitável para relatórios.
+      cache.set(cacheKey, response, 1000 * 60 * 60)
+      reply.header('X-Cache', 'MISS')
 
       return reply.send(response)
 

@@ -1,21 +1,25 @@
 // frontend/src/constants/app-navigation.ts
 import {
   PieChart, LayoutDashboard, Calendar, Users, FolderKanban, Archive,
-  UserCog, Projector, AlertTriangle, Briefcase, ShieldAlert
+  UserCog, Projector, AlertTriangle, Briefcase, ShieldAlert,
+  type LucideIcon
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { ROUTES } from './app-routes'
 import type { UserRole } from '@/types/user'
 
-interface NavLink {
-  to: string
-  icon: LucideIcon
-  label: string
-  allowedRoles: UserRole[]
-  section: 'Meu Trabalho' | 'Gestão de Casos' | 'Administração'
+// Define as seções permitidas para evitar erros de digitação
+export type NavSection = 'Meu Trabalho' | 'Gestão de Casos' | 'Administração'
+
+export interface NavLink {
+  readonly to: string
+  readonly icon: LucideIcon
+  readonly label: string
+  readonly allowedRoles: readonly UserRole[]
+  readonly section: NavSection
 }
 
-export const navLinks: NavLink[] = [
+// 'as const' torna o array e seus objetos totalmente imutáveis (Readonly)
+export const NAV_LINKS: readonly NavLink[] = [
   // --- SEÇÃO: MEU TRABALHO ---
   {
     to: ROUTES.WORKSPACE,
@@ -54,7 +58,6 @@ export const navLinks: NavLink[] = [
     allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
     section: 'Gestão de Casos',
   },
-  // [MOVIDO] Trazido de volta para cá para facilitar acesso
   {
     to: ROUTES.TEAM_OVERVIEW,
     icon: Users,
@@ -72,7 +75,7 @@ export const navLinks: NavLink[] = [
   {
     to: ROUTES.CLOSED_CASES,
     icon: Archive,
-    label: 'Arquivo Morto',
+    label: 'Casos Desligados',
     allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
     section: 'Gestão de Casos',
   },
@@ -99,4 +102,7 @@ export const navLinks: NavLink[] = [
     allowedRoles: ['Gerente'],
     section: 'Administração',
   },
-]
+] as const
+
+// Mantém compatibilidade com imports existentes
+export const navLinks = NAV_LINKS

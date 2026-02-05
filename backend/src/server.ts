@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static'
 import multipart from '@fastify/multipart'
 import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
+import rateLimit from '@fastify/rate-limit' 
 import path from 'node:path'
 import fs from 'node:fs'
 import { 
@@ -15,7 +16,6 @@ import {
   ZodTypeProvider 
 } from 'fastify-type-provider-zod'
 
-// Error Handler
 import { errorHandler } from './lib/errorHandler'
 
 // Importação das Rotas
@@ -40,10 +40,8 @@ import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
 import { rmaRoutes } from './routes/rma'
 
-// --- CONFIGURAÇÃO DE AMBIENTE ---
 const isDev = process.env.NODE_ENV !== 'production'
 
-// --- INSTÂNCIA DO SERVIDOR ---
 const app = fastify({
   logger: {
     transport: isDev
@@ -55,43 +53,48 @@ const app = fastify({
     level: isDev ? 'debug' : 'info'
   },
   connectionTimeout: 30000,
-  // Aumenta o limite de tamanho do corpo globalmente para evitar erros em JSONs grandes
   bodyLimit: 10 * 1024 * 1024 
 }).withTypeProvider<ZodTypeProvider>()
 
-// --- VALIDAÇÃO (ZOD) ---
 app.setValidatorCompiler(validatorCompiler)
 app.setSerializerCompiler(serializerCompiler)
 app.setErrorHandler(errorHandler)
 
 // --- PLUGINS ---
 
-// 1. CORS
 app.register(cors, { 
-  origin: true, // Em produção, considere restringir para o domínio exato
+  origin: true, 
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   exposedHeaders: ['Content-Disposition'] 
 })
 
-// 2. JWT
+app.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  allowList: ['127.0.0.1'],
+  errorResponseBuilder: () => ({ 
+    statusCode: 429, 
+    error: 'Too Many Requests', 
+    message: 'Muitas tentativas. Tente novamente em 1 minuto.' 
+  })
+})
+
 app.register(jwt, { 
   secret: process.env.JWT_SECRET || 'dev-secret-change-in-prod' 
 })
 
-// 3. MULTIPART (Uploads)
 app.register(multipart, { 
   limits: { 
-    fileSize: 20 * 1024 * 1024, // 20MB
+    fileSize: 20 * 1024 * 1024,
     files: 1 
   },
   attachFieldsToBody: false 
 })
 
-// 4. SWAGGER (Docs)
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS Brazlândia API', version: '7.6.7' },
+    info: { title: 'CREAS Brazlândia API', version: '8.0.0' },
     components: { 
       securitySchemes: { 
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } 
@@ -109,7 +112,7 @@ app.register(fastifySwaggerUi, {
   }
 })
 
-// --- DECORATORS ---
+// [FIX] Casting para any para evitar erro de TS na propriedade decorada
 app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
   try { 
     await request.jwtVerify() 
@@ -118,43 +121,64 @@ app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply
   }
 })
 
-// --- ROTAS (API) ---
+// --- ROTAS (Com Logs de Debug) ---
 app.register(async (api) => {
-  // Core
-  api.register(authRoutes)
-  api.register(userRoutes)
-  api.register(workspaceRoutes)
-  
-  // Casos e Atendimentos
-  api.register(caseRoutes)
-  api.register(evolutionRoutes)
-  api.register(pafRoutes)
-  api.register(appointmentRoutes)
-  api.register(referralRoutes)
-  api.register(familyRoutes)
-  api.register(rmaRoutes)
-  api.register(waitingListRoutes)
-  
-  // Gestão e Ferramentas
-  api.register(statsRoutes)
-  api.register(statsRoutes, { prefix: '/dashboard' }) // Alias
-  api.register(reportRoutes)
-  api.register(alertRoutes)
-  api.register(auditRoutes)
-  api.register(importRoutes)
-  api.register(filterRoutes)
-  api.register(deliverablesRoutes)
-  api.register(groupRoutes)
-  api.register(attachmentRoutes)
+  try {
+    console.log('📦 Registrando rotas...')
+    
+    // Core
+    if (!authRoutes) console.error('❌ ERRO: authRoutes está undefined')
+    api.register(authRoutes)
+    
+    if (!userRoutes) console.error('❌ ERRO: userRoutes está undefined')
+    api.register(userRoutes)
+    
+    if (!workspaceRoutes) console.error('❌ ERRO: workspaceRoutes está undefined')
+    api.register(workspaceRoutes)
+    
+    // Casos
+    if (!caseRoutes) console.error('❌ ERRO: caseRoutes está undefined')
+    api.register(caseRoutes)
+    
+    if (!evolutionRoutes) console.error('❌ ERRO: evolutionRoutes está undefined')
+    api.register(evolutionRoutes)
+    
+    if (!pafRoutes) console.error('❌ ERRO: pafRoutes está undefined')
+    api.register(pafRoutes)
+    
+    if (!appointmentRoutes) console.error('❌ ERRO: appointmentRoutes está undefined')
+    api.register(appointmentRoutes)
+    
+    // Outros
+    api.register(referralRoutes)
+    api.register(familyRoutes)
+    api.register(rmaRoutes)
+    api.register(waitingListRoutes)
+    
+    // Gestão
+    api.register(statsRoutes)
+    api.register(statsRoutes, { prefix: '/dashboard' })
+    api.register(reportRoutes)
+    api.register(alertRoutes)
+    api.register(auditRoutes)
+    api.register(importRoutes)
+    api.register(filterRoutes)
+    api.register(deliverablesRoutes)
+    api.register(groupRoutes)
+    api.register(attachmentRoutes)
+    
+    console.log('✅ Rotas registradas com sucesso.')
+  } catch (err) {
+    console.error('❌ Falha fatal no registro de rotas:', err)
+  }
 
 }, { prefix: '/api' })
 
-// --- SERVIR FRONTEND (STATIC) ---
-// [CORREÇÃO] Em CommonJS, __dirname é global. Usamos ele para garantir compatibilidade.
+// --- STATIC FILES ---
 const possibleDistPaths = [
-  path.join(__dirname, '../../frontend/dist'), // Dev: backend/src -> frontend/dist
-  path.join(__dirname, '../frontend/dist'),    // Prod: backend/dist -> frontend/dist
-  path.join(process.cwd(), 'frontend/dist')    // Fallback: raiz do processo
+  path.join(__dirname, '../../frontend/dist'),
+  path.join(__dirname, '../frontend/dist'),    
+  path.join(process.cwd(), 'frontend/dist')    
 ]
 
 const frontendDist = possibleDistPaths.find(p => fs.existsSync(p)) || possibleDistPaths[0]
@@ -166,18 +190,16 @@ app.register(fastifyStatic, {
   preCompressed: true
 })
 
-// SPA Fallback (Qualquer rota não-API retorna o index.html)
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && req.raw.url.startsWith('/api')) {
     return reply.status(404).send({ 
-      error: 'Not Found',
+      error: 'Not Found', 
       message: `Endpoint não encontrado: ${req.raw.url}` 
     })
   }
   return reply.sendFile('index.html')
 })
 
-// --- INICIALIZAÇÃO E SHUTDOWN ---
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 3333
@@ -190,7 +212,6 @@ const start = async () => {
     console.log(`📂 Static files path: ${frontendDist} (${fs.existsSync(frontendDist) ? 'Found' : 'Not Found'})`)
     console.log(`📚 Documentation: http://${host}:${port}/docs`)
 
-    // Graceful Shutdown para Render/Docker
     const signals = ['SIGINT', 'SIGTERM']
     signals.forEach((signal) => {
       process.on(signal, async () => {

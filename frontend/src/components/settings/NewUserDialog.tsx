@@ -59,7 +59,7 @@ export function NewUserDialog() {
       email: "",
       matricula: "",
       cargo: "Agente_Social",
-      senhaInicial: "", // Senha padrão mais forte
+      senhaInicial: "", 
     },
   })
 
@@ -87,39 +87,41 @@ export function NewUserDialog() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
+        <Button className="gap-2 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-all active:scale-95">
           <UserPlus className="h-4 w-4" /> Novo Servidor
         </Button>
       </DialogTrigger>
       
-      <DialogContent className="sm:max-w-[550px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-primary" />
+      <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden bg-background border-border">
+        <DialogHeader className="p-6 pb-4 border-b border-border bg-muted/10">
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold tracking-tight">
+            <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20 text-primary">
+               <UserPlus className="h-5 w-5" />
+            </div>
             Cadastrar Novo Servidor
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-muted-foreground/80">
             Crie o acesso para um novo membro da equipe técnica.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((data) => mutate(data))} className="space-y-5 py-4">
+          <form onSubmit={form.handleSubmit((data) => mutate(data))} className="p-6 space-y-6">
             
             {/* DADOS PESSOAIS */}
-            <div className="grid gap-4">
+            <div className="space-y-4">
               <FormField
                 control={form.control}
                 name="nome"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <User className="h-3.5 w-3.5 text-muted-foreground" /> Nome Completo
+                    <FormLabel className="flex items-center gap-1.5 text-muted-foreground">
+                      <User className="h-3.5 w-3.5" /> Nome Completo
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ex: João da Silva" {...field} />
+                      <Input placeholder="Ex: João da Silva" className="bg-background" {...field} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-destructive font-medium" />
                   </FormItem>
                 )}
               />
@@ -130,13 +132,13 @@ export function NewUserDialog() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <Mail className="h-3.5 w-3.5 text-muted-foreground" /> E-mail
+                      <FormLabel className="flex items-center gap-1.5 text-muted-foreground">
+                        <Mail className="h-3.5 w-3.5" /> E-mail Institucional
                       </FormLabel>
                       <FormControl>
-                        <Input placeholder="joao.silva@sedes.df.gov.br" {...field} />
+                        <Input placeholder="joao.silva@sedes.df.gov.br" className="bg-background" {...field} />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs text-destructive font-medium" />
                     </FormItem>
                   )}
                 />
@@ -146,32 +148,34 @@ export function NewUserDialog() {
                   name="matricula"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <BadgeCheck className="h-3.5 w-3.5 text-muted-foreground" /> Matrícula
+                      <FormLabel className="flex items-center gap-1.5 text-muted-foreground">
+                        <BadgeCheck className="h-3.5 w-3.5" /> Matrícula
                       </FormLabel>
                       <FormControl>
-                        <Input placeholder="0000000-0" {...field} />
+                        <Input placeholder="0000000-0" className="bg-background font-mono" {...field} />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs text-destructive font-medium" />
                     </FormItem>
                   )}
                 />
               </div>
             </div>
 
+            <div className="border-t border-border/60" />
+
             {/* DADOS DE ACESSO */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="cargo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Briefcase className="h-3.5 w-3.5 text-muted-foreground" /> Cargo / Função
+                    <FormLabel className="flex items-center gap-1.5 text-muted-foreground">
+                      <Briefcase className="h-3.5 w-3.5" /> Cargo / Função
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="bg-background">
                           <SelectValue placeholder="Selecione..." />
                         </SelectTrigger>
                       </FormControl>
@@ -182,7 +186,7 @@ export function NewUserDialog() {
                         <SelectItem value="Auditor">Auditor</SelectItem>
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-destructive font-medium" />
                   </FormItem>
                 )}
               />
@@ -192,23 +196,23 @@ export function NewUserDialog() {
                 name="senhaInicial"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Lock className="h-3.5 w-3.5 text-muted-foreground" /> Senha Inicial
+                    <FormLabel className="flex items-center gap-1.5 text-muted-foreground">
+                      <Lock className="h-3.5 w-3.5" /> Senha Inicial
                     </FormLabel>
                     <FormControl>
-                      <Input type="text" {...field} className="font-mono text-sm" />
+                      <Input type="text" {...field} className="bg-background font-mono text-sm" placeholder="******" />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-destructive font-medium" />
                   </FormItem>
                 )}
               />
             </div>
 
-            <DialogFooter className="gap-2 sm:gap-0 pt-2">
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            <DialogFooter className="pt-2 sm:justify-between gap-2 border-t border-border/60 mt-6">
+              <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending} className="min-w-32 shadow-sm">
                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Criar Acesso
               </Button>

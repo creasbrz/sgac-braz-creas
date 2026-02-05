@@ -1,3 +1,4 @@
+// frontend/src/components/ui/checkbox.tsx
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
 import { Check } from "lucide-react"
@@ -11,37 +12,31 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      // LAYOUT & DIMENSIONS
-      // Aumentado para h-5 w-5 (20px) para melhor hit-area
-      "peer h-5 w-5 shrink-0 rounded-md border shadow-sm",
+      // BASE LAYOUT
+      // 'size-4' (16px) é o padrão para interfaces densas/desktop.
+      // 'rounded-sm' diferencia visualmente de Radio Buttons.
+      "peer size-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
       
-      // COLORS & STATES
-      // Padrão: border-input (neutro). Checked: bg-primary + border-primary.
-      "border-input bg-background ring-offset-background transition-colors",
-      "data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=checked]:text-primary-foreground",
-      
-      // FOCUS & A11Y
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-      
-      // DISABLED
-      "disabled:cursor-not-allowed disabled:opacity-50",
+      // STATES
+      // Unchecked: Fundo transparente/background.
+      // Checked: Fundo primário, Texto claro.
+      "data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
       
       className
     )}
     {...props}
   >
     <CheckboxPrimitive.Indicator
-      className={cn(
-        "flex items-center justify-center text-current",
-        // MICRO-INTERAÇÃO: O ícone surge com um zoom rápido e suave
-        "animate-in zoom-in-50 duration-200"
-      )}
+      className={cn("flex items-center justify-center text-current")}
     >
-      {/* Icon adjustments:
-         1. h-3.5 w-3.5: Um pouco menor que a caixa para dar respiro (whitespace).
-         2. strokeWidth={3.5}: Traço mais grosso para melhor leitura em fundo colorido.
+      {/* MICRO-INTERAÇÃO:
+         O ícone tem um 'zoom in' rápido ao ser marcado.
+         strokeWidth={3} garante legibilidade em tamanhos pequenos.
       */}
-      <Check className="h-3.5 w-3.5" strokeWidth={3.5} />
+      <Check 
+        className="size-3.5 animate-in zoom-in-50 duration-200" 
+        strokeWidth={3} 
+      />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ))

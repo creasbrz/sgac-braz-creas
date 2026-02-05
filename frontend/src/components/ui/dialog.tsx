@@ -1,3 +1,4 @@
+// frontend/src/components/ui/dialog.tsx
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
@@ -12,8 +13,7 @@ const DialogClose = DialogPrimitive.Close
 /* -------------------------------------------------------------------------- */
 /* OVERLAY                                                                    */
 /* -------------------------------------------------------------------------- */
-// UX: bg-black/80 cria um contraste melhor que bg-background/80, 
-// focando totalmente a atenção do usuário no conteúdo do modal.
+// UX: bg-black/80 garante foco total no conteúdo do modal.
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -43,11 +43,11 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        // Layout & Position
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
-        // Visuals (Shadow-2xl para maior profundidade)
+        // [MODERNIZAÇÃO] Classes canônicas para posicionamento centralizado
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4",
+        // Visual
         "border bg-background p-6 shadow-2xl duration-200 sm:rounded-lg",
-        // Animations (Zoom & Slide sutis)
+        // Animações
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -59,11 +59,11 @@ const DialogContent = React.forwardRef<
     >
       {children}
       
-      {/* Botão de Fechar: Maior área de toque e feedback visual */}
+      {/* Botão de Fechar Melhorado */}
       <DialogPrimitive.Close 
         className={cn(
-          "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity",
-          "hover:opacity-100 hover:bg-accent hover:text-accent-foreground p-1", // UX Improvements
+          "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-all",
+          "hover:opacity-100 hover:bg-accent hover:text-accent-foreground p-1.5", 
           "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
           "disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
         )}
@@ -99,7 +99,8 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      // [MODERNIZAÇÃO] gap-2 substitui space-x-2 para flexibilidade
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-2",
       className
     )}
     {...props}
@@ -117,7 +118,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "text-lg font-semibold leading-none tracking-tight text-foreground",
       className
     )}
     {...props}

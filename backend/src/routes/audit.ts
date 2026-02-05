@@ -2,10 +2,8 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { Cargo, LogAction } from '@prisma/client'
-import { AuditService } from '../services/AuditService'
-
-// --- Schemas ---
+import { LogAction } from '@prisma/client'
+import { AuditController } from '../controllers/AuditController'
 
 const logResponseSchema = z.object({
   id: z.string().uuid(),
@@ -37,25 +35,14 @@ const auditQuerySchema = z.object({
 export async function auditRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
   
-  // Middleware de Segurança: Apenas GERENTES
-  server.addHook('onRequest', async (request, reply) => {
-    try {
-      await request.jwtVerify()
-      const { cargo } = request.user as { cargo: Cargo }
-      
-      if (cargo !== Cargo.Gerente) {
-        return reply.status(403).send({ message: 'Acesso restrito à gestão.' })
-      }
-    } catch {
-      return reply.status(401).send({ message: 'Não autorizado.' })
-    }
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
 
-  // 1. [GET] Listagem Avançada de Logs
   server.get('/audit', {
     schema: {
       tags: ['Auditoria'],
-      summary: 'Pesquisar logs do sistema (Trilha de Auditoria)',
+      summary: 'Pesquisar logs do sistema (Apenas Gerentes)',
       querystring: auditQuerySchema,
       response: {
         200: z.object({
@@ -69,29 +56,8 @@ export async function auditRoutes(app: FastifyInstance) {
         })
       }
     }
-  }, async (request, reply) => {
-    const filters = request.query
+  }, AuditController.list)
 
-    try {
-      const { total, items } = await AuditService.listLogs(filters)
-
-      return reply.send({
-        data: items,
-        meta: {
-          page: filters.page,
-          pageSize: filters.pageSize,
-          total,
-          totalPages: Math.ceil(total / filters.pageSize)
-        }
-      })
-
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao processar logs de auditoria.' })
-    }
-  })
-
-  // 2. [GET] Estatísticas Rápidas
   server.get('/audit/stats', {
     schema: {
       tags: ['Auditoria'],
@@ -103,8 +69,5 @@ export async function auditRoutes(app: FastifyInstance) {
         }))
       }
     }
-  }, async (request, reply) => {
-    const stats = await AuditService.getDailyStats()
-    return reply.send(stats)
-  })
+  }, AuditController.getStats)
 }

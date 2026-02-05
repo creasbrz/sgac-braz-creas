@@ -1,115 +1,115 @@
 // frontend/src/components/case/CaseAddressCard.tsx
-import { MapPin, ExternalLink, Map as MapIcon, Home } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { MapPin, Navigation } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
-interface CaseAddressCardProps {
-  caseData: any
+interface AddressData {
+  logradouro?: string
+  complemento?: string
+  bairro?: string
+  cidade?: string
+  uf?: string
+  cep?: string
+  ra?: string
+  latitude?: number
+  longitude?: number
 }
 
-export function CaseAddressCard({ caseData }: CaseAddressCardProps) {
-  // Lógica de Normalização de Dados (Compatibilidade V1/V2)
-  const isV2 = !!caseData.endereco_logradouro
+interface CaseAddressCardProps {
+  endereco?: string | AddressData | null
+  className?: string
+}
+
+export function CaseAddressCard({ endereco, className }: CaseAddressCardProps) {
   
-  const address = {
-    ra: (isV2 ? caseData.endereco_ra : null) || 'Não Informada',
-    logradouro: (isV2 ? caseData.endereco_logradouro : caseData.endereco) || '',
-    complemento: caseData.endereco_complemento || '',
-    bairro: caseData.endereco_bairro || '',
-    cep: caseData.endereco_cep || '',
-    cidade: caseData.endereco_cidade || 'Brasília',
-    uf: caseData.endereco_uf || 'DF'
-  }
+  const hasAddress = !!endereco && (
+    typeof endereco === 'string' 
+      ? endereco.trim().length > 0 
+      : (endereco.logradouro || endereco.ra)
+  )
 
-  const hasAddress = !!address.logradouro
+  const openMap = () => {
+    let url = '#'
 
-  // Monta a query string para o Google Maps
-  const fullAddressQuery = [
-    address.logradouro,
-    address.bairro,
-    address.ra !== 'Não Informada' ? address.ra : '',
-    address.cidade,
-    address.uf
-  ].filter(Boolean).join(', ')
+    if (!endereco) return
 
-  const openGoogleMaps = () => {
-    if (!hasAddress) return
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddressQuery)}`
-    window.open(url, '_blank')
+    if (typeof endereco !== 'string' && endereco.latitude && endereco.longitude) {
+      url = `http://googleusercontent.com/maps.google.com/search/${endereco.latitude},${endereco.longitude}`
+    } else {
+        const query = typeof endereco === 'string' 
+        ? endereco 
+        : `${endereco.logradouro || ''}, ${endereco.ra || ''}, ${endereco.cidade || 'Brasília'} - DF`
+        
+        url = `http://googleusercontent.com/maps.google.com/search/${encodeURIComponent(query)}`
+    }
+
+    const newWindow = window.open(url, '_blank', 'noopener,noreferrer')
+    if (newWindow) newWindow.opener = null
   }
 
   return (
-    <Card className="h-full shadow-sm hover:border-primary/20 transition-colors">
-      <CardHeader className="pb-3 border-b bg-muted/10">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
-            <MapIcon className="h-4 w-4 text-primary" /> Localização & Território
-          </CardTitle>
-          {hasAddress && (
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-primary" 
-              onClick={openGoogleMaps} 
-              title="Abrir no Google Maps"
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+    <Card className={cn("h-full shadow-sm bg-card", className)}>
+      <CardHeader className="pb-2 border-b bg-muted/10">
+        <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground uppercase tracking-wide">
+          <MapPin className="h-4 w-4 text-primary" />
+          Localização
+        </CardTitle>
       </CardHeader>
       
-      <CardContent className="pt-4">
-        <div className="space-y-4">
-          
-          {/* Badge da RA (Destaque Territorial) */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Região Administrativa</span>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="px-3 py-1 bg-blue-50 text-blue-700 border-blue-200 font-medium text-sm rounded-md">
-                {address.ra}
-              </Badge>
-            </div>
+      <CardContent className="pt-4 space-y-4">
+        {!hasAddress ? (
+          <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground/50 border-2 border-dashed rounded-lg bg-muted/5">
+            <MapPin className="h-8 w-8 mb-2 opacity-20" />
+            <p className="text-xs">Endereço não informado</p>
           </div>
-
-          <Separator />
-
-          {/* Detalhes do Endereço */}
-          <div className="space-y-1">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 block">Endereço Residencial</span>
-            
-            {hasAddress ? (
-              <div className="bg-muted/30 p-3 rounded-lg border border-border/50 space-y-1 group relative">
-                <div className="flex items-start gap-2">
-                   <Home className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                   <div>
-                      <p className="text-sm font-medium text-foreground leading-snug">
-                        {address.logradouro}
-                      </p>
-                      
-                      {(address.bairro || address.complemento) && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {[address.bairro, address.complemento].filter(Boolean).join(' • ')}
-                        </p>
-                      )}
-                      
-                      <p className="text-[11px] text-muted-foreground/70 mt-1 font-mono">
-                        {[address.cep, address.cidade, address.uf].filter(Boolean).join(' - ')}
-                      </p>
-                   </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              {typeof endereco === 'string' ? (
+                <p className="text-sm text-foreground/80 leading-relaxed">
+                  {endereco}
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {endereco.logradouro && (
+                    <p className="text-sm font-medium text-foreground">
+                      {endereco.logradouro}
+                      {endereco.complemento && <span className="font-normal text-muted-foreground">, {endereco.complemento}</span>}
+                    </p>
+                  )}
+                  
+                  <p className="text-xs text-muted-foreground">
+                    {[endereco.bairro, endereco.ra].filter(Boolean).join(' • ')}
+                  </p>
+                  
+                  <div className="flex gap-3 pt-1">
+                    {endereco.cidade && (
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                        {endereco.cidade}/{endereco.uf || 'DF'}
+                      </span>
+                    )}
+                    {endereco.cep && (
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                        CEP: {endereco.cep}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-100 text-xs">
-                <MapPin className="h-4 w-4" />
-                Endereço não cadastrado ou incompleto.
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-        </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full gap-2 text-xs h-8 border-dashed"
+              onClick={openMap}
+            >
+              <Navigation className="h-3.5 w-3.5 text-blue-500" />
+              Abrir no Mapa
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   )

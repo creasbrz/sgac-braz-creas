@@ -1,17 +1,13 @@
-// frontend/src/components/ui/tabs.tsx — Componente de abas atualizado, modernizado e com melhorias visuais e acessibilidade.
+// frontend/src/components/ui/tabs.tsx
+"use client"
 
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 
 import { cn } from "@/lib/utils"
 
-// Mantém o Root original, pois já é estável e robusto.
 const Tabs = TabsPrimitive.Root
 
-/**
- * TabsList — Agora com melhor contraste, padding mais equilibrado,
- * suporte a dark mode fluido e bordas suavizadas (rounded-lg).
- */
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
@@ -19,8 +15,8 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-lg bg-muted/60 backdrop-blur-sm p-1 text-muted-foreground shadow-sm",
-      "border border-border/40 dark:border-border/20",
+      // LAYOUT & BACKGROUND
+      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
       className
     )}
     {...props}
@@ -28,10 +24,6 @@ const TabsList = React.forwardRef<
 ))
 TabsList.displayName = TabsPrimitive.List.displayName
 
-/**
- * TabsTrigger — Agora com destaque mais elegante quando ativo, transição suave,
- * sombra sutil, foco mais visível e comportamento moderno responsivo.
- */
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -39,13 +31,18 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5",
-      "text-sm font-medium transition-all duration-200",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
-      "data-[state=active]:bg-background data-[state=active]:text-foreground",
-      "data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/40",
-      "hover:bg-accent/50",
+      // BASE LAYOUT
+      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all",
+      
+      // FOCUS STATE (Acessibilidade)
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      
+      // DISABLED STATE
       "disabled:pointer-events-none disabled:opacity-50",
+      
+      // ACTIVE STATE (Shadow & Color)
+      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+      
       className
     )}
     {...props}
@@ -53,10 +50,6 @@ const TabsTrigger = React.forwardRef<
 ))
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
 
-/**
- * TabsContent — Recebe melhorias de spacing, animação suave de entrada
- * e foco acessível aprimorado.
- */
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
@@ -64,9 +57,15 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-3 outline-none",
-      "animate-fade-in data-[state=inactive]:animate-fade-out",
-      "focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
+      // LAYOUT
+      "mt-2 ring-offset-background",
+      
+      // FOCUS
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      
+      // ANIMATION (Micro-interação de entrada)
+      "data-[state=active]:animate-in data-[state=active]:fade-in-0 data-[state=active]:zoom-in-95 duration-200",
+      
       className
     )}
     {...props}

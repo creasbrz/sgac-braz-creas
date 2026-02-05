@@ -37,7 +37,7 @@ interface Specialist {
   id: string
   nome: string
   email?: string
-  activeCases: number 
+  activeCases: number // Certifique-se que o backend retorna isso
 }
 
 const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
@@ -59,19 +59,15 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
     queryFn: async () => {
       const res = await api.get('/users/specialists')
       
-      // [DEBUG] Verifique no console o que está chegando. 
-      // Se aparecer { items: [...] } ou { data: [...] }, ajuste o return abaixo.
-      console.log('API Especialistas:', res.data)
-
-      // [CORREÇÃO] Blindagem contra formatos diferentes de resposta
+      // Tratamento robusto para diferentes formatos de resposta do backend
       if (Array.isArray(res.data)) return res.data
       if (res.data && Array.isArray(res.data.data)) return res.data.data
       if (res.data && Array.isArray(res.data.items)) return res.data.items
       
       return [] 
     },
-    enabled: isOpen,
-    staleTime: 1000 * 60 
+    enabled: isOpen, // Só busca quando o modal abre
+    staleTime: 1000 * 60 * 5 // Cache de 5 minutos para evitar requests desnecessários
   })
 
   const { mutate: assign, isPending } = useMutation({
@@ -82,9 +78,11 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
       const specialistName = specialists.find(s => s.id === selectedSpecialistId)?.nome
       toast.success(`Caso atribuído a ${specialistName} com sucesso!`)
       
+      // Invalida queries relacionadas para atualizar a UI
       queryClient.invalidateQueries({ queryKey: ['cases'] })
       queryClient.invalidateQueries({ queryKey: ['case', caseId] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
+      queryClient.invalidateQueries({ queryKey: ['users', 'specialists-workload'] }) // Atualiza contagem
       
       onOpenChange(false)
       setSelectedSpecialistId('')
@@ -96,7 +94,7 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-125">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5 text-primary" />
@@ -110,13 +108,14 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
         <div className="py-6 space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">Selecione o Especialista</label>
+            
             <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={openCombobox}
-                  className="w-full justify-between h-12 px-3 bg-background"
+                  className="w-full justify-between h-14 px-3 bg-background border-dashed hover:border-solid hover:bg-accent/50 transition-all"
                   disabled={isLoadingSpecialists}
                 >
                   {isLoadingSpecialists ? (
@@ -124,13 +123,20 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando equipe...
                     </span>
                   ) : selectedSpecialist ? (
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                    <div className="flex items-center gap-3 text-left w-full">
+                      <Avatar className="h-8 w-8 border border-border/50">
+                        <AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">
                           {getInitials(selectedSpecialist.nome)}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="font-medium">{selectedSpecialist.nome}</span>
+                      <div className="flex flex-col flex-1 min-w-0">
+                         <span className="font-medium truncate text-sm">{selectedSpecialist.nome}</span>
+                         <span className="text-[10px] text-muted-foreground truncate">{selectedSpecialist.email}</span>
+                      </div>
+                      <Badge variant="outline" className={cn("text-[10px] h-5 gap-1 shrink-0 ml-auto", getWorkloadColor(selectedSpecialist.activeCases || 0))}>
+                        <Briefcase className="h-3 w-3" />
+                        {selectedSpecialist.activeCases || 0}
+                      </Badge>
                     </div>
                   ) : (
                     <span className="text-muted-foreground">Selecione um técnico disponível...</span>
@@ -139,38 +145,47 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
                 </Button>
               </PopoverTrigger>
               
-              <PopoverContent className="w-[450px] p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="Buscar por nome..." />
+              <PopoverContent className="w-112.5 p-0 shadow-xl" align="start">
+                <Command filter={(value, search) => {
+                  if (value.toLowerCase().includes(search.toLowerCase())) return 1
+                  return 0
+                }}>
+                  <CommandInput placeholder="Buscar por nome..." className="h-11" />
                   <CommandList>
-                    <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
-                      {isError ? "Erro ao carregar lista." : "Nenhum especialista encontrado."}
+                    <CommandEmpty className="py-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                      {isError ? (
+                        <>
+                          <AlertCircle className="h-8 w-8 text-destructive/50" />
+                          <span>Erro ao carregar lista de especialistas.</span>
+                        </>
+                      ) : (
+                        <span>Nenhum especialista encontrado.</span>
+                      )}
                     </CommandEmpty>
                     
                     <CommandGroup heading="Equipe Técnica">
                       {specialists.map((specialist) => (
                         <CommandItem
                           key={specialist.id}
-                          // [CORREÇÃO] Value deve ser único e textual para o filtro funcionar.
-                          // Adicionamos o ID para garantir unicidade, mas o nome para a busca.
-                          value={`${specialist.nome} ${specialist.id}`}
+                          // Value deve conter o nome para a busca funcionar corretamente
+                          value={`${specialist.nome} ${specialist.email}`}
                           onSelect={() => {
                             setSelectedSpecialistId(specialist.id)
                             setOpenCombobox(false)
                           }}
-                          className="cursor-pointer py-3"
+                          className="cursor-pointer py-3 aria-selected:bg-accent"
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-4 w-4",
+                              "mr-2 h-4 w-4 text-primary transition-opacity duration-200",
                               selectedSpecialistId === specialist.id ? "opacity-100" : "opacity-0"
                             )}
                           />
                           
-                          <div className="flex items-center flex-1 justify-between gap-2">
-                            <div className="flex items-center gap-2 overflow-hidden">
+                          <div className="flex items-center flex-1 justify-between gap-3 min-w-0">
+                            <div className="flex items-center gap-3 min-w-0">
                               <Avatar className="h-8 w-8 border shrink-0">
-                                <AvatarFallback className="text-xs">
+                                <AvatarFallback className="text-xs font-medium">
                                   {getInitials(specialist.nome)}
                                 </AvatarFallback>
                               </Avatar>
@@ -198,23 +213,26 @@ export function AssignSpecialistModal({ isOpen, onOpenChange, caseId }: AssignMo
           </div>
           
           {selectedSpecialist && (
-             <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground flex items-center gap-2 border">
-                <AlertCircle className="h-4 w-4 text-primary" />
-                <span>
-                  O técnico <strong>{selectedSpecialist.nome}</strong> passará a ter 
-                  <strong> {(selectedSpecialist.activeCases || 0) + 1} </strong> casos ativos.
-                </span>
+             <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 text-sm text-blue-700 dark:text-blue-300 flex items-start gap-3 border border-blue-100 dark:border-blue-900/50 animate-in fade-in slide-in-from-top-2">
+                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                   <p className="font-medium">Confirmação de Atribuição</p>
+                   <p className="opacity-90 leading-relaxed text-xs">
+                     O técnico <strong>{selectedSpecialist.nome}</strong> passará a ser responsável pelo acompanhamento deste caso.
+                     Sua carga de trabalho atual aumentará para <strong>{(selectedSpecialist.activeCases || 0) + 1}</strong> casos ativos.
+                   </p>
+                </div>
              </div>
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={() => assign()} disabled={!selectedSpecialistId || isPending} className="min-w-[140px]">
+          <Button onClick={() => assign()} disabled={!selectedSpecialistId || isPending} className="min-w-35 shadow-sm">
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirmar
+            Confirmar Atribuição
           </Button>
         </DialogFooter>
       </DialogContent>

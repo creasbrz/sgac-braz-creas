@@ -1,136 +1,159 @@
 /* frontend/src/components/agenda/calendar-custom.css */
 
-/* --- VARIÁVEIS E BASE --- */
+/* -------------------------------------------------------------------------- */
+/* FULLCALENDAR OVERRIDES - SHADCN UI THEME (TAILWIND V4 COMPATIBLE)          */
+/* -------------------------------------------------------------------------- */
+
 .fc {
-  /* Integração com Design System (Shadcn/Tailwind) */
-  --fc-border-color: hsl(var(--border) / 0.6);
+  /* Mapeamento de Variáveis para Tokens do FullCalendar */
+  --fc-border-color: hsl(var(--border) / 0.5); /* Bordas sutis */
   --fc-page-bg-color: hsl(var(--background));
-  --fc-neutral-bg-color: hsl(var(--secondary));
+  --fc-neutral-bg-color: hsl(var(--accent) / 0.5);
   --fc-list-event-hover-bg-color: hsl(var(--muted));
-  --fc-today-bg-color: transparent; /* Removemos o bg padrão para estilizar apenas o número */
   
-  font-family: inherit;
+  /* Cores de Texto */
+  --fc-neutral-text-color: hsl(var(--muted-foreground));
+  --fc-small-font-size: 0.75rem;
+  
+  /* Indicador de "Agora" (Linha do tempo) */
+  --fc-now-indicator-color: hsl(var(--primary));
+  --fc-today-bg-color: transparent; /* Remove highlight amarelo nativo */
+
+  font-family: inherit; /* Herda Inter do body */
   -webkit-font-smoothing: antialiased;
 }
 
-/* Arredondamento geral do container */
-.fc-theme-standard {
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid hsl(var(--border));
-}
-
-/* --- TOOLBAR (CABEÇALHO) --- */
+/* -------------------------------------------------------------------------- */
+/* TOOLBAR & HEADER                                                           */
+/* -------------------------------------------------------------------------- */
 
 .fc .fc-toolbar {
   flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 1.5rem !important;
+  /* Alinhamento mobile-friendly */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .fc .fc-toolbar-title {
-  font-size: 1.5rem !important; /* text-2xl */
-  font-weight: 700;
+  font-size: 1.5rem !important;
+  font-weight: 600;
   letter-spacing: -0.025em;
   color: hsl(var(--foreground));
-  text-transform: capitalize;
 }
 
-/* Botões da Toolbar */
+/* Botões (Mimic Shadcn Button Variant="outline") */
 .fc .fc-button {
-  background-color: hsl(var(--background));
-  border: 1px solid hsl(var(--input));
+  background-color: transparent;
+  border: 1px solid hsl(var(--border));
   color: hsl(var(--foreground));
   font-size: 0.875rem;
   font-weight: 500;
   text-transform: capitalize;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md); /* Usa a variável calculada */
   padding: 0.5rem 1rem;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* shadow-sm */
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: all 0.2s ease-in-out;
 }
 
-/* Hover e Focus */
-.fc .fc-button:hover {
+/* Hover State */
+.fc .fc-button:hover:not(:disabled) {
   background-color: hsl(var(--accent));
   color: hsl(var(--accent-foreground));
-  border-color: hsl(var(--accent));
-  z-index: 1;
+  border-color: hsl(var(--border));
 }
 
+/* Active/Focus State */
 .fc .fc-button:focus-visible {
   outline: none;
+  /* CORREÇÃO: Usamos box-shadow para criar o anel duplo (offset + ring) */
+  /* Camada 1 (Offset): 2px da cor do fundo */
+  /* Camada 2 (Ring): 2px da cor do anel (totalizando 4px visuais) */
   box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
-  z-index: 10;
+  
+  /* Garante que o foco fique acima dos botões vizinhos */
+  z-index: 10; 
 }
 
-/* Estado Ativo (Botão da View selecionada) */
+/* Botão da View Ativa (Primary) */
 .fc .fc-button-primary:not(:disabled).fc-button-active {
   background-color: hsl(var(--primary));
   border-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
 }
 
-/* Botões de Ícone (Anterior/Próximo) */
+/* Botões de Navegação (Ícones) - Variant="ghost" */
 .fc .fc-prev-button, 
 .fc .fc-next-button {
-  padding: 0.25rem 0.5rem;
-  border: none; /* Estilo mais limpo para navegação */
+  border: none;
   background: transparent;
   box-shadow: none;
+  padding: 0.5rem;
+  color: hsl(var(--muted-foreground));
 }
+
 .fc .fc-prev-button:hover, 
 .fc .fc-next-button:hover {
-  background-color: hsl(var(--muted));
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
 }
 
-/* --- GRID E CÉLULAS --- */
+/* -------------------------------------------------------------------------- */
+/* GRID & CÉLULAS                                                             */
+/* -------------------------------------------------------------------------- */
 
-/* Cabeçalho dos dias da semana (SEG, TER...) */
+.fc-theme-standard {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: hsl(var(--card));
+}
+
+/* Ajuste no Header da Coluna */
 .fc-col-header-cell-cushion {
   color: hsl(var(--muted-foreground));
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.75rem; /* text-xs */
-  padding: 12px 0;
-  letter-spacing: 0.05em;
-  text-decoration: none !important;
+  font-size: 0.75rem;
+  padding: 0.75rem 0 !important; /* Padding reduzido para ganhar espaço */
 }
 
-/* Número do dia */
+/* Correção do Número do Dia (Evita sobreposição) */
+.fc-daygrid-day-top {
+  flex-direction: row; /* Garante alinhamento padrão */
+  justify-content: flex-end;
+  padding: 4px;
+}
+
 .fc-daygrid-day-number {
   font-size: 0.875rem;
-  padding: 8px 12px;
   color: hsl(var(--foreground));
-  text-decoration: none !important;
   font-weight: 500;
-  border-radius: var(--radius);
-  margin: 4px;
-  transition: background-color 0.2s;
+  z-index: 4;
+  position: relative; /* Necessário para o z-index funcionar */
+  padding: 4px 8px !important;
 }
 
-.fc-daygrid-day-number:hover {
-  background-color: hsl(var(--muted));
-}
-
-/* Estilo moderno para o "Hoje" (Círculo/Badge) */
+/* Badge de "Hoje" */
 .fc .fc-day-today .fc-daygrid-day-number {
   background-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
-  border-radius: 9999px; /* Círculo perfeito */
-  padding: 4px 8px; /* Ajuste para centralizar visualmente */
-  min-width: 28px;
-  text-align: center;
+  border-radius: 6px;
+  opacity: 1;
 }
 
-/* Remove o highlight amarelo padrão do background do dia atual */
+/* Background do dia "Hoje" */
 .fc .fc-day-today {
-  background-color: hsl(var(--accent) / 0.1) !important;
+  background-color: hsl(var(--primary) / 0.04) !important;
 }
 
-/* --- EVENTOS (RESET) --- */
+/* -------------------------------------------------------------------------- */
+/* EVENTOS (CORREÇÃO DE OVERFLOW)                                             */
+/* -------------------------------------------------------------------------- */
 
-/* Reseta estilos do FC para que o componente React controle tudo */
+/* Remove estilos padrão, mas mantém a estrutura de bloco para não vazar */
 .fc-h-event,
 .fc-v-event,
 .fc-daygrid-event,
@@ -138,60 +161,78 @@
   background-color: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  margin: 1px 4px !important; /* Pequeno respiro lateral */
+  margin-top: 2px !important; /* Espaçamento entre eventos */
 }
 
-/* Foco no evento (Acessibilidade) */
-.fc-event:focus-visible {
-  outline: none !important; 
-  /* O foco deve ser tratado dentro do componente React, 
-     mas podemos adicionar um ring global se necessário */
+/* Garante que o conteúdo do evento não ultrapasse a célula */
+.fc-daygrid-event-harness {
+  overflow: hidden;
+  border-radius: 4px;
 }
 
-/* --- LIST VIEW (AGENDA) --- */
+/* Estilização Interna do Evento (Conteúdo Customizado) */
+.fc-event-main {
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: opacity 0.2s;
+}
+
+.fc-event-main:hover {
+  opacity: 0.9;
+}
+
+/* -------------------------------------------------------------------------- */
+/* LIST VIEW (AGENDA MOBILE)                                                  */
+/* -------------------------------------------------------------------------- */
 
 .fc-list {
   border: none !important;
 }
 
 .fc-list-day-cushion {
-  background-color: hsl(var(--muted) / 0.3) !important;
+  background-color: hsl(var(--muted) / 0.5) !important;
+  padding: 1rem !important;
 }
 
-.fc-list-day-text,
-.fc-list-day-side-text {
+.fc-list-day-text {
   font-weight: 600;
   color: hsl(var(--foreground));
-  text-transform: capitalize;
+}
+
+.fc-list-day-side-text {
+  color: hsl(var(--muted-foreground));
+  font-weight: 400;
 }
 
 .fc-list-event:hover td {
-  background-color: hsl(var(--muted) / 0.5) !important;
-  cursor: pointer;
+  background-color: hsl(var(--accent) / 0.5) !important;
 }
 
-.fc-list-event-dot {
-  border-width: 4px; /* Bolinha mais visível na lista */
-}
-
-/* --- RESPONSIVIDADE (MOBILE) --- */
+/* -------------------------------------------------------------------------- */
+/* RESPONSIVIDADE                                                             */
+/* -------------------------------------------------------------------------- */
 
 @media (max-width: 768px) {
   .fc .fc-toolbar {
     flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
+    gap: 1rem;
   }
-
+  
   .fc .fc-toolbar-title {
-    font-size: 1.25rem !important;
-    text-align: center;
+    font-size: 1.125rem !important;
   }
 
-  /* Agrupa botões de navegação e hoje para centralizar */
-  .fc .fc-toolbar-chunk {
+  /* Ajuste de botões no mobile */
+  .fc-button-group {
+    width: 100%;
     display: flex;
+  }
+  
+  .fc-button {
+    flex: 1;
     justify-content: center;
-    gap: 0.5rem;
+    font-size: 0.75rem !important;
+    padding: 0.5rem !important;
   }
 }

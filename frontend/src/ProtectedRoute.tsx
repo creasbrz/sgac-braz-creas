@@ -1,5 +1,6 @@
+// frontend/src/ProtectedRoute.tsx
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from './hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { ROUTES } from './constants/app-routes'
 import { ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'

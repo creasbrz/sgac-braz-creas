@@ -8,10 +8,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 // Tipagem básica
+interface Contact {
+  numero: string
+  tipo: string
+  nome?: string
+  observacao?: string
+}
+
 interface CaseContactListProps {
-  contatos?: any
+  contatos?: Contact[]
   telefoneAntigo?: string | null
 }
 
@@ -26,12 +34,15 @@ const getIcon = (tipo: string) => {
   }
 }
 
-const getBadgeVariant = (tipo: string) => {
+// Estilos semânticos para os badges baseados no tipo
+const getBadgeStyles = (tipo: string) => {
   switch (tipo) {
-    case 'Pessoal': return 'default'
-    case 'Vizinho': return 'secondary'
-    case 'Trabalho': return 'outline'
-    default: return 'outline'
+    case 'Pessoal': return 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'
+    case 'Residencial': return 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+    case 'Trabalho': return 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+    case 'Vizinho': return 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
+    case 'Parente': return 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
+    default: return 'bg-muted text-muted-foreground border-border'
   }
 }
 
@@ -47,44 +58,65 @@ export function CaseContactList({ contatos, telefoneAntigo }: CaseContactListPro
   }
 
   if (listaContatos.length === 0) {
-    return <span className="text-sm text-muted-foreground italic">Nenhum contato registrado.</span>
+    return (
+      <div className="flex items-center gap-2 p-3 rounded-lg border border-dashed border-border/60 bg-muted/5 text-muted-foreground text-xs italic justify-center">
+        <Phone className="h-3.5 w-3.5 opacity-50" />
+        Nenhum contato registrado.
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {listaContatos.map((c: any, idx: number) => (
-        <div key={idx} className="flex items-center justify-between p-2 rounded-md border bg-muted/20 hover:bg-muted/40 transition-colors group">
-          <div className="flex items-start gap-3 overflow-hidden">
-            <div className="mt-1">
-               <Badge variant={getBadgeVariant(c.tipo)} className="gap-1 px-1.5 h-5 text-[10px]">
+    <div className="flex flex-col gap-3">
+      {listaContatos.map((c, idx) => (
+        <div 
+          key={idx} 
+          className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-card hover:bg-muted/30 transition-all duration-200 group shadow-sm hover:shadow-md"
+        >
+          {/* [CORREÇÃO] Removido 'overflow-hidden' e adicionado 'min-w-0' para evitar corte */}
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            {/* Badge de Tipo */}
+            <div className="mt-0.5 shrink-0">
+               <Badge 
+                 variant="outline" 
+                 className={cn("gap-1.5 px-2 h-5 text-[10px] font-medium border shadow-none", getBadgeStyles(c.tipo))}
+               >
                  {getIcon(c.tipo)} {c.tipo}
                </Badge>
             </div>
             
-            <div className="flex flex-col min-w-0">
-              {/* [AJUSTE] Adicionado 'whitespace-nowrap' para não quebrar a linha do número */}
-              <span className="text-sm font-medium tracking-tight whitespace-nowrap">
+            {/* Informações do Contato */}
+            <div className="flex flex-col min-w-0 gap-0.5 flex-1">
+              {/* [CORREÇÃO] Removido 'whitespace-nowrap', adicionado 'break-words' */}
+              <span className="text-sm font-semibold tracking-tight text-foreground font-mono leading-tight wrap-break-word">
                 {c.numero}
               </span>
               
-              {c.nome && <span className="text-xs text-muted-foreground truncate">{c.nome}</span>}
-              {c.observacao && <span className="text-[10px] text-muted-foreground/70 truncate italic">{c.observacao}</span>}
+              {(c.nome || c.observacao) && (
+                <div className="flex flex-col">
+                  {c.nome && <span className="text-xs text-foreground/80 font-medium wrap-break-word leading-tight">{c.nome}</span>}
+                  {c.observacao && <span className="text-[10px] text-muted-foreground italic wrap-break-word leading-tight mt-0.5">{c.observacao}</span>}
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Botão de Ação (WhatsApp) */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button 
                   size="icon" 
                   variant="ghost" 
-                  className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-100 shrink-0 ml-2" // shrink-0 evita esmagar o botão
+                  className="h-8 w-8 text-muted-foreground hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 shrink-0 ml-2 rounded-full transition-colors" 
                   onClick={() => handleWhatsApp(c.numero)}
                 >
                   <MessageSquare className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Abrir WhatsApp</TooltipContent>
+              <TooltipContent side="left" className="text-xs bg-green-600 text-white border-green-700">
+                Iniciar conversa no WhatsApp
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>

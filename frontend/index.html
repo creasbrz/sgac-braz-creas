@@ -1,82 +1,119 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
 
-    <title>SGAC-BRAZ | Gestão CREAS</title>
-    <meta name="description" content="Sistema de Gestão de Atendimentos do CREAS Brazlândia - SEDES/DF." />
+    <title>SGAC-BRAZ | Gestão Socioassistencial</title>
+    <meta name="description" content="Plataforma Integrada de Gestão do CREAS Brazlândia - Acompanhamento familiar e gestão técnica." />
     <meta name="application-name" content="SGAC-BRAZ" />
-    <meta name="author" content="SEDES/DF" />
-
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="SGAC-BRAZ" />
-    <meta property="og:description" content="Gestão de Atendimentos CREAS Brazlândia." />
-    <meta property="og:image" content="/og-image.png" /> <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" /> <meta name="format-detection" content="telephone=no" />
+    
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f6f8" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a" />
-
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link 
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" 
-      rel="stylesheet" 
-    />
-
-    <style>
-      :root {
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        line-height: 1.5;
-        font-weight: 400;
-        
-        color-scheme: light dark;
-        font-synthesis: none;
-        text-rendering: optimizeLegibility;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-
-      body {
-        margin: 0;
-        padding: 0;
-        min-height: 100vh;
-        /* Cores de fallback enquanto o CSS do React não carrega */
-        background-color: #f5f6f8; 
-        color: #0f172a;
-      }
-
-      html.dark body {
-        background-color: #020817; /* Cor background padrão do Shadcn Dark */
-        color: #f8fafc;
-      }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
     <script>
       (function() {
         try {
-          var storageKey = "vite-ui-theme";
-          var theme = localStorage.getItem(storageKey);
-          var supportDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const storageKey = "vite-ui-theme";
+          const theme = localStorage.getItem(storageKey);
+          const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           
-          if (theme === "dark" || (!theme && supportDarkMode) || (theme === "system" && supportDarkMode)) {
+          // Se estiver salvo como dark OU (não salvo E sistema é dark)
+          if (theme === "dark" || (!theme && systemDark)) {
             document.documentElement.classList.add("dark");
           } else {
             document.documentElement.classList.remove("dark");
           }
-        } catch (e) {}
+        } catch (e) { console.error("Erro ao aplicar tema inicial:", e); }
       })();
     </script>
-  </head>
 
+    <style>
+      :root {
+        --bg-color: #ffffff;
+        --text-color: #0f172a; /* Slate 900 */
+        --loader-primary: #2563eb; /* Blue 600 */
+        --loader-bg: #e2e8f0; /* Slate 200 */
+      }
+      .dark {
+        --bg-color: #09090b; /* Zinc 950 */
+        --text-color: #f8fafc; /* Slate 50 */
+        --loader-primary: #3b82f6; /* Blue 500 */
+        --loader-bg: #27272a; /* Zinc 800 */
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        font-family: 'Inter', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden; /* Evita scroll durante carregamento */
+      }
+
+      /* Container Centralizado */
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.4s ease-out;
+      }
+
+      /* Spinner Moderno */
+      .loader-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid var(--loader-bg);
+        border-top-color: var(--loader-primary);
+        border-radius: 50%;
+        animation: spin 1s cubic-bezier(0.55, 0.055, 0.675, 0.19) infinite;
+        margin-bottom: 1.5rem;
+      }
+
+      /* Texto Pulsante */
+      .loader-text {
+        font-size: 0.875rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: var(--text-color);
+        opacity: 0.8;
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.4; } }
+    </style>
+  </head>
+  
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="root">
+      <div id="initial-loader">
+        <div class="loader-spinner"></div>
+        <div class="loader-text">INICIANDO SISTEMA...</div>
+        <noscript>
+          <div style="margin-top: 20px; color: #ef4444; text-align: center; max-width: 300px;">
+            <strong style="font-size: 1.1rem;">JavaScript Desativado</strong>
+            <p style="font-size: 0.9rem; margin-top: 8px;">O sistema SGAC requer JavaScript para funcionar. Por favor, habilite-o nas configurações do navegador.</p>
+          </div>
+        </noscript>
+      </div>
+    </div>
     
-    <noscript>Você precisa habilitar o JavaScript para executar este app.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

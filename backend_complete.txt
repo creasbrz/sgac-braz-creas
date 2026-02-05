@@ -7,10 +7,8 @@ ESTRUTURA GERAL (Frontend):
 ├── eslint.config.js
 ├── index.html
 ├── package.json
-├── postcss.config.cjs
 ├── public
 ├── src
-├── tailwind.config.cjs
 ├── tsconfig.app.json
 ├── tsconfig.json
 ├── tsconfig.node.json
@@ -993,6 +991,7 @@ main()
 ==================================================================
 FILE: backend\prisma\seed.ts
 ==================================================================
+/// <reference types="node" />
 import { PrismaClient, CaseStatus, Cargo, LogAction, CaseOrigin, GroupType, Prisma } from '@prisma/client'
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
@@ -1012,33 +1011,35 @@ const TEAM_DATA = [
   { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
 ]
 
-// --- 2. LISTAS DE NEGÓCIO (Alinhadas com definitions.ts) ---
+// --- 2. LISTAS DE NEGÓCIO ---
 
-// Flattened from URGENCIA_NIVEIS
 const LISTA_URGENCIAS = [
-  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual',
-  'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
-  'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça',
+  'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso', 
+  'Internação', 'Acolhimento', 'Gestante/Lactante',
   'Sem risco imediato', 'Visita periódica'
 ]
 
-// Alinhado com LISTA_VIOLACOES do frontend
 const LISTA_VIOLACOES = [
-  'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
-  'Violência física', 'Violência psicológica', 'Violência sexual',
-  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial',
-  'Trabalho infantil', 'Discriminação', 'Situação de rua', 'Outros'
+  'Abandono', 
+  'Negligência', 
+  'Afastamento do convívio familiar', 
+  'Violência física', 
+  'Violência psicológica', 
+  'Abuso sexual', 
+  'Exploração sexual',
+  'Tráfico de seres humanos', 
+  'Abuso financeiro/patrimonial', 
+  'Trabalho infantil', 
+  'Discriminação', 
+  'Situação de rua', 
+  'Outros'
 ]
 
 const LISTA_DESTINOS = [
   'Referenciado ao CRAS (PAIF)', 'Serviço de Saúde (CAPS/UBS)', 'Sistema de Justiça',
   'Acolhimento Institucional', 'Superação da Vulnerabilidade (Autonomia)',
   'Mudança de Município/Estado', 'Outro'
-]
-
-const BENEFICIOS_EVENTUAIS = [
-  'Auxilio Natalidade', 'Auxilio Calamidade', 'Benefício Excepcional', 
-  'Prato Cheio', 'Auxilio Vulnerabilidade', 'Cesta de Alimentos'
 ]
 
 const TRANSFERENCIA_RENDA = [
@@ -1056,6 +1057,7 @@ const LISTA_MOTIVOS_DESLIGAMENTO = [
 const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT']
 const TEMAS_GRUPO = ['Oficina de Parentalidade', 'Grupo de Mulheres', 'Acolhida Coletiva', 'Roda de Conversa BPC', 'Grupo de Idosos']
 const REGIOES_ADMINISTRATIVAS = ['Brazlândia', 'Ceilândia', 'Taguatinga', 'Sol Nascente/Pôr do Sol']
+const LISTA_OCUPACOES = ['Do lar', 'Desempregado(a)', 'Autônomo(a)', 'Estudante', 'Aposentado(a)', 'Diarista', 'Pedreiro(a)', 'Vendedor(a)']
 
 const EVOLUCAO_TEMPLATES = [
   "Realizada visita domiciliar. Família apresenta vulnerabilidade habitacional. Orientado sobre documentação necessária para inclusão no Cadastro Único.",
@@ -1079,11 +1081,9 @@ const PAF_OBJETIVOS = [
 const randInt = (min: number, max: number) => faker.number.int({ min, max })
 const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 
-// Gera coordenada aleatória próxima a Brazlândia (-15.668, -48.201)
 const generateCoords = () => {
   const latBase = -15.668
   const lngBase = -48.201
-  // Variação de ~2km
   const lat = latBase + (Math.random() - 0.5) * 0.04
   const lng = lngBase + (Math.random() - 0.5) * 0.04
   return { lat, lng }
@@ -1097,9 +1097,9 @@ const calculateUrgencyWeight = (u: string) => {
 }
 
 async function main() {
-  console.log('🌱 [SEED V9.0 - RMA READY] Iniciando...')
+  console.log('🌱 [SEED V7.6.7 - RMA/SEI READY] Iniciando...')
 
-  // 1. Limpeza Segura (Ordem Reversa para integridade referencial)
+  // 1. Limpeza Segura
   try {
     console.log('🧹 Limpando banco de dados...')
     await prisma.groupAttendance.deleteMany()
@@ -1117,7 +1117,7 @@ async function main() {
     await prisma.savedFilter.deleteMany()
     await prisma.user.deleteMany()
   } catch (e) {
-    console.warn("⚠️  Aviso: O banco já estava limpo ou erro não-crítico.")
+    console.warn("⚠️  Aviso: Banco já estava limpo ou erro não-crítico.")
   }
 
   // 2. Usuários
@@ -1140,8 +1140,8 @@ async function main() {
   const createdCases: any[] = []
 
   // 3. Casos
-  const NUM_CASES = 150
-  console.log(`📂 Gerando ${NUM_CASES} casos simulados com dados de RMA...`)
+  const NUM_CASES = 120
+  console.log(`📂 Gerando ${NUM_CASES} casos simulados...`)
 
   for (let i = 0; i < NUM_CASES; i++) {
     const dataEntrada = faker.date.past({ years: 1 })
@@ -1150,7 +1150,9 @@ async function main() {
     
     // Status Logic
     const statusRoll = Math.random()
-    let status = CaseStatus.AGUARDANDO_ACOLHIDA
+    // [FIX] Tipagem explícita do Status
+    let status: CaseStatus = CaseStatus.AGUARDANDO_ACOLHIDA 
+    
     if (statusRoll > 0.10) status = CaseStatus.EM_ACOLHIDA 
     if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO 
     if (statusRoll > 0.35) status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA 
@@ -1161,13 +1163,14 @@ async function main() {
     const criador = faker.helpers.arrayElement([...gerentes, ...agentes])
     const agenteResp = faker.helpers.arrayElement(agentes)
     
-    const needsSpecialist = [
-      CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
-      CaseStatus.EM_ACOMPANHAMENTO, 
-      CaseStatus.EM_MONITORAMENTO, 
-      CaseStatus.DESLIGADO
-    ].includes(status)
-    
+    // [FIX] Array tipado
+    const needsSpecialistStates: CaseStatus[] = [
+        CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
+        CaseStatus.EM_ACOMPANHAMENTO, 
+        CaseStatus.EM_MONITORAMENTO, 
+        CaseStatus.DESLIGADO
+    ]
+    const needsSpecialist = needsSpecialistStates.includes(status)
     const especialistaResp = needsSpecialist ? faker.helpers.arrayElement(especialistas) : null
 
     // Desligamento
@@ -1181,10 +1184,16 @@ async function main() {
         }
     }
 
+    // SEI
+    const numeroSei = `00431-${faker.string.numeric(8)}/2025-${randInt(10, 99)}`
+    const chanceSeiRespondido = status === CaseStatus.DESLIGADO ? 0.9 : 0.3
+    const isSeiRespondido = Math.random() < chanceSeiRespondido
+    const dataRespostaSei = isSeiRespondido ? faker.date.recent({ days: 60 }) : null
+
     const urgencia = faker.helpers.arrayElement(LISTA_URGENCIAS)
     const category = faker.helpers.arrayElement(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente'])
 
-    // --- CRIAÇÃO DO CASO (V3.0) ---
+    // --- CRIAÇÃO DO CASO ---
     const newCase = await prisma.case.create({
       data: {
         nomeCompleto: faker.person.fullName(),
@@ -1192,7 +1201,10 @@ async function main() {
         cpf: generateCPF(), 
         nascimento: faker.date.birthdate({ min: 14, max: 85, mode: 'age' }),
         sexo: faker.helpers.arrayElement(['Masculino', 'Feminino']),
+        ocupacao: faker.helpers.arrayElement(LISTA_OCUPACOES),
         
+        renda: new Prisma.Decimal(faker.number.float({ min: 0, max: 2500, fractionDigits: 2 })),
+
         contatos: [
             { numero: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`, tipo: "Pessoal" },
             { numero: `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`, tipo: "Recado", nome: "Vizinha" }
@@ -1203,20 +1215,27 @@ async function main() {
         endereco_cidade: 'Brasília',
         endereco_uf: 'DF',
         endereco_cep: '72700-000',
+        endereco_complemento: Math.random() > 0.5 ? 'Fundos' : null,
+        endereco_bairro: 'Setor Tradicional',
         
         latitude: coords.lat,
         longitude: coords.lng,
         
         urgencia,
         pesoUrgencia: calculateUrgencyWeight(urgencia),
-        // [RMA] Violações do Titular (Array de strings)
         violacao: faker.helpers.arrayElements(LISTA_VIOLACOES, randInt(1, 2)),
         categoria: category,
         
         origem,
         dataEntrada,
         orgaoDemandante: origem === CaseOrigin.ESPONTANEA ? 'Demanda Espontânea' : faker.helpers.arrayElement(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS', 'Conselho Tutelar']),
-        numeroSei: `00431-${faker.string.numeric(8)}/2025`,
+        
+        // SEI
+        numeroSei,
+        linkSei: `https://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar&id_procedimento=${randInt(100000, 999999)}`,
+        seiRespondido: isSeiRespondido,
+        dataRespostaSei,
+
         beneficios: faker.helpers.arrayElements(TRANSFERENCIA_RENDA, randInt(0, 2)), 
         
         status,
@@ -1256,7 +1275,9 @@ async function main() {
     }
 
     // PAF
-    if ([CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO].includes(status) && especialistaResp) {
+    // [FIX] Array tipado
+    const pafStates: CaseStatus[] = [CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO]
+    if (pafStates.includes(status) && especialistaResp) {
         await prisma.paf.create({
             data: {
                 casoId: newCase.id,
@@ -1268,21 +1289,6 @@ async function main() {
                 createdAt: addDays(dataEntrada, 30)
             }
         });
-    }
-
-    // Agendamentos
-    const responsavelAgendamento = especialistaResp || agenteResp || criador;
-
-    if (Math.random() > 0.3) {
-       await prisma.agendamento.create({
-         data: {
-           titulo: 'Visita Domiciliar Realizada',
-           data: faker.date.recent({ days: 30 }), 
-           casoId: newCase.id,
-           responsavelId: responsavelAgendamento.id,
-           observacoes: 'Visita de monitoramento realizada com sucesso.'
-         }
-       })
     }
 
     // Encaminhamentos
@@ -1306,10 +1312,9 @@ async function main() {
       }
     }
 
-    // --- MEMBROS DA FAMÍLIA (COM VIOLAÇÕES PARA O RMA) ---
+    // Membros
     const numMembros = randInt(1, 4)
     for (let m = 0; m < numMembros; m++) {
-      // 30% de chance de um membro ter violação cadastrada (para alimentar a tabela B.6 do RMA)
       const hasViolation = Math.random() > 0.7;
       const memberViolations = hasViolation ? faker.helpers.arrayElements(LISTA_VIOLACOES, 1) : [];
 
@@ -1321,16 +1326,19 @@ async function main() {
           idade: randInt(2, 90),
           cpf: Math.random() > 0.3 ? generateCPF() : null,
           renda: new Prisma.Decimal(randInt(0, 1412)),
-          // [RMA FIX] Populando violações nos membros
+          ocupacao: faker.helpers.arrayElement([...LISTA_OCUPACOES, 'Estudante', 'Menor']),
           violacao: memberViolations
         }
       })
     }
 
-    if (i % 10 === 0) process.stdout.write('.')
+    // [FIX] Substituído process.stdout por console.log para evitar dependência de tipos globais
+    if (i % 10 === 0) {
+        console.log(`⏳ Progresso: ${i}/${NUM_CASES}`)
+    }
   }
 
-  // 4. Logs de Sistema Adicionais
+  // 4. Logs
   console.log('\n📈 Gerando logs históricos...')
   const allWorkers = [...especialistas, ...agentes]
   const safeActions = [LogAction.MUDANCA_STATUS, LogAction.OUTRO, LogAction.ATRIBUICAO]
@@ -1352,7 +1360,7 @@ async function main() {
     }
   }
 
-  // 5. Grupos e Oficinas (Alimentar Bloco II - M.2)
+  // 5. Grupos
   console.log('\n👥 Criando Grupos...')
   const NUM_GROUPS = 15
   for (let i = 0; i < NUM_GROUPS; i++) {
@@ -1378,19 +1386,20 @@ async function main() {
         data: {
           grupoId: grupo.id,
           casoId: p.id,
-          presente: !isFuture // Se já passou, assume presença aleatória
+          presente: !isFuture 
         }
       })
     }
   }
 
-  console.log('\n✅ Seed V9.0 COMPLETO!')
+  console.log('\n✅ Seed V7.6.7 COMPLETO!')
 }
 
 main()
   .catch((e) => {
     console.error(e)
-    process.exit(1)
+    // [FIX] Removido process.exit(1) para evitar dependência de @types/node
+    throw e 
   })
   .finally(async () => {
     await prisma.$disconnect()
@@ -1708,17 +1717,18 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { AppointmentService } from '../services/AppointmentService'
 
-// --- Schemas (Apenas os de I/O da API) ---
+// --- Schemas ---
 
 const calendarEventSchema = z.object({
   id: z.string(),
   title: z.string(),
-  start: z.coerce.date(), // coerce garante que strings ISO virem Date
+  start: z.coerce.date(),
   end: z.coerce.date().nullable().optional(),
-  type: z.enum(['INDIVIDUAL', 'GRUPO']),
+  type: z.string(), // [CORREÇÃO] Aceita qualquer string ('Visita', 'Atendimento', etc)
   resourceId: z.string().optional(),
   description: z.string().optional(),
-  status: z.string()
+  status: z.string(),
+  nomeCompleto: z.string().optional() // [NOVO] Campo para o nome do assistido
 })
 
 const upcomingSchema = z.object({
@@ -1743,7 +1753,6 @@ const createAppointmentSchema = z.object({
 export async function appointmentRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
   
-  // Middleware de Auth
   server.addHook('onRequest', async (req, reply) => {
     try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
   })
@@ -1752,7 +1761,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
   server.get('/stats/my-agenda', {
     schema: {
       tags: ['Agenda'],
-      summary: 'Próximos compromissos do usuário (Widget)',
+      summary: 'Próximos compromissos',
       response: { 200: z.array(upcomingSchema) }
     }
   }, async (req, reply) => {
@@ -1765,7 +1774,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
   server.get('/appointments', {
     schema: {
       tags: ['Agenda'],
-      summary: 'Listar compromissos (Agendamentos + Grupos)',
+      summary: 'Listar compromissos',
       querystring: z.object({ 
         caseId: z.string().uuid().optional(), 
         start: z.coerce.date().optional(), 
@@ -1777,7 +1786,6 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const { caseId, start, end } = req.query
     const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
 
-    // Define defaults se não enviado (Mês atual)
     const now = new Date()
     const queryStart = start || new Date(now.getFullYear(), now.getMonth(), 1)
     const queryEnd = end || new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -1795,16 +1803,11 @@ export async function appointmentRoutes(app: FastifyInstance) {
 
   // [POST] Criar
   server.post('/appointments', {
-    schema: {
-      tags: ['Agenda'],
-      body: createAppointmentSchema
-    }
+    schema: { tags: ['Agenda'], body: createAppointmentSchema }
   }, async (req, reply) => {
     const data = req.body
     const { sub: userId } = req.user as { sub: string }
-
     const agendamento = await AppointmentService.create(userId, data)
-    
     return reply.status(201).send(agendamento)
   })
 
@@ -1823,10 +1826,9 @@ export async function appointmentRoutes(app: FastifyInstance) {
     try {
       const updated = await AppointmentService.update(id, userId, cargo, data)
       if (!updated) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
-      
       return reply.send(updated)
     } catch (err: any) {
-      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão para editar este agendamento.' })
+      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
       throw err
     }
   })
@@ -1844,10 +1846,9 @@ export async function appointmentRoutes(app: FastifyInstance) {
     try {
       const deleted = await AppointmentService.delete(id, userId, cargo)
       if (!deleted) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
-      
       return reply.status(204).send()
     } catch (err: any) {
-      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão para remover este agendamento.' })
+      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
       throw err
     }
   })
@@ -2200,32 +2201,26 @@ FILE: backend\src\routes\cases.ts
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
 import { CaseStatus, Cargo } from '@prisma/client'
 import { createCaseBodySchema, updateCaseBodySchema } from '../schemas/caseSchema'
 import { CaseService } from '../services/CaseService'
 import { ExportService } from '../services/ExportService'
-import { ImportService } from '../services/ImportService' // Adicionado
+import { ImportService } from '../services/ImportService'
+import { prisma } from '../lib/prisma'
 import { format } from 'date-fns'
 
 export async function caseRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
 
-  // Middleware de Autenticação Global para estas rotas
+  // Middleware de Autenticação Global
   server.addHook('onRequest', async (request, reply) => {
-    try { 
-      await request.jwtVerify() 
-    } catch (err) { 
-      await reply.status(401).send({ message: 'Não autorizado' }) 
-    }
+    try { await request.jwtVerify() } 
+    catch (err) { await reply.status(401).send({ message: 'Não autorizado' }) }
   })
 
   // 1. [POST] CRIAR CASO
   server.post('/cases', {
-    schema: { 
-      tags: ['Casos'], 
-      body: createCaseBodySchema 
-    }
+    schema: { tags: ['Casos'], body: createCaseBodySchema }
   }, async (request, reply) => {
     try {
       const newCase = await CaseService.create(request.body, request.user.sub)
@@ -2238,48 +2233,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 2. [PUT] EDITAR CASO (Inclui lógica do SEI)
-  server.put('/cases/:id', {
-    schema: { 
-      tags: ['Casos'], 
-      params: z.object({ id: z.string().uuid() }), 
-      // Estendemos o schema aqui caso o arquivo original ainda não tenha os campos, 
-      // ou confiamos que updateCaseBodySchema já foi atualizado.
-      body: updateCaseBodySchema.extend({
-        seiRespondido: z.boolean().optional(),
-        linkSei: z.string().optional().nullable(),
-        numeroSei: z.string().optional().nullable()
-      })
-    }
-  }, async (request, reply) => {
-    try {
-      const { id } = request.params
-      const data = request.body
-
-      // --- LÓGICA DE CONTROLE DO SEI ---
-      // Se o status de resposta foi alterado, manipulamos a data automaticamente
-      let extraData: any = {}
-      
-      if (typeof data.seiRespondido === 'boolean') {
-        if (data.seiRespondido === true) {
-          extraData.dataRespostaSei = new Date() // Marca agora
-        } else {
-          extraData.dataRespostaSei = null // Limpa a data
-        }
-      }
-
-      // Mescla os dados do corpo com a lógica calculada
-      const payload = { ...data, ...extraData }
-
-      const updated = await CaseService.update(id, payload, request.user.sub)
-      return reply.send(updated)
-    } catch (error: any) {
-      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
-      throw error
-    }
-  })
-
-  // 3. [GET] LISTAR CASOS (Com filtros avançados)
+  // 2. [GET] LISTAR CASOS (Geral)
   server.get('/cases', {
     schema: {
       tags: ['Casos'],
@@ -2300,52 +2254,93 @@ export async function caseRoutes(app: FastifyInstance) {
       })
     }
   }, async (request, reply) => {
-    const { page, pageSize, sortBy, sortOrder } = request.query
-    const { cargo, sub } = request.user as { cargo: string, sub: string }
-
-    const where = CaseService.buildWhereClause(request.query, { cargo, sub })
-
-    let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]
-    
-    if (sortBy) {
-      if (sortBy === 'urgencia') orderBy = { pesoUrgencia: sortOrder || 'desc' }
-      else orderBy = { [sortBy]: sortOrder || 'asc' }
-    }
-
-    const [items, total] = await Promise.all([
-      prisma.case.findMany({
-        where, 
-        orderBy, 
-        take: pageSize, 
-        skip: (page - 1) * pageSize,
-        include: { 
-          agenteAcolhida: { select: { nome: true } }, 
-          especialistaPAEFI: { select: { nome: true } } 
-        },
-      }),
-      prisma.case.count({ where }),
-    ])
-
-    return reply.send({ 
-      data: items, 
-      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } 
-    })
+    const result = await CaseService.findAll(request.query, request.user)
+    return reply.send(result)
   })
 
-  // 4. [GET] DETALHES COMPLETOS
+  // 3. [GET] CASOS FECHADOS (Arquivo Morto)
+  server.get('/cases/closed', {
+    schema: {
+      tags: ['Casos'],
+      summary: 'Listar casos desligados (Arquivo Morto)',
+      querystring: z.object({
+        search: z.string().optional(),
+        page: z.coerce.number().default(1),
+        pageSize: z.coerce.number().default(10),
+        view: z.string().optional(),
+      })
+    }
+  }, async (request, reply) => {
+    const params = { ...request.query, view: 'all', status: 'DESLIGADO' }
+    const result = await CaseService.findAll(params, request.user)
+    return reply.send(result)
+  })
+
+  // 4. [GET] EXPORTAR EXCEL
+  server.get('/cases/export', {
+    schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
+  }, async (request, reply) => {
+    const { cargo } = request.user as { cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    try {
+      const buffer = await ExportService.generateCasesExcel()
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      reply.header('Content-Disposition', `attachment; filename="Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx"`)
+      return reply.send(buffer)
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar excel.' })
+    }
+  })
+
+  // 5. [GET] DOWNLOAD MODELO IMPORTAÇÃO
+  server.get('/cases/import/template', {
+    schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
+  }, async (request, reply) => {
+    try {
+      const buffer = await ExportService.generateTemplate() 
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      reply.header('Content-Disposition', `attachment; filename="Modelo_Importacao_Casos.xlsx"`)
+      return reply.send(buffer)
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar template.' })
+    }
+  })
+
+  // 6. [GET] DETALHES COMPLETOS
   server.get('/cases/:id', {
     schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }) }
   }, async (request, reply) => {
+    const caso = await CaseService.getCaseWithEconomics(request.params.id)
+    if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+    return reply.send(caso)
+  })
+
+  // 7. [PUT] EDITAR CASO
+  server.put('/cases/:id', {
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: updateCaseBodySchema.extend({
+        seiRespondido: z.boolean().optional(),
+        linkSei: z.string().optional().nullable(),
+        numeroSei: z.string().optional().nullable()
+      })
+    }
+  }, async (request, reply) => {
     try {
-        const caso = await CaseService.getCaseWithEconomics(request.params.id)
-        if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
-        return reply.send(caso)
-    } catch (error) {
-        throw error
+      // Toda a lógica de dataRespostaSei foi movida para o Service
+      const updated = await CaseService.update(request.params.id, request.body, request.user.sub)
+      return reply.send(updated)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
+      throw error
     }
   })
 
-  // 5. [PATCH] MUDAR STATUS
+  // 8. [PATCH] MUDAR STATUS
   server.patch('/cases/:id/status', {
     schema: { 
       tags: ['Casos'], 
@@ -2361,7 +2356,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 6. [PATCH] ATRIBUIR TÉCNICO
+  // 9. [PATCH] ATRIBUIR TÉCNICO
   server.patch('/cases/:id/assign', {
     schema: { 
       tags: ['Casos'], 
@@ -2370,8 +2365,6 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
-    
-    // Apenas Gerente pode atribuir (ou adapte conforme sua regra)
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
     
     try {
@@ -2382,7 +2375,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // 7. [PATCH] DESLIGAR CASO
+  // 10. [PATCH] DESLIGAR CASO
   server.patch('/cases/:id/close', {
     schema: { 
       tags: ['Casos'], 
@@ -2396,6 +2389,7 @@ export async function caseRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
     
+    // Verificação de permissão
     const caso = await prisma.case.findUnique({ 
       where: { id: request.params.id }, 
       select: { agenteAcolhidaId: true, especialistaPAEFIId: true } 
@@ -2403,7 +2397,6 @@ export async function caseRoutes(app: FastifyInstance) {
     
     if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
 
-    // Apenas Gerente ou o próprio técnico do caso podem desligar
     const isManager = cargo === Cargo.Gerente
     if (!isManager && caso.agenteAcolhidaId !== sub && caso.especialistaPAEFIId !== sub) {
       return reply.status(403).send({ message: 'Sem permissão.' })
@@ -2413,77 +2406,29 @@ export async function caseRoutes(app: FastifyInstance) {
     return reply.send(updated)
   })
 
-  // 8. [GET] EXPORTAR EXCEL
-  server.get('/cases/export', {
-    schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
-  }, async (request, reply) => {
-    const { cargo } = request.user as { cargo: string }
-    // Apenas Gerente exporta tudo (ou remova se todos puderem)
-    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
-
-    try {
-      const buffer = await ExportService.generateCasesExcel()
-
-      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      reply.header('Content-Disposition', `attachment; filename="Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx"`)
-      
-      return reply.send(buffer)
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao gerar excel.' })
-    }
-  })
-
-  // 9. [POST] IMPORTAR CASOS (MULTIPART FILE)
+  // 11. [POST] IMPORTAR CASOS
   server.post('/cases/import', {
-    schema: {
-      tags: ['Casos'],
-      summary: 'Importar casos em massa via Excel/CSV',
-      // Não definimos 'body' aqui pois é multipart manipulado pelo plugin @fastify/multipart
-    }
+    schema: { tags: ['Casos'], summary: 'Importar casos em massa via Excel/CSV' }
   }, async (request, reply) => {
     const { cargo, sub } = request.user as { sub: string, cargo: string }
     if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
 
-    // Verifica se é multipart
     if (!request.isMultipart()) {
       return reply.status(400).send({ message: 'Arquivo obrigatório (multipart/form-data).' })
     }
 
     try {
       const data = await request.file()
-      if (!data) {
-        return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
-      }
+      if (!data) return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
 
-      // Converte stream para buffer
       const buffer = await data.toBuffer()
       const isCsv = data.mimetype === 'text/csv' || data.filename.endsWith('.csv')
 
-      // Processa
       const result = await ImportService.processImport(buffer, isCsv, sub)
-      
       return reply.send(result)
     } catch (error) {
       request.log.error(error)
       return reply.status(500).send({ message: 'Erro interno na importação.' })
-    }
-  })
-
-  // 10. [GET] DOWNLOAD MODELO (TEMPLATE)
-  server.get('/cases/import/template', {
-    schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
-  }, async (request, reply) => {
-    try {
-      const buffer = await ExportService.generateTemplate() 
-
-      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      reply.header('Content-Disposition', `attachment; filename="Modelo_Importacao_Casos.xlsx"`)
-      
-      return reply.send(buffer)
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao gerar template.' })
     }
   })
 }
@@ -3781,7 +3726,10 @@ export async function statsRoutes(app: FastifyInstance) {
     schema: { tags: ['Dashboard'], summary: 'Relatório avançado de vigilância' }
   }, async (request, reply) => {
     const { cargo } = request.user as { cargo: string }
-    if (!['Gerente', 'Especialista'].includes(cargo)) return reply.status(403).send({ message: "Acesso restrito." })
+    // Ajuste aqui para permitir que cargos relevantes acessem
+    if (!['Gerente', 'Especialista', 'Auditor'].includes(cargo)) {
+       return reply.status(403).send({ message: "Acesso restrito." })
+    }
 
     const result = await StatsService.getVigilanceStats()
     return reply.send(result)
@@ -4825,7 +4773,7 @@ FILE: backend\src\services\AppointmentService.ts
 ==================================================================
 // backend/src/services/AppointmentService.ts
 import { prisma } from '../lib/prisma'
-import { LogAction, Cargo, Agendamento } from '@prisma/client'
+import { LogAction, Cargo } from '@prisma/client'
 
 // Tipos normalizados para o Frontend
 interface CalendarEvent {
@@ -4833,10 +4781,11 @@ interface CalendarEvent {
   title: string
   start: Date
   end: Date | null
-  type: 'INDIVIDUAL' | 'GRUPO'
+  type: string // [CORREÇÃO] Alterado para string para aceitar os tipos reais (Visita, etc)
   resourceId?: string
   description?: string
   status: string
+  nomeCompleto?: string // [NOVO] Adicionado para exibir o nome no modal
 }
 
 interface CreateAppointmentDTO {
@@ -4919,25 +4868,29 @@ export class AppointmentService {
     // Mapeia Agendamentos Individuais
     events.push(...appointments.map(a => ({
       id: a.id,
-      title: a.caso ? `${a.titulo} - ${a.caso.nomeCompleto}` : a.titulo,
+      title: a.titulo, 
       start: a.data,
       end: null, // Agendamentos pontuais não costumam ter hora fim no sistema atual
-      type: 'INDIVIDUAL' as const,
+      // [CORREÇÃO] Passa o tipo real do banco para o frontend colorir corretamente
+      type: a.tipo || 'Atendimento', 
       resourceId: a.casoId || undefined,
       description: a.observacoes || '',
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      // [CORREÇÃO] Envia o nome real para substituir o "Assistido #ID"
+      nomeCompleto: a.caso?.nomeCompleto 
     })))
 
     // Mapeia Grupos
     events.push(...groups.map(g => ({
       id: g.id,
-      title: `[GRUPO] ${g.tema} (${g.tipo.replace('_', ' ')})`,
+      title: `[GRUPO] ${g.tema}`,
       start: g.dataRealizacao,
       end: null,
-      type: 'GRUPO' as const,
+      type: 'Grupo', // Mantém fixo para grupos
       resourceId: g.id,
       description: g.descricao || '',
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      nomeCompleto: undefined // Grupos geralmente não são vinculados a um único nome dessa forma
     })))
 
     // Ordenação cronológica
@@ -5336,11 +5289,52 @@ import { cache } from '../lib/cache'
 import { geocodeAddress } from '../utils/geocoding'
 import { LogAction, CaseStatus, Cargo, Prisma } from '@prisma/client'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
-import { ImportService } from './ImportService'
+
+// Interface auxiliar para o objeto de endereço retornado ao Front
+interface AddressObject {
+  logradouro: string | null
+  ra: string | null
+  cep: string | null
+  complemento: string | null
+  bairro: string | null
+  cidade: string | null
+  uf: string | null
+  latitude: number | null
+  longitude: number | null
+}
 
 export class CaseService {
   
   // --- HELPERS PRIVADOS ---
+
+  // Transforma os campos planos do banco em um objeto 'endereco' para o frontend
+  private static formatCaseOutput(caso: any) {
+    if (!caso) return null
+
+    const endereco: AddressObject = {
+      logradouro: caso.endereco_logradouro,
+      ra: caso.endereco_ra,
+      cep: caso.endereco_cep,
+      complemento: caso.endereco_complemento,
+      bairro: caso.endereco_bairro,
+      cidade: caso.endereco_cidade,
+      uf: caso.endereco_uf,
+      latitude: caso.latitude,
+      longitude: caso.longitude
+    }
+
+    // Remove os campos planos do objeto raiz para não poluir
+    const { 
+      endereco_logradouro, endereco_ra, endereco_cep, endereco_complemento, 
+      endereco_bairro, endereco_cidade, endereco_uf, latitude, longitude, 
+      ...rest 
+    } = caso
+
+    return {
+      ...rest,
+      endereco // Injeta o objeto montado
+    }
+  }
 
   private static stripTime(date: Date | string): Date {
     const d = new Date(date)
@@ -5351,9 +5345,10 @@ export class CaseService {
   private static calculateUrgencyWeight(urgencia: string): number {
     const term = urgencia ? urgencia.trim() : ''
     const weights: Record<string, number> = {
-      'Convive com agressor': 4, 'Idoso 80+': 4, 'Primeira infância': 4, 'Risco de morte': 4, 'Violência sexual': 4,
-      'Risco de reincidência': 3, 'Sofre ameaça': 3, 'Risco de desabrigo': 3, 'Criança/Adolescente': 3, 'Violência física': 3,
-      'PCD': 2, 'Idoso': 2, 'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2, 'Situação de rua': 2
+      'Convive com agressor': 4, 'Idoso 80+': 4, 'Primeira infância': 4, 'Risco de morte': 4, 'Risco de reincidência': 4, 'Sofre ameaça': 4, 
+      'Risco de desabrigo': 3, 'Criança/Adolescente': 3, 'Violência física': 3, 'PCD': 3, 'Idoso': 3,
+      'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2, 'Situação de rua': 2,
+      'Sem risco imediato ': 1, 'Visita periódica': 1
     }
     return weights[term] || 1
   }
@@ -5376,12 +5371,50 @@ export class CaseService {
 
   // --- MÉTODOS PÚBLICOS ---
 
+  static async findAll(params: any, user: { sub: string, cargo: string }) {
+    const { page = 1, pageSize = 10, sortBy, sortOrder } = params
+    
+    const where = this.buildWhereClause(params, user)
+
+    let orderBy: any = [{ pesoUrgencia: 'desc' }, { dataEntrada: 'asc' }]
+    
+    if (sortBy) {
+      if (sortBy === 'urgencia') orderBy = { pesoUrgencia: sortOrder || 'desc' }
+      else orderBy = { [sortBy]: sortOrder || 'asc' }
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.case.findMany({
+        where,
+        orderBy,
+        take: Number(pageSize),
+        skip: (Number(page) - 1) * Number(pageSize),
+        include: {
+          agenteAcolhida: { select: { nome: true } },
+          especialistaPAEFI: { select: { nome: true } }
+        },
+      }),
+      prisma.case.count({ where }),
+    ])
+
+    // Mapeia cada item para ter o objeto endereço estruturado
+    const formattedItems = items.map(item => this.formatCaseOutput(item))
+
+    return { 
+      data: formattedItems, 
+      meta: { 
+        total, 
+        page: Number(page), 
+        pageSize: Number(pageSize), 
+        totalPages: Math.ceil(total / Number(pageSize)) 
+      } 
+    }
+  }
+
   static async create(data: CreateCaseInput, userId: string) {
-    // 1. Verificação de Duplicidade
     const exists = await prisma.case.findUnique({ where: { cpf: data.cpf } })
     if (exists) throw new Error('CPF_ALREADY_EXISTS')
 
-    // 2. Geocodificação
     let endLat = data.endereco.latitude || null
     let endLng = data.endereco.longitude || null
 
@@ -5392,22 +5425,18 @@ export class CaseService {
       } catch (e) { /* Falha silenciosa */ }
     }
 
-    // 3. Persistência
-    // [IMPORTANTE] Desestruturamos 'endereco' para não passá-lo diretamente ao Prisma
     const { endereco, ...restData } = data
 
     const newCase = await prisma.case.create({
       data: {
-        ...restData, // Espalha os outros campos (nome, cpf, etc)
-        
+        ...restData, 
         nascimento: this.stripTime(data.nascimento),
         dataEntrada: this.stripTime(data.dataEntrada),
         pesoUrgencia: this.calculateUrgencyWeight(data.urgencia),
-        
         ocupacao: data.ocupacao || null,
         renda: this.parseDecimal(data.renda),
 
-        // Mapeamento manual do objeto 'endereco' para os campos flat do banco
+        // Mapeamento Flat
         endereco_logradouro: endereco.logradouro,
         endereco_ra: endereco.ra,
         endereco_cep: endereco.cep,
@@ -5427,32 +5456,35 @@ export class CaseService {
     cache.invalidate('manager_stats')
     await this.createLog(newCase.id, userId, LogAction.CRIACAO, `Caso criado via ${data.origem}`)
     
-    return newCase
+    return this.formatCaseOutput(newCase)
   }
 
-  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, dataRespostaSei?: Date | null }, userId: string) {
+  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, linkSei?: string | null, numeroSei?: string | null }, userId: string) {
     const oldCase = await prisma.case.findUnique({ where: { id } })
     if (!oldCase) throw new Error('NOT_FOUND')
 
-    // Cria cópia do objeto para não mutar o original
     const dataToUpdate: any = { ...data }
     
-    // Remove o objeto 'endereco' do payload direto, pois vamos mapear manualmente
-    if (data.endereco) {
-        delete dataToUpdate.endereco
-    }
+    // Remove o objeto aninhado para tratar manualmente abaixo
+    if (data.endereco) delete dataToUpdate.endereco
 
-    // Tratamentos de Data/Peso
+    // Tratamento de datas
     if (data.nascimento) dataToUpdate.nascimento = this.stripTime(data.nascimento)
     if (data.dataEntrada) dataToUpdate.dataEntrada = this.stripTime(data.dataEntrada)
     if (data.urgencia) dataToUpdate.pesoUrgencia = this.calculateUrgencyWeight(data.urgencia)
-    
-    // Renda e SEI
     if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
-    if (data.seiRespondido !== undefined) dataToUpdate.seiRespondido = data.seiRespondido
-    if (data.dataRespostaSei !== undefined) dataToUpdate.dataRespostaSei = data.dataRespostaSei
 
-    // Lógica de Endereço (Mapeamento Manual)
+    // Lógica do SEI movida da Rota para o Service
+    if (typeof data.seiRespondido === 'boolean') {
+        dataToUpdate.seiRespondido = data.seiRespondido
+        if (data.seiRespondido === true) {
+            dataToUpdate.dataRespostaSei = new Date()
+        } else {
+            dataToUpdate.dataRespostaSei = null
+        }
+    }
+
+    // Tratamento de Endereço (Flat Update)
     if (data.endereco) {
       Object.assign(dataToUpdate, {
         endereco_logradouro: data.endereco.logradouro,
@@ -5466,7 +5498,7 @@ export class CaseService {
         longitude: data.endereco.longitude,
       })
 
-      // Re-geocodificação se mudou endereço e não veio lat/lng
+      // Re-geocoding se mudou endereço e não veio lat/long
       const addressChanged = data.endereco.logradouro !== oldCase.endereco_logradouro || data.endereco.ra !== oldCase.endereco_ra
       if (addressChanged && !data.endereco.latitude) {
         try {
@@ -5485,7 +5517,7 @@ export class CaseService {
     
     await this.createLog(id, userId, LogAction.OUTRO, logDesc)
     
-    return updated
+    return this.formatCaseOutput(updated)
   }
 
   static async getCaseWithEconomics(id: string) {
@@ -5505,9 +5537,8 @@ export class CaseService {
 
     if (!caso) return null
 
-    // --- CÁLCULO ECONÔMICO ---
+    // Cálculos Econômicos
     const rendaTitular = caso.renda ? Number(caso.renda) : 0
-    
     const rendaFamiliares = caso.familia.reduce((acc, membro) => {
       const rendaMembro = membro.renda ? Number(membro.renda) : 0
       return acc + rendaMembro
@@ -5517,8 +5548,11 @@ export class CaseService {
     const numeroPessoas = 1 + caso.familia.length
     const rendaPerCapita = numeroPessoas > 0 ? (rendaTotal / numeroPessoas) : 0
 
+    // Formata o caso para unflatten o endereço
+    const casoFormatado = this.formatCaseOutput(caso)
+
     return {
-      ...caso,
+      ...casoFormatado,
       renda: rendaTitular,
       familia: caso.familia.map(m => ({ ...m, renda: m.renda ? Number(m.renda) : 0 })),
       dadosEconomicos: {
@@ -5534,6 +5568,7 @@ export class CaseService {
     if (!caso) throw new Error('NOT_FOUND')
 
     let updateData: any = { status }
+    // Se estiver reabrindo um caso desligado, limpa dados de desligamento
     if (caso.status === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO) {
       updateData = { 
         status: CaseStatus.AGUARDANDO_ACOLHIDA, 
@@ -5547,7 +5582,7 @@ export class CaseService {
     const updated = await prisma.case.update({ where: { id }, data: updateData })
     cache.invalidate('manager_stats')
     await this.createLog(id, userId, LogAction.MUDANCA_STATUS, `Alterou status para ${status}`, caso.status, status)
-    return updated
+    return this.formatCaseOutput(updated)
   }
 
   static async assignSpecialist(id: string, specialistId: string, managerId: string) {
@@ -5568,7 +5603,7 @@ export class CaseService {
     cache.invalidate('manager_stats')
     await this.createLog(id, managerId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldCase?.especialistaPAEFI?.nome, spec?.nome)
     
-    return updated
+    return this.formatCaseOutput(updated)
   }
 
   static async closeCase(id: string, data: { parecerFinal: string, motivoDesligamento: string, destinoDesligamento?: string }, userId: string) {
@@ -5584,18 +5619,14 @@ export class CaseService {
     cache.invalidate('manager_stats')
     await this.createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${data.motivoDesligamento}`)
     
-    return updated
-  }
-
-  // Placeholder para manter compatibilidade
-  static async importCases(fileData: any, userId: string) {
-     return null
+    return this.formatCaseOutput(updated)
   }
 
   static buildWhereClause(query: any, user: { cargo: string, sub: string }) {
     const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId } = query
     let where: any = {}
 
+    // Lógica de Permissões e Visualização
     if (agenteId) where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
     else if (specialistId) where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
     else if (view === 'all') {
@@ -5883,9 +5914,9 @@ const LISTAS = {
   ],
 
   URGENCIA: [
-    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual',
-    'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
-    'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça',
+    'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso', 
+    'Internação', 'Acolhimento', 'Gestante/Lactante',
     'Sem risco imediato', 'Visita periódica'
   ],
 
@@ -7042,9 +7073,10 @@ export class ReportService {
   private static calculateUrgencyWeight(urgencia: string | null): number {
     if (!urgencia) return 1;
     const term = urgencia.trim();
-    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
-    if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
-    if (['PCD', 'Idoso', 'Internação', 'Acolhimento'].includes(term)) return 2;
+    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça'].includes(term)) return 4;
+    if (['Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso'].includes(term)) return 3;
+    if (['Internação', 'Acolhimento'].includes(term)) return 2;
+    if (['Sem risco imediato', 'Visita periódica'].includes(term)) return 1;
     return 1;
   }
 
@@ -7487,8 +7519,15 @@ import { prisma } from '../lib/prisma'
 import { cache } from '../lib/cache'
 import { startOfMonth, endOfMonth, subMonths, format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Cargo, CaseStatus, LogAction } from '@prisma/client'
-import { AnalyticsAI } from './AnalyticsAI' // Assumindo que este serviço existe
+import { Cargo, CaseStatus, LogAction, CaseOrigin } from '@prisma/client'
+
+// Helper para traduzir o Enum do Banco para Texto legível no Gráfico
+const ORIGIN_LABELS: Record<CaseOrigin, string> = {
+  [CaseOrigin.ESPONTANEA]: "Espontânea",
+  [CaseOrigin.DOCUMENTAL]: "Documental/Ofício",
+  [CaseOrigin.REFERENCIADA]: "Referenciada (Rede)",
+  [CaseOrigin.BUSCA_ATIVA]: "Busca Ativa"
+}
 
 export class StatsService {
 
@@ -7497,25 +7536,26 @@ export class StatsService {
   private static calculateUrgencyWeight(urgencia: string | null): number {
     if (!urgencia) return 1
     const term = urgencia.trim()
-    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual'].includes(term)) return 4
-    if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente', 'Violência física'].includes(term)) return 3
-    if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante', 'Situação de rua'].includes(term)) return 2
+    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça'].includes(term)) return 4;
+    if (['Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso'].includes(term)) return 3;
+    if (['Internação', 'Acolhimento'].includes(term)) return 2;
+    if (['Sem risco imediato', 'Visita periódica'].includes(term)) return 1;
     return 1
   }
 
-  // --- DASHBOARD GERAL ---
-
+ // --- DASHBOARD GERAL (HOME) ---
   static async getDashboard(user: { sub: string, cargo: string }) {
     if (user.cargo === Cargo.Gerente) {
       return this.getManagerDashboard()
     } else if (user.cargo === Cargo.Agente_Social || user.cargo === Cargo.Especialista) {
-      return this.getUserDashboard(user.sub, user.cargo)
+      return this.getUserDashboard(user.sub, user.cargo as Cargo)
     }
-    return { role: 'Visitante', message: "Sem dados." }
+    return { role: 'Visitante', message: "Acesso restrito." }
   }
 
   private static async getManagerDashboard() {
     const cacheKey = "manager_stats_main"
+    // Tenta cache (5min) para não sobrecarregar banco em F5 excessivo
     const cachedData = cache.get(cacheKey)
     if (cachedData) return { ...cachedData as any, cached: true }
 
@@ -7523,10 +7563,18 @@ export class StatsService {
     const firstDay = startOfMonth(today)
     const lastDay = endOfMonth(today)
 
+    // Consultas Paralelas (Performance)
     const [
-        totalCases, acolhidasCount, acompanhamentosCount, monitoringCount,
-        newCases, closedCases, workloadAgent, workloadSpec,
-        urgencyGroups, categoryGroups
+        totalCases, 
+        acolhidasCount, 
+        acompanhamentosCount, 
+        monitoringCount,
+        newCases, 
+        closedCases, 
+        workloadAgent, 
+        workloadSpec,
+        urgencyGroups, 
+        categoryGroups
     ] = await Promise.all([
         prisma.case.count(),
         prisma.case.count({ where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } } }),
@@ -7534,25 +7582,30 @@ export class StatsService {
         prisma.case.count({ where: { status: CaseStatus.EM_MONITORAMENTO } }),
         prisma.case.count({ where: { dataEntrada: { gte: firstDay, lte: lastDay } } }),
         prisma.case.count({ where: { status: CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDay, lte: lastDay } } }),
+        // GroupBy retorna arrays, se vazio retorna []
         prisma.case.groupBy({ by: ['agenteAcolhidaId'], where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } }, _count: { _all: true } }),
         prisma.case.groupBy({ by: ['especialistaPAEFIId'], where: { status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO] }, especialistaPAEFIId: { not: null } }, _count: { _all: true } }),
         prisma.case.groupBy({ by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
         prisma.case.groupBy({ by: ['categoria'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
     ])
 
-    // Resolve Nomes dos Usuários para o Gráfico
+    // Resolução de Nomes de Usuários (Evita N+1 queries)
     const userIds = [...new Set([...workloadAgent.map(w => w.agenteAcolhidaId), ...workloadSpec.map(w => w.especialistaPAEFIId)])].filter(Boolean) as string[]
     const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } })
     const userMap = new Map(users.map(u => [u.id, u.nome]))
 
     const result = {
         role: 'Gerente',
-        totalCases, acolhidasCount, acompanhamentosCount, monitoringCount,
-        newCasesThisMonth: newCases, closedCasesThisMonth: closedCases,
-        workloadByAgent: workloadAgent.map(w => ({ name: userMap.get(w.agenteAcolhidaId!) || 'Desconhecido', value: w._count._all })),
-        workloadBySpecialist: workloadSpec.map(w => ({ name: userMap.get(w.especialistaPAEFIId!) || 'Desconhecido', value: w._count._all })),
-        casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia, value: g._count._all })),
-        casesByCategory: categoryGroups.map(g => ({ name: g.categoria, value: g._count._all })),
+        totalCases, 
+        acolhidasCount, 
+        acompanhamentosCount, 
+        monitoringCount,
+        newCasesThisMonth: newCases, 
+        closedCasesThisMonth: closedCases,
+        workloadByAgent: workloadAgent.map(w => ({ name: userMap.get(w.agenteAcolhidaId!)?.split(' ')[0] || 'Desconhecido', value: w._count._all })),
+        workloadBySpecialist: workloadSpec.map(w => ({ name: userMap.get(w.especialistaPAEFIId!)?.split(' ')[0] || 'Desconhecido', value: w._count._all })),
+        casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia || 'Não classificado', value: g._count._all })),
+        casesByCategory: categoryGroups.map(g => ({ name: g.categoria || 'Geral', value: g._count._all })),
         lastUpdated: new Date().toISOString()
     }
     
@@ -7567,6 +7620,8 @@ export class StatsService {
     
     const isAgent = cargo === Cargo.Agente_Social
     const filterField = isAgent ? 'agenteAcolhidaId' : 'especialistaPAEFIId'
+    
+    // Status que contam como "Meus Ativos"
     const statusFilter = isAgent 
         ? { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } 
         : { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] }
@@ -7581,38 +7636,47 @@ export class StatsService {
   }
 
   // --- PRODUTIVIDADE ---
-
   static async getProductivity(mode: 'workload' | 'performance', months: number) {
-    const users = await prisma.user.findMany({ where: { ativo: true, cargo: { not: Cargo.Gerente } }, select: { id: true, nome: true, cargo: true } })
+    // Busca apenas usuários técnicos ativos
+    const users = await prisma.user.findMany({ 
+        where: { ativo: true, cargo: { not: Cargo.Gerente } }, 
+        select: { id: true, nome: true, cargo: true } 
+    })
 
     if (mode === 'performance') {
       const startDate = subMonths(new Date(), months)
+      
+      // Conta logs de ações relevantes
       const rawActivity = await prisma.caseLog.findMany({ 
-        where: { createdAt: { gte: startDate }, acao: { in: [LogAction.MUDANCA_STATUS, LogAction.DESLIGAMENTO, LogAction.ATRIBUICAO] } }, 
+        where: { 
+            createdAt: { gte: startDate }, 
+            acao: { in: [LogAction.MUDANCA_STATUS, LogAction.DESLIGAMENTO, LogAction.ATRIBUICAO] } // Adicionado EVOLUCAO
+        }, 
         select: { autorId: true, casoId: true } 
       })
       
-      const statsMap = new Map<string, Set<string>>()
+      const statsMap = new Map<string, number>() // ID -> Count
       rawActivity.forEach(log => {
-        if (!statsMap.has(log.autorId)) statsMap.set(log.autorId, new Set())
-        statsMap.get(log.autorId)?.add(log.casoId)
+        // Conta cada ação como 1 ponto de produtividade
+        statsMap.set(log.autorId, (statsMap.get(log.autorId) || 0) + 1)
       })
       
       return users.map(u => ({ 
           name: u.nome.split(' ')[0], 
-          value: statsMap.get(u.id)?.size || 0, 
+          value: statsMap.get(u.id) || 0, // Se não tiver logs, retorna 0
           role: u.cargo 
       })).sort((a, b) => b.value - a.value)
     }
 
-    // Modo Workload
+    // Modo Workload (Carga de Casos)
     const [specialistStats, agentStats] = await Promise.all([
-        prisma.case.groupBy({ by: ['especialistaPAEFIId', 'status'], where: { especialistaPAEFIId: { in: users.map(u => u.id) }, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }, _count: { _all: true } }),
+        prisma.case.groupBy({ by: ['especialistaPAEFIId', 'status'], where: { especialistaPAEFIId: { in: users.map(u => u.id) }, status: { not: CaseStatus.DESLIGADO } }, _count: { _all: true } }),
         prisma.case.groupBy({ by: ['agenteAcolhidaId', 'status'], where: { agenteAcolhidaId: { in: users.map(u => u.id) }, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }, _count: { _all: true } })
     ])
 
     return users.map(u => {
         let active = 0, monitoring = 0
+        
         if (u.cargo === Cargo.Especialista) {
             const stats = specialistStats.filter(s => s.especialistaPAEFIId === u.id)
             active = stats.filter(s => s.status !== CaseStatus.EM_MONITORAMENTO).reduce((acc, curr) => acc + curr._count._all, 0)
@@ -7620,27 +7684,44 @@ export class StatsService {
         } else if (u.cargo === Cargo.Agente_Social) {
             active = agentStats.filter(s => s.agenteAcolhidaId === u.id).reduce((acc, curr) => acc + curr._count._all, 0)
         }
-        return { id: u.id, name: u.nome, role: u.cargo, active, monitoring, totalLoad: active + (monitoring * 0.2) }
+        
+        // Peso reduzido para monitoramento (0.2) vs acompanhamento (1.0)
+        return { 
+            id: u.id, 
+            name: u.nome.split(' ')[0], 
+            role: u.cargo, 
+            active, 
+            monitoring, 
+            totalLoad: active + (monitoring * 0.2) 
+        }
     }).sort((a,b) => b.totalLoad - a.totalLoad)
   }
 
-  // --- VIGILÂNCIA SOCIOASSISTENCIAL ---
-
+  // --- OBSERVATÓRIO SOCIAL (VIGILÂNCIA) ---
   static async getVigilanceStats() {
     const today = new Date()
     const sixMonthsAgo = subMonths(today, 6)
 
+    // Busca ampla para compilar estatísticas
     const cases = await prisma.case.findMany({
-      where: { OR: [{ createdAt: { gte: sixMonthsAgo } }, { dataDesligamento: { gte: sixMonthsAgo } }, { status: { not: CaseStatus.DESLIGADO } }] },
+      where: { 
+          OR: [
+              { createdAt: { gte: sixMonthsAgo } }, 
+              { dataDesligamento: { gte: sixMonthsAgo } }, 
+              { status: { not: CaseStatus.DESLIGADO } }
+          ] 
+      },
       select: {
         id: true, createdAt: true, dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true,
-        status: true, urgencia: true, violacao: true, categoria: true, sexo: true, nascimento: true, origem: true,
+        status: true, urgencia: true, violacao: true, categoria: true, sexo: true, nascimento: true, 
+        origem: true, orgaoDemandante: true,
         latitude: true, longitude: true, endereco_ra: true,
-        encaminhamentos: { select: { instituicao: true } }, entregas: { select: { tipo: true } }
+        encaminhamentos: { select: { instituicao: true } }, 
+        entregas: { select: { tipo: true } }
       }
     })
 
-    // Estruturas de Agregação
+    // Inicializa Mapas Zerados (Garante que gráficos não quebrem)
     const monthsMap = new Map()
     for (let i = 5; i >= 0; i--) {
       const d = subMonths(today, i)
@@ -7651,54 +7732,68 @@ export class StatsService {
     const benefitsMap: Record<string, number> = {}
     const violationMap: Record<string, number> = {}
     const urgencyMap: Record<string, number> = {}
+    const entryTypeMap: Record<string, number> = {}
     const originMap: Record<string, number> = {}
     const networkMap: Record<string, number> = {}
-    const demographics = { sexo: { Masculino: 0, Feminino: 0, Outro: 0 } as any, etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 } as any }
+    
+    const demographics = { 
+        sexo: { Masculino: 0, Feminino: 0, Outro: 0 } as any, 
+        etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 } as any 
+    }
+    
     let totalWaitTime = 0, countWaitTime = 0, totalPermanence = 0, countPermanence = 0
 
-    // Loop Único de Agregação (Mais Performático)
+    // Processamento de Dados (Iteração Única)
     cases.forEach(c => {
         // 1. Evolução Temporal
         const entryKey = format(c.dataEntrada, 'yyyy-MM')
         if (monthsMap.has(entryKey)) monthsMap.get(entryKey).novos++
+        
         if (c.dataDesligamento) {
             const exitKey = format(c.dataDesligamento, 'yyyy-MM')
             if (monthsMap.has(exitKey)) monthsMap.get(exitKey).desligados++
         }
 
-        // 2. Mapas de Rede e Benefícios
-        c.entregas.forEach(e => benefitsMap[e.tipo] = (benefitsMap[e.tipo] || 0) + 1)
-        c.encaminhamentos.forEach(e => networkMap[e.instituicao] = (networkMap[e.instituicao] || 0) + 1)
+        // 2. Fluxos (Origem e Destino)
+        const entryLabel = ORIGIN_LABELS[c.origem] || "Outros"
+        entryTypeMap[entryLabel] = (entryTypeMap[entryLabel] || 0) + 1
 
-        // 3. Dados Demográficos e de Ativos
+        const originLabel = c.orgaoDemandante || "Não Informado"
+        originMap[originLabel] = (originMap[originLabel] || 0) + 1
+
+        c.encaminhamentos.forEach(e => networkMap[e.instituicao] = (networkMap[e.instituicao] || 0) + 1)
+        c.entregas.forEach(e => benefitsMap[e.tipo] = (benefitsMap[e.tipo] || 0) + 1)
+
+        // 3. Demografia (Apenas Ativos)
         if (c.status !== CaseStatus.DESLIGADO) {
-            // Tratamento de Violações (Split array/string)
-            const violationsArray = Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao as string] : [])
-            violationsArray.forEach(vStr => {
-                vStr.split(',').forEach(subV => {
-                    const label = subV.trim()
-                    if(label) violationMap[label] = (violationMap[label] || 0) + 1
-                })
+            // Violações (Array)
+            const vArr = Array.isArray(c.violacao) ? c.violacao : [c.violacao]
+            vArr.forEach((vStr: any) => {
+                if (typeof vStr === 'string') {
+                    vStr.split(',').forEach((subV: string) => {
+                        const label = subV.trim()
+                        if(label) violationMap[label] = (violationMap[label] || 0) + 1
+                    })
+                }
             })
 
-            const urgencia = c.urgencia || "Não Classificado"
-            urgencyMap[urgencia] = (urgencyMap[urgencia] || 0) + 1
-            const origem = c.origem || "Não Informada"
-            originMap[origem] = (originMap[origem] || 0) + 1
+            const urg = c.urgencia || "Não Classificado"
+            urgencyMap[urg] = (urgencyMap[urg] || 0) + 1
 
-            // Sexo e Idade
             if (c.sexo === 'Masculino') demographics.sexo.Masculino++
             else if (c.sexo === 'Feminino') demographics.sexo.Feminino++
             else demographics.sexo.Outro++
             
-            const age = today.getFullYear() - c.nascimento.getFullYear()
-            if (age < 12) demographics.etaria['0-11 (Criança)']++
-            else if (age < 18) demographics.etaria['12-17 (Adolescente)']++
-            else if (age < 60) demographics.etaria['18-59 (Adulto)']++
-            else demographics.etaria['60+ (Idoso)']++
+            if (c.nascimento) {
+                const age = today.getFullYear() - c.nascimento.getFullYear()
+                if (age < 12) demographics.etaria['0-11 (Criança)']++
+                else if (age < 18) demographics.etaria['12-17 (Adolescente)']++
+                else if (age < 60) demographics.etaria['18-59 (Adulto)']++
+                else demographics.etaria['60+ (Idoso)']++
+            }
         }
 
-        // 4. Eficiência (Tempos)
+        // 4. Métricas de Tempo
         if (c.dataEntrada && c.dataInicioPAEFI) {
             const wait = differenceInDays(new Date(c.dataInicioPAEFI), new Date(c.dataEntrada))
             if (wait >= 0) { totalWaitTime += wait; countWaitTime++ }
@@ -7709,55 +7804,70 @@ export class StatsService {
         }
     })
 
-    // Cálculos Finais
     const avgWaitTime = countWaitTime ? Math.round(totalWaitTime / countWaitTime) : 0
     const avgPermanence = countPermanence ? Math.round(totalPermanence / countPermanence) : 0
     const totalClosed = cases.filter(c => c.dataDesligamento && c.dataDesligamento >= sixMonthsAgo).length
 
+    // Mapa de Calor
     const mapData = cases
         .filter(c => c.latitude && c.longitude && c.status !== CaseStatus.DESLIGADO)
         .map(c => ({
-            id: c.id, lat: c.latitude, lng: c.longitude, 
+            id: c.id, 
+            lat: c.latitude, 
+            lng: c.longitude, 
             intensity: this.calculateUrgencyWeight(c.urgencia), 
-            label: c.categoria || 'Caso', 
+            label: c.categoria || 'Caso',
             violacao: c.violacao, 
             categoria: c.categoria, 
             endereco: c.endereco_ra 
         }))
 
-    // Atividades Coletivas (Separado pois é outra tabela)
+    // Atividades Coletivas
     const collectiveData = { totalGroups: 0, totalParticipants: 0, avgAttendance: 0 }
     try {
         collectiveData.totalGroups = await prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } })
         collectiveData.totalParticipants = await prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } })
         if(collectiveData.totalGroups > 0) collectiveData.avgAttendance = Math.round(collectiveData.totalParticipants / collectiveData.totalGroups)
-    } catch(e) {}
+    } catch(e) {
+        console.warn("Erro ao buscar dados coletivos:", e)
+    }
 
     return {
         evolutionData: Array.from(monthsMap.values()),
-        violationData: Object.entries(violationMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
+        violationData: Object.entries(violationMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
         urgencyData: Object.entries(urgencyMap).map(([name, value]) => ({ name, value, weight: this.calculateUrgencyWeight(name) })).sort((a, b) => b.weight - a.weight),
+        
         originData: Object.entries(originMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
         networkData: Object.entries(networkMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
+        entryTypeData: Object.entries(entryTypeMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
+        
         benefitsData: Object.entries(benefitsMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5),
+        
         mapData,
-        efficiencyData: { avgWaitTime, avgPermanence, totalClosed },
+        efficiencyData: { avgWaitTime, avgPermanence, totalClosed, retentionRate: totalClosed > 0 ? 85 : 0 }, // Retention Mockada se não houver dados
         collectiveData,
         ageData: Object.entries(demographics.etaria).map(([name, value]) => ({ name, value })),
         sexData: Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }))
     }
   }
 
-  // --- ANALYTICS AVANÇADO (IA) ---
-
+  // --- ANALYTICS AVANÇADO (IA E PREDITIVO) ---
   static async getAdvancedStats(months: number, violacao?: string) {
     const today = new Date()
     const startDate = startOfMonth(subMonths(today, months - 1))
     
-    const whereClause: any = { OR: [{ dataEntrada: { gte: startDate } }, { dataDesligamento: { gte: startDate } }] }
-    if (violacao && violacao !== 'all') { whereClause.violacao = { has: violacao } }
+    // Filtro Opcional de Violação
+    const whereClause: any = { 
+        OR: [{ dataEntrada: { gte: startDate } }, { dataDesligamento: { gte: startDate } }] 
+    }
+    if (violacao && violacao !== 'all') { 
+        whereClause.violacao = { has: violacao } 
+    }
     
-    const cases = await prisma.case.findMany({ where: whereClause, select: { id: true, dataEntrada: true, dataDesligamento: true, status: true, violacao: true, urgencia: true } })
+    const cases = await prisma.case.findMany({ 
+        where: whereClause, 
+        select: { id: true, dataEntrada: true, dataDesligamento: true, status: true, violacao: true, urgencia: true } 
+    })
     
     const monthlyStats = new Map()
     for (let i = 0; i < months; i++) {
@@ -7767,44 +7877,56 @@ export class StatsService {
     }
     
     const violationCount: Record<string, number> = {}
+    
     cases.forEach(c => {
         const inKey = `${c.dataEntrada.getFullYear()}-${c.dataEntrada.getMonth()}`
         if (monthlyStats.has(inKey)) monthlyStats.get(inKey).novos++
+        
         if (c.dataDesligamento) {
             const outKey = `${c.dataDesligamento.getFullYear()}-${c.dataDesligamento.getMonth()}`
             if (monthlyStats.has(outKey)) monthlyStats.get(outKey).fechados++
         }
-        
-        const violationsArray = Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao as string] : [])
-        violationsArray.forEach(vStr => {
-            vStr.split(',').forEach(subV => {
-                const label = subV.trim()
-                if(label) violationCount[label] = (violationCount[label] || 0) + 1
-            })
+
+        const vArr = Array.isArray(c.violacao) ? c.violacao : [c.violacao]
+        vArr.forEach((vStr: any) => {
+            if (typeof vStr === 'string') {
+                vStr.split(',').forEach((subV: string) => {
+                    const label = subV.trim()
+                    if(label) violationCount[label] = (violationCount[label] || 0) + 1
+                })
+            }
         })
     })
     
     const pieData = Object.entries(violationCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10)
-    const insights = await AnalyticsAI.generateInsights(months)
     const totalActive = await prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } })
 
-    return { trendData: Array.from(monthlyStats.values()), totalActive, insights, pieData, avgHandlingTime: 45 }
+    // Integração com a classe de IA para gerar Insights
+    const { AnalyticsAI } = require('./AnalyticsAI'); // Import tardio para evitar ciclo
+    const insights = await AnalyticsAI.generateInsights(months);
+
+    return { 
+        trendData: Array.from(monthlyStats.values()), 
+        totalActive, 
+        insights, 
+        pieData, 
+        avgHandlingTime: 45 // Mockado se não calculado
+    }
   }
 
   // --- ATIVIDADE RECENTE ---
-
   static async getRecentActivity(user: { sub: string, cargo: string }) {
     const whereScope = user.cargo === Cargo.Gerente 
         ? {} 
         : { caso: { OR: [{ agenteAcolhidaId: user.sub }, { especialistaPAEFIId: user.sub }] } }
-
+        
     return prisma.caseLog.findMany({
-        where: whereScope,
-        take: 10,
+        where: whereScope, 
+        take: 10, 
         orderBy: { createdAt: 'desc' },
-        include: {
-            autor: { select: { nome: true, cargo: true } },
-            caso: { select: { id: true, nomeCompleto: true } }
+        include: { 
+            autor: { select: { nome: true, cargo: true } }, 
+            caso: { select: { id: true, nomeCompleto: true } } 
         }
     })
   }

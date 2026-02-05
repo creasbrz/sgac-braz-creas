@@ -17,6 +17,20 @@ interface DetailFieldProps {
   size?: 'default' | 'xs' 
 }
 
+// Configuração estática para evitar recriação em cada render
+const SIZE_STYLES = {
+  default: {
+    label: "text-xs mb-1.5",
+    value: "text-sm font-medium",
+    icon: "h-3.5 w-3.5"
+  },
+  xs: {
+    label: "text-[10px] mb-1", // Estilo compacto para Sidebars
+    value: "text-xs font-medium",
+    icon: "h-3 w-3"
+  }
+} as const
+
 export function DetailField({
   label,
   value,
@@ -24,30 +38,17 @@ export function DetailField({
   className,
   labelClassName,
   valueClassName,
-  fallback = <span className="text-muted-foreground italic font-normal opacity-80">Não informado</span>,
+  fallback = <span className="text-muted-foreground/60 italic font-normal text-xs">Não informado</span>,
   size = 'default'
 }: DetailFieldProps) {
   
-  const isEmpty = value === null || value === undefined || value === ''
+  // Verifica nulo, undefined ou string vazia/espaços
+  const isEmpty = value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
 
-  // Configuração de tamanhos baseada no Design System do CaseDetail
-  const styles = {
-    default: {
-      label: "text-xs mb-1.5",
-      value: "text-sm",
-      icon: "h-3.5 w-3.5"
-    },
-    xs: {
-      label: "text-[10px] mb-1", // Estilo da SidebarInfo
-      value: "text-xs font-medium",
-      icon: "h-3 w-3"
-    }
-  }
-
-  const currentStyle = styles[size]
+  const currentStyle = SIZE_STYLES[size]
 
   return (
-    <div className={cn("min-w-0 group", className)}>
+    <div className={cn("min-w-0 group flex flex-col", className)}>
       <div
         className={cn(
           "font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5",
@@ -55,16 +56,19 @@ export function DetailField({
           labelClassName
         )}
       >
-        {Icon && <Icon className={cn(currentStyle.icon, "opacity-70")} />}
+        {Icon && (
+          <Icon 
+            className={cn(currentStyle.icon, "opacity-70 text-muted-foreground/80")} 
+            aria-hidden="true" 
+          />
+        )}
         {label}
       </div>
 
       <div 
         className={cn(
-          "text-foreground whitespace-pre-wrap break-words leading-relaxed",
+          "text-foreground whitespace-pre-wrap wrap-break-word leading-relaxed",
           currentStyle.value,
-          // Se for default, mantém font-medium, se xs, já aplicamos acima
-          size === 'default' && "font-medium", 
           valueClassName
         )}
       >

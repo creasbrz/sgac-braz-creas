@@ -11,9 +11,10 @@ export class ReportService {
   private static calculateUrgencyWeight(urgencia: string | null): number {
     if (!urgencia) return 1;
     const term = urgencia.trim();
-    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte'].includes(term)) return 4;
-    if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(term)) return 3;
-    if (['PCD', 'Idoso', 'Internação', 'Acolhimento'].includes(term)) return 2;
+    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça'].includes(term)) return 4;
+    if (['Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso'].includes(term)) return 3;
+    if (['Internação', 'Acolhimento'].includes(term)) return 2;
+    if (['Sem risco imediato', 'Visita periódica'].includes(term)) return 1;
     return 1;
   }
 

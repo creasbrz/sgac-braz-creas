@@ -1,46 +1,50 @@
 // frontend/eslint.config.js
-import globals from "globals";
-import tseslint from "typescript-eslint";
-import pluginReactHooks from "eslint-plugin-react-hooks";
-import pluginReactRefresh from "eslint-plugin-react-refresh";
-import eslintJs from "@eslint/js";
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
 
-export default [
-  // Configuração base recomendada pelo ESLint
-  eslintJs.configs.recommended,
+export default tseslint.config(
+  // 1. Pastas ignoradas globalmente
+  { ignores: ['dist', 'node_modules', 'public'] },
 
-  // Configurações para ficheiros TypeScript e TSX
+  // 2. Extensões de configuração recomendadas
   {
-    files: ["src/**/*.{ts,tsx}"],
+    extends: [
+      js.configs.recommended,
+      ...tseslint.configs.recommended,
+    ],
+    
+    files: ['**/*.{ts,tsx}'],
+    
     languageOptions: {
-      parser: tseslint.parser,
-      parserOptions: {
-        ecmaFeatures: { jsx: true },
-        ecmaVersion: "latest",
-        sourceType: "module",
-      },
+      ecmaVersion: 2022,
       globals: {
         ...globals.browser,
-        ...globals.node,
+        ...globals.node 
       },
     },
+    
     plugins: {
-      "typescript-eslint": tseslint.plugin,
-      "react-hooks": pluginReactHooks,
-      "react-refresh": pluginReactRefresh,
+      'react-hooks': reactHooks,
+      'react-refresh': reactRefresh,
     },
+    
     rules: {
-      // Regras recomendadas para TypeScript
-      ...tseslint.configs.recommended.rules,
-      // Regras recomendadas para React Hooks
-      ...pluginReactHooks.configs.recommended.rules,
-      // Regra para o Fast Refresh do Vite
-      "react-refresh/only-export-components": "warn",
+      // --- React Hooks ---
+      ...reactHooks.configs.recommended.rules,
+      
+      // --- Fast Refresh (Vite) ---
+      'react-refresh/only-export-components': [
+        'warn',
+        { allowConstantExport: true },
+      ],
+
+      // --- TypeScript ---
+      // Permite 'any' explicito, mas avisa.
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
-
-  // Ignora a pasta de build
-  {
-    ignores: ["dist/"],
-  },
-];
+)

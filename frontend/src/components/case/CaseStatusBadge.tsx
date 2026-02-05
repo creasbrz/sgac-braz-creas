@@ -1,8 +1,8 @@
-// frontend/src/components/CaseStatusBadge.tsx
+// frontend/src/components/case/CaseStatusBadge.tsx
 import { Badge } from '@/components/ui/badge'
 import { type CaseStatusType } from '@/constants/cases/definitions'
-import { STATUS_CONFIG } from '@/constants/cases/styles' // <--- Importe a configuração visual aqui
-import { clsx } from 'clsx'
+import { STATUS_CONFIG } from '@/constants/cases/styles'
+import { cn } from '@/lib/utils'
 
 interface CaseStatusBadgeProps {
   status: string | CaseStatusType | null | undefined
@@ -13,8 +13,7 @@ export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
   // 1. Normaliza para garantir que seja uma chave válida
   const rawStatus = String(status || '').trim() as CaseStatusType
   
-  // 2. Busca a configuração visual (Label + Style) no arquivo de estilos
-  // Usa um fallback caso o status não exista no mapa
+  // 2. Busca a configuração visual (Label + Style)
   const config = STATUS_CONFIG[rawStatus]
 
   // Fallback visual para status desconhecidos
@@ -22,7 +21,10 @@ export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
     return (
       <Badge 
         variant="outline" 
-        className={clsx('bg-muted text-muted-foreground whitespace-nowrap', className)}
+        className={cn(
+          'bg-muted/50 text-muted-foreground whitespace-nowrap font-medium border-border',
+          className
+        )}
       >
         {status || 'Desconhecido'}
       </Badge>
@@ -32,13 +34,15 @@ export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
   return (
     <Badge
       variant="outline"
-      className={clsx(
-        'whitespace-nowrap border-transparent bg-opacity-15 hover:bg-opacity-25', // Ajuste fino de opacidade se necessário
-        config.style, // <--- Aqui pegamos a classe do Tailwind
+      className={cn(
+        // Estilos base modernos
+        'whitespace-nowrap font-medium border shadow-sm transition-colors',
+        // [CORREÇÃO] A propriedade correta definida em constants/cases/styles.ts é 'className', não 'style'
+        config.className,
         className
       )}
     >
-      {config.label} {/* <--- Aqui pegamos o texto formatado (ex: "Aguardando Acolhida") */}
+      {config.label}
     </Badge>
   )
 }

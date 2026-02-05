@@ -91,19 +91,19 @@ export function SeiManager({
       "flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border transition-all",
       isResponded 
         ? "bg-emerald-50/50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800" 
-        : "bg-white dark:bg-card border-border"
+        : "bg-background border-border"
     )}>
       {/* Lado Esquerdo: Informações do SEI */}
       <div className="flex items-start gap-3">
         <div className={cn(
-          "p-2 rounded-full mt-0.5 transition-colors",
+          "p-2 rounded-full mt-0.5 transition-colors shrink-0",
           isResponded ? "bg-emerald-100 text-emerald-700" : "bg-blue-50 text-blue-600"
         )}>
           <FileText className="h-5 w-5" />
         </div>
         
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm">Processo SEI</span>
             {isResponded && (
               <Badge variant="outline" className="text-xs bg-emerald-100 text-emerald-700 border-emerald-200 h-5 px-1.5 gap-1 animate-in fade-in zoom-in-95">
@@ -119,7 +119,7 @@ export function SeiManager({
             </span>
             
             {linkSei && (
-              <Button variant="link" size="sm" className="h-auto p-0 text-blue-600 hover:text-blue-700" asChild>
+              <Button variant="link" size="sm" className="h-auto p-0 text-blue-600 hover:text-blue-700 font-normal" asChild>
                 <a href={linkSei} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1">
                   Acessar Processo <ExternalLink className="h-3 w-3" />
                 </a>
@@ -128,7 +128,7 @@ export function SeiManager({
           </div>
 
           {isResponded && formattedDate && (
-            <p className="text-xs text-emerald-600/90 font-medium">
+            <p className="text-xs text-emerald-600/90 font-medium pt-1">
               Respondido em: {formattedDate}
             </p>
           )}
@@ -137,7 +137,7 @@ export function SeiManager({
 
       {/* Lado Direito: Ação (Switch) */}
       {!readOnly && (
-        <div className="flex items-center gap-3 pl-2 sm:pl-0 sm:border-l sm:border-border/50 sm:ml-2">
+        <div className="flex items-center gap-3 pl-2 sm:pl-4 sm:border-l sm:border-border/50 sm:ml-auto shrink-0">
           <div className="flex flex-col items-end gap-1">
             <TooltipProvider>
               <Tooltip>
@@ -165,7 +165,7 @@ export function SeiManager({
             </TooltipProvider>
             
             {isPending && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse ml-auto">
                 <Loader2 className="h-3 w-3 animate-spin" /> Atualizando...
               </div>
             )}

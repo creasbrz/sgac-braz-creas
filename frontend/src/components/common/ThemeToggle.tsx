@@ -1,5 +1,11 @@
 // frontend/src/components/ThemeToggle.tsx
-import { Moon, Sun, Monitor, Check } from "lucide-react"
+"use client"
+
+import * as React from "react"
+import { Moon, Sun, Monitor, Check, type LucideIcon } from "lucide-react"
+// [CORREÇÃO] Ajuste do caminho para o arquivo criado anteriormente
+import { useTheme } from "@/components/common/theme-provider"
+
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -7,49 +13,81 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-// Ajuste o caminho abaixo conforme onde você salvou o provider (ex: '@/components/theme-provider')
-import { useTheme } from "@/components/common/theme-provider"
+import { cn } from "@/lib/utils"
+
+type ThemeOption = {
+  value: string
+  label: string
+  Icon: LucideIcon
+}
+
+const themeOptions: ThemeOption[] = [
+  { value: "light", label: "Claro", Icon: Sun },
+  { value: "dark", label: "Escuro", Icon: Moon },
+  { value: "system", label: "Sistema", Icon: Monitor },
+]
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
+  const { setTheme, theme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+
+  // Evita erro de hidratação (hydration mismatch)
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return (
+      <Button variant="outline" size="icon" disabled className="opacity-50">
+        <Sun className="h-[1.2rem] w-[1.2rem]" />
+      </Button>
+    )
+  }
+
+  // Define se é modo escuro baseado no tema resolvido (inclui preferência do sistema)
+  const isDark = resolvedTheme === "dark"
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+        <Button variant="outline" size="icon" className="relative border-border">
+          {/* SOLUÇÃO DO ÍCONE PRESO:
+            Controlamos as classes via JS (isDark) em vez de apenas CSS (dark:).
+            Isso garante que o ícone sempre corresponda à realidade do tema.
+          */}
+          <Sun 
+            className={cn(
+              "h-[1.2rem] w-[1.2rem] transition-all duration-300 absolute",
+              isDark ? "rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100"
+            )} 
+          />
+          <Moon 
+            className={cn(
+              "h-[1.2rem] w-[1.2rem] transition-all duration-300 absolute",
+              isDark ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-0 opacity-0"
+            )} 
+          />
           <span className="sr-only">Alternar tema</span>
         </Button>
       </DropdownMenuTrigger>
       
       <DropdownMenuContent align="end">
-        <DropdownMenuItem 
-          onClick={() => setTheme("light")}
-          className="cursor-pointer"
-        >
-          <Sun className="mr-2 h-4 w-4" />
-          <span>Claro</span>
-          {theme === "light" && <Check className="ml-auto h-4 w-4" />}
-        </DropdownMenuItem>
-
-        <DropdownMenuItem 
-          onClick={() => setTheme("dark")}
-          className="cursor-pointer"
-        >
-          <Moon className="mr-2 h-4 w-4" />
-          <span>Escuro</span>
-          {theme === "dark" && <Check className="ml-auto h-4 w-4" />}
-        </DropdownMenuItem>
-
-        <DropdownMenuItem 
-          onClick={() => setTheme("system")}
-          className="cursor-pointer"
-        >
-          <Monitor className="mr-2 h-4 w-4" />
-          <span>Sistema</span>
-          {theme === "system" && <Check className="ml-auto h-4 w-4" />}
-        </DropdownMenuItem>
+        {themeOptions.map(({ value, label, Icon }) => (
+          <DropdownMenuItem
+            key={value}
+            onClick={() => setTheme(value)}
+            className="cursor-pointer gap-2"
+          >
+            <Icon className="h-4 w-4 text-muted-foreground" />
+            <span>{label}</span>
+            <Check
+              className={cn(
+                "ml-auto h-4 w-4 transition-opacity",
+                theme === value ? "opacity-100" : "opacity-0"
+              )}
+            />
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   )

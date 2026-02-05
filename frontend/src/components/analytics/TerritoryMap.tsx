@@ -5,33 +5,45 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ExternalLink, AlertTriangle } from 'lucide-react'
+import { ExternalLink, AlertTriangle, Navigation, MapPin } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
-// Interface alinhada com o que o Backend pode fornecer
 export interface MapPoint {
   id: string
   lat: number
   lng: number
-  intensity: number // 1 a 4 (Peso da Urgência)
-  label: string     // Nome do Usuário
-  violacao?: string // Tipo de Violação
-  endereco?: string // Endereço legível
-  categoria?: string // Adicionado para suportar os filtros da Section
+  intensity: number 
+  label: string
+  violacao?: string
+  endereco?: string
+  categoria?: string
 }
 
 interface TerritoryMapProps {
   data: MapPoint[]
 }
 
-// Sub-componente para ajustar o zoom automaticamente aos pontos
+// --- CONSTANTES DE ESTILO ---
+const RISK_COLORS = {
+  4: { hex: '#ef4444', tailwind: 'bg-red-500', border: 'border-red-500', label: 'Extremo' },
+  3: { hex: '#f97316', tailwind: 'bg-orange-500', border: 'border-orange-500', label: 'Alto' },
+  2: { hex: '#eab308', tailwind: 'bg-yellow-500', border: 'border-yellow-500', label: 'Médio' },
+  1: { hex: '#10b981', tailwind: 'bg-emerald-500', border: 'border-emerald-500', label: 'Baixo' },
+} as const
+
+// --- SUB-COMPONENTS ---
+
 function MapController({ points }: { points: MapPoint[] }) {
   const map = useMap()
 
   useEffect(() => {
-    if (points.length > 0) {
-      // Cria limites baseados nos pontos
-      const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]))
-      // Ajusta o mapa para caber todos os pontos com uma margem (padding)
+    if (!points || points.length === 0) return
+
+    const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]))
+    
+    if (points.length === 1) {
+      map.setView([points[0].lat, points[0].lng], 15)
+    } else {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 })
     }
   }, [points, map])
@@ -40,35 +52,34 @@ function MapController({ points }: { points: MapPoint[] }) {
 }
 
 export function TerritoryMap({ data }: TerritoryMapProps) {
-  // Centro padrão (Brazlândia - DF) caso não haja dados ou geolocalização inicial
-  const defaultCenter: [number, number] = [-15.668, -48.201]
+  const defaultCenter: [number, number] = [-15.668, -48.201] // Brasília
 
-  const getColor = (intensity: number) => {
-    if (intensity >= 4) return '#ef4444' // Vermelho (Crítico)
-    if (intensity === 3) return '#f97316' // Laranja (Alto)
-    if (intensity === 2) return '#eab308' // Amarelo (Médio)
-    return '#10b981' // Verde (Baixo/Monitoramento)
+  // Helper para abertura segura de link
+  const openMapLink = (lat: number, lng: number) => {
+    const url = `http://googleusercontent.com/maps.google.com/search/${lat},${lng}`
+    const newWindow = window.open(url, '_blank', 'noopener,noreferrer')
+    if (newWindow) newWindow.opener = null
   }
 
-  const getRadius = (intensity: number) => {
-    // Pontos mais críticos ficam maiores visualmente
-    return intensity === 4 ? 12 : intensity === 3 ? 10 : 8
-  }
-
-  // Fallback visual para mapa vazio
+  // Empty State
   if (!data || data.length === 0) {
     return (
-      <div className="h-full w-full flex flex-col items-center justify-center bg-muted/20 rounded-xl border-2 border-dashed border-muted text-muted-foreground gap-2">
-        <div className="bg-muted p-3 rounded-full">
+      <div className="h-full w-full flex flex-col items-center justify-center bg-muted/20 rounded-xl border border-dashed border-border text-muted-foreground gap-3 animate-in fade-in">
+        <div className="bg-muted p-4 rounded-full ring-1 ring-border/50">
           <AlertTriangle className="h-6 w-6 opacity-50" />
         </div>
-        <span className="text-sm font-medium">Nenhum dado georreferenciado neste período.</span>
+        <div className="text-center">
+          <p className="text-sm font-medium text-foreground">Sem dados georreferenciados</p>
+          <p className="text-xs opacity-70 mt-1 max-w-50 mx-auto">
+            Nenhum caso com coordenadas para os filtros atuais.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full w-full rounded-xl overflow-hidden border shadow-sm z-0 relative bg-muted group">
+    <div className="h-full w-full rounded-xl overflow-hidden border shadow-sm relative group isolate z-0 bg-slate-50 dark:bg-slate-950">
       <MapContainer 
         center={defaultCenter} 
         zoom={13} 
@@ -76,91 +87,104 @@ export function TerritoryMap({ data }: TerritoryMapProps) {
         style={{ height: '100%', width: '100%' }}
         className="z-0"
       >
-        {/* Tiles do CartoDB (Visual Clean para Dashboards) */}
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          className="transition-all duration-500 ease-in-out dark:filter dark:invert-[1] dark:grayscale-[1] dark:brightness-90 dark:contrast-125"
         />
         
-        {/* Controlador de Zoom Automático */}
         <MapController points={data} />
         
-        {data.map((point) => (
-          <CircleMarker
-            key={point.id}
-            center={[point.lat, point.lng]}
-            radius={getRadius(point.intensity)} 
-            pathOptions={{ 
-              color: 'white', // Borda branca para destacar
-              weight: 1.5,
-              fillColor: getColor(point.intensity),
-              fillOpacity: 0.8,
-            }}
-          >
-            {/* Tooltip rápido */}
-            <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-              <span className="font-semibold text-xs">{point.label}</span>
-            </Tooltip>
-            
-            {/* Detalhes completos */}
-            <Popup>
-              <div className="flex flex-col gap-2 min-w-[180px]">
-                <div>
-                  <strong className="text-sm font-bold text-foreground line-clamp-1">
-                    {point.label}
-                  </strong>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {point.violacao || "Não especificada"}
-                  </span>
-                </div>
-
-                {point.endereco && (
-                  <div className="text-xs text-muted-foreground bg-muted/50 p-1.5 rounded border">
-                    {point.endereco}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between mt-1">
-                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-background shadow-none" style={{ borderColor: getColor(point.intensity), color: getColor(point.intensity) }}>
-                    Nível {point.intensity}
-                  </Badge>
+        {data.map((point) => {
+           const risk = RISK_COLORS[point.intensity as keyof typeof RISK_COLORS] || RISK_COLORS[1]
+           
+           return (
+            <CircleMarker
+              key={point.id}
+              center={[point.lat, point.lng]}
+              radius={point.intensity === 4 ? 10 : point.intensity === 3 ? 8 : 6} 
+              pathOptions={{ 
+                color: 'white', 
+                weight: 1.5,
+                fillColor: risk.hex,
+                fillOpacity: 0.85,
+              }}
+            >
+              <Tooltip 
+                direction="top" 
+                offset={[0, -10]} 
+                opacity={1} 
+                className="font-sans text-xs font-semibold rounded-md shadow-sm border-0 px-2 py-1 text-slate-900 bg-white"
+              >
+                {point.label}
+              </Tooltip>
+              
+              <Popup className="custom-popup-clean" closeButton={false}>
+                <div className="flex flex-col gap-2 min-w-50 font-sans p-1 text-slate-900">
                   
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    className="h-6 w-6 p-0 hover:bg-muted"
-                    title="Abrir no Google Maps"
-                    onClick={() => window.open(`https://www.google.com/maps?q=${point.lat},${point.lng}`, '_blank')}
-                  >
-                    <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-primary" />
-                  </Button>
+                  {/* Header do Popup */}
+                  <div className="border-b border-slate-200 pb-2 mb-1">
+                    <h5 className="text-sm font-bold leading-tight flex items-start gap-2 text-slate-900">
+                      <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      {point.label}
+                    </h5>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                        <span className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                            {point.categoria || "Geral"}
+                        </span>
+                        {point.violacao && (
+                            <span className="text-[10px] font-medium bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-100">
+                                {point.violacao}
+                            </span>
+                        )}
+                    </div>
+                  </div>
+
+                  {/* Endereço */}
+                  {point.endereco && (
+                    <div className="flex items-start gap-1.5 bg-slate-50 p-2 rounded text-xs text-slate-600 border border-slate-100">
+                      <Navigation className="h-3 w-3 shrink-0 mt-0.5 opacity-70" />
+                      <span className="leading-snug line-clamp-2">{point.endereco}</span>
+                    </div>
+                  )}
+
+                  {/* Footer com Ações */}
+                  <div className="flex items-center justify-between mt-1 pt-1">
+                    <Badge variant="outline" className={cn("text-[10px] h-5 px-1.5 bg-white shadow-sm font-bold border-slate-200", risk.border)} style={{ color: risk.hex }}>
+                      Risco {risk.label}
+                    </Badge>
+                    
+                    <Button 
+                      size="sm" 
+                      variant="default"
+                      className="h-7 text-[10px] px-3 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-sm transition-all active:scale-95"
+                      title="Abrir rota no Google Maps"
+                      onClick={() => openMapLink(point.lat, point.lng)}
+                    >
+                      Rotas <ExternalLink className="h-2.5 w-2.5" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </Popup>
-          </CircleMarker>
-        ))}
+              </Popup>
+            </CircleMarker>
+          )
+        })}
       </MapContainer>
       
       {/* Legenda Flutuante */}
-      <div className="absolute bottom-5 right-5 bg-background/90 backdrop-blur-md p-3 rounded-lg shadow-lg border border-border/50 z-[1000] text-xs transition-opacity opacity-80 hover:opacity-100">
-        <h4 className="font-bold text-foreground mb-2 border-b pb-1">Intensidade de Risco</h4>
+      <div className="absolute bottom-6 right-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 rounded-xl shadow-lg border border-border/40 z-400 text-xs transition-all hover:opacity-100">
+        <h4 className="font-bold text-foreground mb-2 text-[10px] uppercase tracking-wider opacity-80 border-b pb-1 border-border/50">
+          Nível de Risco
+        </h4>
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm ring-2 ring-red-100"></span> 
-            <span className="text-muted-foreground">Extremo (4)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-sm ring-2 ring-orange-100"></span> 
-            <span className="text-muted-foreground">Alto (3)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shadow-sm ring-2 ring-yellow-100"></span> 
-            <span className="text-muted-foreground">Médio (2)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm ring-2 ring-emerald-100"></span> 
-            <span className="text-muted-foreground">Baixo (1)</span>
-          </div>
+          {Object.entries(RISK_COLORS).reverse().map(([key, config]) => (
+            <div key={key} className="flex items-center gap-2">
+              <span 
+                className={cn("w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-inset ring-black/10", config.tailwind)} 
+              /> 
+              <span className="text-muted-foreground font-medium">{config.label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

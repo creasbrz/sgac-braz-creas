@@ -1,194 +1,279 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* -------------------------------------------------------------------------- */
-/* CONFIGURAÇÃO BASE (THEMING)                                                */
-/* -------------------------------------------------------------------------- */
-@layer base {
-  :root {
-    /* Otimização de renderização */
-    color-scheme: light;
-    
-    /* --- CORES PRINCIPAIS (Light Mode) --- */
-    /* Fundo branco puro #FFFFFF */
-    --background: 0 0% 100%; 
-    /* Texto quase preto (azul muito escuro) para alto contraste #020817 */
-    --foreground: 222.2 84% 4.9%;
+/* CONFIGURAÇÃO CRUCIAL PARA TAILWIND V4:
+  Força o modo dark a ser ativado pela classe "dark" no HTML (manual toggle).
+*/
+@custom-variant dark (&:where(.dark, .dark *));
 
-    /* Fundos de containers (Cards) - Branco */
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    /* Menus flutuantes, tooltips, dropdowns - Branco */
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    /* COR DA MARCA: Azul Vibrante (Estilo Royal Blue) #2563EB */
-    /* Usado em botões principais, estados ativos e links */
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%; /* Texto branco/cinza muito claro sobre o azul */
-
-    /* Elementos secundários: Cinza azulado muito claro #F1F5F9 */
-    /* Usado em botões secundários, fundos alternativos */
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    /* Elementos "mudados" (desabilitados ou menos importantes): Cinza claro */
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%; /* Cinza médio para textos de apoio */
-
-    /* Cores de destaque para interações (Hover, Select): Cinza claro */
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    /* Ações destrutivas (Erro/Deletar): Vermelho #EF4444 */
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    /* Bordas e Divisórias: Cinza sutil #E2E8F0 */
-    --border: 214.3 31.8% 91.4%;
-    /* Bordas de Inputs (campos de texto): Igual à borda geral */
-    --input: 214.3 31.8% 91.4%;
-    /* Anel de foco (Focus Ring): Segue a cor primária (Azul) */
-    --ring: 221.2 83.2% 53.3%;
-
-    --radius: 0.5rem; /* Arredondamento padrão: 8px */
-
-    /* --- CHART COLORS (Cores para Gráficos) --- */
-    --chart-1: 12 76% 61%;  /* Laranja avermelhado */
-    --chart-2: 173 58% 39%; /* Verde azulado (Teal) */
-    --chart-3: 197 37% 24%; /* Azul escuro profundo */
-    --chart-4: 43 74% 66%;  /* Amarelo Ouro */
-    --chart-5: 27 87% 67%;  /* Laranja vivo */
-
-    /* --- SIDEBAR (Barra Lateral Específica) --- */
-    --sidebar-background: 0 0% 98%; /* Cinza quase branco (Off-white) */
-    --sidebar-foreground: 240 5.3% 26.1%; /* Cinza escuro */
-    --sidebar-primary: 240 5.9% 10%; /* Quase preto */
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    color-scheme: dark;
-
-    /* --- CORES DARK MODE --- */
-    /* Fundo quase preto (Azul profundo) #020817 */
-    --background: 222.2 84% 4.9%;
-    /* Texto branco gelo (com leve tom azulado) #F8FAFC */
-    --foreground: 210 40% 98%;
-
-    /* Cards levemente mais claros que o fundo */
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    /* Azul primário mais claro para contraste no escuro #3B82F6 */
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    /* Elementos secundários escuros (Cinza azulado escuro) */
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    /* Textos de apoio em cinza médio */
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    /* Vermelho para erros (tom mais fechado para não ofuscar) */
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    /* Bordas escuras sutis */
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-
-    /* Gráficos ajustados para brilhar no fundo escuro */
-    --chart-1: 220 70% 50%; /* Azul vibrante */
-    --chart-2: 160 60% 45%; /* Verde Esmeralda */
-    --chart-3: 30 80% 55%;  /* Laranja */
-    --chart-4: 280 65% 60%; /* Roxo */
-    --chart-5: 340 75% 55%; /* Rosa */
-
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
+@theme {
+  /* --- CORES BASE (Mapeadas para variáveis CSS) --- */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
   
-  body {
-    /* Melhoria Visual: Antialiased para fontes mais nítidas */
-    @apply bg-background text-foreground antialiased; 
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
 
-  /* UX/A11y: Padrão de foco global para navegação por teclado */
-  :focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  /* --- GRÁFICOS (Charts) --- */
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  /* --- SIDEBAR --- */
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* --- STATUS SEMÂNTICOS --- */
+  --color-status-error-bg: var(--status-error-bg);
+  --color-status-error-fg: var(--status-error-fg);
+  --color-status-error-border: var(--status-error-border);
+
+  --color-status-success-bg: var(--status-success-bg);
+  --color-status-success-fg: var(--status-success-fg);
+  --color-status-success-border: var(--status-success-border);
+
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-warning-fg: var(--status-warning-fg);
+  --color-status-warning-border: var(--status-warning-border);
+
+  --color-status-info-bg: var(--status-info-bg);
+  --color-status-info-fg: var(--status-info-fg);
+  --color-status-info-border: var(--status-info-border);
+
+  --color-status-ai-bg: var(--status-ai-bg);
+  --color-status-ai-fg: var(--status-ai-fg);
+  --color-status-ai-border: var(--status-ai-border);
+
+  --color-status-neutral-bg: var(--status-neutral-bg);
+  --color-status-neutral-fg: var(--status-neutral-fg);
+  --color-status-neutral-border: var(--status-neutral-border);
+
+  /* --- VARIÁVEIS DE BORDA E ANIMAÇÃO --- */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0 }
+    to { height: var(--radix-accordion-content-height) }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height) }
+    to { height: 0 }
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* UTILITIES & SCROLLBARS                                                     */
-/* -------------------------------------------------------------------------- */
+/* --- DEFINIÇÃO DE CORES (HSL Values) --- */
+:root {
+  /* LIGHT MODE */
+  --background: 0 0% 100%;
+  --foreground: 222.2 47.4% 11.2%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 47.4% 11.2%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47.4% 11.2%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+  --radius: 0.5rem;
+
+  --chart-1: 221.2 83.2% 53.3%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+
+  --sidebar-background: 210 40% 98%;
+  --sidebar-foreground: 240 5.3% 26.1%;
+  --sidebar-primary: 240 5.9% 10%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 240 4.8% 95.9%;
+  --sidebar-accent-foreground: 240 5.9% 10%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 217.2 91.2% 59.8%;
+
+  /* Status Colors (Light) */
+  --status-error-bg: hsla(353, 100%, 96%, 1);
+  --status-error-fg: hsl(353, 90%, 35%);
+  --status-error-border: hsl(353, 100%, 90%);
+
+  --status-warning-bg: hsl(48, 100%, 96%);
+  --status-warning-fg: hsl(38, 92%, 35%);
+  --status-warning-border: hsl(48, 100%, 85%);
+
+  --status-success-bg: hsl(148 80% 98%);
+  --status-success-fg: hsl(158 64% 42%);
+  --status-success-border: hsl(149 80% 90%);
+
+  --status-info-bg: hsl(214, 100%, 97%);
+  --status-info-fg: hsl(221, 83%, 45%);
+  --status-info-border: hsl(214 95% 90%);
+
+  --status-ai-bg: hsl(270, 100%, 98%);
+  --status-ai-fg: hsl(271, 90%, 45%);
+  --status-ai-border: hsl(270, 100%, 90%);
+
+  --status-neutral-bg: hsl(210 40% 98%);
+  --status-neutral-fg: hsl(215 16% 47%);
+  --status-neutral-border: hsl(214 32% 90%);
+}
+
+.dark {
+  /* DARK MODE */
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 6.5%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 6.5%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 217.2 91.2% 59.8%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+  
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+  
+  --sidebar-background: 222.2 84% 4.9%;
+  --sidebar-foreground: 240 4.8% 95.9%;
+  --sidebar-primary: 224.3 76.3% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 3.7% 15.9%;
+  --sidebar-accent-foreground: 240 4.8% 95.9%;
+  --sidebar-border: 240 3.7% 15.9%;
+  --sidebar-ring: 217.2 91.2% 59.8%;
+
+  /* Status Colors (Dark) */
+  --status-error-bg: hsl(346 84% 61% / 0.1);
+  --status-error-fg: hsl(346 100% 75%);
+  --status-error-border: hsl(346 84% 61% / 0.2);
+
+  --status-warning-bg: hsl(45 93% 47% / 0.1);
+  --status-warning-fg: hsl(45 100% 70%);
+  --status-warning-border: hsl(45 93% 47% / 0.2);
+
+  --status-success-bg: hsl(158 64% 52% / 0.1);
+  --status-success-fg: hsl(158 80% 65%);
+  --status-success-border: hsl(158 64% 52% / 0.2);
+
+  --status-info-bg: hsl(217 91% 60% / 0.1);
+  --status-info-fg: hsl(217 100% 75%);
+  --status-info-border: hsl(217 91% 60% / 0.2);
+
+  --status-ai-bg: hsl(271 76% 53% / 0.1);
+  --status-ai-fg: hsl(271 90% 75%);
+  --status-ai-border: hsl(271 76% 53% / 0.2);
+
+  --status-neutral-bg: hsl(215 16% 47% / 0.1);
+  --status-neutral-fg: hsl(215 30% 75%);
+  --status-neutral-border: hsl(215 16% 47% / 0.2);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { @apply antialiased; -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
+  body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors; }
+}
+
 @layer utilities {
-  /* Scrollbar moderna e discreta */
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  /* [NOVO] Classe Container (Substitui a config do tailwind.config.ts)
+    Requerido pelo shadcn/ui para centralização automática.
+  */
+  .container {
+    margin-inline: auto;
+    padding-inline: 2rem;
+    width: 100%;
+    
+    @media (width >= 1400px) { 
+      max-width: 1400px; 
+    }
   }
-  
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/30 rounded-full transition-colors hover:bg-muted-foreground/50;
-  }
+
+  /* Scrollbars Customizadas */
+  .custom-scrollbar { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent; }
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background-color: hsl(var(--muted-foreground) / 0.3); border-radius: 9999px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground) / 0.5); }
 }
 
-/* -------------------------------------------------------------------------- */
-/* PRIVACY MODE (Otimizado)                                                   */
-/* -------------------------------------------------------------------------- */
-/* Agrupamento de seletores para o modo de privacidade */
-body.privacy-mode :is(h1, h2, h3, h4, .font-medium, td:first-child, td:nth-child(2), .privacy-mask) {
-  filter: blur(6px);
-  user-select: none;
-  cursor: default;
-  transition: filter 0.2s ease-in-out;
-}
-
-/* Exceções explícitas */
-body.privacy-mode .privacy-exempt {
-  filter: none !important;
-}
-
-/* UX: Revelar ao passar o mouse */
-body.privacy-mode :is(h1, h2, h3, h4, td:first-child, .privacy-mask):hover {
-  filter: blur(0);
+@layer components {
+  /* Privacy Mode */
+  body.privacy-mode :is(td:first-child, td:nth-child(2), [role="cell"]:first-child) { 
+    @apply blur-[6px] select-none cursor-default transition-all duration-300; 
+  }
+  body.privacy-mode .privacy-mask { 
+    @apply blur-[5px] select-none cursor-default transition-all duration-300; 
+  }
+  body.privacy-mode .privacy-visible { filter: none!important; }
+  @media (hover: hover) { 
+    body.privacy-mode :is(td:first-child, td:nth-child(2), .privacy-mask):hover { @apply blur-none cursor-auto; } 
+  }
+  
+  /* Leaflet Map */
+  .leaflet-popup-content-wrapper { @apply bg-background text-foreground rounded-xl border border-border/60 p-0 overflow-hidden shadow-xl; }
+  .leaflet-popup-content { margin: 12px !important; width: auto !important; font-family: inherit; line-height: 1.5; }
+  .leaflet-popup-tip { @apply bg-background border-r border-b border-border/60; box-shadow: none; }
+  .leaflet-container a.leaflet-popup-close-button { @apply text-muted-foreground/50! hover:text-foreground! top-2! right-2! flex items-center justify-center transition-colors; width: 24px; height: 24px; font: 18px/14px sans-serif; background: transparent; padding: 0; border: none; }
+  .leaflet-control-zoom-in, .leaflet-control-zoom-out { @apply bg-background! text-foreground! border-border/60! hover:bg-muted! transition-colors h-8! w-8! flex! items-center! justify-center!; }
+  .leaflet-bar { @apply border-0! shadow-md! rounded-lg! overflow-hidden! ring-1 ring-border/50; }
+  .leaflet-container .leaflet-control-attribution { @apply bg-background/80 backdrop-blur-md text-muted-foreground rounded-tl-md px-2 py-0.5 text-[10px]; }
 }

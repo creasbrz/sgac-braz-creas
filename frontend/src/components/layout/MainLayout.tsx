@@ -4,39 +4,49 @@ import { Sidebar } from "./Sidebar"
 import { Header } from "./Header"
 import { NewCaseModal } from "../modals/NewCaseModal"
 import { CommandMenu } from "../common/CommandMenu"
+import { cn } from "@/lib/utils"
 
 export function MainLayout() {
   return (
-    <div className="flex h-screen w-full bg-muted/10 dark:bg-background overflow-hidden text-foreground">
+    // Container Principal: Ocupa toda a tela, sem scroll no body
+    <div className="flex h-screen w-full bg-background overflow-hidden text-foreground antialiased font-sans selection:bg-primary/20">
       
-      {/* [Acessibilidade] Link para pular navegação (aparece apenas no foco do teclado) */}
+      {/* [Acessibilidade] Skip Link aprimorado */}
       <a 
         href="#main-content" 
-        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md shadow-lg"
+        className={cn(
+          "sr-only focus:not-sr-only focus:absolute focus:z-100 focus:top-4 focus:left-4",
+          "px-6 py-3 bg-primary text-primary-foreground font-medium rounded-lg shadow-xl",
+          "transition-transform duration-200 focus:translate-y-0 -translate-y-12"
+        )}
       >
         Pular para o conteúdo principal
       </a>
 
-      {/* Barra Lateral Fixa/Flex */}
+      {/* Barra Lateral (Controla sua própria largura/colapso) */}
       <Sidebar />
       
-      {/* Área Principal */}
-      <div className="flex flex-col flex-1 h-full min-w-0 relative transition-all duration-300">
+      {/* Coluna da Direita (Header + Conteúdo) */}
+      <div className="flex flex-col flex-1 h-full min-w-0 relative transition-all duration-300 bg-muted/20 dark:bg-background/50">
+        
+        {/* Cabeçalho Fixo no topo da coluna */}
         <Header />
         
-        {/* Conteúdo com Scroll Independente */}
+        {/* Área de Scroll Principal */}
         <main 
           id="main-content"
-          className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth focus:outline-none scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
+          tabIndex={-1} // Permite foco programático para o skip link
+          className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth focus:outline-none scrollbar-thin"
         >
-          {/* Container Centralizado e Responsivo */}
-          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8 pb-20 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          {/* Container Centralizado para limitar largura em telas ultrawide */}
+          {/* max-w-400 equivale a 1600px no Tailwind v4 (400 * 4px) */}
+          <div className="mx-auto w-full max-w-400 p-4 sm:p-6 lg:p-8 pb-24 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <Outlet />
           </div>
         </main>
       </div>
       
-      {/* Componentes Globais (Portals) */}
+      {/* Camada de Modais e Menus Globais */}
       <NewCaseModal />
       <CommandMenu />
     </div>

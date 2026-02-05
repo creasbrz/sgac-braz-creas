@@ -6,8 +6,7 @@ import { format, isFuture, isToday } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { 
   Users, Plus, MapPin, CalendarDays, Loader2, CheckSquare, 
-  Search, SlidersHorizontal, Layers 
-} from 'lucide-react'
+  Search, SlidersHorizontal, Layers} from 'lucide-react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -41,11 +40,11 @@ interface GroupCardProps {
 
 const GroupCard = ({ group, onSelect, onConfirm, isConfirming }: GroupCardProps) => {
   
-  // Lógica de Status (Visual)
+  // Lógica de Status (Visual Modernizado)
   const getStatusConfig = () => {
     if (group.attendanceConfirmed) {
       return { 
-        color: "text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800",
+        badge: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800",
         indicator: "bg-emerald-500",
         label: 'Realizado'
       }
@@ -56,14 +55,14 @@ const GroupCard = ({ group, onSelect, onConfirm, isConfirming }: GroupCardProps)
     
     if (isFutureDate) {
       return { 
-        color: "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800",
+        badge: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800",
         indicator: "bg-blue-500",
         label: 'Agendado'
       }
     }
 
     return { 
-      color: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800",
+      badge: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800",
       indicator: "bg-amber-500",
       label: 'Pendente Chamada'
     }
@@ -75,63 +74,72 @@ const GroupCard = ({ group, onSelect, onConfirm, isConfirming }: GroupCardProps)
   return (
     <Card 
       onClick={() => onSelect(group)}
-      className="group relative flex flex-col justify-between overflow-hidden border shadow-sm transition-all hover:shadow-md hover:border-primary/40 cursor-pointer bg-card"
+      className="group relative flex flex-col justify-between overflow-hidden border border-border bg-card shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/50 cursor-pointer h-full"
     >
       {/* Indicador Lateral de Status */}
-      <div className={cn("absolute left-0 top-0 bottom-0 w-1", status.indicator)} />
+      <div className={cn("absolute left-0 top-0 bottom-0 w-1 transition-colors", status.indicator)} />
 
-      <CardHeader className="pb-3 pt-4 pl-5 pr-4">
+      <CardHeader className="pb-3 pt-4 pl-5 pr-4 space-y-3">
         <div className="flex justify-between items-start gap-2">
-          <Badge variant="outline" className={cn("text-[10px] font-medium px-2 py-0.5", status.color)}>
+          <Badge variant="outline" className={cn("text-[10px] font-semibold px-2 py-0.5 shadow-none", status.badge)}>
             {status.label}
           </Badge>
           
-          <Badge variant="secondary" className="text-[10px] uppercase tracking-wider font-normal bg-muted text-muted-foreground">
-            {group.tipo.replace(/_/g, ' ')}
-          </Badge>
+          <div className="flex items-center gap-2">
+             <Badge variant="secondary" className="text-[10px] uppercase tracking-wider font-medium bg-muted text-muted-foreground border-border/50">
+               {group.tipo.replace(/_/g, ' ')}
+             </Badge>
+          </div>
         </div>
         
-        <CardTitle className="text-base font-bold leading-tight mt-3 line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
+        <CardTitle className="text-base font-bold leading-tight line-clamp-2 min-h-10 group-hover:text-primary transition-colors">
           {group.tema}
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="pl-5 pr-4 pb-2 space-y-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CalendarDays className="h-4 w-4 shrink-0 opacity-70" />
-          <span className="capitalize">
-            {format(new Date(group.dataRealizacao), "EEE, dd 'de' MMMM • HH:mm", { locale: ptBR })}
+      <CardContent className="pl-5 pr-4 pb-4 space-y-3 flex-1">
+        <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+          <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground/70" />
+          <span className="capitalize font-medium text-foreground/80">
+            {format(new Date(group.dataRealizacao), "EEE, dd 'de' MMM • HH:mm", { locale: ptBR })}
           </span>
         </div>
 
-        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-          <MapPin className="h-4 w-4 shrink-0 opacity-70 mt-0.5" />
+        <div className="flex items-start gap-2.5 text-sm text-muted-foreground">
+          <MapPin className="h-4 w-4 shrink-0 text-muted-foreground/70 mt-0.5" />
           <span className="line-clamp-1" title={group.local}>
             {group.local || 'Local a definir'}
           </span>
         </div>
       </CardContent>
 
-      <CardFooter className="pl-5 pr-4 py-3 bg-muted/20 border-t flex items-center justify-between mt-auto">
+      <CardFooter className="pl-5 pr-4 py-3 bg-muted/30 border-t border-border/60 flex items-center justify-between mt-auto">
         
         {/* Facilitador */}
         <div className="flex items-center gap-2">
-          <Avatar className="h-6 w-6 border border-background">
-            <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-bold">
+          <Avatar className="h-6 w-6 border border-background shadow-sm">
+            <AvatarFallback className="text-[9px] bg-primary/10 text-primary font-bold">
               {group.facilitador.nome.substring(0,2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <span className="text-xs text-muted-foreground font-medium truncate max-w-[100px]">
+          <span className="text-xs text-muted-foreground font-medium truncate max-w-25">
             {group.facilitador.nome.split(' ')[0]}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Contador de Participantes */}
-          <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Participantes">
-            <Users className="h-3.5 w-3.5" />
-            <span className="font-medium">{group._count?.participantes || 0}</span>
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+               <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-background px-2 py-1 rounded-md border border-border/50 shadow-sm">
+                    <Users className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{group._count?.participantes || 0}</span>
+                  </div>
+               </TooltipTrigger>
+               <TooltipContent>Participantes Inscritos</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {/* Botão de Ação Rápida (Chamada) */}
           {isPending && (
@@ -141,17 +149,19 @@ const GroupCard = ({ group, onSelect, onConfirm, isConfirming }: GroupCardProps)
                   <Button 
                     size="icon" 
                     variant="ghost" 
-                    className="h-8 w-8 hover:bg-amber-100 hover:text-amber-700 -mr-2"
+                    className="h-7 w-7 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900/30 dark:hover:text-amber-400 -mr-1"
                     onClick={(e) => {
                       e.stopPropagation()
                       onConfirm(group.id)
                     }}
                     disabled={isConfirming}
                   >
-                    {isConfirming ? <Loader2 className="h-4 w-4 animate-spin"/> : <CheckSquare className="h-4 w-4" />}
+                    {isConfirming ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckSquare className="h-4 w-4" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left">Realizar Chamada</TooltipContent>
+                <TooltipContent side="left" className="font-semibold text-amber-600 bg-amber-50 border-amber-200">
+                   Confirmar Realização
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -167,7 +177,7 @@ export function GroupManagement() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<GroupActivity | null>(null)
   
-  // [UX] Filtro simples local (pode evoluir para server-side)
+  // Filtro local
   const [searchTerm, setSearchTerm] = useState('')
 
   const { data: groups = [], isLoading } = useQuery<GroupActivity[]>({
@@ -193,65 +203,83 @@ export function GroupManagement() {
   )
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-10">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-10 max-w-400 mx-auto p-6">
       
       {/* HEADER & ACTIONS */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 border-b pb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Grupos e Oficinas</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Gestão de atividades coletivas, planejamento e listas de presença.</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-border pb-6">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+             <Users className="h-8 w-8 text-primary/80" /> Grupos e Oficinas
+          </h1>
+          <p className="text-muted-foreground text-sm max-w-2xl">
+             Gestão completa de atividades coletivas, planejamento de pautas e controle de frequência dos participantes.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => setIsCreateOpen(true)} className="shadow-sm gap-2 bg-primary hover:bg-primary/90">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <Button 
+            onClick={() => setIsCreateOpen(true)} 
+            className="shadow-sm gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold w-full sm:w-auto h-10"
+          >
             <Plus className="h-4 w-4" /> Nova Atividade
           </Button>
         </div>
       </div>
 
       {/* FILTROS E CONTROLES (Barra de Ferramentas) */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-muted/30 p-2 rounded-lg border">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-muted/30 p-1.5 rounded-xl border border-border shadow-sm">
+        <div className="relative w-full sm:w-80 group">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <Input 
-            placeholder="Buscar por tema ou local..." 
-            className="pl-8 h-9 bg-background border-none shadow-sm focus-visible:ring-1"
+            placeholder="Buscar por tema, local ou facilitador..." 
+            className="pl-9 h-10 bg-background border-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded-lg transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground px-2">
-          <SlidersHorizontal className="h-4 w-4" />
-          <span>{filteredGroups.length} atividades encontradas</span>
+        <div className="flex items-center gap-3 text-sm text-muted-foreground px-4 py-2 sm:py-0 w-full sm:w-auto justify-between sm:justify-end bg-background sm:bg-transparent rounded-lg border sm:border-none border-border">
+          <div className="flex items-center gap-2">
+             <SlidersHorizontal className="h-4 w-4" />
+             <span className="font-medium">Total:</span>
+          </div>
+          <Badge variant="secondary" className="font-mono font-bold">
+             {filteredGroups.length}
+          </Badge>
         </div>
       </div>
 
       {/* GRID DE CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {isLoading ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex flex-col space-y-3 p-4 border rounded-xl h-[200px]">
-              <div className="flex justify-between">
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-              <Skeleton className="h-6 w-3/4 mt-4" />
-              <div className="space-y-2 pt-4">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
+          Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex flex-col border border-border rounded-xl h-55 bg-card overflow-hidden">
+               <div className="p-5 space-y-4">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-5 w-24 rounded-md" />
+                    <Skeleton className="h-5 w-20 rounded-md" />
+                  </div>
+                  <Skeleton className="h-6 w-3/4 rounded-md" />
+                  <div className="space-y-2 pt-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+               </div>
+               <div className="mt-auto p-4 bg-muted/20 border-t border-border flex justify-between items-center">
+                  <Skeleton className="h-6 w-24 rounded-full" />
+                  <Skeleton className="h-6 w-12 rounded-md" />
+               </div>
             </div>
           ))
         ) : filteredGroups.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-xl bg-muted/10">
-            <div className="bg-muted p-4 rounded-full mb-4">
-              <Layers className="h-8 w-8 text-muted-foreground opacity-50" />
+          <div className="col-span-full flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-border rounded-xl bg-muted/5 animate-in fade-in zoom-in-95">
+            <div className="bg-muted/50 p-6 rounded-full mb-4 ring-1 ring-border">
+              <Layers className="h-10 w-10 text-muted-foreground/60" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground">Nenhuma atividade encontrada</h3>
-            <p className="text-muted-foreground max-w-sm mt-1 mb-6 text-sm">
-              Não encontramos grupos com os critérios de busca ou ainda não há atividades cadastradas.
+            <h3 className="text-xl font-bold text-foreground">Nenhuma atividade encontrada</h3>
+            <p className="text-muted-foreground max-w-md mt-2 mb-8 text-sm leading-relaxed">
+              Não encontramos grupos com os critérios de busca atuais ou ainda não há atividades cadastradas no sistema.
             </p>
-            <Button variant="outline" onClick={() => setIsCreateOpen(true)}>
-              Criar Primeira Atividade
+            <Button variant="outline" onClick={() => setIsCreateOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Criar Primeira Atividade
             </Button>
           </div>
         ) : (

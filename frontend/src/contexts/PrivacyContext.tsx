@@ -1,3 +1,4 @@
+// frontend/src/contexts/PrivacyContext.tsx
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
 interface PrivacyContextType {

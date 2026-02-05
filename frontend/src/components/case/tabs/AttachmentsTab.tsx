@@ -5,8 +5,7 @@ import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { 
   FileText, Trash2, Download, Loader2, UploadCloud, 
-  Paperclip, MoreVertical, Eye, File
-} from 'lucide-react'
+  Paperclip, MoreVertical, Eye, File as FileIcon} from 'lucide-react'
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { format } from 'date-fns'
@@ -33,6 +32,36 @@ interface Attachment {
 interface AttachmentsTabProps {
   caseId: string
   onError?: (error: unknown) => void
+}
+
+// --- HELPER: Ícone/Preview do Arquivo ---
+const FilePreview = ({ type, url }: { type: string, url: string }) => {
+  if (type === 'image') {
+    return (
+      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/50 relative group">
+        <img 
+          src={url} 
+          alt="Preview" 
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" 
+          loading="lazy"
+        />
+      </div>
+    )
+  }
+  
+  if (type === 'pdf') {
+    return (
+      <div className="h-12 w-12 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center shrink-0 border border-red-100 dark:border-red-900/50">
+        <FileText className="h-6 w-6 text-red-600 dark:text-red-400" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-12 w-12 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/50">
+      <FileIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+    </div>
+  )
 }
 
 export function AttachmentsTab({ caseId, onError }: AttachmentsTabProps) {
@@ -114,22 +143,16 @@ export function AttachmentsTab({ caseId, onError }: AttachmentsTabProps) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  const getFileIcon = (type: string, url: string) => {
-    if (type === 'image') {
-      return <img src={url} alt="Preview" className="h-full w-full object-cover opacity-90 transition-opacity hover:opacity-100" />
-    }
-    if (type === 'pdf') return <FileText className="h-6 w-6 text-red-500" />
-    return <File className="h-6 w-6 text-blue-500" />
-  }
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* 1. Dropzone de Upload */}
+      {/* 1. Dropzone de Upload Moderno */}
       <div 
         className={cn(
-          "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer relative overflow-hidden",
-          isDragOver ? "border-primary bg-primary/5 scale-[1.01]" : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30",
+          "border-2 border-dashed rounded-xl p-10 text-center transition-all duration-300 cursor-pointer relative overflow-hidden group",
+          isDragOver 
+            ? "border-primary bg-primary/5 scale-[1.01] shadow-lg" 
+            : "border-border/60 hover:border-primary/50 hover:bg-muted/30 bg-card/50",
           isUploading && "opacity-60 pointer-events-none"
         )}
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
@@ -144,108 +167,129 @@ export function AttachmentsTab({ caseId, onError }: AttachmentsTabProps) {
           accept=".pdf,image/*,.doc,.docx"
           onChange={handleFileChange}
         />
-        <div className="flex flex-col items-center gap-3">
-          <div className="p-3 bg-background rounded-full shadow-sm border">
+        
+        <div className="flex flex-col items-center gap-4 relative z-10">
+          <div className={cn(
+            "p-4 rounded-full shadow-sm border transition-all duration-300",
+            isDragOver ? "bg-primary/10 text-primary border-primary/20" : "bg-background text-muted-foreground group-hover:text-primary group-hover:scale-110"
+          )}>
             {isUploading ? (
-              <Loader2 className="h-6 w-6 animate-spin text-primary"/>
+              <Loader2 className="h-8 w-8 animate-spin text-primary"/>
             ) : (
-              <UploadCloud className="h-6 w-6 text-muted-foreground"/>
+              <UploadCloud className="h-8 w-8"/>
             )}
           </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">
+          
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-foreground">
               {isUploading ? "Enviando arquivo..." : "Clique para upload ou arraste e solte"}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground">
               PDF, Imagens ou Documentos (Max. 10MB)
             </p>
           </div>
         </div>
-      </div>
 
-      {/* 2. Cabeçalho da Lista */}
-      <div className="flex items-center gap-2 pb-2 border-b">
-        <Paperclip className="h-4 w-4 text-primary" /> 
-        <h3 className="text-sm font-semibold">Arquivos Anexados ({attachments.length})</h3>
-      </div>
-
-      {/* 3. Grid de Arquivos */}
-      <div className="min-h-[200px]">
-        {isLoading ? (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
-             {[1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-lg animate-pulse" />)}
-          </div>
-        ) : attachments.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground text-sm italic bg-muted/5 rounded-lg">
-            Nenhum documento arquivado ainda.
-          </div>
-        ) : (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {attachments.map((file) => (
-              <Card key={file.id} className="group overflow-hidden hover:shadow-md transition-all border-muted hover:border-primary/30">
-                <CardContent className="p-3 flex items-start gap-3 relative">
-                  
-                  {/* Thumbnail / Ícone */}
-                  <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border">
-                    {getFileIcon(file.tipo, file.url)}
-                  </div>
-
-                  {/* Informações */}
-                  <div className="flex-1 min-w-0 pr-8">
-                    <p className="font-medium text-sm truncate text-foreground" title={file.nome}>
-                      {file.nome}
-                    </p>
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
-                      <span className="font-mono">{formatSize(file.tamanho)}</span>
-                      <span>•</span>
-                      <span>{format(new Date(file.createdAt), "dd/MM/yy", { locale: ptBR })}</span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate">
-                      Por: {file.autor?.nome.split(' ')[0]}
-                    </p>
-                  </div>
-
-                  {/* Menu de Ações (Dropdown) */}
-                  <div className="absolute top-2 right-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <a href={file.url} target="_blank" rel="noopener noreferrer" className="cursor-pointer flex items-center">
-                            <Eye className="mr-2 h-4 w-4 text-blue-500" /> Visualizar
-                          </a>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <a href={file.url} download className="cursor-pointer flex items-center">
-                            <Download className="mr-2 h-4 w-4 text-emerald-500" /> Baixar
-                          </a>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          className="text-destructive focus:text-destructive cursor-pointer flex items-center"
-                          onClick={() => setDeleteId(file.id)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        {/* Background Pattern Opcional (apenas decorativo) */}
+        {!isUploading && (
+           <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#000000_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff_1px,transparent_1px)] bg-size-[16px_16px]"></div>
         )}
+      </div>
+
+      {/* 2. Lista de Arquivos */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 pb-2 border-b border-border/60">
+          <div className="p-1.5 bg-muted rounded-md">
+             <Paperclip className="h-4 w-4 text-primary" /> 
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">Documentos Anexados</h3>
+          <span className="ml-auto text-xs text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded-full">
+            {attachments.length} arquivos
+          </span>
+        </div>
+
+        <div className="min-h-50">
+          {isLoading ? (
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+               {[1,2,3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-xl animate-pulse" />)}
+            </div>
+          ) : attachments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground bg-muted/5 border border-dashed border-border/60 rounded-xl gap-3">
+              <div className="p-3 bg-muted/50 rounded-full">
+                 <FileIcon className="h-6 w-6 opacity-40" />
+              </div>
+              <p className="text-sm font-medium">Nenhum documento arquivado ainda.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {attachments.map((file) => (
+                <Card key={file.id} className="group overflow-hidden hover:shadow-md transition-all border-border hover:border-primary/40 bg-card">
+                  <CardContent className="p-3 flex items-start gap-3 relative">
+                    
+                    {/* Componente de Preview */}
+                    <FilePreview type={file.tipo} url={file.url} />
+
+                    {/* Informações */}
+                    <div className="flex-1 min-w-0 pr-6 space-y-1">
+                      <p className="font-semibold text-sm truncate text-foreground leading-tight" title={file.nome}>
+                        {file.nome}
+                      </p>
+                      
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span className="font-mono bg-muted/50 px-1 rounded">{formatSize(file.tamanho)}</span>
+                        <span>•</span>
+                        <span>{format(new Date(file.createdAt), "dd/MM/yy", { locale: ptBR })}</span>
+                      </div>
+                      
+                      <p className="text-[10px] text-muted-foreground/70 truncate pt-0.5">
+                        Por: <span className="font-medium text-foreground/80">{file.autor?.nome.split(' ')[0]}</span>
+                      </p>
+                    </div>
+
+                    {/* Menu de Ações */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm shadow-sm border border-border/50 hover:bg-accent text-muted-foreground">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem asChild>
+                            <a href={file.url} target="_blank" rel="noopener noreferrer" className="cursor-pointer flex items-center gap-2">
+                              <Eye className="h-4 w-4 text-blue-500" /> Visualizar
+                            </a>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <a href={file.url} download className="cursor-pointer flex items-center gap-2">
+                              <Download className="h-4 w-4 text-emerald-500" /> Baixar
+                            </a>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            className="text-destructive focus:text-destructive cursor-pointer flex items-center gap-2"
+                            onClick={() => setDeleteId(file.id)}
+                          >
+                            <Trash2 className="h-4 w-4" /> Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 4. Dialog de Confirmação de Exclusão */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir anexo permanentemente?</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+               <Trash2 className="h-5 w-5"/> Excluir anexo permanentemente?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Esta ação não pode ser desfeita. O arquivo será removido do servidor e do histórico do caso.
             </AlertDialogDescription>
@@ -255,10 +299,9 @@ export function AttachmentsTab({ caseId, onError }: AttachmentsTabProps) {
             <AlertDialogAction 
               onClick={() => deleteId && deleteFile(deleteId)}
               disabled={isDeleting}
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
-              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-              Confirmar Exclusão
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Confirmar Exclusão"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

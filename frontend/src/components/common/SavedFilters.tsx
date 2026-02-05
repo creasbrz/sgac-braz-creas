@@ -1,4 +1,4 @@
-// frontend/src/components/SavedFilters.tsx
+// frontend/src/components/common/SavedFilters.tsx
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Bookmark, Trash2, Save, Loader2, Star, FilterX } from "lucide-react"
@@ -90,7 +90,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
         </Button>
       </PopoverTrigger>
       
-      <PopoverContent align="start" className="w-[320px] p-0 shadow-lg">
+      <PopoverContent align="end" className="w-80 p-0 shadow-lg border-border/60">
         {/* Cabeçalho e Input */}
         <div className="p-4 bg-muted/10 space-y-3">
           <div className="space-y-1">
@@ -124,7 +124,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
         <Separator />
 
         {/* Lista de Filtros */}
-        <ScrollArea className="h-[220px]">
+        <ScrollArea className="h-55">
           <div className="p-2 space-y-1">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
@@ -140,7 +140,7 @@ export function SavedFilters({ currentFilters, onApply }: SavedFiltersProps) {
               filters.map((f) => (
                 <div 
                   key={f.id} 
-                  className="flex items-center justify-between group rounded-md p-2 hover:bg-accent cursor-pointer transition-all border border-transparent hover:border-border"
+                  className="flex items-center justify-between group rounded-md p-2 hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/50"
                   onClick={() => { 
                     onApply(f.config)
                     setIsOpen(false)

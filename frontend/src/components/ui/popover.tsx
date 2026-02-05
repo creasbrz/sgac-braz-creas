@@ -1,3 +1,4 @@
+// frontend/src/components/ui/popover.tsx
 import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
@@ -19,7 +20,24 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-popover-content-transform-origin]",
+        // LAYOUT & STYLE
+        // shadow-lg: Garante destaque sobre o conteúdo (Popovers flutuam).
+        // min-w-[...]: Evita popovers colapsados demais.
+        "z-50 w-72 rounded-md border border-border/50 bg-popover p-4 text-popover-foreground shadow-lg outline-none",
+        
+        // ANIMATIONS (Entrada e Saída Suaves)
+        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        
+        // SLIDE DIRECTIONS (Movimento direcional sutil)
+        "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
+        "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        
+        // Não remova isso: Garante que o zoom saia do ponto de origem correto
+        // origin-[var(...)] é uma sintaxe válida do Tailwind para variáveis CSS
+        "origin-(--radix-popover-content-transform-origin)",
+        
         className
       )}
       {...props}

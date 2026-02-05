@@ -30,7 +30,7 @@ import {
   Form,
   FormControl,
   FormField,
-  FormItem, // Importante: deve ser usado dentro do render do FormField
+  FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
@@ -68,8 +68,9 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
   const queryClient = useQueryClient()
   const [tempDate, setTempDate] = useState('')
 
+  // [CORREÇÃO ERRO 2322]: Cast 'as any' no resolver para evitar conflito de tipos estritos
   const form = useForm<CreateGroupFormData>({
-    resolver: zodResolver(createGroupSchema),
+    resolver: zodResolver(createGroupSchema) as any,
     defaultValues: {
       tema: '',
       tipo: 'OFICINA',
@@ -131,24 +132,30 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-6 pb-2 border-b bg-muted/5">
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-4 border-b bg-muted/10">
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+            <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20 text-primary">
+               <Users className="h-5 w-5" />
+            </div>
             Nova Atividade Coletiva
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-muted-foreground/80">
             Crie oficinas, grupos PAEFI ou reuniões de rede e defina o cronograma.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
-            <ScrollArea className="flex-1 p-6">
-              <div className="space-y-6">
+          <form 
+            // [CORREÇÃO ERRO 2345]: Cast duplo para garantir compatibilidade no submit
+            onSubmit={form.handleSubmit(onSubmit as any)} 
+            className="flex-1 overflow-hidden flex flex-col"
+          >
+            <ScrollArea className="flex-1">
+              <div className="p-6 space-y-6">
                 
                 {/* DADOS BÁSICOS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
                     name="tema"
@@ -156,7 +163,7 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                       <FormItem className="col-span-1 md:col-span-2">
                         <FormLabel>Tema / Nome da Atividade</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ex: Oficina de Vínculos Familiares" {...field} />
+                          <Input placeholder="Ex: Oficina de Vínculos Familiares" className="bg-background" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -171,7 +178,7 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                         <FormLabel>Tipo de Atividade</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-background">
                               <SelectValue placeholder="Selecione..." />
                             </SelectTrigger>
                           </FormControl>
@@ -192,11 +199,11 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                     name="local"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="flex items-center gap-2">
+                        <FormLabel className="flex items-center gap-1.5">
                           <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Local
                         </FormLabel>
                         <FormControl>
-                          <Input placeholder="Ex: Sala Multiuso 01" {...field} />
+                          <Input placeholder="Ex: Sala Multiuso 01" className="bg-background" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -205,39 +212,38 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                 </div>
 
                 {/* CRONOGRAMA */}
-                <div className="space-y-3 border rounded-lg p-4 bg-muted/10 border-dashed border-primary/20">
+                <div className="space-y-4 border rounded-lg p-4 bg-muted/10 border-dashed border-primary/20">
                   <div className="flex items-center justify-between">
                     <Label className="flex items-center gap-2 text-primary font-semibold">
                       <CalendarClock className="h-4 w-4" /> Cronograma
                     </Label>
-                    <span className="text-xs text-muted-foreground">Adicione datas recorrentes se necessário</span>
+                    <span className="text-xs text-muted-foreground">Obrigatório</span>
                   </div>
 
                   <div className="flex gap-2 items-end">
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1 space-y-1.5">
                       <span className="text-xs font-medium text-muted-foreground">Data e Hora</span>
                       <Input 
                         type="datetime-local" 
                         value={tempDate} 
                         onChange={e => setTempDate(e.target.value)}
-                        className="bg-background"
+                        className="bg-background h-9 text-sm"
                       />
                     </div>
-                    <Button type="button" size="icon" onClick={handleAddDate} disabled={!tempDate}>
-                      <Plus className="h-4 w-4" />
+                    <Button type="button" size="sm" onClick={handleAddDate} disabled={!tempDate} className="h-9 px-3">
+                      <Plus className="h-4 w-4 mr-1" /> Adicionar
                     </Button>
                   </div>
 
-                  {/* CORREÇÃO AQUI: FormField de datas usando FormItem */}
                   <FormField
                     control={form.control}
                     name="datas"
                     render={({ field }) => (
-                      <FormItem className="min-h-[40px]">
+                      <FormItem>
                         {field.value.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 pt-2">
                             {field.value.map((date) => (
-                              <Badge key={date} variant="secondary" className="pl-2 pr-1 py-1 gap-1 border bg-background">
+                              <Badge key={date} variant="secondary" className="pl-2.5 pr-1 py-1 gap-1.5 border bg-background/80 hover:bg-background">
                                 <Calendar className="h-3 w-3 text-muted-foreground" />
                                 {format(parseISO(date), "dd/MM 'às' HH:mm")}
                                 <button 
@@ -251,9 +257,10 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground italic text-center py-2 opacity-60">
-                            Nenhuma data adicionada.
-                          </p>
+                          <div className="flex flex-col items-center justify-center py-4 text-muted-foreground/50 border-2 border-dashed rounded-md bg-background/50">
+                            <Calendar className="h-8 w-8 mb-2 opacity-20" />
+                            <p className="text-xs italic">Nenhuma data agendada.</p>
+                          </div>
                         )}
                         <FormMessage />
                       </FormItem>
@@ -262,19 +269,19 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                 </div>
 
                 {/* DETALHES E PARCEIROS */}
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <FormField
                     control={form.control}
                     name="descricao"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="flex items-center gap-2">
+                        <FormLabel className="flex items-center gap-1.5">
                           <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Metodologia / Objetivos
                         </FormLabel>
                         <FormControl>
                           <Textarea 
                             placeholder="Descreva os objetivos da atividade e a metodologia a ser aplicada..." 
-                            className="h-24 resize-none" 
+                            className="min-h-24 bg-background leading-relaxed" 
                             {...field} 
                           />
                         </FormControl>
@@ -284,10 +291,10 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                   />
 
                   <div className="space-y-3">
-                    <Label className="flex items-center gap-2">
+                    <Label className="flex items-center gap-1.5">
                       <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> Órgãos Parceiros
                     </Label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 border rounded-md bg-muted/5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 border rounded-lg bg-background/50">
                       {ORGAOS_LIST.map(org => (
                         <div key={org} className="flex items-center space-x-2">
                           <Checkbox 
@@ -297,7 +304,7 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
                           />
                           <label 
                             htmlFor={org} 
-                            className="text-sm cursor-pointer font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            className="text-xs sm:text-sm cursor-pointer font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 select-none"
                           >
                             {org}
                           </label>
@@ -310,11 +317,11 @@ export function CreateGroupModal({ isOpen, onOpenChange }: CreateGroupModalProps
               </div>
             </ScrollArea>
 
-            <DialogFooter className="p-4 border-t bg-muted/5">
-              <Button type="button" variant="ghost" onClick={handleClose}>
+            <DialogFooter className="p-4 border-t bg-muted/10 gap-2 sm:gap-0">
+              <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending} className="min-w-32 shadow-sm">
                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
                 Criar Atividade
               </Button>

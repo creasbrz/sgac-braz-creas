@@ -32,29 +32,33 @@ interface AlertItem {
   dueDate?: string 
 }
 
-// Styles configuration based on alert type
+// --- CONFIGURAÇÃO DE ESTILOS (Usa Tokens Semânticos do CSS) ---
 const ALERT_STYLES: Record<string, { 
     icon: LucideIcon, 
     colorClass: string, 
-    bgClass: string, 
+    bgClass: string,
+    borderClass: string,
     badgeVariant: "destructive" | "secondary" | "outline" | "default"
 }> = {
   critical: {
     icon: AlertCircle,
-    colorClass: "text-destructive",
-    bgClass: "bg-destructive/10",
+    colorClass: "text-status-error-fg",
+    bgClass: "bg-status-error-bg",
+    borderClass: "border-status-error-border",
     badgeVariant: "destructive"
   },
   warning: {
     icon: Clock,
-    colorClass: "text-amber-600 dark:text-amber-400",
-    bgClass: "bg-amber-100 dark:bg-amber-900/20",
+    colorClass: "text-status-warning-fg",
+    bgClass: "bg-status-warning-bg",
+    borderClass: "border-status-warning-border",
     badgeVariant: "secondary"
   },
   info: {
     icon: Info,
-    colorClass: "text-blue-600 dark:text-blue-400",
-    bgClass: "bg-blue-100 dark:bg-blue-900/20",
+    colorClass: "text-status-info-fg",
+    bgClass: "bg-status-info-bg",
+    borderClass: "border-status-info-border",
     badgeVariant: "outline"
   }
 }
@@ -78,7 +82,7 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
             item.type === 'critical'
           )
           .sort((a, b) => {
-             // Sort by Criticality first, then by Date if available
+             // Ordena por Criticidade primeiro, depois mantém a ordem
              if (a.type === 'critical' && b.type !== 'critical') return -1;
              if (b.type === 'critical' && a.type !== 'critical') return 1;
              return 0;
@@ -90,7 +94,7 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
     refetchInterval: 1000 * 60 
   })
 
-  // Date helper
+  // Helper de Data
   const renderDate = (dateStr?: string) => {
     if (!dateStr) return null
     const date = new Date(dateStr)
@@ -107,17 +111,21 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
   const criticalCount = safeAlerts.filter(a => a.type === 'critical').length
 
   return (
-    <Card className={cn("flex flex-col border shadow-sm overflow-hidden", className)}>
-      <CardHeader className="pb-3 border-b bg-muted/20 px-4 py-3 shrink-0">
+    <Card className={cn("flex flex-col border shadow-sm overflow-hidden bg-card", className)}>
+      <CardHeader className="pb-3 px-5 py-4 shrink-0 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <span className="font-semibold">Prazos e Alertas PAF</span>
+          <CardTitle className="text-base font-bold flex items-center gap-2.5">
+            {/* Ícone do Título também usa cor semântica (Warning neste caso) */}
+            <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-status-warning-bg border border-status-warning-border">
+                <AlertTriangle className="h-4 w-4 text-status-warning-fg" />
+            </div>
+            <span className="text-foreground">Prazos e Alertas PAF</span>
           </CardTitle>
+          
           {hasAlerts && (
             <Badge 
               variant={criticalCount > 0 ? "destructive" : "secondary"} 
-              className="text-[10px] h-5 px-1.5"
+              className="h-5 px-1.5 text-[10px]"
             >
               {safeAlerts.length}
             </Badge>
@@ -125,8 +133,8 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
         </div>
       </CardHeader>
       
-      <CardContent className="flex-1 p-0 min-h-0 relative bg-card">
-        {/* Absolute positioning for ScrollArea ensures it respects parent height */}
+      <CardContent className="flex-1 p-0 min-h-0 relative">
+        {/* ScrollArea com posicionamento absoluto para respeitar o grid pai */}
         <div className="absolute inset-0">
           <ScrollArea className="h-full">
             <div className="p-0">
@@ -134,7 +142,7 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
               {isLoading ? (
                 <div className="p-4 space-y-3">
                   {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="flex flex-col gap-2 p-3 rounded-lg border bg-muted/10 animate-pulse">
+                    <div key={i} className="flex flex-col gap-2 p-3 rounded-lg border bg-muted/20 animate-pulse">
                       <div className="flex justify-between">
                         <Skeleton className="h-4 w-1/2" />
                         <Skeleton className="h-4 w-16 rounded-full" />
@@ -144,49 +152,60 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
                   ))}
                 </div>
               ) : isError ? (
-                <div className="flex flex-col items-center justify-center h-48 text-destructive gap-2 opacity-80">
-                  <AlertCircle className="h-8 w-8" />
-                  <span className="text-sm font-medium">Erro ao carregar alertas.</span>
+                <div className="flex flex-col items-center justify-center h-48 gap-3 opacity-80 p-4">
+                  <div className="p-3 rounded-full bg-status-error-bg border border-status-error-border">
+                    <AlertCircle className="h-6 w-6 text-status-error-fg" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">Erro ao carregar alertas.</span>
                 </div>
               ) : !hasAlerts ? (
-                // Empty State
-                <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground p-6">
-                  <div className="bg-emerald-100 dark:bg-emerald-900/20 p-4 rounded-full mb-3 animate-in zoom-in duration-300">
-                    <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                // --- EMPTY STATE (SUCCESS) ---
+                <div className="flex flex-col items-center justify-center h-64 text-center p-6">
+                  {/* Usa Tokens Semânticos de Sucesso */}
+                  <div className="p-4 rounded-full bg-status-success-bg border border-status-success-border mb-3 animate-in zoom-in duration-300">
+                    <CheckCircle2 className="h-8 w-8 text-status-success-fg" />
                   </div>
-                  <h4 className="font-medium text-foreground">Tudo em dia!</h4>
-                  <p className="text-xs mt-1 opacity-70 max-w-[180px]">
+                  <h4 className="font-semibold text-foreground">Tudo em dia!</h4>
+                  <p className="text-xs mt-1 text-muted-foreground max-w-50 leading-relaxed">
                     Não há pendências de PAF ou prazos críticos no momento.
                   </p>
                 </div>
               ) : (
-                // Listagem Refatorada
-                <ul className="divide-y divide-border/50">
+                // --- LISTA DE ALERTAS ---
+                <ul className="divide-y divide-border/40">
                   {safeAlerts.slice(0, 10).map((item) => {
                     const style = ALERT_STYLES[item.type] || ALERT_STYLES.info
                     const StatusIcon = style.icon
                     const dateInfo = renderDate(item.dueDate)
 
                     return (
-                      <li key={item.id} className="group hover:bg-muted/40 transition-colors duration-200">
+                      <li key={item.id} className="group hover:bg-muted/30 transition-colors duration-200">
                         <div className="p-4 flex flex-col gap-3">
                            {/* Header da linha */}
-                           <div className="flex items-start gap-3">
-                              <div className={cn("mt-0.5 p-1.5 rounded-md shrink-0", style.bgClass)}>
+                           <div className="flex items-start gap-3.5">
+                              {/* Ícone com Cores Semânticas (Pastel + Vivo) */}
+                              <div className={cn(
+                                "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-sm", 
+                                style.bgClass,
+                                style.borderClass
+                              )}>
                                 <StatusIcon className={cn("h-4 w-4", style.colorClass)} />
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="text-sm font-medium text-foreground leading-tight group-hover:text-primary transition-colors">
+                              
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <h4 className="text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors">
                                   {item.title}
                                 </h4>
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
                                   {item.description}
                                 </p>
                                 
                                 {dateInfo && (
                                   <div className={cn(
-                                    "flex items-center gap-1.5 mt-2 text-[11px] font-medium",
-                                    dateInfo.isOverdue ? "text-destructive" : "text-muted-foreground"
+                                    "flex items-center gap-1.5 mt-2.5 text-[11px] font-medium border w-fit px-2 py-0.5 rounded-md",
+                                    dateInfo.isOverdue 
+                                        ? "bg-status-error-bg text-status-error-fg border-status-error-border" 
+                                        : "bg-muted/50 text-muted-foreground border-border"
                                   )}>
                                     <Clock className="h-3 w-3" />
                                     <span>
@@ -198,17 +217,17 @@ export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
                               </div>
                            </div>
 
-                           {/* Action Footer (Only visible/highlighted on context) */}
-                           <div className="pl-10">
+                           {/* Ação (Resolver) */}
+                           <div className="pl-11.5">
                              <Button 
                                asChild 
                                variant="ghost" 
                                size="sm" 
-                               className="h-7 text-xs px-2 -ml-2 text-muted-foreground hover:text-primary hover:bg-primary/10 w-fit"
+                               className="h-7 text-xs px-2 text-muted-foreground hover:text-primary hover:bg-primary/10 -ml-2"
                              >
-                               <Link to={item.link} className="flex items-center">
+                               <Link to={item.link} className="flex items-center gap-1.5">
                                  Resolver Pendência
-                                 <ArrowRight className="h-3 w-3 ml-1.5 opacity-70 group-hover:translate-x-1 transition-transform" />
+                                 <ArrowRight className="h-3 w-3 opacity-70 group-hover:translate-x-1 transition-transform" />
                                </Link>
                              </Button>
                            </div>

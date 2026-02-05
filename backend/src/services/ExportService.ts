@@ -22,9 +22,9 @@ const LISTAS = {
   ],
 
   URGENCIA: [
-    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual',
-    'Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente',
-    'PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante',
+    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça',
+    'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso', 
+    'Internação', 'Acolhimento', 'Gestante/Lactante',
     'Sem risco imediato', 'Visita periódica'
   ],
 

@@ -1,3 +1,4 @@
+// frontend/src/pages/dashboard/ManagerDashboard.tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { format } from 'date-fns'
@@ -73,16 +74,20 @@ interface StatCardProps {
 }
 
 const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', description }: StatCardProps) => {
+  // Cores Modernizadas (Padrão Pastel 50 + Vivid 500)
   const themes = {
-    blue: "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-blue-100 dark:border-blue-900",
-    amber: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border-amber-100 dark:border-amber-900",
-    purple: "bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 border-purple-100 dark:border-purple-900",
-    emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900",
+    blue: "bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400 border-blue-100 dark:border-blue-500/20",
+    amber: "bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400 border-amber-100 dark:border-amber-500/20",
+    purple: "bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-400 border-violet-100 dark:border-violet-500/20",
+    emerald: "bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20",
   }
 
   return (
-    <Card className="border shadow-sm hover:shadow-md transition-all duration-300">
-      <CardContent className="p-6 flex items-start justify-between">
+    <Card className="border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative group">
+       {/* Faixa lateral colorida no hover [CORREÇÃO: w-[3px] -> w-0.75] */}
+       <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", themes[variant].split(' ')[0].replace('50', '500'))} />
+       
+      <CardContent className="p-6 flex items-start justify-between relative z-10">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <div className="mt-2 flex items-baseline gap-2">
@@ -94,8 +99,8 @@ const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', descripti
              <p className="text-xs text-muted-foreground mt-1">{description}</p>
           )}
         </div>
-        <div className={cn("p-3 rounded-xl border", themes[variant])}>
-          <Icon className="w-5 h-5" />
+        <div className={cn("p-3 rounded-xl border shadow-sm", themes[variant])}>
+          <Icon className="w-5 h-5" strokeWidth={2.5} />
         </div>
       </CardContent>
     </Card>
@@ -104,12 +109,20 @@ const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', descripti
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="space-y-6 animate-pulse p-1">
+      <div className="flex justify-between items-center mb-8">
+         <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+         </div>
+         <Skeleton className="h-10 w-32" />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full" />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {[1,2].map(i => <Skeleton key={i} className="h-[300px] rounded-xl w-full" />)}
+        {/* [CORREÇÃO: h-[300px] -> h-75] */}
+        {[1,2].map(i => <Skeleton key={i} className="h-75 rounded-xl w-full" />)}
       </div>
     </div>
   )
@@ -168,10 +181,10 @@ export function ManagerDashboard() {
     if (isLoading) return <DashboardSkeleton />
 
     if (isError) return (
-      <div className="flex flex-col items-center justify-center h-64 border border-dashed rounded-lg bg-destructive/5 text-destructive">
+      <div className="flex flex-col items-center justify-center h-64 border border-dashed rounded-lg bg-status-error-bg/10 text-status-error-fg m-4">
         <Activity className="h-10 w-10 mb-3 opacity-50"/>
         <p className="font-medium">Erro ao carregar indicadores gerenciais.</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-4">
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-4 border-status-error-border text-status-error-fg hover:bg-status-error-bg">
           Tentar Novamente
         </Button>
       </div>
@@ -179,16 +192,23 @@ export function ManagerDashboard() {
 
     if (!stats) return null
 
-    const agentData = stats.workloadByAgent.map(d => ({ ...d, fill: "var(--color-cases)" }))
-    const specialistData = stats.workloadBySpecialist.map(d => ({ ...d, fill: "var(--color-cases)" }))
+    // [CORREÇÃO: ORDENAÇÃO DECRESCENTE]
+    // Preparando e ordenando dados para gráficos (Maior para Menor)
+    const agentData = stats.workloadByAgent
+        .sort((a, b) => b.value - a.value)
+        .map(d => ({ ...d, fill: "hsl(var(--primary))" }))
+
+    const specialistData = stats.workloadBySpecialist
+        .sort((a, b) => b.value - a.value)
+        .map(d => ({ ...d, fill: "hsl(var(--chart-2))" }))
 
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         
-        {/* HEADER & TOOLBAR */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
+        {/* HEADER & TOOLBAR (Sticky Glass) */}
+        <div className="sticky top-0 z-10 -mx-6 -mt-2 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Visão Geral</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Visão Geral</h2>
             <p className="text-muted-foreground text-sm">Monitoramento operacional e estratégico.</p>
           </div>
 
@@ -204,7 +224,7 @@ export function ManagerDashboard() {
               size="sm" 
               onClick={handleForceRefresh}
               disabled={isRefetching}
-              className="h-9 gap-2"
+              className="h-9 gap-2 bg-background border-border/60 shadow-sm"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", isRefetching && 'animate-spin')} />
               <span className="sr-only sm:not-sr-only">Atualizar</span>
@@ -217,13 +237,14 @@ export function ManagerDashboard() {
                 label="Relatório Mensal"
                 variant="default"
                 size="sm"
+                className="h-9"
               />
             )}
           </div>
         </div>
 
         {/* 1. KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 px-1">
           <ManagerStatCard 
             title="Novos Casos" 
             value={stats.newCasesThisMonth} 
@@ -257,7 +278,7 @@ export function ManagerDashboard() {
         {/* 2. GRÁFICOS DE CARGA */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Carga Agentes */}
-          <Card className="shadow-sm">
+          <Card className="shadow-sm border-border/50">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Briefcase className="h-4 w-4 text-primary"/> Carga de Trabalho — Agentes
@@ -265,12 +286,14 @@ export function ManagerDashboard() {
               <CardDescription>Distribuição de casos ativos por técnico.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={workloadChartConfig} className="min-h-[200px] max-h-[300px] w-full">
+              {/* [CORREÇÃO: min-h-[200px] -> min-h-50, max-h-[300px] -> max-h-75] */}
+              <ChartContainer config={workloadChartConfig} className="min-h-50 max-h-75 w-full">
                 <BarChart
                   accessibilityLayer
                   data={agentData}
                   layout="vertical"
-                  margin={{ left: 0, right: 30, top: 0, bottom: 0 }}
+                  margin={{ left: 0, right: 40, top: 0, bottom: 0 }}
+                  barCategoryGap="20%"
                 >
                   <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.3} />
                   <YAxis
@@ -280,13 +303,24 @@ export function ManagerDashboard() {
                     tickMargin={10}
                     axisLine={false}
                     fontSize={12}
-                    width={100}
+                    width={110}
+                    className="font-medium text-xs"
                   />
                   <XAxis type="number" hide />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                    {/* [CORREÇÃO 1] Alterado 'val: number' para 'val: any' */}
-                    <LabelList dataKey="value" position="right" fontSize={12} fill="hsl(var(--foreground))" formatter={(val: any) => val > 0 ? val : ''} />
+                  <Bar 
+                    dataKey="value" 
+                    radius={[0, 4, 4, 0]} 
+                    barSize={20}
+                    className="opacity-90 hover:opacity-100 transition-opacity"
+                  >
+                    <LabelList 
+                      dataKey="value" 
+                      position="right" 
+                      fontSize={11} 
+                      className="fill-foreground font-bold" 
+                      formatter={(val: any) => val > 0 ? val : ''} 
+                    />
                   </Bar>
                 </BarChart>
               </ChartContainer>
@@ -294,20 +328,22 @@ export function ManagerDashboard() {
           </Card>
 
           {/* Carga Especialistas */}
-          <Card className="shadow-sm">
+          <Card className="shadow-sm border-border/50">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary"/> Carga de Trabalho — Especialistas
+                <Activity className="h-4 w-4 text-[hsl(var(--chart-2))]"/> Carga de Trabalho — Especialistas
               </CardTitle>
               <CardDescription>Volume de PAEFI por técnico de referência.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={workloadChartConfig} className="min-h-[200px] max-h-[300px] w-full">
+              {/* [CORREÇÃO: min-h-[200px] -> min-h-50, max-h-[300px] -> max-h-75] */}
+              <ChartContainer config={workloadChartConfig} className="min-h-50 max-h-75 w-full">
                 <BarChart
                   accessibilityLayer
                   data={specialistData}
                   layout="vertical"
-                  margin={{ left: 0, right: 30, top: 0, bottom: 0 }}
+                  margin={{ left: 0, right: 40, top: 0, bottom: 0 }}
+                  barCategoryGap="20%"
                 >
                   <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.3} />
                   <YAxis
@@ -317,13 +353,24 @@ export function ManagerDashboard() {
                     tickMargin={10}
                     axisLine={false}
                     fontSize={12}
-                    width={100}
+                    width={110}
+                    className="font-medium text-xs"
                   />
                   <XAxis type="number" hide />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                    {/* [CORREÇÃO 2] Alterado 'val: number' para 'val: any' */}
-                    <LabelList dataKey="value" position="right" fontSize={12} fill="hsl(var(--foreground))" formatter={(val: any) => val > 0 ? val : ''} />
+                  <Bar 
+                    dataKey="value" 
+                    radius={[0, 4, 4, 0]} 
+                    barSize={20}
+                    className="opacity-90 hover:opacity-100 transition-opacity"
+                  >
+                    <LabelList 
+                      dataKey="value" 
+                      position="right" 
+                      fontSize={11} 
+                      className="fill-foreground font-bold" 
+                      formatter={(val: any) => val > 0 ? val : ''} 
+                    />
                   </Bar>
                 </BarChart>
               </ChartContainer>
@@ -333,14 +380,17 @@ export function ManagerDashboard() {
 
         {/* 3. OPERATIONAL FEEDS */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 flex flex-col">
-            <UpcomingAppointments enableScroll className="h-full min-h-[400px]" />
+          <div className="lg:col-span-1 flex flex-col h-full">
+            {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
+            <UpcomingAppointments enableScroll className="h-full min-h-100 shadow-sm border-border/50" />
           </div>
-          <div className="lg:col-span-1 flex flex-col">
-            <UpcomingPafDeadlines className="h-full min-h-[400px]" />
+          <div className="lg:col-span-1 flex flex-col h-full">
+             {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
+            <UpcomingPafDeadlines className="h-full min-h-100 shadow-sm border-border/50" />
           </div>
-          <div className="lg:col-span-1 flex flex-col">
-            <RecentActivityFeed className="h-full min-h-[400px]" />
+          <div className="lg:col-span-1 flex flex-col h-full">
+             {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
+            <RecentActivityFeed className="h-full min-h-100 shadow-sm border-border/50" />
           </div>
         </div>
       </div>
@@ -348,21 +398,25 @@ export function ManagerDashboard() {
   }
 
   return (
-    <Tabs defaultValue="overview" className="w-full space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <TabsList className="grid w-full sm:w-[400px] grid-cols-2">
-          <TabsTrigger value="overview">Visão Operacional</TabsTrigger>
-          <TabsTrigger value="analytics">Indicadores & IA</TabsTrigger>
-        </TabsList>
-      </div>
+    // [CORREÇÃO: max-w-[1600px] -> max-w-400]
+    <div className="w-full space-y-6 p-4 md:p-8 max-w-400 mx-auto">
+       <Tabs defaultValue="overview" className="w-full space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            {/* [CORREÇÃO: sm:w-[400px] -> sm:w-100] */}
+            <TabsList className="grid w-full sm:w-100 grid-cols-2 bg-muted/50 p-1">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">Visão Operacional</TabsTrigger>
+            <TabsTrigger value="analytics" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">Indicadores & IA</TabsTrigger>
+            </TabsList>
+        </div>
 
-      <TabsContent value="overview" className="mt-0 focus-visible:outline-none">
-        {renderOverview()}
-      </TabsContent>
+        <TabsContent value="overview" className="mt-0 focus-visible:outline-none">
+            {renderOverview()}
+        </TabsContent>
 
-      <TabsContent value="analytics" className="mt-0 focus-visible:outline-none">
-        <AdvancedAnalytics />
-      </TabsContent>
-    </Tabs>
+        <TabsContent value="analytics" className="mt-0 focus-visible:outline-none">
+            <AdvancedAnalytics />
+        </TabsContent>
+        </Tabs>
+    </div>
   )
 }

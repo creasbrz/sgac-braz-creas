@@ -1,27 +1,45 @@
 // frontend/src/utils/formatters.ts
-import { format, isValid } from 'date-fns'
+import { format, isValid, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 /**
- * Formata uma string de CPF para o formato 000.000.000-00.
+ * Remove todos os caracteres não numéricos de uma string.
+ */
+export const stripNonNumeric = (value: string | null | undefined): string => {
+  return value ? value.replace(/\D/g, '') : ''
+}
+
+/**
+ * Formata CPF: 000.000.000-00
  */
 export const formatCPF = (cpf: string | null | undefined): string => {
-  if (!cpf) return ''
-
-  const cleaned = cpf.replace(/\D/g, '')
-
-  if (cleaned.length !== 11) return cpf // Retorna original se tamanho incorreto
-
+  const cleaned = stripNonNumeric(cpf)
+  if (!cleaned) return ''
+  
+  if (cleaned.length !== 11) return cpf || ''
+  
   return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 }
 
 /**
- * Formata uma string de telefone para (00) 00000-0000 ou (00) 0000-0000.
+ * Formata CEP: 00000-000
+ */
+export const formatCEP = (cep: string | null | undefined): string => {
+  const cleaned = stripNonNumeric(cep)
+  if (!cleaned) return ''
+
+  if (cleaned.length !== 8) return cep || ''
+
+  return cleaned.replace(/(\d{5})(\d{3})/, '$1-$2')
+}
+
+/**
+ * Formata Telefone (Fixo ou Celular)
+ * (00) 0000-0000 ou (00) 00000-0000
  */
 export const formatPhone = (phone: string | null | undefined): string => {
-  if (!phone) return ''
-
-  const cleaned = phone.replace(/\D/g, '')
+  const cleaned = stripNonNumeric(phone)
+  if (!cleaned) return ''
 
   // Celular (11 dígitos)
   if (cleaned.length === 11) {
@@ -33,34 +51,33 @@ export const formatPhone = (phone: string | null | undefined): string => {
     return cleaned.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3')
   }
 
-  return phone // Retorna original se não bater os tamanhos
+  return phone || ''
 }
 
 /**
- * Formata Processo SEI suportando os dois padrões do GDF:
- * 1. Padrão Antigo/Curto (19 dígitos): 00054-00160500/2025-77
- * 2. Padrão Novo/Longo (21 dígitos): 19.04.1237.0168706/2025-77
+ * Formata Processo SEI (Padrões GDF)
+ * Padrão Antigo: 00054-00160500/2025-77
+ * Padrão Novo: 19.04.1237.0168706/2025-77
  */
 export const formatProcessoSei = (value: string | null | undefined): string => {
-  if (!value) return ''
-  
-  const clean = value.replace(/\D/g, '')
+  const clean = stripNonNumeric(value)
+  if (!clean) return ''
 
-  // Modelo 1: 5-8/4-2
+  // Modelo 1: 5-8/4-2 (19 dígitos)
   if (clean.length === 19) {
     return clean.replace(/^(\d{5})(\d{8})(\d{4})(\d{2})$/, '$1-$2/$3-$4')
   }
 
-  // Modelo 2: 2.2.4.7/4-2
+  // Modelo 2: 2.2.4.7/4-2 (21 dígitos)
   if (clean.length === 21) {
     return clean.replace(/^(\d{2})(\d{2})(\d{4})(\d{7})(\d{4})(\d{2})$/, '$1.$2.$3.$4/$5-$6')
   }
 
-  return value
+  return value || ''
 }
 
 /**
- * Formata valor numérico para moeda BRL (R$ 1.200,00).
+ * Formata valor monetário para BRL (R$ 1.200,00)
  */
 export const formatCurrency = (value: number | string | null | undefined): string => {
   if (value === null || value === undefined || value === '') return 'R$ 0,00'
@@ -76,14 +93,44 @@ export const formatCurrency = (value: number | string | null | undefined): strin
 }
 
 /**
- * Formata uma data no formato dd/MM/yyyy de forma segura.
+ * Formata data ISO para padrão brasileiro (dd/MM/yyyy).
+ * Usa parseISO para evitar problemas de timezone em datas puras (YYYY-MM-DD).
  */
 export const formatDateSafe = (dateInput: string | Date | null | undefined): string => {
   if (!dateInput) return '-'
 
-  const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
+  let date: Date
+
+  if (typeof dateInput === 'string') {
+    // Se for string ISO completa ou YYYY-MM-DD, parseISO é mais seguro que new Date()
+    date = parseISO(dateInput)
+  } else {
+    date = dateInput
+  }
 
   if (!isValid(date)) return '-'
 
   return format(date, 'dd/MM/yyyy', { locale: ptBR })
+}
+
+/**
+ * Normaliza nomes para "Title Case" (Primeira Letra Maiúscula).
+ * Converte: "JOAO DA SILVA" -> "Joao da Silva"
+ * Ignora preposições comuns (de, da, do, dos, e).
+ */
+export const formatName = (name: string | null | undefined): string => {
+  if (!name) return ''
+
+  const prepositions = ['de', 'da', 'do', 'das', 'dos', 'e']
+  
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map((word, index) => {
+      if (index > 0 && prepositions.includes(word)) {
+        return word
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1)
+    })
+    .join(' ')
 }

@@ -68,7 +68,7 @@ export function CaseWorkflow({ status }: CaseWorkflowProps) {
                   </div>
                   
                   {/* Label (Texto) */}
-                  <div className="mt-3 px-1 text-center min-h-[20px]">
+                  <div className="mt-3 px-1 text-center min-h-5">
                     <span className={clsx(
                       "text-[9px] sm:text-[10px] font-bold uppercase tracking-tighter sm:tracking-wider leading-tight block transition-all duration-300",
                       isCurrent ? "text-primary scale-105" : "text-muted-foreground/60",

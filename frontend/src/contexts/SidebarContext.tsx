@@ -1,30 +1,55 @@
 // frontend/src/contexts/SidebarContext.tsx
-import { createContext, useContext, useState, ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+
+const SIDEBAR_STORAGE_KEY = "@sgac-braz:sidebar-collapsed"
 
 interface SidebarContextType {
   isCollapsed: boolean
   toggleSidebar: () => void
+  setCollapsed: (value: boolean) => void
+  state: 'expanded' | 'collapsed' 
 }
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined)
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  // Inicia lendo do localStorage ou padrão false (aberto)
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const stored = localStorage.getItem("sgac-sidebar-collapsed")
-    return stored === "true"
-  })
+  // [OTIMIZAÇÃO v1.1] Inicialização "Safe": Começa com padrão (false) para render rápido
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
 
-  const toggleSidebar = () => {
-    setIsCollapsed((prev) => {
-      const newState = !prev
-      localStorage.setItem("sgac-sidebar-collapsed", String(newState))
-      return newState
-    })
+  // Efeito para ler do storage apenas após a montagem (Hydration Safe)
+  useEffect(() => {
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY)
+    if (stored) {
+      setIsCollapsed(stored === "true")
+    }
+    setIsInitialized(true)
+  }, [])
+
+  // Efeito para salvar mudanças
+  useEffect(() => {
+    if (isInitialized) {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isCollapsed))
+    }
+  }, [isCollapsed, isInitialized])
+
+  const toggleSidebar = () => setIsCollapsed((prev) => !prev)
+
+  // Evita "flash" de conteúdo incorreto enquanto lê o storage
+  // (Opcional: Pode renderizar children direto se preferir layout shift mínimo a bloqueio)
+  if (!isInitialized) {
+      return null // Ou um skeleton de layout
   }
 
   return (
-    <SidebarContext.Provider value={{ isCollapsed, toggleSidebar }}>
+    <SidebarContext.Provider 
+      value={{ 
+        isCollapsed, 
+        toggleSidebar, 
+        setCollapsed: setIsCollapsed,
+        state: isCollapsed ? 'collapsed' : 'expanded'
+      }}
+    >
       {children}
     </SidebarContext.Provider>
   )
@@ -32,8 +57,10 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
 export function useSidebar() {
   const context = useContext(SidebarContext)
-  if (!context) {
+  
+  if (context === undefined) {
     throw new Error("useSidebar must be used within a SidebarProvider")
   }
+  
   return context
 }

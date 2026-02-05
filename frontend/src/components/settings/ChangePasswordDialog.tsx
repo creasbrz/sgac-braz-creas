@@ -75,16 +75,18 @@ export function ChangePasswordDialog() {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
       <DialogTrigger asChild onClick={() => setOpen(true)}>
-        <Button variant="ghost" className="w-full justify-start text-sm font-normal px-2 h-8">
-          <LockKeyhole className="mr-2 h-4 w-4 text-muted-foreground" /> 
+        <Button variant="ghost" className="w-full justify-start text-sm font-normal px-2 h-8 text-muted-foreground hover:text-foreground">
+          <LockKeyhole className="mr-2 h-4 w-4" /> 
           Alterar Senha
         </Button>
       </DialogTrigger>
       
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" />
+            <div className="p-2 bg-primary/10 rounded-full">
+               <KeyRound className="h-5 w-5 text-primary" />
+            </div>
             Alterar Senha
           </DialogTitle>
           <DialogDescription>
@@ -101,10 +103,13 @@ export function ChangePasswordDialog() {
               id="senhaAtual" 
               type="password" 
               placeholder="••••••"
+              className="bg-background"
               {...register('senhaAtual')} 
             />
             {errors.senhaAtual && (
-              <p className="text-xs text-destructive font-medium">{errors.senhaAtual.message}</p>
+              <p className="text-xs text-destructive font-medium animate-in fade-in slide-in-from-top-1">
+                {errors.senhaAtual.message}
+              </p>
             )}
           </div>
 
@@ -115,10 +120,13 @@ export function ChangePasswordDialog() {
               id="novaSenha" 
               type="password" 
               placeholder="No mínimo 6 caracteres"
+              className="bg-background"
               {...register('novaSenha')} 
             />
             {errors.novaSenha && (
-              <p className="text-xs text-destructive font-medium">{errors.novaSenha.message}</p>
+              <p className="text-xs text-destructive font-medium animate-in fade-in slide-in-from-top-1">
+                {errors.novaSenha.message}
+              </p>
             )}
           </div>
 
@@ -129,18 +137,21 @@ export function ChangePasswordDialog() {
               id="confirmarSenha" 
               type="password" 
               placeholder="Repita a nova senha"
+              className="bg-background"
               {...register('confirmarSenha')} 
             />
             {errors.confirmarSenha && (
-              <p className="text-xs text-destructive font-medium">{errors.confirmarSenha.message}</p>
+              <p className="text-xs text-destructive font-medium animate-in fade-in slide-in-from-top-1">
+                {errors.confirmarSenha.message}
+              </p>
             )}
           </div>
 
-          <DialogFooter className="pt-4">
+          <DialogFooter className="pt-4 sm:justify-between gap-2">
             <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className="min-w-32">
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
               Confirmar Alteração
             </Button>

@@ -1,9 +1,7 @@
+// frontend/src/lib/api.ts
 import axios, { type InternalAxiosRequestConfig, type AxiosError } from 'axios'
-import { STORAGE_KEYS } from '@/constants/storage' // [Melhoria] Importando constants para consistência
+import { STORAGE_KEYS } from '@/constants/storage'
 
-// Lógica de URL:
-// Prod (Render): '/api' (Backend e Frontend na mesma origem)
-// Dev (Local): 'http://localhost:3333/api'
 const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3333/api' : '/api')
 
 export const api = axios.create({
@@ -13,9 +11,10 @@ export const api = axios.create({
   },
 })
 
-// Interceptador de Requisição
+// Evento Customizado para desacoplar a lógica de UI da lógica de API
+export const SESSION_EXPIRED_EVENT = 'sgac:session-expired'
+
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // [Melhoria] Usando a constante para garantir que lemos o mesmo token que o AuthContext salvou
   const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
   
   if (token && config.headers) {
@@ -25,22 +24,22 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
-// Interceptador de Resposta
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
+    // 401 = Não Autorizado (Token inválido ou expirado)
     if (error.response?.status === 401) {
       const isLoginPage = window.location.pathname.includes('/login')
 
       if (!isLoginPage) {
-        // [Melhoria] Limpeza consistente usando constantes
+        // [V1.2] Em vez de redirecionar forçadamente, despachamos um evento.
+        // Isso permite que a UI mostre um Modal antes de sair, salvando o contexto visual do usuário.
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
+        
+        // Limpamos o storage preventivamente, mas deixamos a navegação para o Modal
         localStorage.removeItem(STORAGE_KEYS.TOKEN)
         localStorage.removeItem(STORAGE_KEYS.USER)
-        
-        // Remove header global para evitar vazamento em futuras requisições sem refresh
         delete api.defaults.headers.common.Authorization
-        
-        window.location.href = '/login'
       }
     }
     

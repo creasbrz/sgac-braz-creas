@@ -1,3 +1,4 @@
+// frontend/src/components/ui/alert.tsx
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { 
@@ -12,24 +13,24 @@ import {
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
-/* 1. PRIMITIVOS                               */
+/* 1. VARIANTS & STYLES                                                       */
 /* -------------------------------------------------------------------------- */
-// (Mantivemos a base sólida e acessível da resposta anterior)
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 pl-12 shadow-sm transition-all duration-200 animate-in fade-in slide-in-from-top-1 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:h-5 [&>svg]:w-5",
+  "relative w-full rounded-lg border p-4 pl-12 shadow-sm transition-all duration-300 animate-in fade-in slide-in-from-top-1 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:h-5 [&>svg]:w-5",
   {
     variants: {
       variant: {
-        default: "bg-background text-foreground",
+        default: 
+          "bg-background text-foreground border-border",
         destructive:
-          "border-destructive/50 bg-destructive/5 text-destructive dark:border-destructive [&>svg]:text-destructive",
+          "border-destructive/50 bg-destructive/10 text-destructive dark:border-destructive [&>svg]:text-destructive",
         success: 
-          "border-emerald-500/50 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400",
+          "border-emerald-500/30 bg-emerald-50/50 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400",
         warning: 
-          "border-amber-500/50 bg-amber-50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-200 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400",
+          "border-amber-500/30 bg-amber-50/50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-300 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400",
         info: 
-          "border-blue-500/50 bg-blue-50 text-blue-900 dark:bg-blue-950/20 dark:text-blue-200 [&>svg]:text-blue-600 dark:[&>svg]:text-blue-400",
+          "border-blue-500/30 bg-blue-50/50 text-blue-900 dark:bg-blue-950/20 dark:text-blue-300 [&>svg]:text-blue-600 dark:[&>svg]:text-blue-400",
       },
     },
     defaultVariants: {
@@ -37,6 +38,10 @@ const alertVariants = cva(
     },
   }
 )
+
+/* -------------------------------------------------------------------------- */
+/* 2. PRIMITIVES                                                              */
+/* -------------------------------------------------------------------------- */
 
 const Alert = React.forwardRef<
   HTMLDivElement,
@@ -69,14 +74,14 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm opacity-90 [&_p]:leading-relaxed", className)}
+    className={cn("text-sm opacity-90 [&_p]:leading-relaxed font-normal", className)}
     {...props}
   />
 ))
 AlertDescription.displayName = "AlertDescription"
 
 /* -------------------------------------------------------------------------- */
-/* 2. SMART COMPONENT (NOVO)                         */
+/* 3. SMART COMPONENT (Wrapper Inteligente)                                   */
 /* -------------------------------------------------------------------------- */
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -87,16 +92,19 @@ const ICON_MAP: Record<string, LucideIcon> = {
   info: Info,
 }
 
-interface SmartAlertProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof alertVariants> {
-  title: string
-  description?: React.ReactNode // ReactNode permite passar strings ou JSX (links, bold, etc)
-  icon?: LucideIcon // Opcional: permite override manual
+// [CORREÇÃO] Omitir 'title' de HTMLAttributes para evitar conflito com ReactNode
+export interface SmartAlertProps 
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title">, 
+  VariantProps<typeof alertVariants> 
+{
+  title: React.ReactNode
+  description?: React.ReactNode
+  icon?: LucideIcon
 }
 
 const SmartAlert = React.forwardRef<HTMLDivElement, SmartAlertProps>(
   ({ className, variant = "default", title, description, icon: IconOverride, ...props }, ref) => {
     
-    // Lógica: Usa o ícone passado via prop OU o ícone padrão do mapa
     const IconComponent = IconOverride || ICON_MAP[variant || "default"] || ICON_MAP.default
 
     return (

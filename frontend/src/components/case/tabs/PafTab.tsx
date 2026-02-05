@@ -10,7 +10,7 @@ import {
   FileText, Target, Lightbulb, Calendar, Save, X 
 } from 'lucide-react'
 
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/utils/error'
 import { pafFormSchema } from '@/schemas/caseSchemas'
@@ -74,16 +74,21 @@ function PafForm({ caseId, existingPaf, onClose }: { caseId: string, existingPaf
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit((d) => savePaf(d))} className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+      <form onSubmit={form.handleSubmit((d) => savePaf(d))} className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
         
         <div className="grid grid-cols-1 gap-6">
           <FormField control={form.control} name="diagnostico" render={({ field }) => (
             <FormItem>
-              <FormLabel className="flex items-center gap-2 text-primary">
+              <FormLabel className="flex items-center gap-2 text-primary text-sm font-semibold uppercase tracking-wider">
                 <FileText className="h-4 w-4" /> Diagnóstico Sociofamiliar
               </FormLabel>
               <FormControl>
-                <Textarea rows={4} className="resize-y min-h-[100px]" placeholder="Descreva a situação atual da família..." {...field} />
+                <Textarea 
+                  rows={4} 
+                  className="resize-y min-h-25 bg-background border-border focus-visible:ring-primary/20" 
+                  placeholder="Descreva a situação atual da família..." 
+                  {...field} 
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -92,11 +97,16 @@ function PafForm({ caseId, existingPaf, onClose }: { caseId: string, existingPaf
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField control={form.control} name="objetivos" render={({ field }) => (
               <FormItem>
-                <FormLabel className="flex items-center gap-2 text-primary">
+                <FormLabel className="flex items-center gap-2 text-primary text-sm font-semibold uppercase tracking-wider">
                   <Target className="h-4 w-4" /> Objetivos
                 </FormLabel>
                 <FormControl>
-                  <Textarea rows={5} className="resize-none" placeholder="Quais metas devem ser alcançadas?" {...field} />
+                  <Textarea 
+                    rows={5} 
+                    className="resize-none bg-background border-border focus-visible:ring-primary/20" 
+                    placeholder="Quais metas devem ser alcançadas?" 
+                    {...field} 
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -104,11 +114,16 @@ function PafForm({ caseId, existingPaf, onClose }: { caseId: string, existingPaf
             
             <FormField control={form.control} name="estrategias" render={({ field }) => (
               <FormItem>
-                <FormLabel className="flex items-center gap-2 text-primary">
+                <FormLabel className="flex items-center gap-2 text-primary text-sm font-semibold uppercase tracking-wider">
                   <Lightbulb className="h-4 w-4" /> Estratégias
                 </FormLabel>
                 <FormControl>
-                  <Textarea rows={5} className="resize-none" placeholder="Como os objetivos serão alcançados?" {...field} />
+                  <Textarea 
+                    rows={5} 
+                    className="resize-none bg-background border-border focus-visible:ring-primary/20" 
+                    placeholder="Como os objetivos serão alcançados?" 
+                    {...field} 
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -117,22 +132,22 @@ function PafForm({ caseId, existingPaf, onClose }: { caseId: string, existingPaf
 
           <FormField control={form.control} name="deadline" render={({ field }) => (
             <FormItem className="max-w-xs">
-              <FormLabel className="flex items-center gap-2 text-amber-600">
+              <FormLabel className="flex items-center gap-2 text-status-warning-fg text-sm font-semibold uppercase tracking-wider">
                 <Calendar className="h-4 w-4" /> Prazo para Reavaliação
               </FormLabel>
               <FormControl>
-                <Input type="date" {...field} />
+                <Input type="date" {...field} className="bg-background border-border focus-visible:ring-status-warning-fg/20" />
               </FormControl>
               <FormMessage />
             </FormItem>
           )} />
         </div>
 
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
+        <div className="flex justify-end gap-3 pt-4 border-t border-border/40">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending} className="hover:bg-muted/50">
             <X className="mr-2 h-4 w-4" /> Cancelar
           </Button>
-          <Button type="submit" disabled={isPending} className="min-w-[150px]">
+          <Button type="submit" disabled={isPending} className="min-w-37.5 shadow-sm font-semibold">
             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
             {existingPaf ? 'Salvar Repactuação' : 'Finalizar PAF'}
           </Button>
@@ -149,11 +164,11 @@ function DisplayPaf({ paf }: { paf: PafData }) {
       
       {/* Diagnóstico */}
       <section className="space-y-2">
-        <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+        <h4 className="text-sm font-bold flex items-center gap-2 text-muted-foreground uppercase tracking-wider border-b border-border/40 pb-1 w-fit">
           <FileText className="h-4 w-4 text-primary" /> Diagnóstico
         </h4>
-        <Card className="bg-muted/10 border-muted">
-          <CardContent className="p-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+        <Card className="bg-muted/10 border-border/60 shadow-sm">
+          <CardContent className="p-5 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
             {paf.diagnostico}
           </CardContent>
         </Card>
@@ -162,40 +177,40 @@ function DisplayPaf({ paf }: { paf: PafData }) {
       {/* Grid Objetivos e Estratégias */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className="space-y-2">
-          <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+          <h4 className="text-sm font-bold flex items-center gap-2 text-muted-foreground uppercase tracking-wider border-b border-border/40 pb-1 w-fit">
             <Target className="h-4 w-4 text-primary" /> Objetivos
           </h4>
-          <Card className="h-full bg-muted/10 border-muted">
-            <CardContent className="p-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+          <Card className="h-full bg-muted/10 border-border/60 shadow-sm">
+            <CardContent className="p-5 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
               {paf.objetivos}
             </CardContent>
           </Card>
         </section>
 
         <section className="space-y-2">
-          <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+          <h4 className="text-sm font-bold flex items-center gap-2 text-muted-foreground uppercase tracking-wider border-b border-border/40 pb-1 w-fit">
             <Lightbulb className="h-4 w-4 text-primary" /> Estratégias
           </h4>
-          <Card className="h-full bg-muted/10 border-muted">
-            <CardContent className="p-4 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+          <Card className="h-full bg-muted/10 border-border/60 shadow-sm">
+            <CardContent className="p-5 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
               {paf.estrategias}
             </CardContent>
           </Card>
         </section>
       </div>
 
-      <Separator />
+      <Separator className="bg-border/60" />
 
       {/* Rodapé de Metadados */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-sm">
-        <div className="flex items-center gap-2 bg-amber-50 text-amber-800 px-3 py-1.5 rounded-md border border-amber-200">
+        <div className="flex items-center gap-2 bg-status-warning-bg text-status-warning-fg px-3 py-1.5 rounded-md border border-status-warning-border">
           <Calendar className="h-4 w-4" />
           <span className="font-medium">Reavaliação prevista: {formatDateSafe(paf.deadline)}</span>
         </div>
 
         <div className="text-right text-xs text-muted-foreground space-y-1">
           <p>
-            Versão Atual: <Badge variant="outline" className="ml-1 text-[10px]">{paf.versaoAtual}</Badge>
+            Versão Atual: <Badge variant="outline" className="ml-1 text-[10px] border-border bg-background">{paf.versaoAtual}</Badge>
           </p>
           <p>Última atualização por <strong className="text-foreground">{paf.autor?.nome || 'Sistema'}</strong> em {formatDateSafe(paf.createdAt)}</p>
         </div>
@@ -229,9 +244,9 @@ export function PafTab({ caseData }: { caseData: CaseDetailData }) {
   return (
     <div className="space-y-6">
       {/* Cabeçalho da Aba */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
         <div>
-          <h3 className="text-lg font-semibold flex items-center gap-2">
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-foreground">
             Plano de Acompanhamento Familiar
           </h3>
           <p className="text-sm text-muted-foreground">Planejamento técnico e metas de desenvolvimento.</p>
@@ -249,32 +264,33 @@ export function PafTab({ caseData }: { caseData: CaseDetailData }) {
                 size="sm"
               />
               
-              <Button variant="outline" size="sm" onClick={() => setIsHistoryOpen(true)}>
-                <History className="mr-2 h-4 w-4" /> Histórico
+              <Button variant="outline" size="sm" onClick={() => setIsHistoryOpen(true)} className="gap-2">
+                <History className="h-4 w-4" /> Histórico
               </Button>
             </>
           )}
           
           {canEditPaf && !isEditing && (
-            <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-              <Edit className="mr-2 h-4 w-4" /> Repactuar
+            <Button variant="outline" size="sm" onClick={() => setIsEditing(true)} className="gap-2">
+              <Edit className="h-4 w-4" /> Repactuar
             </Button>
           )}
           
           {canCreatePaf && !isEditing && (
-            <Button variant="default" size="sm" onClick={() => setIsEditing(true)}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Elaborar PAF
+            <Button variant="default" size="sm" onClick={() => setIsEditing(true)} className="gap-2 shadow-sm font-semibold">
+              <PlusCircle className="h-4 w-4" /> Elaborar PAF
             </Button>
           )}
         </div>
       </div>
 
       {/* Corpo da Aba */}
-      <div className="min-h-[300px]">
+      {/* [CORREÇÃO TAILWIND] min-h-[300px] -> min-h-75 */}
+      <div className="min-h-75">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+          <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-            <p className="text-sm">Carregando plano...</p>
+            <p className="text-sm uppercase tracking-widest">Carregando plano...</p>
           </div>
         ) : isError ? (
           <Alert variant="destructive">
@@ -289,18 +305,18 @@ export function PafTab({ caseData }: { caseData: CaseDetailData }) {
               <DisplayPaf paf={paf} />
             ) : (
               // Empty State Elegante
-              <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-xl bg-muted/5 text-center px-4">
-                <div className="p-4 bg-muted/20 rounded-full mb-4">
+              <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-border/50 rounded-xl bg-muted/5 text-center px-4">
+                <div className="p-4 bg-muted/20 rounded-full mb-4 border border-border/30">
                   <Lock className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <h4 className="text-lg font-semibold text-foreground">Nenhum PAF Vigente</h4>
-                <p className="text-sm text-muted-foreground max-w-md mt-2 mb-6">
+                <p className="text-sm text-muted-foreground max-w-md mt-2 mb-6 leading-relaxed">
                   {canCreatePaf 
                     ? "Este caso está pronto para receber um Plano de Acompanhamento. Clique no botão acima para iniciar."
                     : "Para elaborar um PAF, o caso deve estar em Acompanhamento e você deve ser o Técnico de Referência responsável."}
                 </p>
                 {canCreatePaf && (
-                  <Button onClick={() => setIsEditing(true)}>
+                  <Button onClick={() => setIsEditing(true)} className="shadow-sm font-semibold">
                     <PlusCircle className="mr-2 h-4 w-4" /> Iniciar Elaboração
                   </Button>
                 )}

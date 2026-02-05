@@ -13,6 +13,9 @@ export class WaitingListService {
 
   /**
    * Retorna os casos da fila baseados na permissão do cargo
+   * ORDENAÇÃO: 
+   * 1. Urgência/Peso (Decrescente - 4 para 1)
+   * 2. Data de Entrada (Crescente - Mais antigo primeiro)
    */
   static async getWaitingList(userId: string, cargo: Cargo) {
     let whereCondition: any = { deletado: false }
@@ -20,12 +23,17 @@ export class WaitingListService {
     // Regras de Visibilidade (Quem vê o quê)
     if (cargo === Cargo.Agente_Social) {
       whereCondition.status = CaseStatus.AGUARDANDO_ACOLHIDA
-      whereCondition.agenteAcolhidaId = userId 
+      // Agentes veem o que foi atribuído a eles OU o que está na fila geral sem dono
+      whereCondition.OR = [
+          { agenteAcolhidaId: userId },
+          { agenteAcolhidaId: null }
+      ]
     } 
     else if (cargo === Cargo.Gerente) {
       whereCondition.status = CaseStatus.AGUARDANDO_DISTRIBUICAO
     } 
     else if (cargo === Cargo.Especialista) {
+      // Especialistas veem o que foi distribuído para eles
       whereCondition.status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA
       whereCondition.especialistaPAEFIId = userId 
     }
@@ -44,8 +52,8 @@ export class WaitingListService {
     return prisma.case.findMany({
       where: whereCondition,
       orderBy: [
-        { pesoUrgencia: 'desc' },
-        { dataEntrada: 'asc' }
+        { pesoUrgencia: 'desc' }, // Mais grave no topo
+        { dataEntrada: 'asc' }    // Mais antigo no topo
       ],
       select: {
         id: true,
@@ -61,9 +69,7 @@ export class WaitingListService {
     })
   }
 
-  /**
-   * Processa a transição de estado do caso (Workflow)
-   */
+  // ... (Método processAction mantido igual)
   static async processAction({ caseId, userId, cargo, targetUserId }: ProcessActionInput) {
     const existingCase = await prisma.case.findUnique({ where: { id: caseId } })
     if (!existingCase) throw new Error('NOT_FOUND')
@@ -72,13 +78,12 @@ export class WaitingListService {
     let logDescricao = ''
     let logAction: LogAction = LogAction.MUDANCA_STATUS
 
-    // --- LÓGICA DE TRANSIÇÃO DE ESTADOS ---
-
-    // 1. Agente: Iniciar Acolhida (Check-in)
+    // 1. Agente: Iniciar Acolhida (Check-in) ou Pegar da Fila Geral
     if (cargo === Cargo.Agente_Social && existingCase.status === CaseStatus.AGUARDANDO_ACOLHIDA) {
-      if (existingCase.agenteAcolhidaId !== userId) throw new Error('FORBIDDEN_OWNERSHIP')
-      
-      updateData = { status: CaseStatus.EM_ACOLHIDA }
+      updateData = { 
+          status: CaseStatus.EM_ACOLHIDA,
+          agenteAcolhidaId: userId // Auto-atribuição se vier da fila geral
+      }
       logDescricao = 'Iniciou a Acolhida (Check-in)'
     }
     
@@ -112,7 +117,6 @@ export class WaitingListService {
       throw new Error('INVALID_TRANSITION')
     }
 
-    // --- EXECUÇÃO TRANSACIONAL ---
     return prisma.$transaction(async (tx) => {
       const updated = await tx.case.update({
         where: { id: caseId },

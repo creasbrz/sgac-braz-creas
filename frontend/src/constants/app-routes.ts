@@ -1,4 +1,9 @@
 // frontend/src/constants/app-routes.ts
+
+/**
+ * Definições de caminhos relativos.
+ * Útil para configuração de rotas aninhadas no React Router.
+ */
 export const ROUTE_PATHS = {
   LOGIN: '/login',
   ROOT: '/',
@@ -27,25 +32,34 @@ export const ROUTE_PATHS = {
   NOT_FOUND: '*',
 } as const
 
+/**
+ * URLs Absolutas para navegação (Links, Redirects, Navigates).
+ * Centraliza a lógica de construção de URLs.
+ */
 export const ROUTES = {
   LOGIN: ROUTE_PATHS.LOGIN,
   ROOT: ROUTE_PATHS.ROOT,
   
-  // URLs Absolutas
+  // Base
   APP: ROUTE_PATHS.APP,
+  
+  // Principais
   WORKSPACE: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.WORKSPACE}`,
   DASHBOARD: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.DASHBOARD}`,
   
+  // Operacionais
   CASES: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.CASES}`,
   WAITING_LIST: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.WAITING_LIST}`,
   CLOSED_CASES: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.CLOSED_CASES}`,
   GROUPS: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.GROUPS}`,
   AGENDA: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.AGENDA}`,
   
+  // Gestão
   TEAM_OVERVIEW: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.TEAM}`,
   REPORTS: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.REPORTS}`,
   USERS: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.USERS}`,
   AUDIT: `${ROUTE_PATHS.APP}/${ROUTE_PATHS.AUDIT}`,
   
+  // Helpers Dinâmicos
   CASE_DETAIL: (id: string) => `${ROUTE_PATHS.APP}/cases/${id}`,
 } as const

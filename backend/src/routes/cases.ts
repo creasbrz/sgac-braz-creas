@@ -2,12 +2,11 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { CaseStatus } from '@prisma/client'
+import { CaseStatus, Cargo } from '@prisma/client'
 import { createCaseBodySchema, updateCaseBodySchema } from '../schemas/caseSchema'
-import { CaseController } from '../controllers/CaseController' // [V2.0]
+import { CaseController } from '../controllers/CaseController'
 import { ExportService } from '../services/ExportService'
 import { ImportService } from '../services/ImportService'
-import { Cargo } from '@prisma/client'
 import { format } from 'date-fns'
 
 export async function caseRoutes(app: FastifyInstance) {
@@ -19,7 +18,7 @@ export async function caseRoutes(app: FastifyInstance) {
     catch (err) { await reply.status(401).send({ message: 'Não autorizado' }) }
   })
 
-  // --- CRUD CORE (Via Controller) ---
+  // --- CRUD CORE ---
 
   server.post('/cases', {
     schema: { tags: ['Casos'], body: createCaseBodySchema }
@@ -50,19 +49,22 @@ export async function caseRoutes(app: FastifyInstance) {
     schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }) }
   }, CaseController.getById)
 
-  server.put('/cases/:id', {
+  // [CORREÇÃO] Mudado de PUT para PATCH para alinhar com o frontend e permitir updates parciais (Vínculos)
+  server.patch('/cases/:id', {
     schema: { 
       tags: ['Casos'], 
       params: z.object({ id: z.string().uuid() }), 
       body: updateCaseBodySchema.extend({
         seiRespondido: z.boolean().optional(),
         linkSei: z.string().optional().nullable(),
-        numeroSei: z.string().optional().nullable()
+        numeroSei: z.string().optional().nullable(),
+        // [IMPORTANTE] Permite vincular/desvincular casos
+        casoPrincipalId: z.string().uuid().nullable().optional() 
       })
     }
   }, CaseController.update)
 
-  // --- ACTIONS (Via Controller) ---
+  // --- ACTIONS ---
 
   server.patch('/cases/:id/status', {
     schema: { 
@@ -87,14 +89,15 @@ export async function caseRoutes(app: FastifyInstance) {
       body: z.object({ 
         parecerFinal: z.string().min(10), 
         motivoDesligamento: z.string().min(1), 
-        destinoDesligamento: z.string().optional() 
+        destinoDesligamento: z.string().optional(),
+        manterReferencia: z.boolean().optional()
       }) 
     }
   }, CaseController.closeCase)
 
-  // --- FEATURES ESPECIAIS (Mantidas aqui por simplicidade ou refatorar para ImportExportController futuramente) ---
+  // --- IMPORT / EXPORT ---
   
-  // [GET] CASOS FECHADOS
+  // [GET] CASOS FECHADOS (Alias)
   server.get('/cases/closed', {
     schema: {
       tags: ['Casos'],
@@ -106,7 +109,7 @@ export async function caseRoutes(app: FastifyInstance) {
         view: z.string().optional(),
       })
     }
-  }, CaseController.list) // Reutiliza o list com filtro injetado no frontend
+  }, CaseController.list)
 
   // [GET] EXPORTAR EXCEL
   server.get('/cases/export', {
@@ -126,7 +129,7 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // [GET] DOWNLOAD MODELO IMPORTAÇÃO
+  // [GET] DOWNLOAD MODELO
   server.get('/cases/import/template', {
     schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
   }, async (req, reply) => {

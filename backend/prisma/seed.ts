@@ -3,7 +3,9 @@ import { PrismaClient, CaseStatus, Cargo, LogAction, CaseOrigin, GroupType, Pris
 import { faker } from '@faker-js/faker/locale/pt_BR'
 import bcrypt from 'bcryptjs'
 import { subDays, addDays } from 'date-fns'
-import { CryptoService } from '../src/lib/crypto' // [NOVO] Import do serviço de criptografia
+import { CryptoService } from '../src/lib/crypto'
+// [IMPORTANTE] Importando a regra centralizada de urgência
+import { calculateUrgencyWeight } from '../src/domain/UrgencyRules'
 
 const prisma = new PrismaClient()
 
@@ -21,27 +23,23 @@ const TEAM_DATA = [
 
 // --- 2. LISTAS DE NEGÓCIO ---
 
+// Rol de Gravidade Oficial (Strings exatas para o calculateUrgencyWeight funcionar)
 const LISTA_URGENCIAS = [
+  // 4 - Gravíssima
   'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça',
-  'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso', 
+  // 3 - Muito Grave
+  'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso',
+  // 2 - Grave
   'Internação', 'Acolhimento', 'Gestante/Lactante',
+  // 1 - Leve
   'Sem risco imediato', 'Visita periódica'
 ]
 
 const LISTA_VIOLACOES = [
-  'Abandono', 
-  'Negligência', 
-  'Afastamento do convívio familiar', 
-  'Violência física', 
-  'Violência psicológica', 
-  'Abuso sexual', 
-  'Exploração sexual',
-  'Tráfico de seres humanos', 
-  'Abuso financeiro/patrimonial', 
-  'Trabalho infantil', 
-  'Discriminação', 
-  'Situação de rua', 
-  'Outros'
+  'Abandono', 'Negligência', 'Afastamento do convívio familiar', 
+  'Violência física', 'Violência psicológica', 'Abuso sexual', 'Exploração sexual',
+  'Tráfico de seres humanos', 'Abuso financeiro/patrimonial', 'Trabalho infantil', 
+  'Discriminação', 'Situação de rua', 'Outros'
 ]
 
 const LISTA_DESTINOS = [
@@ -97,22 +95,17 @@ const generateCoords = () => {
   return { lat, lng }
 }
 
-const calculateUrgencyWeight = (u: string) => {
-  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual'].includes(u)) return 4;
-  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
-  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(u)) return 2;
-  return 1;
-}
-
-// [NOVO] Helper para encryptar (ignora null)
+// Função de encrypt que estava faltando no envio anterior
 const encrypt = (text: string | null | undefined) => CryptoService.encrypt(text) || ''
 
 async function main() {
-  console.log('🌱 [SEED V2.0 - LGPD READY] Iniciando...')
+  console.log('🌱 [SEED V2.2 - CORREÇÃO DE PESOS + FUNÇÕES] Iniciando...')
 
   // 1. Limpeza Segura
   try {
     console.log('🧹 Limpando banco de dados...')
+    // Ordem correta para evitar erros de Foreign Key
+    await prisma.technicalDocument.deleteMany() 
     await prisma.groupAttendance.deleteMany()
     await prisma.groupActivity.deleteMany()
     await prisma.serviceDeliverable.deleteMany()
@@ -124,6 +117,8 @@ async function main() {
     await prisma.paf.deleteMany()
     await prisma.evolucao.deleteMany()
     await prisma.anexo.deleteMany()
+    // Deleta vínculos primeiro (auto-referência)
+    // OBS: O Prisma lida com cascade delete, mas o reset é mais limpo assim
     await prisma.case.deleteMany()
     await prisma.savedFilter.deleteMany()
     await prisma.user.deleteMany()
@@ -150,7 +145,7 @@ async function main() {
   const agentes = users.filter(u => u.cargo === Cargo.Agente_Social)
   const createdCases: any[] = []
 
-  // 3. Casos (Reduzido para 60 conforme solicitado, mais complexos)
+  // 3. Casos (60 Casos)
   const NUM_CASES = 60
   console.log(`📂 Gerando ${NUM_CASES} casos simulados com dados criptografados...`)
 
@@ -162,7 +157,6 @@ async function main() {
     // Status Logic
     const statusRoll = Math.random()
     let status: CaseStatus = CaseStatus.AGUARDANDO_ACOLHIDA 
-    
     if (statusRoll > 0.10) status = CaseStatus.EM_ACOLHIDA 
     if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO 
     if (statusRoll > 0.35) status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA 
@@ -182,14 +176,15 @@ async function main() {
     const needsSpecialist = needsSpecialistStates.includes(status)
     const especialistaResp = needsSpecialist ? faker.helpers.arrayElement(especialistas) : null
 
-    // Desligamento
+    // Desligamento e Referência
     let desligamentoData = {}
     if (status === CaseStatus.DESLIGADO) {
         desligamentoData = {
             dataDesligamento: addDays(dataEntrada, randInt(60, 300)),
             motivoDesligamento: faker.helpers.arrayElement(LISTA_MOTIVOS_DESLIGAMENTO),
             destinoDesligamento: faker.helpers.arrayElement(LISTA_DESTINOS),
-            parecerFinal: "Superação de vulnerabilidade identificada após intervenção técnica."
+            parecerFinal: "Superação de vulnerabilidade identificada após intervenção técnica.",
+            manterReferencia: Math.random() > 0.8 
         }
     }
 
@@ -199,14 +194,20 @@ async function main() {
     const isSeiRespondido = Math.random() < chanceSeiRespondido
     const dataRespostaSei = isSeiRespondido ? faker.date.recent({ days: 60 }) : null
 
+    // URGÊNCIA E PESO (LÓGICA CORRIGIDA)
     const urgencia = faker.helpers.arrayElement(LISTA_URGENCIAS)
-    const category = faker.helpers.arrayElement(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente'])
+    const pesoUrgencia = calculateUrgencyWeight(urgencia)
+
+    const category = faker.helpers.arrayElement(['Mulher', 'POP RUA', 'LGBTQIA+', 'Migrante', 'Idoso', 'Criança/adolescente', 'PCD', 'Álcool/drogas', 'Família em vulnerabilidade'])
 
     // Dados de Endereço e Contato (PARA CRIPTOGRAFIA)
     const rawLogradouro = `Quadra ${randInt(1, 50)} Conjunto ${String.fromCharCode(65 + randInt(0, 20))} Casa ${randInt(1, 40)}`
     const rawComplemento = Math.random() > 0.5 ? 'Fundos' : null
     const rawTelefone1 = `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`
     const rawTelefone2 = `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`
+
+    // E-mail simulado
+    const emailSimulado = Math.random() > 0.5 ? faker.internet.email().toLowerCase() : null
 
     // --- CRIAÇÃO DO CASO ---
     const newCase = await prisma.case.create({
@@ -219,14 +220,14 @@ async function main() {
         ocupacao: faker.helpers.arrayElement(LISTA_OCUPACOES),
         
         renda: new Prisma.Decimal(faker.number.float({ min: 0, max: 2500, fractionDigits: 2 })),
+        
+        email: emailSimulado,
 
-        // [CRIPTOGRAFIA] Contatos criptografados
+        // CRIPTOGRAFIA
         contatos: [
             { numero: encrypt(rawTelefone1), tipo: "Pessoal" },
             { numero: encrypt(rawTelefone2), tipo: "Recado", nome: "Vizinha" }
         ],
-
-        // [CRIPTOGRAFIA] Endereço criptografado
         endereco_logradouro: encrypt(rawLogradouro),
         endereco_complemento: encrypt(rawComplemento),
         
@@ -241,7 +242,7 @@ async function main() {
         longitude: coords.lng,
         
         urgencia,
-        pesoUrgencia: calculateUrgencyWeight(urgencia),
+        pesoUrgencia, // Peso correto salvo no banco
         violacao: faker.helpers.arrayElements(LISTA_VIOLACOES, randInt(1, 2)),
         categoria: category,
         
@@ -277,7 +278,7 @@ async function main() {
 
     // Evoluções
     if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
-        const numEvolucoes = randInt(2, 6); // Mais evoluções para parecer real
+        const numEvolucoes = randInt(2, 6);
         for(let e = 0; e < numEvolucoes; e++) {
             const dataEvolucao = faker.date.between({ from: dataEntrada, to: new Date() });
             const autorEvolucao = especialistaResp || agenteResp || criador;
@@ -309,7 +310,7 @@ async function main() {
         });
     }
 
-    // Encaminhamentos (Mais frequentes para realidade)
+    // Encaminhamentos
     if (Math.random() > 0.3) {
       const autorEnc = especialistaResp || agenteResp
       if (autorEnc) {
@@ -330,12 +331,9 @@ async function main() {
       }
     }
 
-    // Membros
+    // Membros (Tabela Simples)
     const numMembros = randInt(1, 4)
     for (let m = 0; m < numMembros; m++) {
-      const hasViolation = Math.random() > 0.7;
-      const memberViolations = hasViolation ? faker.helpers.arrayElements(LISTA_VIOLACOES, 1) : [];
-
       await prisma.membroFamilia.create({
         data: {
           casoId: newCase.id,
@@ -345,7 +343,7 @@ async function main() {
           cpf: Math.random() > 0.3 ? generateCPF() : null,
           renda: new Prisma.Decimal(randInt(0, 1412)),
           ocupacao: faker.helpers.arrayElement([...LISTA_OCUPACOES, 'Estudante', 'Menor']),
-          violacao: memberViolations
+          violacao: []
         }
       })
     }
@@ -356,13 +354,28 @@ async function main() {
     }
   }
 
-  // 4. Logs (Mais volume)
+  // --- 4. GERAÇÃO DE VÍNCULOS FAMILIARES (PAI/FILHO) ---
+  console.log('🔗 Gerando vínculos entre prontuários...')
+  for (let i = 0; i < 10; i++) {
+     const pai = faker.helpers.arrayElement(createdCases)
+     const filho = faker.helpers.arrayElement(createdCases.filter(c => c.id !== pai.id && !c.casoPrincipalId))
+     
+     if (pai && filho) {
+        await prisma.case.update({
+            where: { id: filho.id },
+            data: { casoPrincipalId: pai.id }
+        })
+        console.log(`   - Vinculado: ${filho.nomeCompleto} -> ${pai.nomeCompleto}`)
+     }
+  }
+
+  // 5. Logs (Mais volume)
   console.log('\n📈 Gerando logs históricos...')
   const allWorkers = [...especialistas, ...agentes]
   const safeActions = [LogAction.MUDANCA_STATUS, LogAction.OUTRO, LogAction.ATRIBUICAO]
 
   for (const worker of allWorkers) {
-    const workVolume = randInt(30, 80) // Aumentado
+    const workVolume = randInt(30, 80)
     for (let k = 0; k < workVolume; k++) {
       const randomCase = faker.helpers.arrayElement(createdCases)
       if (!randomCase) continue;
@@ -378,7 +391,7 @@ async function main() {
     }
   }
 
-  // 5. Grupos
+  // 6. Grupos
   console.log('\n👥 Criando Grupos...')
   const NUM_GROUPS = 15
   for (let i = 0; i < NUM_GROUPS; i++) {
@@ -410,7 +423,7 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Seed V2.0 COMPLETO!')
+  console.log('\n✅ Seed V2.2 COMPLETO!')
 }
 
 main()

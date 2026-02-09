@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { format, isAfter, parse, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Calendar, Plus, Clock, ChevronRight, Loader2, CalendarClock } from 'lucide-react'
-import { clsx } from 'clsx'
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
 
 // Forms
 import { useForm, Controller } from "react-hook-form"
@@ -24,6 +25,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { WhatsAppButton } from '@/components/common/WhatsAppButton'
 import { isValidBrazilianPhone } from '@/utils/phone'
+
+function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 
 const TYPE_COLORS: Record<string, string> = {
   'Atendimento': 'hsl(var(--chart-1))', 
@@ -117,7 +120,6 @@ export function AppointmentsTab({ caseId, caseName, phone }: AppointmentsTabProp
           </Button>
         </CardHeader>
         
-        {/* [CORREÇÃO TAILWIND] min-h-[300px] -> min-h-75 */}
         <CardContent className="space-y-3 p-6 min-h-75">
           {isLoading && (
              <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
@@ -148,7 +150,7 @@ export function AppointmentsTab({ caseId, caseName, phone }: AppointmentsTabProp
               >
                 <div className="flex items-center gap-4">
                     {/* Date Box */}
-                    <div className={clsx(
+                    <div className={cn(
                       "flex flex-col items-center justify-center w-12 h-12 rounded-lg border shrink-0",
                       isFuture 
                         ? "bg-primary/5 border-primary/20 text-primary" 
@@ -186,7 +188,7 @@ export function AppointmentsTab({ caseId, caseName, phone }: AppointmentsTabProp
                       />
                   )}
                   <div className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer">
-                     <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-foreground transition-colors"/>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-foreground transition-colors"/>
                   </div>
                 </div>
               </div>
@@ -197,7 +199,6 @@ export function AppointmentsTab({ caseId, caseName, phone }: AppointmentsTabProp
 
       {/* Modal de Criação */}
       <Dialog open={isApptOpen} onOpenChange={setIsApptOpen}>
-        {/* [CORREÇÃO TAILWIND] sm:max-w-[500px] -> sm:max-w-125 */}
         <DialogContent className="sm:max-w-125 gap-0 p-0 overflow-hidden">
             <DialogHeader className="px-6 pt-6 pb-4 bg-muted/30 border-b">
               <DialogTitle className="flex items-center gap-2">
@@ -235,12 +236,12 @@ export function AppointmentsTab({ caseId, caseName, phone }: AppointmentsTabProp
                         <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                         <SelectContent>
                           {Object.keys(TYPE_COLORS).map(t => (
-                             <SelectItem key={t} value={t}>
+                            <SelectItem key={t} value={t}>
                                <div className="flex items-center gap-2">
                                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[t] }}/>
                                   {t}
                                </div>
-                             </SelectItem>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                     </Select>

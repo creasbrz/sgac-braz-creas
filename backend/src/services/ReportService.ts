@@ -3,20 +3,13 @@ import { prisma } from '../lib/prisma'
 import { Cargo, CaseStatus } from '@prisma/client'
 import { subMonths, format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { calculateUrgencyWeight } from '../domain/UrgencyRules';
 
 export class ReportService {
 
   // --- Helpers Privados ---
-
-  private static calculateUrgencyWeight(urgencia: string | null): number {
-    if (!urgencia) return 1;
-    const term = urgencia.trim();
-    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça'].includes(term)) return 4;
-    if (['Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso'].includes(term)) return 3;
-    if (['Internação', 'Acolhimento'].includes(term)) return 2;
-    if (['Sem risco imediato', 'Visita periódica'].includes(term)) return 1;
-    return 1;
-  }
+  // [REFATORAÇÃO] Método calculateUrgencyWeight removido daqui. 
+  // A lógica agora reside em src/domain/UrgencyRules.ts para evitar duplicidade.
 
   // --- Métodos Públicos ---
 
@@ -188,7 +181,8 @@ export class ReportService {
           id: c.id, 
           lat: c.latitude, 
           lng: c.longitude, 
-          intensity: this.calculateUrgencyWeight(c.urgencia),
+          // [REFATORAÇÃO] Uso da função centralizada
+          intensity: calculateUrgencyWeight(c.urgencia),
           label: c.nomeCompleto, 
           violacao: Array.isArray(c.violacao) ? c.violacao.join(', ') : c.violacao,
           endereco: c.endereco_ra,

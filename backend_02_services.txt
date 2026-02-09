@@ -1,0 +1,3957 @@
+CONTEXTO: backend_02_services
+
+
+FILE: backend\src\services\AlertService.ts
+--------------------------------------------------
+// backend/src/services/AlertService.ts
+import { prisma } from '../lib/prisma'
+import { differenceInDays, isValid } from 'date-fns'
+import { Cargo, CaseStatus } from '@prisma/client'
+
+// Tipagem do Retorno
+export interface AlertItem {
+  id: string
+  nomeCompleto: string
+  type: 'PAF_NOT_STARTED' | 'PAF_STALLED' | 'PAF_REVIEW_OVERDUE' | 'NOT_STARTED_YET' | 'RECEPTION_DELAY'
+  days: number
+  urgencia: string
+}
+
+export class AlertService {
+  /**
+   * Calcula os alertas (sinais de trânsito) baseados no cargo do usuário logado.
+   */
+  static async getAlertsForUser(userId: string, cargo: string): Promise<AlertItem[]> {
+    // 1. Definição de Escopo (Security Rules)
+    let whereCondition: any = { status: { not: CaseStatus.DESLIGADO } }
+
+    if (cargo === Cargo.Especialista) {
+      whereCondition.especialistaPAEFIId = userId
+    } else if (cargo === Cargo.Agente_Social) {
+      whereCondition.agenteAcolhidaId = userId
+      whereCondition.status = { in: [CaseStatus.EM_ACOLHIDA, CaseStatus.AGUARDANDO_ACOLHIDA] }
+    } else if (cargo === Cargo.Gerente || cargo === Cargo.Auditor) {
+      // Gerente vê alertas de TODOS os casos que possuem responsável técnico
+      whereCondition.OR = [
+        { especialistaPAEFIId: { not: null } },
+        { agenteAcolhidaId: { not: null } }
+      ]
+    } else {
+      // Cargos administrativos/estagiários não veem alertas técnicos
+      return []
+    }
+
+    // 2. Busca Otimizada (Select magro)
+    const cases = await prisma.case.findMany({
+      where: whereCondition,
+      select: {
+        id: true,
+        nomeCompleto: true,
+        status: true,
+        dataEntrada: true,
+        urgencia: true,
+        // Traz apenas a data da última evolução
+        evolucoes: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { createdAt: true }
+        }
+      },
+      take: 200 // Limite de segurança para performance na UI
+    })
+
+    const today = new Date()
+
+    // 3. Processamento das Regras (Memory Computing)
+    const alerts: (AlertItem | null)[] = cases.map(c => {
+      try {
+        const lastEvolucao = c.evolucoes[0]?.createdAt
+        const lastDate = lastEvolucao ? new Date(lastEvolucao) : null
+        const dataEntrada = c.dataEntrada ? new Date(c.dataEntrada) : new Date()
+
+        // --- Regras para Especialista (PAEFI) ---
+        if (cargo === Cargo.Especialista || (cargo === Cargo.Gerente && c.status.includes('PAEFI'))) {
+          // A. Caso sem evolução nenhuma (PAF não iniciado)
+          if (!lastDate) {
+            return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'PAF_NOT_STARTED', days: 0, urgencia: c.urgencia }
+          }
+          
+          if (isValid(lastDate)) {
+            const daysSince = differenceInDays(today, lastDate)
+            
+            // B. Revisão do PAF Vencida (> 90 dias)
+            if (daysSince >= 90) {
+              return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'PAF_REVIEW_OVERDUE', days: daysSince, urgencia: c.urgencia }
+            }
+            // C. Caso Estagnado (> 30 dias sem registro técnico)
+            if (daysSince >= 30) {
+              return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'PAF_STALLED', days: daysSince, urgencia: c.urgencia }
+            }
+          }
+        }
+
+        // --- Regras para Agente Social (Acolhida) ---
+        if (cargo === Cargo.Agente_Social || (cargo === Cargo.Gerente && c.status.includes('ACOLHIDA'))) {
+           const daysWaiting = differenceInDays(today, dataEntrada)
+           
+           // A. Atribuído mas não iniciado (> 2 dias)
+           if (c.status === CaseStatus.AGUARDANDO_ACOLHIDA && daysWaiting > 2) {
+             return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'NOT_STARTED_YET', days: daysWaiting, urgencia: c.urgencia }
+           }
+           // B. Acolhida Travada (> 5 dias sem finalizar/evoluir)
+           if (c.status === CaseStatus.EM_ACOLHIDA && !lastDate && daysWaiting > 5) {
+             return { id: c.id, nomeCompleto: c.nomeCompleto, type: 'RECEPTION_DELAY', days: daysWaiting, urgencia: c.urgencia }
+           }
+        }
+      } catch (err) {
+        return null
+      }
+      return null
+    })
+
+    // Filtra nulos e retorna array limpo
+    return alerts.filter((a): a is AlertItem => a !== null)
+  }
+}
+
+FILE: backend\src\services\AnalyticsAI.ts
+--------------------------------------------------
+// backend/src/services/AnalyticsAI.ts
+import { prisma } from '../lib/prisma'
+import { subMonths, startOfMonth, subDays } from 'date-fns'
+import { CaseStatus } from '@prisma/client'
+
+export interface Insight {
+  type: 'success' | 'warning' | 'info'
+  title: string
+  description: string
+}
+
+export class AnalyticsAI {
+  
+  /**
+   * Gera insights automáticos baseados em análise estatística dos dados.
+   * Utiliza janelas de tempo móveis para detectar tendências.
+   */
+  static async generateInsights(monthsToCheck = 3): Promise<Insight[]> {
+    const insights: Insight[] = []
+    const today = new Date()
+    const currentMonthStart = startOfMonth(today)
+    const lastMonthStart = startOfMonth(subMonths(today, 1))
+
+    // 1. TENDÊNCIA DE DEMANDA (Comparativo Mês Atual vs Mês Anterior)
+    // Execução paralela para otimizar tempo de resposta do endpoint
+    const [currentMonthCases, lastMonthCases] = await Promise.all([
+      prisma.case.count({ where: { dataEntrada: { gte: currentMonthStart } } }),
+      prisma.case.count({ where: { dataEntrada: { gte: lastMonthStart, lt: currentMonthStart } } })
+    ])
+
+    if (lastMonthCases > 0) {
+      const growth = ((currentMonthCases - lastMonthCases) / lastMonthCases) * 100
+      
+      if (growth > 20) {
+        insights.push({
+          type: 'warning',
+          title: 'Alerta de Demanda',
+          description: `Aumento súbito de ${growth.toFixed(0)}% na entrada de novos casos em relação ao mês anterior.`
+        })
+      } else if (growth < -20) {
+        insights.push({
+          type: 'info',
+          title: 'Queda na Demanda',
+          description: `Houve uma redução de ${Math.abs(growth).toFixed(0)}% nos atendimentos iniciados este mês.`
+        })
+      }
+    }
+
+    // 2. RISCO DE ABANDONO (Casos sem Evolução > 30 dias)
+    // Verifica casos ativos que não possuem nenhuma evolução registrada no último mês
+    const stalledCases = await prisma.case.count({
+      where: {
+        status: { not: CaseStatus.DESLIGADO },
+        evolucoes: {
+          none: {
+            createdAt: { gte: subDays(today, 30) }
+          }
+        }
+      }
+    })
+
+    if (stalledCases > 0) {
+      insights.push({
+        type: 'warning',
+        title: 'Risco de Negligência',
+        description: `Detectados ${stalledCases} casos ativos sem nenhuma evolução técnica registrada há mais de 30 dias.`
+      })
+    } else {
+      insights.push({
+        type: 'success',
+        title: 'Cobertura Total',
+        description: 'Todos os casos ativos receberam atendimento técnico nos últimos 30 dias.'
+      })
+    }
+
+    // 3. PADRÃO DE VIOLAÇÃO (Moda Estatística)
+    // Agrupa pela combinação exata de violações no array
+    const topViolations = await prisma.case.groupBy({
+      by: ['violacao'],
+      where: { 
+        dataEntrada: { gte: subMonths(today, monthsToCheck) } 
+      },
+      _count: { violacao: true },
+      orderBy: { _count: { violacao: 'desc' } },
+      take: 1
+    })
+
+    if (topViolations.length > 0) {
+      const top = topViolations[0]
+      // Como 'violacao' é String[], unimos para exibição amigável
+      const violacaoLabel = Array.isArray(top.violacao) 
+        ? top.violacao.join(', ') 
+        : String(top.violacao)
+
+      insights.push({
+        type: 'info',
+        title: 'Padrão de Violação',
+        description: `A tipologia "${violacaoLabel}" representa a maior incidência do período (${top._count.violacao} casos).`
+      })
+    }
+
+    // 4. ÍNDICE DE BUSCA ATIVA
+    // Analisa proatividade da equipe baseada em registros de agenda
+    const visitsCount = await prisma.agendamento.count({
+      where: {
+        data: { gte: subMonths(today, 1) },
+        OR: [
+          { titulo: { contains: 'Visita', mode: 'insensitive' } },
+          { titulo: { contains: 'Busca', mode: 'insensitive' } },
+        ]
+      }
+    })
+
+    if (visitsCount > 5) {
+      insights.push({
+        type: 'success',
+        title: 'Território Ativo',
+        description: `Equipe realizou ${visitsCount} visitas/buscas ativas no último mês.`
+      })
+    }
+
+    // Ordenação por Prioridade (Warning > Success > Info)
+    const priorityMap = { warning: 0, success: 1, info: 2 }
+    
+    return insights.sort((a, b) => {
+      return priorityMap[a.type] - priorityMap[b.type]
+    }).slice(0, 3) // Retorna apenas os top 3 insights
+  }
+}
+
+FILE: backend\src\services\AppointmentService.ts
+--------------------------------------------------
+// backend/src/services/AppointmentService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction, Cargo } from '@prisma/client'
+
+// Tipos normalizados para o Frontend
+interface CalendarEvent {
+  id: string
+  title: string
+  start: Date
+  end: Date | null
+  type: string // [CORREÇÃO] Alterado para string para aceitar os tipos reais (Visita, etc)
+  resourceId?: string
+  description?: string
+  status: string
+  nomeCompleto?: string // [NOVO] Adicionado para exibir o nome no modal
+}
+
+interface CreateAppointmentDTO {
+  titulo: string
+  data: Date
+  observacoes?: string | null
+  casoId: string
+  tipo?: string
+}
+
+export class AppointmentService {
+  
+  /**
+   * Widget: Próximos compromissos do usuário logado (Limitado a 5)
+   */
+  static async getUpcoming(userId: string) {
+    const upcoming = await prisma.agendamento.findMany({
+      where: { responsavelId: userId, data: { gte: new Date() } },
+      include: { 
+        caso: { select: { id: true, nomeCompleto: true } } 
+      },
+      orderBy: { data: 'asc' },
+      take: 5
+    })
+
+    return upcoming.map(u => ({
+      id: u.id,
+      titulo: u.titulo,
+      data: u.data,
+      tipo: u.tipo || 'Atendimento',
+      caso: u.caso
+    }))
+  }
+
+  /**
+   * Calendário Principal: Une Agendamentos Individuais e Atividades em Grupo
+   */
+  static async getCalendarEvents(
+    userId: string, 
+    cargo: string, 
+    start: Date, 
+    end: Date, 
+    filterCaseId?: string
+  ): Promise<CalendarEvent[]> {
+    
+    // 1. Definição do Filtro de Escopo (Quem vê o quê)
+    const whereAppointments: any = { data: { gte: start, lte: end } }
+
+    if (filterCaseId) {
+      whereAppointments.casoId = filterCaseId
+    } else if (cargo !== Cargo.Gerente) {
+      // Regra: Vê seus próprios agendamentos OU agendamentos dos casos onde é responsável
+      whereAppointments.OR = [
+        { responsavelId: userId },
+        { caso: { OR: [{ agenteAcolhidaId: userId }, { especialistaPAEFIId: userId }] } }
+      ]
+    }
+
+    // 2. Definição do Filtro de Grupos
+    const whereGroups: any = { dataRealizacao: { gte: start, lte: end } }
+    if (filterCaseId) {
+      whereGroups.participantes = { some: { casoId: filterCaseId } }
+    }
+
+    // 3. Execução Paralela (Vital para performance no Neon)
+    const [appointments, groups] = await Promise.all([
+      prisma.agendamento.findMany({
+        where: whereAppointments,
+        include: { caso: { select: { nomeCompleto: true } } }
+      }),
+      prisma.groupActivity.findMany({
+        where: whereGroups,
+        include: { facilitador: { select: { nome: true } } }
+      })
+    ])
+
+    // 4. Normalização de Dados (Adapter Pattern)
+    const events: CalendarEvent[] = []
+
+    // Mapeia Agendamentos Individuais
+    events.push(...appointments.map(a => ({
+      id: a.id,
+      title: a.titulo, 
+      start: a.data,
+      end: null, // Agendamentos pontuais não costumam ter hora fim no sistema atual
+      // [CORREÇÃO] Passa o tipo real do banco para o frontend colorir corretamente
+      type: a.tipo || 'Atendimento', 
+      resourceId: a.casoId || undefined,
+      description: a.observacoes || '',
+      status: 'SCHEDULED',
+      // [CORREÇÃO] Envia o nome real para substituir o "Assistido #ID"
+      nomeCompleto: a.caso?.nomeCompleto 
+    })))
+
+    // Mapeia Grupos
+    events.push(...groups.map(g => ({
+      id: g.id,
+      title: `[GRUPO] ${g.tema}`,
+      start: g.dataRealizacao,
+      end: null,
+      type: 'Grupo', // Mantém fixo para grupos
+      resourceId: g.id,
+      description: g.descricao || '',
+      status: 'SCHEDULED',
+      nomeCompleto: undefined // Grupos geralmente não são vinculados a um único nome dessa forma
+    })))
+
+    // Ordenação cronológica
+    return events.sort((a, b) => a.start.getTime() - b.start.getTime())
+  }
+
+  /**
+   * Criação com Log de Auditoria
+   */
+  static async create(userId: string, data: CreateAppointmentDTO) {
+    const agendamento = await prisma.agendamento.create({
+      data: { ...data, responsavelId: userId }
+    })
+
+    // Log assíncrono (não bloqueia a resposta, mas garante registro)
+    await prisma.caseLog.create({
+      data: {
+        casoId: data.casoId,
+        autorId: userId,
+        acao: LogAction.AGENDAMENTO_CRIADO,
+        descricao: `Agendamento criado: ${data.titulo} para ${data.data.toLocaleDateString()}`
+      }
+    }).catch(err => console.error('Falha ao criar log de agendamento:', err))
+
+    return agendamento
+  }
+
+  /**
+   * Atualização Segura (Verifica permissão)
+   */
+  static async update(id: string, userId: string, cargo: string, data: Partial<CreateAppointmentDTO>) {
+    const existing = await prisma.agendamento.findUnique({ where: { id } })
+    
+    if (!existing) return null // Ou lançar erro específico
+    if (existing.responsavelId !== userId && cargo !== Cargo.Gerente) {
+      throw new Error('FORBIDDEN') // Será capturado pelo controller ou global handler
+    }
+
+    return prisma.agendamento.update({
+      where: { id },
+      data
+    })
+  }
+
+  /**
+   * Remoção Segura
+   */
+  static async delete(id: string, userId: string, cargo: string) {
+    const existing = await prisma.agendamento.findUnique({ where: { id } })
+    
+    if (!existing) return null
+    if (existing.responsavelId !== userId && cargo !== Cargo.Gerente) {
+      throw new Error('FORBIDDEN')
+    }
+
+    return prisma.agendamento.delete({ where: { id } })
+  }
+}
+
+FILE: backend\src\services\AttachmentService.ts
+--------------------------------------------------
+// backend/src/services/AttachmentService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction, Cargo } from '@prisma/client'
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary'
+
+// Configuração do Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
+
+export interface UploadInput {
+  caseId: string
+  userId: string
+  filename: string
+  buffer: Buffer
+}
+
+export class AttachmentService {
+
+  /**
+   * Valida a assinatura binária do arquivo (Magic Numbers)
+   */
+  private static async validateFileSignature(buffer: Buffer): Promise<'pdf' | 'image' | null> {
+    const bytes = buffer.subarray(0, 4).toString('hex').toUpperCase()
+    const signatures: Record<string, string[]> = {
+      '25504446': ['pdf'],
+      'FFD8FFE0': ['image'],
+      'FFD8FFE1': ['image'],
+      'FFD8FFEE': ['image'],
+      'FFD8FFDB': ['image'],
+      '89504E47': ['image'],
+    }
+    for (const [sig, types] of Object.entries(signatures)) {
+      if (bytes.startsWith(sig)) return types[0] as 'pdf' | 'image'
+    }
+    return null
+  }
+
+  /**
+   * Helper para Upload Stream do Cloudinary
+   */
+  private static uploadToCloudinary(buffer: Buffer, folder: string): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: folder,
+          resource_type: 'auto',
+        },
+        (error, result) => {
+          if (error) return reject(error)
+          if (!result) return reject(new Error('Falha no upload: Resposta vazia do Cloudinary'))
+          resolve(result)
+        }
+      )
+      
+      // SOLUÇÃO FINAL: Cast para 'any' para garantir que o TS aceite o método .end()
+      // mesmo que as definições de tipo do Node/Cloudinary estejam em conflito.
+      ;(uploadStream as any).end(buffer)
+    })
+  }
+
+  /**
+   * Lista anexos de um caso
+   */
+  static async list(caseId: string) {
+    return prisma.anexo.findMany({
+      where: { casoId: caseId }, 
+      orderBy: { createdAt: 'desc' },
+      include: { autor: { select: { nome: true } } }
+    })
+  }
+
+  /**
+   * Realiza o processo completo de Upload Seguro
+   */
+  static async upload({ caseId, userId, filename, buffer }: UploadInput) {
+    // 1. Validação de Segurança
+    const fileType = await this.validateFileSignature(buffer)
+    if (!fileType) {
+      throw new Error('INVALID_FILE_TYPE')
+    }
+
+    // 2. Upload para Cloudinary
+    const uploadResult = await this.uploadToCloudinary(buffer, 'sgac_anexos')
+
+    // 3. Persistência no Banco
+    const anexo = await prisma.anexo.create({
+      data: {
+        nome: filename,
+        tipo: fileType,
+        url: uploadResult.secure_url,
+        tamanho: buffer.length,
+        casoId: caseId,
+        autorId: userId
+      }
+    })
+
+    // 4. Log de Auditoria
+    await prisma.caseLog.create({
+      data: {
+        casoId: caseId,
+        autorId: userId,
+        acao: LogAction.ANEXO_ADICIONADO,
+        descricao: `Anexo adicionado: ${filename}`
+      }
+    }).catch(console.error)
+
+    return anexo
+  }
+
+  /**
+   * Remove anexo (Banco + Cloudinary)
+   */
+  static async delete(id: string, userId: string, cargo: string) {
+    const anexo = await prisma.anexo.findUnique({ where: { id } })
+    if (!anexo) throw new Error('NOT_FOUND')
+
+    // Verificação de Permissão
+    const canDelete = anexo.autorId === userId || cargo === Cargo.Gerente || cargo === Cargo.Auditor
+    if (!canDelete) throw new Error('FORBIDDEN')
+
+    // 1. Remove do Banco
+    await prisma.anexo.delete({ where: { id } })
+
+    // 2. Tenta remover do Cloudinary
+    try {
+      const urlParts = anexo.url.split('/')
+      const fileNameWithExt = urlParts[urlParts.length - 1]
+      const fileName = fileNameWithExt.split('.')[0]
+      const publicId = `sgac_anexos/${fileName}`
+
+      await cloudinary.uploader.destroy(publicId)
+    } catch (e) {
+      console.warn(`[Cloudinary] Falha ao remover arquivo físico: ${anexo.url}`)
+    }
+
+    // 3. Log
+    await prisma.caseLog.create({
+      data: {
+        casoId: anexo.casoId,
+        autorId: userId,
+        acao: LogAction.OUTRO,
+        descricao: `Anexo removido: ${anexo.nome}`
+      }
+    }).catch(console.error)
+
+    return true
+  }
+}
+
+FILE: backend\src\services\AuditService.ts
+--------------------------------------------------
+// backend/src/services/AuditService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction } from '@prisma/client'
+import { startOfDay, endOfDay, subDays } from 'date-fns'
+
+export interface AuditFilters {
+  page: number
+  pageSize: number
+  search?: string
+  autorId?: string
+  acao?: LogAction
+  periodo: 'hoje' | '7dias' | '30dias' | 'todo'
+}
+
+export class AuditService {
+  
+  /**
+   * Listagem Avançada de Logs com Filtros
+   */
+  static async listLogs(filters: AuditFilters) {
+    const { page, pageSize, search, autorId, acao, periodo } = filters
+
+    // 1. Construção Dinâmica do WHERE
+    const where: any = {}
+
+    // Filtro de Texto (Busca em múltiplos campos)
+    if (search) {
+      where.OR = [
+        { descricao: { contains: search, mode: 'insensitive' } },
+        { autor: { nome: { contains: search, mode: 'insensitive' } } },
+        { caso: { nomeCompleto: { contains: search, mode: 'insensitive' } } }
+      ]
+    }
+
+    // Filtros Específicos
+    if (autorId && autorId !== 'all') where.autorId = autorId
+    if (acao) where.acao = acao
+
+    // Filtro de Data
+    const hoje = new Date()
+    if (periodo === 'hoje') {
+      where.createdAt = { gte: startOfDay(hoje), lte: endOfDay(hoje) }
+    } else if (periodo === '7dias') {
+      where.createdAt = { gte: startOfDay(subDays(hoje, 7)) }
+    } else if (periodo === '30dias') {
+      where.createdAt = { gte: startOfDay(subDays(hoje, 30)) }
+    }
+
+    // 2. Execução Otimizada (Count + Data)
+    const [total, items] = await Promise.all([
+      prisma.caseLog.count({ where }),
+      prisma.caseLog.findMany({
+        where,
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        orderBy: { createdAt: 'desc' },
+        // Select magro para economizar banda
+        select: {
+          id: true,
+          acao: true,
+          descricao: true,
+          createdAt: true,
+          valorAnterior: true,
+          valorNovo: true,
+          autor: { 
+            select: { nome: true, cargo: true, email: true } 
+          },
+          caso: { 
+            select: { id: true, nomeCompleto: true } 
+          }
+        }
+      })
+    ])
+
+    return { total, items }
+  }
+
+  /**
+   * Estatísticas Rápidas do Dia
+   */
+  static async getDailyStats() {
+    const todayStart = startOfDay(new Date())
+    
+    return prisma.caseLog.groupBy({
+      by: ['acao'],
+      where: {
+        createdAt: { gte: todayStart }
+      },
+      _count: {
+        _all: true
+      }
+    })
+  }
+}
+
+FILE: backend\src\services\AuthService.ts
+--------------------------------------------------
+// backend/src/services/AuthService.ts
+import { prisma } from '../lib/prisma'
+import bcrypt from 'bcryptjs'
+import { Cargo, User } from '@prisma/client'
+
+interface RegisterDTO {
+  nome: string
+  email: string
+  senha: string
+  cargo: Cargo
+  matricula?: string
+}
+
+export class AuthService {
+  /**
+   * Registra um novo usuário com senha hasheada.
+   * Lança erro se o email já existir.
+   */
+  static async register(data: RegisterDTO) {
+    const userExists = await prisma.user.findUnique({ where: { email: data.email } })
+    
+    if (userExists) {
+      throw new Error('EMAIL_ALREADY_EXISTS')
+    }
+
+    // Salt de 10 rounds é o padrão atual recomendado para segurança/performance
+    const hashedPassword = await bcrypt.hash(data.senha, 10)
+
+    const user = await prisma.user.create({
+      data: {
+        nome: data.nome,
+        email: data.email,
+        senha: hashedPassword,
+        cargo: data.cargo,
+        matricula: data.matricula,
+        ativo: true // Padrão: já nasce ativo
+      },
+    })
+
+    return user
+  }
+
+  /**
+   * Valida credenciais e status do usuário.
+   * Retorna o usuário se sucesso, ou null se falha.
+   */
+  static async validateCredentials(email: string, senhaPlain: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({ where: { email } })
+
+    // 1. Verifica existência e status
+    if (!user || !user.ativo) {
+      return null
+    }
+
+    // 2. Compara a senha (operação pesada de CPU)
+    const isPasswordCorrect = await bcrypt.compare(senhaPlain, user.senha)
+    
+    if (!isPasswordCorrect) {
+      return null
+    }
+
+    return user
+  }
+
+  /**
+   * Busca usuário por ID (para endpoint /me)
+   */
+  static async getUserProfile(userId: string) {
+    return prisma.user.findUnique({
+      where: { id: userId }
+    })
+  }
+}
+
+FILE: backend\src\services\CaseService.ts
+--------------------------------------------------
+// backend/src/services/CaseService.ts
+import { prisma } from '../lib/prisma'
+import { cache } from '../lib/cache'
+import { CryptoService } from '../lib/crypto'
+import { geocodeAddress } from '../utils/geocoding'
+import { LogAction, CaseStatus, Cargo, Prisma } from '@prisma/client'
+import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
+// [REFATORAÇÃO] Regra de negócio centralizada
+import { calculateUrgencyWeight } from '../domain/UrgencyRules'
+
+// Interface auxiliar para o objeto de endereço retornado ao Front
+interface AddressObject {
+  logradouro: string | null
+  ra: string | null
+  cep: string | null
+  complemento: string | null
+  bairro: string | null
+  cidade: string | null
+  uf: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
+export class CaseService {
+  
+  // --- HELPERS PRIVADOS ---
+
+  private static decryptCaseData(caso: any) {
+    if (!caso) return null
+
+    const logradouro = CryptoService.decrypt(caso.endereco_logradouro) || caso.endereco_logradouro
+    const complemento = CryptoService.decrypt(caso.endereco_complemento) || caso.endereco_complemento
+    
+    let contatos = caso.contatos
+    if (contatos && Array.isArray(contatos)) {
+        contatos = contatos.map((c: any) => ({
+            ...c,
+            numero: CryptoService.decrypt(c.numero) || c.numero
+        }))
+    }
+
+    return {
+        ...caso,
+        endereco_logradouro: logradouro,
+        endereco_complemento: complemento,
+        contatos
+    }
+  }
+
+  private static formatCaseOutput(rawCase: any) {
+    const caso = this.decryptCaseData(rawCase)
+    if (!caso) return null
+
+    const endereco: AddressObject = {
+      logradouro: caso.endereco_logradouro,
+      ra: caso.endereco_ra,
+      cep: caso.endereco_cep,
+      complemento: caso.endereco_complemento,
+      bairro: caso.endereco_bairro,
+      cidade: caso.endereco_cidade,
+      uf: caso.endereco_uf,
+      latitude: caso.latitude,
+      longitude: caso.longitude
+    }
+
+    const { 
+      endereco_logradouro, endereco_ra, endereco_cep, endereco_complemento, 
+      endereco_bairro, endereco_cidade, endereco_uf, latitude, longitude, 
+      ...rest 
+    } = caso
+
+    return { ...rest, endereco }
+  }
+
+  private static stripTime(date: Date | string): Date {
+    const d = new Date(date)
+    if (isNaN(d.getTime())) return new Date()
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
+  }
+
+  // [REFATORAÇÃO] Método calculateUrgencyWeight removido daqui. 
+  // A lógica agora reside em src/domain/UrgencyRules.ts para evitar duplicidade.
+
+  private static parseDecimal(value: any): Prisma.Decimal | null {
+    if (value === null || value === undefined || value === '') return null
+    try {
+      const cleanValue = String(value).replace(',', '.')
+      return new Prisma.Decimal(cleanValue)
+    } catch (e) {
+      return null
+    }
+  }
+
+  private static async createLog(casoId: string, autorId: string, acao: LogAction, descricao: string, valorAnterior?: string | null, valorNovo?: string | null) {
+    await prisma.caseLog.create({ 
+      data: { casoId, autorId, acao, descricao, valorAnterior: valorAnterior ? String(valorAnterior) : null, valorNovo: valorNovo ? String(valorNovo) : null } 
+    }).catch(console.error)
+  }
+
+  // --- MÉTODOS PÚBLICOS ---
+
+  static async findAll(params: any, user: { sub: string, cargo: string }) {
+    const { page = 1, pageSize = 10, sortBy, sortOrder } = params
+    
+    const where = this.buildWhereClause(params, user)
+
+    // Ordenação Padrão de Triagem:
+    // 1. Urgência (Maior peso primeiro) -> Gravidade
+    // 2. Data de Entrada (Mais antigo primeiro) -> Tempo de espera
+    let orderBy: any = [
+      { pesoUrgencia: 'desc' },
+      { dataEntrada: 'asc' }
+    ]
+    
+    if (sortBy) {
+      if (sortBy === 'urgencia') {
+         orderBy = [{ pesoUrgencia: sortOrder || 'desc' }, { dataEntrada: 'asc' }]
+      } else {
+         orderBy = { [sortBy]: sortOrder || 'asc' }
+      }
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.case.findMany({
+        where,
+        orderBy,
+        take: Number(pageSize),
+        skip: (Number(page) - 1) * Number(pageSize),
+        include: {
+          agenteAcolhida: { select: { nome: true } },
+          especialistaPAEFI: { select: { nome: true } }
+        },
+      }),
+      prisma.case.count({ where }),
+    ])
+
+    const formattedItems = items.map(item => this.formatCaseOutput(item))
+
+    return { 
+      data: formattedItems, 
+      meta: { 
+        total, 
+        page: Number(page), 
+        pageSize: Number(pageSize), 
+        totalPages: Math.ceil(total / Number(pageSize)) 
+      } 
+    }
+  }
+
+  static async create(data: CreateCaseInput, userId: string) {
+    const exists = await prisma.case.findUnique({ where: { cpf: data.cpf } })
+    if (exists) throw new Error('CPF_ALREADY_EXISTS')
+
+    let endLat = data.endereco.latitude || null
+    let endLng = data.endereco.longitude || null
+
+    if (!endLat && data.endereco.logradouro && data.endereco.ra) {
+      try {
+        const coords = await geocodeAddress(data.endereco.logradouro, data.endereco.ra, data.endereco.cidade)
+        if (coords) { endLat = coords.lat; endLng = coords.lng }
+      } catch (e) { /* Falha silenciosa */ }
+    }
+
+    const { endereco, ...restData } = data
+
+    const encryptedLogradouro = CryptoService.encrypt(endereco.logradouro)
+    const encryptedComplemento = CryptoService.encrypt(endereco.complemento)
+    
+    const encryptedContacts = data.contatos.map(c => ({
+        ...c,
+        numero: CryptoService.encrypt(c.numero) || ''
+    }))
+
+    // [REFATORAÇÃO] Uso da função centralizada
+    const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
+
+    const newCase = await prisma.case.create({
+      data: {
+        ...restData, 
+        nascimento: this.stripTime(data.nascimento),
+        dataEntrada: this.stripTime(data.dataEntrada),
+        pesoUrgencia,
+        ocupacao: data.ocupacao || null,
+        renda: this.parseDecimal(data.renda),
+
+        endereco_logradouro: encryptedLogradouro,
+        endereco_complemento: encryptedComplemento,
+        contatos: encryptedContacts as any,
+        
+        endereco_ra: endereco.ra,
+        endereco_cep: endereco.cep,
+        endereco_bairro: endereco.bairro,
+        endereco_cidade: endereco.cidade,
+        endereco_uf: endereco.uf,
+        latitude: endLat,
+        longitude: endLng,
+        
+        criadoPorId: userId,
+        status: CaseStatus.AGUARDANDO_ACOLHIDA,
+      }
+    })
+
+    cache.invalidate('manager_stats')
+    await this.createLog(newCase.id, userId, LogAction.CRIACAO, `Caso criado via ${data.origem}. Urgência: ${data.urgencia} (Peso ${pesoUrgencia})`)
+    
+    return this.formatCaseOutput(newCase)
+  }
+
+  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, linkSei?: string | null, numeroSei?: string | null }, userId: string) {
+    const oldCase = await prisma.case.findUnique({ where: { id } })
+    if (!oldCase) throw new Error('NOT_FOUND')
+
+    const dataToUpdate: any = { ...data }
+    
+    if (data.endereco) delete dataToUpdate.endereco
+    if (data.contatos) delete dataToUpdate.contatos
+
+    if (data.nascimento) dataToUpdate.nascimento = this.stripTime(data.nascimento)
+    if (data.dataEntrada) dataToUpdate.dataEntrada = this.stripTime(data.dataEntrada)
+    
+    if (data.urgencia) {
+        // [REFATORAÇÃO] Uso da função centralizada
+        dataToUpdate.pesoUrgencia = calculateUrgencyWeight(data.urgencia)
+    }
+    
+    if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
+
+    if (typeof data.seiRespondido === 'boolean') {
+        dataToUpdate.seiRespondido = data.seiRespondido
+        if (data.seiRespondido === true) {
+            dataToUpdate.dataRespostaSei = new Date()
+        } else {
+            dataToUpdate.dataRespostaSei = null
+        }
+    }
+
+    if (data.endereco) {
+      Object.assign(dataToUpdate, {
+        endereco_logradouro: CryptoService.encrypt(data.endereco.logradouro),
+        endereco_complemento: CryptoService.encrypt(data.endereco.complemento),
+        endereco_ra: data.endereco.ra,
+        endereco_cep: data.endereco.cep,
+        endereco_bairro: data.endereco.bairro,
+        endereco_cidade: data.endereco.cidade,
+        endereco_uf: data.endereco.uf,
+        latitude: data.endereco.latitude,
+        longitude: data.endereco.longitude,
+      })
+    }
+
+    if (data.contatos) {
+        dataToUpdate.contatos = data.contatos.map((c: any) => ({
+            ...c,
+            numero: CryptoService.encrypt(c.numero) || ''
+        }))
+    }
+
+    const updated = await prisma.case.update({ where: { id }, data: dataToUpdate })
+    
+    cache.invalidate('manager_stats')
+    await this.createLog(id, userId, LogAction.OUTRO, `Editou dados cadastrais.`)
+    
+    return this.formatCaseOutput(updated)
+  }
+
+  static async getCaseWithEconomics(id: string) {
+    const caso = await prisma.case.findUnique({
+      where: { id },
+      include: {
+        criadoPor: { select: { nome: true } },
+        agenteAcolhida: { select: { id: true, nome: true } },
+        especialistaPAEFI: { select: { id: true, nome: true } },
+        familia: true,
+        encaminhamentos: { include: { autor: { select: { nome: true } } }, orderBy: { dataEnvio: 'desc' } },
+        entregas: { include: { responsavel: { select: { nome: true } } }, orderBy: { dataSolicitacao: 'desc' } },
+        evolucoes: { include: { autor: { select: { nome: true, cargo: true } } }, orderBy: { createdAt: 'desc' } },
+        logs: { orderBy: { createdAt: 'desc' }, take: 50, include: { autor: { select: { nome: true } } } },
+      }
+    })
+
+    if (!caso) return null
+
+    const rendaTitular = caso.renda ? Number(caso.renda) : 0
+    const rendaFamiliares = caso.familia.reduce((acc, membro) => {
+      const rendaMembro = membro.renda ? Number(membro.renda) : 0
+      return acc + rendaMembro
+    }, 0)
+
+    const rendaTotal = rendaTitular + rendaFamiliares
+    const numeroPessoas = 1 + caso.familia.length
+    const rendaPerCapita = numeroPessoas > 0 ? (rendaTotal / numeroPessoas) : 0
+
+    const casoFormatado = this.formatCaseOutput(caso)
+
+    return {
+      ...casoFormatado,
+      renda: rendaTitular,
+      familia: caso.familia.map(m => ({ ...m, renda: m.renda ? Number(m.renda) : 0 })),
+      dadosEconomicos: {
+        rendaTotal: Number(rendaTotal.toFixed(2)),
+        numeroPessoas,
+        rendaPerCapita: Number(rendaPerCapita.toFixed(2))
+      }
+    }
+  }
+
+  static async updateStatus(id: string, status: CaseStatus, userId: string) {
+    const caso = await prisma.case.findUnique({ where: { id } })
+    if (!caso) throw new Error('NOT_FOUND')
+
+    let updateData: any = { status }
+    if (caso.status === CaseStatus.DESLIGADO && status !== CaseStatus.DESLIGADO) {
+      updateData = { 
+        status: CaseStatus.AGUARDANDO_ACOLHIDA, 
+        motivoDesligamento: null, 
+        destinoDesligamento: null, 
+        dataDesligamento: null, 
+        parecerFinal: null 
+      }
+    }
+
+    const updated = await prisma.case.update({ where: { id }, data: updateData })
+    cache.invalidate('manager_stats')
+    await this.createLog(id, userId, LogAction.MUDANCA_STATUS, `Alterou status para ${status}`, caso.status, status)
+    return this.formatCaseOutput(updated)
+  }
+
+  static async assignSpecialist(id: string, specialistId: string, managerId: string) {
+    const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
+    const spec = await prisma.user.findUnique({ where: { id: specialistId } })
+    
+    if (!oldCase) throw new Error('NOT_FOUND')
+    
+    const updated = await prisma.case.update({ 
+      where: { id }, 
+      data: { 
+        especialistaPAEFIId: specialistId, 
+        status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
+        dataInicioPAEFI: new Date() 
+      } 
+    })
+    
+    cache.invalidate('manager_stats')
+    await this.createLog(id, managerId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldCase?.especialistaPAEFI?.nome, spec?.nome)
+    
+    return this.formatCaseOutput(updated)
+  }
+
+  static async closeCase(id: string, data: { parecerFinal: string, motivoDesligamento: string, destinoDesligamento?: string }, userId: string) {
+    const updated = await prisma.case.update({ 
+      where: { id }, 
+      data: { 
+        status: CaseStatus.DESLIGADO, 
+        ...data, 
+        dataDesligamento: new Date() 
+      } 
+    })
+    
+    cache.invalidate('manager_stats')
+    await this.createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${data.motivoDesligamento}`)
+    
+    return this.formatCaseOutput(updated)
+  }
+
+  static buildWhereClause(query: any, user: { cargo: string, sub: string }) {
+    const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId } = query
+    let where: any = {}
+
+    if (agenteId) where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
+    else if (specialistId) where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
+    else if (view === 'all') {
+      if (status === 'DESLIGADO') where = { status: CaseStatus.DESLIGADO }
+      else where = { status: { not: CaseStatus.DESLIGADO } }
+    } else {
+      // [USO DO ENUM CARGO CORRIGIDO]
+      if (user.cargo === Cargo.Gerente) where = { status: CaseStatus.AGUARDANDO_DISTRIBUICAO }
+      else if (user.cargo === Cargo.Agente_Social) where = { agenteAcolhidaId: user.sub, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
+      else if (user.cargo === Cargo.Especialista) where = { especialistaPAEFIId: user.sub, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
+    }
+
+    if (search) {
+      where.AND = [ ...(where.AND || []), {
+          OR: [
+            { nomeCompleto: { contains: search, mode: 'insensitive' } },
+            { cpf: { contains: search } },
+            { endereco_ra: { contains: search, mode: 'insensitive' } }
+          ]
+      }]
+    }
+
+    if (status && status !== 'all') {
+      const validStatuses = status.split(',').filter((s: string) => Object.values(CaseStatus).includes(s as CaseStatus))
+      if (validStatuses.length > 0) where.status = { in: validStatuses }
+    }
+    if (urgencia && urgencia !== 'all') where.urgencia = urgencia
+    if (violacao && violacao !== 'all') where.violacao = { has: violacao }
+    if (categoria && categoria !== 'all') where.categoria = categoria
+    if (sexo && sexo !== 'all') where.sexo = sexo
+
+    return where
+  }
+}
+
+FILE: backend\src\services\DeliverableService.ts
+--------------------------------------------------
+// backend/src/services/DeliverableService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction } from '@prisma/client'
+
+interface CreateDeliverableInput {
+  caseId: string
+  userId: string
+  tipo: string
+  observacoes?: string
+}
+
+interface UpdateDeliverableInput {
+  id: string
+  userId: string
+  status: string // 'SOLICITADO' | 'CONCEDIDO' | 'ENTREGUE' | 'NEGADO'
+  dataEntrega?: Date
+}
+
+export class DeliverableService {
+  
+  /**
+   * Lista benefícios de um caso
+   */
+  static async list(caseId: string) {
+    return prisma.serviceDeliverable.findMany({
+      where: { casoId: caseId }, // Mapeamento correto (DB: casoId, Arg: caseId)
+      orderBy: { createdAt: 'desc' },
+      include: { 
+        responsavel: { select: { nome: true } } 
+      }
+    })
+  }
+
+  /**
+   * Cria um benefício e registra o log atomicamente (Transaction)
+   */
+  static async create({ caseId, userId, tipo, observacoes }: CreateDeliverableInput) {
+    return prisma.$transaction(async (tx) => {
+      // 1. Cria o registro do benefício
+      const item = await tx.serviceDeliverable.create({
+        data: {
+          tipo,
+          status: 'SOLICITADO',
+          observacoes,
+          casoId: caseId,
+          responsavelId: userId
+        }
+      })
+
+      // 2. Cria o log de auditoria na mesma transação
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: userId,
+          acao: LogAction.ENTREGA_BENEFICIO_CRIADA,
+          descricao: `Solicitou benefício: ${tipo}`
+        }
+      })
+      
+      return item
+    })
+  }
+
+  /**
+   * Atualiza status e registra log atomicamente
+   */
+  static async updateStatus({ id, userId, status, dataEntrega }: UpdateDeliverableInput) {
+    return prisma.$transaction(async (tx) => {
+      // 1. Atualiza
+      const item = await tx.serviceDeliverable.update({
+        where: { id },
+        data: {
+          status,
+          dataEntrega: dataEntrega || undefined
+        },
+        include: { responsavel: { select: { nome: true } } }
+      })
+
+      // 2. Log
+      await tx.caseLog.create({
+        data: {
+          casoId: item.casoId,
+          autorId: userId,
+          acao: LogAction.ENTREGA_BENEFICIO_ATUALIZADA,
+          descricao: `Atualizou benefício ${item.tipo} para ${status}`
+        }
+      })
+
+      return item
+    })
+  }
+}
+
+FILE: backend\src\services\EvolutionService.ts
+--------------------------------------------------
+// backend/src/services/EvolutionService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction, Cargo } from '@prisma/client'
+
+interface CreateEvolutionInput {
+  caseId: string
+  userId: string
+  conteudo: string
+  sigilo: boolean
+}
+
+interface ListEvolutionInput {
+  caseId: string
+  userId: string
+  cargo: string
+  page: number
+  pageSize: number
+}
+
+export class EvolutionService {
+  
+  /**
+   * Lista evoluções aplicando regras estritas de visualização (Sigilo)
+   */
+  static async list({ caseId, userId, cargo, page, pageSize }: ListEvolutionInput) {
+    // 1. Busca dados de atribuição do caso
+    const caso = await prisma.case.findUnique({
+      where: { id: caseId },
+      select: { agenteAcolhidaId: true, especialistaPAEFIId: true }
+    })
+
+    if (!caso) throw new Error('CASE_NOT_FOUND')
+
+    // 2. Regras de Permissão
+    const isGerente = cargo === Cargo.Gerente
+    const isResponsavel = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId
+    
+    // Quem pode ver tudo (incluindo sigilosos)? Gerentes e Técnicos Responsáveis
+    const canViewSigilo = isGerente || isResponsavel
+
+    const whereCondition: any = { casoId: caseId }
+
+    if (!canViewSigilo) {
+      // Regra: Se não for responsável, vê apenas PÚBLICAS ou AS SUAS PRÓPRIAS
+      whereCondition.OR = [
+        { sigilo: false },
+        { autorId: userId }
+      ]
+    }
+
+    // 3. Query
+    const [items, total] = await Promise.all([
+      prisma.evolucao.findMany({
+        where: whereCondition,
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        include: {
+          autor: { select: { id: true, nome: true, cargo: true } }
+        }
+      }),
+      prisma.evolucao.count({ where: whereCondition })
+    ])
+
+    return { items, total }
+  }
+
+  /**
+   * Cria evolução e log
+   */
+  static async create({ caseId, userId, conteudo, sigilo }: CreateEvolutionInput) {
+    const evolucao = await prisma.evolucao.create({
+      data: {
+        conteudo,
+        sigilo,
+        casoId: caseId,
+        autorId: userId
+      },
+      include: { autor: { select: { id: true, nome: true, cargo: true } } }
+    })
+
+    // Log Assíncrono
+    await prisma.caseLog.create({
+      data: {
+        casoId: caseId,
+        autorId: userId,
+        acao: LogAction.EVOLUCAO_CRIADA,
+        descricao: sigilo 
+          ? 'Registrou uma evolução técnica (SIGILOSA).' 
+          : 'Registrou uma evolução técnica pública.'
+      }
+    }).catch(console.error)
+
+    return evolucao
+  }
+
+  /**
+   * Atualiza evolução (apenas autor)
+   */
+  static async update(id: string, userId: string, data: { conteudo?: string, sigilo?: boolean }) {
+    const existing = await prisma.evolucao.findUnique({ where: { id } })
+    
+    if (!existing) throw new Error('NOT_FOUND')
+    if (existing.autorId !== userId) throw new Error('FORBIDDEN')
+
+    return prisma.evolucao.update({
+      where: { id },
+      data,
+      include: { autor: { select: { id: true, nome: true, cargo: true } } }
+    })
+  }
+
+  /**
+   * Remove evolução (apenas autor)
+   */
+  static async delete(id: string, userId: string) {
+    const existing = await prisma.evolucao.findUnique({ where: { id } })
+    
+    if (!existing) throw new Error('NOT_FOUND')
+    if (existing.autorId !== userId) throw new Error('FORBIDDEN')
+
+    await prisma.evolucao.delete({ where: { id } })
+    return true
+  }
+}
+
+FILE: backend\src\services\ExportService.ts
+--------------------------------------------------
+// backend/src/services/ExportService.ts
+import { prisma } from '../lib/prisma'
+import ExcelJS from 'exceljs'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { Buffer } from 'node:buffer'
+
+// --- CONSTANTES (Fontes da Verdade) ---
+const LISTAS = {
+  SEXO: ['Masculino', 'Feminino', 'Outro', 'Não Informado'],
+  
+  CATEGORIA: [
+    'Mulher', 
+    'POP RUA', 
+    'LGBTQIA+', 
+    'Migrante', 
+    'Idoso', 
+    'Criança/adolescente', 
+    'PCD', 
+    'Álcool/drogas', 
+    'Família em vulnerabilidade'
+  ],
+
+  URGENCIA: [
+    'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça',
+    'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso', 
+    'Internação', 'Acolhimento', 'Gestante/Lactante',
+    'Sem risco imediato', 'Visita periódica'
+  ],
+
+  VIOLACOES: [
+    'Abandono', 
+    'Negligência', 
+    'Afastamento do convívio familiar', 
+    'Violência física', 
+    'Violência psicológica', 
+    'Abuso sexual', 
+    'Exploração sexual',
+    'Tráfico de seres humanos', 
+    'Abuso financeiro/patrimonial', 
+    'Tráficos de seres humanos',
+    'Trabalho infantil', 
+    'Discriminação', 
+    'Situação de rua', 
+    'Outros'
+  ],
+
+  STATUS: [
+    'AGUARDANDO_ACOLHIDA',
+    'AGUARDANDO_DISTRIBUICAO',
+    'EM_ACOLHIDA',
+    'EM_ACOLHIDA_ESPECIALIZADA',
+    'EM_ACOMPANHAMENTO',
+    'EM_MONITORAMENTO',
+    'DESLIGADO'
+  ],
+
+  ORIGEM: [
+    'ESPONTANEA', 'DOCUMENTAL', 'REFERENCIADA', 'BUSCA_ATIVA'
+  ],
+  
+  RAS: [
+    'Brazlândia', 'Ceilândia', 'Sol Nascente/Pôr do Sol', 'Taguatinga', 
+    'Samambaia', 'Plano Piloto', 'Águas Claras', 'Gama', 'Santa Maria',
+    'Recanto das Emas', 'Riacho Fundo I', 'Riacho Fundo II', 'Vicente Pires',
+    'Não Informada', 'Outra UF'
+  ]
+}
+
+export class ExportService {
+  
+  // --- HELPERS PRIVADOS ---
+
+  private static formatDate(date: Date | null | undefined): string {
+    return date && !isNaN(date.getTime()) ? format(date, 'dd/MM/yyyy', { locale: ptBR }) : '-'
+  }
+
+  private static formatCurrency(val: any): string {
+    if (!val) return '0,00'
+    return Number(val).toFixed(2).replace('.', ',')
+  }
+
+  // Validação simples (Dropdown direto na célula)
+  private static addDataValidation(worksheet: ExcelJS.Worksheet, colLetter: string, optionsList: string[], allowType: boolean = false) {
+    for (let i = 2; i <= 1000; i++) {
+      worksheet.getCell(`${colLetter}${i}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [`"${optionsList.join(',')}"`],
+        showErrorMessage: true,
+        errorStyle: allowType ? 'warning' : 'stop',
+        errorTitle: allowType ? 'Atenção' : 'Valor Inválido',
+        error: allowType 
+          ? 'Este valor não está na lista. Certifique-se que a grafia está correta.' 
+          : 'Selecione um item da lista.'
+      }
+    }
+  }
+
+  // Validação via Aba Oculta (Para listas grandes)
+  private static addReferenceValidation(
+    workbook: ExcelJS.Workbook, 
+    mainSheet: ExcelJS.Worksheet, 
+    colLetter: string, 
+    data: string[], 
+    refCol: string,
+    allowType: boolean = false
+  ) {
+    let dataSheet = workbook.getWorksheet('DadosOcultos')
+    if (!dataSheet) {
+      dataSheet = workbook.addWorksheet('DadosOcultos')
+      dataSheet.state = 'hidden'
+    }
+
+    // Preenche a coluna na aba oculta
+    data.forEach((val, index) => {
+      dataSheet!.getCell(`${refCol}${index + 1}`).value = val
+    })
+
+    const refRange = `'DadosOcultos'!$${refCol}$1:$${refCol}$${data.length}`
+
+    for (let i = 2; i <= 1000; i++) {
+      mainSheet.getCell(`${colLetter}${i}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [refRange],
+        showErrorMessage: true,
+        errorStyle: allowType ? 'warning' : 'stop',
+        errorTitle: allowType ? 'Atenção' : 'Valor Inválido',
+        error: allowType 
+          ? 'Você digitou um valor fora da lista padrão.' 
+          : 'Selecione um valor válido.'
+      }
+    }
+  }
+
+  private static getColumns() {
+    return [
+      { header: 'ID (Sistema)', key: 'id', width: 15 }, // A
+      { header: 'Nome Completo', key: 'nome', width: 35 }, // B
+      { header: 'Nome Social', key: 'nome_social', width: 25 }, // C
+      { header: 'CPF', key: 'cpf', width: 18 }, // D
+      { header: 'Data Nascimento', key: 'nasc', width: 15 }, // E
+      
+      { header: 'Sexo', key: 'sexo', width: 15 },         // F
+      { header: 'Categoria', key: 'cat', width: 25 },     // G
+      
+      { header: 'Ocupação', key: 'ocupacao', width: 25 }, // H
+      { header: 'Renda', key: 'renda', width: 15 }, // I
+      { header: 'Responsável Legal', key: 'resp', width: 30 }, // J
+      { header: 'Parentesco', key: 'parent', width: 15 }, // K
+      { header: 'Telefone', key: 'telefone', width: 18 }, // L
+      
+      // --- ENDEREÇO DETALHADO (NOVAS COLUNAS) ---
+      { header: 'CEP', key: 'cep', width: 12 },                 // M
+      { header: 'Região Adm. (RA)', key: 'ra', width: 20 },     // N
+      { header: 'Logradouro', key: 'logradouro', width: 35 },   // O
+      { header: 'Complemento', key: 'complemento', width: 20 }, // P
+      { header: 'Bairro', key: 'bairro', width: 20 },           // Q
+      
+      { header: 'Data Entrada', key: 'entrada', width: 15 }, // R
+      { header: 'Data Início PAEFI', key: 'inicio_paefi', width: 20 }, // S
+      
+      { header: 'Urgência', key: 'urgencia', width: 25 }, // T
+      { header: 'Peso', key: 'peso', width: 8 }, // U
+      { header: 'Violações', key: 'violacoes', width: 35 }, // V
+      { header: 'Benefícios', key: 'beneficios', width: 25 }, // W
+      
+      { header: 'Orgão Demandante', key: 'orgao', width: 20 }, // X
+      { header: 'Nº SEI', key: 'sei', width: 20 }, // Y
+      { header: 'Link SEI', key: 'link_sei', width: 30 }, // Z
+      
+      { header: 'Status', key: 'status', width: 25 },     // AA
+      { header: 'Agente Acolhida', key: 'agente', width: 25 }, // AB
+      { header: 'Especialista Ref.', key: 'spec', width: 25 }, // AC
+      
+      { header: 'Origem do Cadastro', key: 'origem', width: 20 }, // AD
+    ]
+  }
+
+  static async generateTemplate(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Modelo de Importação')
+
+    worksheet.columns = this.getColumns()
+
+    // Estilo do Cabeçalho
+    worksheet.getRow(1).font = { bold: true, size: 12 }
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }
+
+    // --- LINHA DE EXEMPLO ---
+    worksheet.addRow({
+      nome: 'MARIA EXEMPLO DA SILVA',
+      cpf: '000.000.000-00',
+      nasc: '10/05/2015',
+      sexo: 'Feminino',
+      cat: 'Criança/adolescente',
+      ocupacao: 'Estudante',
+      renda: '0,00',
+      resp: 'JOANA DA SILVA (MÃE)',
+      parent: 'Mãe',
+      telefone: '61999999999',
+      
+      // Endereço Separado
+      cep: '72700000',
+      ra: 'Brazlândia',
+      logradouro: 'Quadra 10 Conjunto A Casa 5',
+      complemento: 'Fundos',
+      bairro: 'Vila São José',
+      
+      entrada: '01/01/2024',
+      inicio_paefi: '05/01/2024',
+      urgencia: 'Risco de morte',
+      peso: '4',
+      violacoes: 'Negligência; Violência física',
+      beneficios: 'Bolsa Família',
+      orgao: 'Conselho Tutelar',
+      sei: '00000-000000/2024',
+      link_sei: 'https://sei.df.gov.br/...',
+      status: 'EM_ACOMPANHAMENTO',
+      origem: 'DOCUMENTAL',
+      agente: 'Nome do Técnico',
+      spec: 'Nome do Especialista'
+    })
+
+    // --- Validadores (Dropdowns) ---
+    // Coluna F = Sexo
+    this.addDataValidation(worksheet, 'F', LISTAS.SEXO)
+    // Coluna AD = Origem (última coluna)
+    this.addDataValidation(worksheet, 'AD', LISTAS.ORIGEM)
+    
+    // Listas Grandes via Aba Oculta
+    // Coluna G = Categoria
+    this.addReferenceValidation(workbook, worksheet, 'G', LISTAS.CATEGORIA, 'A') 
+    // Coluna N = RA
+    this.addReferenceValidation(workbook, worksheet, 'N', LISTAS.RAS, 'B')       
+    // Coluna T = Urgencia
+    this.addReferenceValidation(workbook, worksheet, 'T', LISTAS.URGENCIA, 'C')  
+    // Coluna AA = Status
+    this.addReferenceValidation(workbook, worksheet, 'AA', LISTAS.STATUS, 'D')
+    // Coluna V = Violacoes
+    this.addReferenceValidation(workbook, worksheet, 'V', LISTAS.VIOLACOES, 'E', true)
+
+    // --- Notas de Instrução ---
+    worksheet.getCell('D1').note = 'Obrigatório. Apenas números (11 dígitos).'
+    worksheet.getCell('M1').note = 'CEP: Apenas números.'
+    worksheet.getCell('N1').note = 'Selecione a RA na lista.'
+    worksheet.getCell('R1').note = 'Data de chegada/triagem.'
+    worksheet.getCell('S1').note = 'Data de início do acompanhamento (PAEFI).'
+    worksheet.getCell('V1').note = {
+      texts: [
+        {'font': {'bold': true}, 'text': 'Múltipla Escolha:\n'},
+        {'text': 'Separe os itens com ponto e vírgula (;).\n\nExemplo: Negligência; Abuso sexual'}
+      ]
+    }
+    worksheet.getCell('Z1').note = 'Cole o link completo do processo SEI.'
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    return Buffer.from(buffer)
+  }
+
+  static async generateCasesExcel(): Promise<Buffer> {
+    const casos = await prisma.case.findMany({ 
+      orderBy: { createdAt: 'desc' }, 
+      include: { criadoPor: true, agenteAcolhida: true, especialistaPAEFI: true } 
+    })
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Base Completa')
+
+    worksheet.columns = this.getColumns()
+    worksheet.getRow(1).font = { bold: true, size: 12 }
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
+
+    casos.forEach((c) => {
+      worksheet.addRow({
+          id: c.id.slice(0, 8),
+          nome: c.nomeCompleto,
+          nome_social: c.nomeSocial || '-',
+          cpf: c.cpf || '-',
+          nasc: this.formatDate(c.nascimento),
+          sexo: c.sexo,
+          cat: c.categoria,
+          ocupacao: c.ocupacao || '-',
+          renda: this.formatCurrency(c.renda),
+          resp: c.responsavelLegal || '-',
+          parent: c.parentescoResponsavel || '-',
+          telefone: Array.isArray(c.contatos) ? (c.contatos as any[]).map(ct => `${ct.numero}`).join('; ') : '-',
+          
+          // Mapeamento dos campos de endereço individuais
+          cep: c.endereco_cep || '-',
+          ra: c.endereco_ra || '-',
+          logradouro: c.endereco_logradouro || '-',
+          complemento: c.endereco_complemento || '',
+          bairro: c.endereco_bairro || '-',
+          
+          entrada: this.formatDate(c.dataEntrada),
+          inicio_paefi: this.formatDate(c.dataInicioPAEFI),
+          
+          urgencia: c.urgencia,
+          peso: c.pesoUrgencia,
+          violacoes: Array.isArray(c.violacao) ? c.violacao.join('; ') : (c.violacao || ''),
+          beneficios: Array.isArray(c.beneficios) ? c.beneficios.join('; ') : '',
+          
+          orgao: c.orgaoDemandante,
+          sei: c.numeroSei || '-',
+          link_sei: c.linkSei || '-',
+          
+          status: c.status.replace(/_/g, ' '),
+          agente: c.agenteAcolhida?.nome || '-',
+          spec: c.especialistaPAEFI?.nome || '-',
+          origem: c.origem
+      })
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    return Buffer.from(buffer)
+  }
+}
+
+FILE: backend\src\services\FamilyService.ts
+--------------------------------------------------
+// backend/src/services/FamilyService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction, MembroFamilia } from '@prisma/client'
+
+// DTO para entrada de dados
+interface AddFamilyMemberInput {
+  caseId: string
+  userId: string
+  nome: string
+  parentesco: string
+  idade?: number
+  cpf?: string | null
+  nascimento?: Date | string | null
+  telefone?: string | null
+  ocupacao?: string
+  renda?: number
+  observacoes?: string
+}
+
+export class FamilyService {
+
+  /**
+   * Remove caracteres não numéricos de uma string (ex: CPF, Telefone)
+   */
+  private static cleanDigits(value?: string | null): string | null {
+    if (!value) return null
+    return value.replace(/\D/g, '')
+  }
+
+  /**
+   * Converte objetos do Prisma (especialmente Decimal) para JSON-safe
+   */
+  private static serializeMember(member: MembroFamilia) {
+    return {
+      ...member,
+      // Converte Decimal para Number (JavaScript primitivo) para evitar erros de serialização
+      renda: member.renda ? Number(member.renda) : null
+    }
+  }
+
+  /**
+   * Lista todos os membros de uma família vinculada a um caso
+   */
+  static async list(caseId: string) {
+    const members = await prisma.membroFamilia.findMany({
+      where: { casoId: caseId }, // Mapeamento correto com o schema
+      orderBy: { createdAt: 'asc' }
+    })
+
+    return members.map(this.serializeMember)
+  }
+
+  /**
+   * Adiciona um novo membro à família e registra o log
+   */
+  static async add({ caseId, userId, cpf, telefone, nascimento, ...data }: AddFamilyMemberInput) {
+    // 1. Sanitização de Dados
+    const cpfLimpo = this.cleanDigits(cpf)
+    const telefoneLimpo = this.cleanDigits(telefone)
+    
+    // Garante que nascimento seja Date ou null
+    const dataNascimento = nascimento ? new Date(nascimento) : null
+
+    // 2. Persistência
+    const member = await prisma.membroFamilia.create({
+      data: {
+        ...data,
+        cpf: cpfLimpo,
+        telefone: telefoneLimpo,
+        nascimento: dataNascimento,
+        casoId: caseId // Vincula ao caso corretamente
+      }
+    })
+
+    // 3. Log de Auditoria (Executado em segundo plano para não bloquear)
+    prisma.caseLog.create({
+      data: {
+        casoId: caseId,
+        autorId: userId,
+        acao: LogAction.MEMBRO_FAMILIA_ADICIONADO,
+        descricao: `Adicionou familiar: ${data.nome} (${data.parentesco})`
+      }
+    }).catch(err => console.error("Erro ao criar log de família:", err))
+
+    return this.serializeMember(member)
+  }
+
+  /**
+   * Remove um membro da família
+   */
+  static async remove(id: string, userId: string) {
+    // Verifica existência antes de deletar para pegar dados para o log
+    const member = await prisma.membroFamilia.findUnique({ 
+      where: { id },
+      select: { id: true, nome: true, casoId: true }
+    })
+
+    if (!member) {
+      throw new Error('Membro familiar não encontrado.')
+    }
+
+    // Deleção
+    await prisma.membroFamilia.delete({ where: { id } })
+
+    // Log de Auditoria
+    prisma.caseLog.create({
+      data: {
+        casoId: member.casoId,
+        autorId: userId,
+        acao: LogAction.OUTRO, // Idealmente criar LogAction.MEMBRO_FAMILIA_REMOVIDO no schema
+        descricao: `Removeu familiar: ${member.nome}`
+      }
+    }).catch(err => console.error("Erro ao criar log de remoção:", err))
+
+    return true
+  }
+}
+
+FILE: backend\src\services\FilterService.ts
+--------------------------------------------------
+// backend/src/services/FilterService.ts
+import { prisma } from '../lib/prisma'
+
+export class FilterService {
+  static async listByUser(userId: string) {
+    return prisma.savedFilter.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' }
+    })
+  }
+
+  static async create(userId: string, nome: string, config: any) {
+    const count = await prisma.savedFilter.count({ where: { userId } })
+    if (count >= 20) throw new Error('QUOTA_EXCEEDED')
+
+    return prisma.savedFilter.create({
+      data: { userId, nome, config }
+    })
+  }
+
+  static async update(id: string, userId: string, nome?: string, config?: any) {
+    const existing = await prisma.savedFilter.findUnique({ where: { id } })
+    if (!existing) throw new Error('NOT_FOUND')
+    if (existing.userId !== userId) throw new Error('FORBIDDEN')
+
+    return prisma.savedFilter.update({
+      where: { id },
+      data: { nome, config }
+    })
+  }
+
+  static async delete(id: string, userId: string) {
+    const { count } = await prisma.savedFilter.deleteMany({
+      where: { id, userId }
+    })
+    if (count === 0) throw new Error('NOT_FOUND')
+    return true
+  }
+}
+
+FILE: backend\src\services\GroupService.ts
+--------------------------------------------------
+// backend/src/services/GroupService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction, GroupType, CaseStatus } from '@prisma/client'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+
+interface CreateGroupInput {
+  tema: string
+  tipo: GroupType
+  datas?: string[]
+  dataRealizacao?: string
+  local?: string
+  descricao?: string
+  orgaosEnvolvidos?: string[]
+  facilitadorId: string
+}
+
+export class GroupService {
+
+  static async list() {
+    return prisma.groupActivity.findMany({
+      orderBy: { dataRealizacao: 'desc' },
+      take: 100,
+      include: {
+        facilitador: { select: { nome: true } },
+        _count: { select: { participantes: true } }
+      }
+    })
+  }
+
+  static async getById(id: string) {
+    return prisma.groupActivity.findUnique({
+      where: { id },
+      include: {
+        facilitador: { select: { id: true, nome: true } },
+        participantes: {
+          include: {
+            caso: { select: { id: true, nomeCompleto: true } }
+          },
+          orderBy: { caso: { nomeCompleto: 'asc' } }
+        }
+      }
+    })
+  }
+
+  /**
+   * Busca casos elegíveis para entrar no grupo (exclui quem já está e desligados)
+   */
+  static async getCandidates(groupId: string) {
+    // 1. Valida se grupo existe
+    const groupExists = await prisma.groupActivity.findUnique({ where: { id: groupId } })
+    if (!groupExists) throw new Error('NOT_FOUND')
+
+    // 2. Busca IDs já vinculados
+    const existingMembers = await prisma.groupAttendance.findMany({
+      where: { grupoId: groupId },
+      select: { casoId: true }
+    })
+    const excludedIds = existingMembers.map(m => m.casoId)
+
+    // 3. Busca candidatos ativos
+    return prisma.case.findMany({
+      where: {
+        id: { notIn: excludedIds },
+        status: { notIn: [CaseStatus.DESLIGADO] }
+      },
+      select: {
+        id: true,
+        nomeCompleto: true,
+        status: true
+      },
+      orderBy: { nomeCompleto: 'asc' },
+      take: 300
+    })
+  }
+
+  static async create(data: CreateGroupInput) {
+    // Normaliza datas
+    let datesToCreate: string[] = []
+    if (data.datas && data.datas.length > 0) datesToCreate = data.datas
+    else if (data.dataRealizacao) datesToCreate = [data.dataRealizacao]
+    else throw new Error('MISSING_DATE')
+
+    // Criação em lote (transação)
+    const createdGroups = await prisma.$transaction(
+      datesToCreate.map((dateStr) => 
+        prisma.groupActivity.create({
+          data: {
+            tema: data.tema,
+            tipo: data.tipo,
+            dataRealizacao: new Date(dateStr),
+            local: data.local,
+            descricao: data.descricao,
+            orgaosEnvolvidos: data.orgaosEnvolvidos || [],
+            facilitadorId: data.facilitadorId
+          }
+        })
+      )
+    )
+
+    return createdGroups
+  }
+
+  /**
+   * Adiciona participantes em lote com geração automática de Evoluções
+   */
+  static async addParticipants(groupId: string, caseIds: string[], userId: string) {
+    const group = await prisma.groupActivity.findUnique({ where: { id: groupId } })
+    if (!group) throw new Error('NOT_FOUND')
+
+    const dataFormatada = format(group.dataRealizacao, "dd/MM/yyyy", { locale: ptBR })
+
+    // Filtra quem já está no grupo (evita erro de Unique Constraint)
+    const alreadyInGroup = await prisma.groupAttendance.findMany({
+      where: { grupoId: groupId, casoId: { in: caseIds } },
+      select: { casoId: true }
+    })
+    const existingIds = new Set(alreadyInGroup.map(item => item.casoId))
+    const newParticipantsIds = caseIds.filter(caseId => !existingIds.has(caseId))
+
+    if (newParticipantsIds.length === 0) return 0
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Cria participações
+      await Promise.all(newParticipantsIds.map(caseId => 
+        tx.groupAttendance.create({
+          data: { grupoId: groupId, casoId: caseId, presente: false }
+        })
+      ))
+
+      // 2. Cria evoluções
+      await Promise.all(newParticipantsIds.map(caseId => 
+        tx.evolucao.create({
+          data: {
+            casoId: caseId,
+            autorId: userId,
+            sigilo: false,
+            conteudo: `[SISTEMA - GRUPO] Vinculado à atividade "${group.tema}" (${group.tipo}), prevista para ${dataFormatada}.`
+          }
+        })
+      ))
+    })
+
+    return newParticipantsIds.length
+  }
+
+  /**
+   * Registra presença individual
+   */
+  static async updateAttendance(groupId: string, caseId: string, presente: boolean, observacoes: string | undefined, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      const attendance = await tx.groupAttendance.findFirst({ 
+        where: { grupoId: groupId, casoId: caseId }
+      })
+      if (!attendance) throw new Error("ATTENDANCE_NOT_FOUND")
+
+      // Atualiza Status
+      const updated = await tx.groupAttendance.update({
+        where: { id: attendance.id },
+        data: { presente, observacoes }
+      })
+
+      // Gera Evolução e Log
+      const group = await tx.groupActivity.findUnique({ where: { id: groupId } })
+      if (group) {
+          const statusTexto = presente ? "PRESENTE" : "AUSENTE"
+          const dataFmt = format(group.dataRealizacao, "dd/MM", { locale: ptBR })
+          
+          await tx.evolucao.create({
+            data: {
+              casoId: caseId,
+              autorId: userId,
+              sigilo: false,
+              conteudo: `[SISTEMA - FREQUÊNCIA] ${group.tema} (${dataFmt}): ${statusTexto}.${observacoes ? ` Obs: ${observacoes}` : ''}`
+            }
+          })
+      }
+      
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: userId,
+          acao: LogAction.PRESENCA_REGISTRADA,
+          descricao: `Grupo: ${presente ? 'Presente' : 'Ausente'}`
+        }
+      })
+
+      return updated
+    })
+  }
+
+  static async confirmAttendance(id: string) {
+    return prisma.groupActivity.update({
+      where: { id },
+      data: { attendanceConfirmed: true }
+    })
+  }
+}
+
+FILE: backend\src\services\ImportService.ts
+--------------------------------------------------
+// backend/src/services/ImportService.ts
+import { prisma } from '../lib/prisma'
+import { CaseStatus, CaseOrigin, Prisma } from '@prisma/client'
+import ExcelJS from 'exceljs'
+import { parse, isValid } from 'date-fns'
+import { Buffer } from 'node:buffer'
+import { Readable } from 'stream'
+import { calculateUrgencyWeight } from '../domain/UrgencyRules';
+
+interface ImportResult {
+  processed: number
+  created: number
+  errors: number
+  logs: string[]
+}
+
+export class ImportService {
+
+  // --- HELPERS ---
+  private static cleanDigits(val: any) {
+    return String(val || '').replace(/\D/g, '')
+  }
+
+  private static normalizeKey(key: string) {
+    return key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '')
+  }
+
+  private static normalizeName(name: string) {
+    return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim()
+  }
+
+  private static parseExcelDate(value: any): Date | null {
+    if (!value) return null
+    if (value instanceof Date) return value
+    if (typeof value === 'string') {
+      const v = value.trim()
+      // Tenta formato DD/MM/YYYY
+      let parsed = parse(v, 'dd/MM/yyyy', new Date())
+      if (isValid(parsed)) return parsed
+      // Tenta formato ISO ou nativo
+      parsed = new Date(v)
+      if (isValid(parsed)) return parsed
+    }
+    if (typeof value === 'object' && value !== null) {
+       if ('result' in value && value.result instanceof Date) return value.result;
+    }
+    return null
+  }
+
+  // [AJUSTE] Retorna Prisma.Decimal para compatibilidade com o Schema
+  private static parseCurrency(value: any): Prisma.Decimal | null {
+    if (value === null || value === undefined || value === '') return null
+    
+    if (typeof value === 'number') {
+        return new Prisma.Decimal(value)
+    }
+    
+    // Limpa R$, espaços e converte vírgula para ponto
+    const cleanStr = String(value)
+        .replace(/[^\d,-]/g, '') // Mantém apenas dígitos, vírgula e hífen
+        .replace(',', '.')
+    
+    try {
+        const num = parseFloat(cleanStr)
+        return isNaN(num) ? null : new Prisma.Decimal(cleanStr)
+    } catch {
+        return null
+    }
+  }
+
+  private static parseArrayField(value: any): string[] {
+    if (!value) return []
+    return String(value).split(/[;,]/).map(v => v.trim()).filter(v => v.length > 0)
+  }
+
+  static async processImport(fileBuffer: Buffer, isCsv: boolean, userId: string): Promise<ImportResult> {
+    const workbook = new ExcelJS.Workbook()
+    
+    if (isCsv) {
+      await workbook.csv.read(Readable.from(fileBuffer as any))
+    } else {
+      await workbook.xlsx.load(fileBuffer as any)
+    }
+
+    const worksheet = workbook.worksheets[0]
+    if (!worksheet) throw new Error('PLANILHA_VAZIA')
+
+    // Carrega usuários para vincular por nome
+    const allUsers = await prisma.user.findMany({ select: { id: true, nome: true } })
+    const userMap = new Map<string, string>()
+    allUsers.forEach(u => {
+      if (u.nome) userMap.set(this.normalizeName(u.nome), u.id)
+    })
+
+    // Mapeia cabeçalhos
+    const headerMap: Record<string, number> = {}
+    const headerRow = worksheet.getRow(1)
+    headerRow.eachCell((cell, colNumber) => {
+      if (cell.value) headerMap[this.normalizeKey(String(cell.value))] = colNumber
+    })
+
+    const getValue = (row: ExcelJS.Row, ...keys: string[]) => {
+        for (const key of keys) {
+            const colIndex = headerMap[this.normalizeKey(key)]
+            if (colIndex) {
+                const val = row.getCell(colIndex).value
+                if (val && typeof val === 'object') {
+                    if ('text' in val) return (val as any).text;
+                    if ('result' in val) return (val as any).result;
+                }
+                return val
+            }
+        }
+        return undefined
+    }
+
+    let createdCount = 0
+    let errorCount = 0
+    let processedCount = 0
+    const logs: string[] = []
+    const cpfSet = new Set<string>()
+
+    // Loop a partir da linha 2
+    for (let i = 2; i <= worksheet.rowCount; i++) {
+      const row = worksheet.getRow(i)
+      if (!row.hasValues) continue
+      processedCount++
+      const rowNum = i
+      
+      try {
+          const nome = getValue(row, 'nome', 'nomecompleto')
+          const cpfRaw = getValue(row, 'cpf')
+
+          if (!nome) continue 
+
+          const cpf = cpfRaw ? this.cleanDigits(cpfRaw) : null
+          
+          if (!cpf || cpf.length !== 11) {
+             logs.push(`Linha ${rowNum}: CPF inválido ou ausente. Ignorada.`)
+             errorCount++
+             continue 
+          }
+
+          if (cpfSet.has(cpf)) {
+             logs.push(`Linha ${rowNum}: CPF duplicado no arquivo. Ignorada.`)
+             errorCount++
+             continue
+          }
+          const existing = await prisma.case.findUnique({ where: { cpf: String(cpf) } })
+          if (existing) {
+            logs.push(`Linha ${rowNum}: CPF já cadastrado no sistema. Ignorada.`)
+            errorCount++
+            continue
+          }
+          cpfSet.add(cpf)
+
+          // --- DATAS ---
+          const nascimento = this.parseExcelDate(getValue(row, 'nascimento', 'datanascimento', 'nasc')) || new Date('1900-01-01')
+          const dataEntrada = this.parseExcelDate(getValue(row, 'dataentrada', 'dataatendimento', 'entrada')) || new Date()
+          const dataInicioPAEFI = this.parseExcelDate(getValue(row, 'inicio_paefi', 'datainiciopaefi', 'data_paefi', 'inicio_acompanhamento'))
+
+          // --- CAMPOS SIMPLES ---
+          const ocupacao = String(getValue(row, 'ocupacao', 'profissão') || '')
+          const renda = this.parseCurrency(getValue(row, 'renda', 'salario'))
+          const responsavelLegal = String(getValue(row, 'responsavel', 'responsavellegal', 'resp') || '')
+          const parentescoResponsavel = String(getValue(row, 'parentesco', 'vinculo', 'parent') || '')
+
+          // --- ENDEREÇO DETALHADO ---
+          const endereco_cep = this.cleanDigits(getValue(row, 'cep'))
+          const endereco_ra = String(getValue(row, 'ra', 'regiao', 'regiao_adm') || 'Não Informada')
+          const endereco_logradouro = String(getValue(row, 'logradouro', 'endereco', 'rua') || '')
+          const endereco_complemento = String(getValue(row, 'complemento', 'comp') || '')
+          const endereco_bairro = String(getValue(row, 'bairro', 'setor', 'vila') || '')
+
+          // --- CONTATOS ---
+          const contatos = []
+          const tel1 = getValue(row, 'telefone', 'celular')
+          if (tel1) contatos.push({ tipo: "Principal", numero: String(tel1) })
+
+          // --- VÍNCULOS DE EQUIPE ---
+          let agenteId = null
+          let especialistaId = null
+          const rawAgente = getValue(row, 'agenteacolhida', 'agente', 'tecnico')
+          if (rawAgente) {
+             agenteId = userMap.get(this.normalizeName(String(rawAgente))) || null
+             if (!agenteId) logs.push(`Aviso [Linha ${rowNum}]: Agente "${rawAgente}" não encontrado.`)
+          }
+          const rawEspecialista = getValue(row, 'especialistaref', 'especialista', 'spec')
+          if (rawEspecialista) {
+             especialistaId = userMap.get(this.normalizeName(String(rawEspecialista))) || null
+          }
+
+          // --- URGÊNCIA E STATUS ---
+          const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
+          // [REFATORAÇÃO] Uso da função centralizada
+          const pesoUrgencia = calculateUrgencyWeight(urgenciaTexto);
+          
+          let statusRaw = String(getValue(row, 'status') || 'AGUARDANDO_DISTRIBUICAO').toUpperCase().replace(/ /g, '_')
+          if (!Object.values(CaseStatus).includes(statusRaw as any)) statusRaw = 'AGUARDANDO_DISTRIBUICAO'
+
+          const linkSei = String(getValue(row, 'linksei', 'link_sei', 'urlsei') || '')
+          const numeroSei = getValue(row, 'sei', 'numerosei') ? String(getValue(row, 'sei', 'numerosei')) : null
+
+          // --- LISTAS ---
+          const violacoes = this.parseArrayField(getValue(row, 'violacao', 'violacoes'))
+          const beneficios = this.parseArrayField(getValue(row, 'beneficios', 'beneficio'))
+
+          await prisma.case.create({
+              data: {
+                  nomeCompleto: String(nome),
+                  nomeSocial: getValue(row, 'nomesocial') ? String(getValue(row, 'nomesocial')) : null,
+                  cpf: cpf, 
+                  nascimento: nascimento,
+                  
+                  responsavelLegal: responsavelLegal || null,
+                  parentescoResponsavel: parentescoResponsavel || null,
+
+                  sexo: String(getValue(row, 'sexo') || 'Não Informado'),
+                  
+                  // Novos Campos Financeiros
+                  ocupacao: ocupacao || null,
+                  renda: renda, // Prisma.Decimal
+                  
+                  // Mapeamento de Endereço (Campos Flat)
+                  endereco_cep: endereco_cep || null,
+                  endereco_ra,
+                  endereco_logradouro,
+                  endereco_complemento: endereco_complemento || null,
+                  endereco_bairro: endereco_bairro || null,
+                  endereco_cidade: 'Brasília',
+                  endereco_uf: 'DF',
+                  
+                  contatos: contatos as any,
+
+                  urgencia: urgenciaTexto,
+                  pesoUrgencia,
+                  violacao: violacoes.length > 0 ? violacoes : ['Não classificado'],
+                  categoria: String(getValue(row, 'categoria') || 'Família'),
+                  
+                  orgaoDemandante: String(getValue(row, 'orgaodemandante', 'orgao') || 'Demanda Espontânea'),
+                  origem: CaseOrigin.DOCUMENTAL,
+                  
+                  numeroSei,
+                  linkSei: linkSei || null,
+                  dataInicioPAEFI: dataInicioPAEFI || null,
+                  
+                  beneficios,
+                  dataEntrada,
+                  status: statusRaw as CaseStatus,
+                  
+                  agenteAcolhidaId: agenteId,
+                  especialistaPAEFIId: especialistaId,
+                  criadoPorId: userId
+              }
+          })
+          
+          createdCount++
+      } catch (err: any) {
+          logs.push(`Linha ${rowNum}: Erro crítico - ${err.message}`)
+          errorCount++
+      }
+    }
+
+    return { processed: processedCount, created: createdCount, errors: errorCount, logs: logs }
+  }
+}
+
+FILE: backend\src\services\PafService.ts
+--------------------------------------------------
+// backend/src/services/PafService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction } from '@prisma/client'
+
+interface CreatePafInput {
+  casoId: string
+  autorId: string
+  diagnostico: string
+  objetivos: string
+  estrategias: string
+  deadline: Date
+}
+
+interface UpdatePafInput {
+  casoId: string
+  userId: string
+  diagnostico?: string
+  objetivos?: string
+  estrategias?: string
+  deadline?: Date
+}
+
+export class PafService {
+
+  // Garante UTC meio-dia para evitar shifts de fuso horário
+  private static stripTime(date: Date | string): Date {
+    const d = new Date(date)
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
+  }
+
+  static async getByCaseId(casoId: string) {
+    return prisma.paf.findUnique({
+      where: { casoId },
+      include: { autor: { select: { id: true, nome: true } } }
+    })
+  }
+
+  static async getHistory(casoId: string) {
+    const paf = await prisma.paf.findUnique({ where: { casoId } })
+    if (!paf) return []
+
+    return prisma.pafVersion.findMany({
+      where: { pafId: paf.id },
+      orderBy: { savedAt: 'desc' },
+      include: { autor: { select: { nome: true } } }
+    })
+  }
+
+  static async create(data: CreatePafInput) {
+    // Verifica se já existe
+    const existing = await prisma.paf.findUnique({ where: { casoId: data.casoId } })
+    if (existing) throw new Error('ALREADY_EXISTS')
+
+    const created = await prisma.paf.create({
+      data: {
+        ...data,
+        deadline: this.stripTime(data.deadline),
+        versaoAtual: 1,
+      },
+      include: { autor: { select: { id: true, nome: true } } }
+    })
+
+    // Log Assíncrono
+    await prisma.caseLog.create({
+      data: {
+        casoId: data.casoId,
+        autorId: data.autorId,
+        acao: LogAction.PAF_CRIADO,
+        descricao: 'Elaborou o Plano de Acompanhamento Familiar (PAF).',
+      },
+    }).catch(console.error)
+
+    return created
+  }
+
+  /**
+   * Atualiza o PAF aplicando versionamento automático via Transação
+   */
+  static async update({ casoId, userId, ...data }: UpdatePafInput) {
+    const existing = await prisma.paf.findUnique({ where: { casoId } })
+    if (!existing) throw new Error('NOT_FOUND')
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Salvar versão antiga (Snapshot)
+      await tx.pafVersion.create({
+        data: {
+          pafId: existing.id,
+          diagnostico: existing.diagnostico,
+          objetivos: existing.objetivos,
+          estrategias: existing.estrategias,
+          deadline: existing.deadline,
+          autorId: existing.autorId,
+          versaoNumero: existing.versaoAtual,
+          savedAt: new Date()
+        },
+      })
+
+      // 2. Atualizar registro atual (Current State)
+      const nextVersion = existing.versaoAtual + 1
+      
+      const updated = await tx.paf.update({
+        where: { casoId },
+        data: {
+          ...data,
+          deadline: data.deadline ? this.stripTime(data.deadline) : undefined,
+          autorId: userId, // Novo autor da versão
+          versaoAtual: nextVersion,
+        },
+        include: { autor: { select: { id: true, nome: true } } }
+      })
+
+      // 3. Log Auditoria
+      await tx.caseLog.create({
+        data: {
+          casoId,
+          autorId: userId,
+          acao: LogAction.PAF_ATUALIZADO,
+          descricao: `Atualizou PAF para versão ${nextVersion}.`,
+        },
+      })
+
+      return updated
+    })
+
+    return result
+  }
+}
+
+FILE: backend\src\services\ReferralService.ts
+--------------------------------------------------
+// backend/src/services/ReferralService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction } from '@prisma/client'
+
+interface CreateReferralInput {
+  caseId: string
+  userId: string
+  instituicao: string
+  tipo: string
+  motivo: string
+}
+
+interface UpdateReferralInput {
+  id: string
+  status: 'PENDENTE' | 'CONCLUIDO' | 'CANCELADO'
+  retorno?: string
+}
+
+export class ReferralService {
+
+  static async listByCase(caseId: string) {
+    return prisma.encaminhamento.findMany({
+      where: { casoId: caseId },
+      orderBy: { dataEnvio: 'desc' },
+      include: {
+        autor: { select: { nome: true } }
+      }
+    })
+  }
+
+  /**
+   * Cria Encaminhamento + Evolução + Log (Transaction)
+   */
+  static async create({ caseId, userId, instituicao, tipo, motivo }: CreateReferralInput) {
+    // Valida existência do caso
+    const caso = await prisma.case.findUnique({ where: { id: caseId } })
+    if (!caso) throw new Error('CASE_NOT_FOUND')
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Cria Encaminhamento
+      const referral = await tx.encaminhamento.create({
+        data: {
+          instituicao,
+          tipo,
+          motivo,
+          status: 'PENDENTE',
+          casoId: caseId,
+          autorId: userId,
+          dataEnvio: new Date()
+        },
+        include: { autor: { select: { nome: true } } }
+      })
+
+      // 2. Gera Evolução Automática
+      await tx.evolucao.create({
+        data: {
+          casoId: caseId,
+          autorId: userId,
+          sigilo: false,
+          conteudo: `[SISTEMA - ENCAMINHAMENTO] Realizado para: ${instituicao} (${tipo}).\nMotivo: ${motivo}.`
+        }
+      })
+
+      // 3. Log de Auditoria
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: userId,
+          acao: LogAction.OUTRO,
+          descricao: `Encaminhou para: ${instituicao} (${tipo})`
+        }
+      })
+
+      return referral
+    })
+  }
+
+  static async update({ id, status, retorno }: UpdateReferralInput) {
+    const existing = await prisma.encaminhamento.findUnique({ where: { id } })
+    if (!existing) throw new Error('NOT_FOUND')
+
+    return prisma.encaminhamento.update({
+      where: { id },
+      data: {
+        status,
+        retorno,
+        updatedAt: new Date()
+      },
+      include: { autor: { select: { nome: true } } }
+    })
+  }
+
+  static async delete(id: string, userId: string) {
+    const existing = await prisma.encaminhamento.findUnique({ where: { id } })
+    
+    if (!existing) throw new Error('NOT_FOUND')
+    if (existing.autorId !== userId) throw new Error('FORBIDDEN')
+
+    await prisma.encaminhamento.delete({ where: { id } })
+    return true
+  }
+}
+
+FILE: backend\src\services\ReportService.ts
+--------------------------------------------------
+// backend/src/services/ReportService.ts
+import { prisma } from '../lib/prisma'
+import { Cargo, CaseStatus } from '@prisma/client'
+import { subMonths, format, differenceInDays } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { calculateUrgencyWeight } from '../domain/UrgencyRules';
+
+export class ReportService {
+
+  // --- Helpers Privados ---
+  // [REFATORAÇÃO] Método calculateUrgencyWeight removido daqui. 
+  // A lógica agora reside em src/domain/UrgencyRules.ts para evitar duplicidade.
+
+  // --- Métodos Públicos ---
+
+  /**
+   * Gera relatório de carga de trabalho da equipe técnica
+   */
+  static async getTeamOverview() {
+    // 1. Busca técnicos
+    const technicians = await prisma.user.findMany({
+      where: {
+        cargo: { in: [Cargo.Agente_Social, Cargo.Especialista] },
+        ativo: true,
+      },
+      select: { id: true, nome: true, cargo: true },
+      orderBy: { cargo: 'asc' },
+    })
+
+    // 2. Busca casos ativos
+    const activeCases = await prisma.case.findMany({
+      where: { status: { not: CaseStatus.DESLIGADO } },
+      select: {
+        id: true, 
+        nomeCompleto: true, 
+        status: true,
+        urgencia: true,
+        violacao: true, 
+        agenteAcolhidaId: true, 
+        especialistaPAEFIId: true,
+        pesoUrgencia: true
+      },
+      orderBy: { pesoUrgencia: 'desc' }
+    })
+
+    // 3. Cruzamento em Memória
+    return technicians.map((tech) => {
+      const techCases = activeCases.filter((c) => {
+        // Regra: Agente Social vê casos em Acolhida
+        if (tech.cargo === Cargo.Agente_Social) {
+          return (
+            c.agenteAcolhidaId === tech.id && 
+            (c.status === CaseStatus.AGUARDANDO_ACOLHIDA || c.status === CaseStatus.EM_ACOLHIDA)
+          )
+        }
+        // Regra: Especialista vê casos em Acompanhamento
+        if (tech.cargo === Cargo.Especialista) {
+          return (
+            c.especialistaPAEFIId === tech.id && 
+            (c.status === CaseStatus.EM_ACOLHIDA_ESPECIALIZADA || c.status === CaseStatus.EM_ACOMPANHAMENTO || c.status === CaseStatus.EM_MONITORAMENTO)
+          )
+        }
+        return false
+      })
+
+      return {
+        nome: tech.nome,
+        cargo: tech.cargo === Cargo.Agente_Social ? 'Agente Social' : 'Especialista',
+        cases: techCases.map(c => ({
+          ...c,
+          violacao: Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao] : [])
+        })), 
+      }
+    })
+  }
+
+  /**
+   * Gera estatísticas de desligamentos/arquivamentos
+   */
+  static async getDismissalsReport(months: number) {
+    const startDate = subMonths(new Date(), months)
+
+    const closedCases = await prisma.case.findMany({
+      where: {
+        status: CaseStatus.DESLIGADO,
+        dataDesligamento: { gte: startDate }
+      },
+      select: {
+        id: true,
+        nomeCompleto: true,
+        motivoDesligamento: true,
+        destinoDesligamento: true,
+        dataDesligamento: true,
+        dataInicioPAEFI: true
+      }
+    })
+
+    const motivosCount: Record<string, number> = {}
+    const destinosCount: Record<string, number> = {}
+
+    const processedList = closedCases.map(c => {
+      const mot = c.motivoDesligamento || 'Não informado'
+      const dest = c.destinoDesligamento || 'Não informado'
+      
+      motivosCount[mot] = (motivosCount[mot] || 0) + 1
+      destinosCount[dest] = (destinosCount[dest] || 0) + 1
+
+      let dias = 0;
+      if (c.dataInicioPAEFI && c.dataDesligamento) {
+          dias = differenceInDays(c.dataDesligamento, c.dataInicioPAEFI);
+      }
+
+      return { ...c, tempoAcompanhamento: dias }
+    })
+
+    return {
+      total: closedCases.length,
+      byMotivo: Object.entries(motivosCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+      byDestino: Object.entries(destinosCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+      list: processedList.slice(0, 50)
+    }
+  }
+
+  /**
+   * Gera dados para o Observatório (Vigilância Socioassistencial)
+   */
+  static async getVigilanceStats() {
+    const today = new Date()
+    const sixMonthsAgo = subMonths(today, 6)
+
+    // Busca ampla otimizada
+    const cases = await prisma.case.findMany({
+      where: {
+        OR: [
+          { createdAt: { gte: sixMonthsAgo } }, 
+          { dataDesligamento: { gte: sixMonthsAgo } },
+          { status: { not: CaseStatus.DESLIGADO } } 
+        ]
+      },
+      select: {
+        id: true, 
+        nomeCompleto: true, 
+        dataEntrada: true, 
+        dataDesligamento: true,
+        status: true, 
+        urgencia: true, 
+        violacao: true, 
+        categoria: true,
+        latitude: true, 
+        longitude: true, 
+        endereco_ra: true,
+        orgaoDemandante: true
+      }
+    })
+
+    // Inicializa estrutura de meses
+    const monthsMap = new Map()
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(today, i)
+      const key = format(d, 'yyyy-MM')
+      monthsMap.set(key, { name: format(d, 'MMM/yy', { locale: ptBR }), novos: 0, desligados: 0 })
+    }
+    
+    const violationMap: Record<string, number> = {}
+    const originMap: Record<string, number> = {}
+    const mapData: any[] = []
+
+    cases.forEach(c => {
+      // 1. Evolução Temporal
+      const entryKey = format(c.dataEntrada, 'yyyy-MM')
+      if (monthsMap.has(entryKey)) monthsMap.get(entryKey).novos++
+      
+      if (c.dataDesligamento) {
+        const exitKey = format(c.dataDesligamento, 'yyyy-MM')
+        if (monthsMap.has(exitKey)) monthsMap.get(exitKey).desligados++
+      }
+
+      // 2. Mapa de Calor (Apenas ativos com geolocalização)
+      if (c.status !== CaseStatus.DESLIGADO && c.latitude && c.longitude) {
+        mapData.push({
+          id: c.id, 
+          lat: c.latitude, 
+          lng: c.longitude, 
+          // [REFATORAÇÃO] Uso da função centralizada
+          intensity: calculateUrgencyWeight(c.urgencia),
+          label: c.nomeCompleto, 
+          violacao: Array.isArray(c.violacao) ? c.violacao.join(', ') : c.violacao,
+          endereco: c.endereco_ra,
+          categoria: c.categoria 
+        })
+      }
+
+      // 3. Rede (Órgãos Demandantes)
+      if (c.orgaoDemandante) {
+          const org = c.orgaoDemandante.trim()
+          originMap[org] = (originMap[org] || 0) + 1
+      }
+
+      // 4. Violações (Apenas ativos)
+      if (c.status !== CaseStatus.DESLIGADO) {
+        const violations = Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao] : [])
+        violations.forEach(v => {
+            v.split(',').forEach(subV => {
+                const label = subV.trim()
+                if(label) violationMap[label] = (violationMap[label] || 0) + 1
+            })
+        })
+      }
+    })
+
+    return {
+      evolutionData: Array.from(monthsMap.values()),
+      violationData: Object.entries(violationMap).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value),
+      originData: Object.entries(originMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
+      mapData,
+      totalActive: cases.filter(c => c.status !== CaseStatus.DESLIGADO).length
+    }
+  }
+}
+
+FILE: backend\src\services\RMAService.ts
+--------------------------------------------------
+// backend/src/services/RMAService.ts
+import { differenceInYears } from 'date-fns'
+import { Case } from '@prisma/client' // Importando tipagem do Prisma
+
+// --- Interfaces de Dados do RMA (Espelho do Formulário Oficial) ---
+
+export interface AgeBreakdown {
+  masculino: {
+    a0_12: number; a13_17: number; a18_59: number; a60_mais: number
+  };
+  feminino: {
+    a0_12: number; a13_17: number; a18_59: number; a60_mais: number
+  };
+  total: number;
+}
+
+export interface ChildBreakdown {
+  masculino: { a0_6: number; a7_12: number; a13_17: number };
+  feminino: { a0_6: number; a7_12: number; a13_17: number };
+  total: number;
+}
+
+export interface RMAResult {
+  bloco1: {
+    // Bloco A - Volume
+    a1_total_acompanhamento: number;
+    a2_novos_casos: number;
+    
+    // Bloco B - Perfil
+    b1_bolsa_familia: number;
+    b2_bpc: number;
+    b3_trabalho_infantil: number;
+    b4_acolhimento: number;
+    b5_drogas: number;
+    b6_vitimas: AgeBreakdown; // Tabela B.6 (Demografia Geral)
+    b7_mse: number;
+
+    // Bloco C - Crianças e Adolescentes (Detalhado)
+    c1_infamiliar: ChildBreakdown;
+    c2_abuso: ChildBreakdown;
+    c3_exploracao: ChildBreakdown;
+    c4_negligencia: ChildBreakdown;
+    c5_trabalho_infantil: { // Específico C.5
+      masculino: { a0_12: number; a13_15: number };
+      feminino: { a0_12: number; a13_15: number };
+      total: number;
+    };
+
+    // Bloco D - Idosos
+    d1_violencia: number;
+    d2_negligencia: number;
+
+    // Bloco E - PCD
+    e1_violencia: AgeBreakdown;
+    e2_negligencia: AgeBreakdown;
+
+    // Bloco F - Mulheres
+    f1_mulheres: number;
+
+    // Bloco G - Tráfico
+    g1_trafico: AgeBreakdown;
+
+    // Bloco H - Discriminação
+    h1_discriminacao: number;
+
+    // Bloco I - Pop Rua
+    i1_rua: AgeBreakdown;
+  };
+  // Bloco II (Produção) é preenchido na rota com queries de outras tabelas
+}
+
+// --- Helpers de Inicialização ---
+const initAgeBreakdown = (): AgeBreakdown => ({
+  masculino: { a0_12: 0, a13_17: 0, a18_59: 0, a60_mais: 0 },
+  feminino: { a0_12: 0, a13_17: 0, a18_59: 0, a60_mais: 0 },
+  total: 0
+})
+
+const initChildBreakdown = (): ChildBreakdown => ({
+  masculino: { a0_6: 0, a7_12: 0, a13_17: 0 },
+  feminino: { a0_6: 0, a7_12: 0, a13_17: 0 },
+  total: 0
+})
+
+export class RMAService {
+  
+  /**
+   * Processa a lista de casos e calcula a matriz completa do RMA.
+   * A lógica foi centralizada aqui para limpar o controller/rota.
+   */
+  static calculate(
+    activeCases: (Case & { violacao?: string[] | null, beneficios?: string[] | null, categoria?: string | null })[], 
+    newCases: Case[], 
+    refDate: Date = new Date()
+  ): RMAResult {
+    
+    // Inicializa estrutura zerada
+    const stats: RMAResult = {
+      bloco1: {
+        a1_total_acompanhamento: activeCases.length,
+        a2_novos_casos: newCases.length,
+        b1_bolsa_familia: 0, b2_bpc: 0, b3_trabalho_infantil: 0, b4_acolhimento: 0, b5_drogas: 0, b7_mse: 0,
+        b6_vitimas: initAgeBreakdown(),
+        c1_infamiliar: initChildBreakdown(),
+        c2_abuso: initChildBreakdown(),
+        c3_exploracao: initChildBreakdown(),
+        c4_negligencia: initChildBreakdown(),
+        c5_trabalho_infantil: { masculino: { a0_12: 0, a13_15: 0 }, feminino: { a0_12: 0, a13_15: 0 }, total: 0 },
+        d1_violencia: 0, d2_negligencia: 0,
+        e1_violencia: initAgeBreakdown(), e2_negligencia: initAgeBreakdown(),
+        f1_mulheres: 0,
+        g1_trafico: initAgeBreakdown(),
+        h1_discriminacao: 0,
+        i1_rua: initAgeBreakdown()
+      }
+    }
+
+    // Processa APENAS os NOVOS casos para o perfil (Regra do RMA: Perfil refere-se às entradas do mês)
+    // Nota: Dependendo da interpretação municipal, pode-se usar activeCases aqui. 
+    // O padrão SUAS geralmente pede perfil dos "Casos inseridos no PAEFI no mês de referência" para o Bloco B em diante.
+    // SE for necessário perfil do estoque inteiro, troque `newCases` por `activeCases` abaixo.
+    const casesToAnalyze = newCases; 
+
+    for (const c of casesToAnalyze) {
+      // 1. Dados Básicos Normalizados
+      const age = differenceInYears(refDate, new Date(c.nascimento))
+      const sex = (c.sexo && c.sexo.toLowerCase().startsWith('f')) ? 'feminino' : 'masculino'
+      
+      const violacoes = Array.isArray(c.violacao) ? c.violacao : (c.violacao ? [c.violacao] : [])
+      const violacoesStr = violacoes.join(' ').toLowerCase()
+      
+      const beneficios = Array.isArray(c.beneficios) ? c.beneficios : (c.beneficios ? [c.beneficios] : [])
+      const beneficiosStr = beneficios.join(' ').toLowerCase()
+
+      // Flags de Grupo
+      const isChild = age < 18
+      const isElderly = age >= 60
+      const isWoman = sex === 'feminino' && age >= 18 && age <= 59
+      const isPCD = c.categoria === 'PCD' || (c.categoria && c.categoria.toLowerCase().includes('deficiência'))
+      
+      // --- Helpers de Incremento ---
+      const incStandard = (target: AgeBreakdown) => {
+        target.total++
+        if (age <= 12) target[sex].a0_12++
+        else if (age <= 17) target[sex].a13_17++
+        else if (age <= 59) target[sex].a18_59++
+        else target[sex].a60_mais++
+      }
+
+      const incChild = (target: ChildBreakdown) => {
+        target.total++
+        if (age <= 6) target[sex].a0_6++
+        else if (age <= 12) target[sex].a7_12++
+        else if (age <= 17) target[sex].a13_17++
+      }
+
+      // --- BLOCO B: Perfil Geral ---
+      if (beneficiosStr.includes('bolsa família') || beneficiosStr.includes('pbf')) stats.bloco1.b1_bolsa_familia++
+      if (beneficiosStr.includes('bpc')) stats.bloco1.b2_bpc++
+      if (violacoesStr.includes('trabalho infantil')) stats.bloco1.b3_trabalho_infantil++
+      if (isChild && c.urgencia.toLowerCase().includes('acolhimento')) stats.bloco1.b4_acolhimento++
+      if (isChild && (c.categoria?.toLowerCase().includes('drogas') || violacoesStr.includes('drogas'))) stats.bloco1.b5_drogas++
+      if (violacoesStr.includes('medidas socioeducativas') || violacoesStr.includes('mse')) stats.bloco1.b7_mse++
+
+      // B.6 - Demografia das Vítimas (Todos os novos casos contam aqui)
+      incStandard(stats.bloco1.b6_vitimas)
+
+      // --- BLOCO C: Crianças e Adolescentes ---
+      if (isChild) {
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica')) incChild(stats.bloco1.c1_infamiliar)
+        if (violacoesStr.includes('abuso sexual') || violacoesStr.includes('violência sexual')) incChild(stats.bloco1.c2_abuso)
+        if (violacoesStr.includes('exploração sexual')) incChild(stats.bloco1.c3_exploracao)
+        if (violacoesStr.includes('negligência') || violacoesStr.includes('abandono')) incChild(stats.bloco1.c4_negligencia)
+        
+        // C.5 Trabalho Infantil (Regra Específica de idade: até 15 anos vs 16-17 não conta aqui para algumas tabelas, mas vamos seguir o padrão do formulário)
+        if (violacoesStr.includes('trabalho infantil') && age <= 15) {
+          stats.bloco1.c5_trabalho_infantil.total++
+          if (age <= 12) stats.bloco1.c5_trabalho_infantil[sex].a0_12++
+          else stats.bloco1.c5_trabalho_infantil[sex].a13_15++
+        }
+      }
+
+      // --- BLOCO D: Idosos ---
+      if (isElderly) {
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica') || violacoesStr.includes('sexual') || violacoesStr.includes('patrimonial')) {
+          stats.bloco1.d1_violencia++
+        }
+        if (violacoesStr.includes('negligência') || violacoesStr.includes('abandono')) {
+          stats.bloco1.d2_negligencia++
+        }
+      }
+
+      // --- BLOCO E: PCD ---
+      if (isPCD) {
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica') || violacoesStr.includes('sexual')) incStandard(stats.bloco1.e1_violencia)
+        if (violacoesStr.includes('negligência') || violacoesStr.includes('abandono')) incStandard(stats.bloco1.e2_negligencia)
+      }
+
+      // --- BLOCO F: Mulheres ---
+      if (isWoman) {
+        // Violência doméstica ou convívio com agressor
+        if (violacoesStr.includes('física') || violacoesStr.includes('psicológica') || violacoesStr.includes('sexual') || c.urgencia.toLowerCase().includes('agressor')) {
+          stats.bloco1.f1_mulheres++
+        }
+      }
+
+      // --- BLOCO G: Tráfico ---
+      if (violacoesStr.includes('tráfico')) incStandard(stats.bloco1.g1_trafico)
+
+      // --- BLOCO H: Discriminação ---
+      if (violacoesStr.includes('discriminação') || c.categoria === 'LGBTQIA+') stats.bloco1.h1_discriminacao++
+
+      // --- BLOCO I: População em Situação de Rua ---
+      if (c.categoria === 'POP RUA' || c.categoria?.toLowerCase().includes('rua') || violacoesStr.includes('rua')) {
+        incStandard(stats.bloco1.i1_rua)
+      }
+    }
+
+    return stats
+  }
+}
+
+FILE: backend\src\services\StatsService.ts
+--------------------------------------------------
+// backend/src/services/StatsService.ts
+import { prisma } from '../lib/prisma'
+import { cache } from '../lib/cache'
+import { startOfMonth, endOfMonth, subMonths, format, differenceInDays } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { Cargo, CaseStatus, LogAction, CaseOrigin } from '@prisma/client'
+import { calculateUrgencyWeight } from '../domain/UrgencyRules';
+
+// Helper para traduzir o Enum do Banco para Texto legível no Gráfico
+const ORIGIN_LABELS: Record<CaseOrigin, string> = {
+  [CaseOrigin.ESPONTANEA]: "Espontânea",
+  [CaseOrigin.DOCUMENTAL]: "Documental/Ofício",
+  [CaseOrigin.REFERENCIADA]: "Referenciada (Rede)",
+  [CaseOrigin.BUSCA_ATIVA]: "Busca Ativa"
+}
+
+export class StatsService {
+
+  // --- HELPERS PRIVADOS ---
+  // [REFATORAÇÃO] Método calculateUrgencyWeight removido daqui. 
+  // A lógica agora reside em src/domain/UrgencyRules.ts para evitar duplicidade.
+
+  // --- DASHBOARD GERAL (HOME) ---
+  static async getDashboard(user: { sub: string, cargo: string }) {
+    if (user.cargo === Cargo.Gerente) {
+      return this.getManagerDashboard()
+    } else if (user.cargo === Cargo.Agente_Social || user.cargo === Cargo.Especialista) {
+      return this.getUserDashboard(user.sub, user.cargo as Cargo)
+    }
+    return { role: 'Visitante', message: "Acesso restrito." }
+  }
+
+  private static async getManagerDashboard() {
+    const cacheKey = "manager_stats_main"
+    
+    // [CACHE V1.1] Verifica cache antes de tocar no banco
+    const cachedData = cache.get(cacheKey)
+    if (cachedData) return { ...cachedData as any, cached: true }
+
+    const today = new Date()
+    const firstDay = startOfMonth(today)
+    const lastDay = endOfMonth(today)
+
+    // Consultas Paralelas (Performance)
+    const [
+        totalCases, 
+        acolhidasCount, 
+        acompanhamentosCount, 
+        monitoringCount,
+        newCases, 
+        closedCases, 
+        workloadAgent, 
+        workloadSpec,
+        urgencyGroups, 
+        categoryGroups
+    ] = await Promise.all([
+        prisma.case.count(),
+        prisma.case.count({ where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } } }),
+        prisma.case.count({ where: { status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO] } } }),
+        prisma.case.count({ where: { status: CaseStatus.EM_MONITORAMENTO } }),
+        prisma.case.count({ where: { dataEntrada: { gte: firstDay, lte: lastDay } } }),
+        prisma.case.count({ where: { status: CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDay, lte: lastDay } } }),
+        // GroupBy retorna arrays, se vazio retorna []
+        prisma.case.groupBy({ by: ['agenteAcolhidaId'], where: { status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] }, agenteAcolhidaId: { not: null } }, _count: { _all: true } }),
+        prisma.case.groupBy({ by: ['especialistaPAEFIId'], where: { status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO] }, especialistaPAEFIId: { not: null } }, _count: { _all: true } }),
+        prisma.case.groupBy({ by: ['urgencia'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
+        prisma.case.groupBy({ by: ['categoria'], _count: { _all: true }, where: { status: { not: CaseStatus.DESLIGADO } } }),
+    ])
+
+    // Resolução de Nomes de Usuários (Evita N+1 queries)
+    const userIds = [...new Set([...workloadAgent.map(w => w.agenteAcolhidaId), ...workloadSpec.map(w => w.especialistaPAEFIId)])].filter(Boolean) as string[]
+    const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } })
+    const userMap = new Map(users.map(u => [u.id, u.nome]))
+
+    const result = {
+        role: 'Gerente',
+        totalCases, 
+        acolhidasCount, 
+        acompanhamentosCount, 
+        monitoringCount,
+        newCasesThisMonth: newCases, 
+        closedCasesThisMonth: closedCases,
+        workloadByAgent: workloadAgent.map(w => ({ name: userMap.get(w.agenteAcolhidaId!)?.split(' ')[0] || 'Desconhecido', value: w._count._all })),
+        workloadBySpecialist: workloadSpec.map(w => ({ name: userMap.get(w.especialistaPAEFIId!)?.split(' ')[0] || 'Desconhecido', value: w._count._all })),
+        casesByUrgency: urgencyGroups.map(g => ({ name: g.urgencia || 'Não classificado', value: g._count._all })),
+        casesByCategory: categoryGroups.map(g => ({ name: g.categoria || 'Geral', value: g._count._all })),
+        lastUpdated: new Date().toISOString()
+    }
+    
+    // [CACHE V1.1] Salva por 10 minutos (TTL 600000ms)
+    cache.set(cacheKey, result, 1000 * 60 * 10)
+    return result
+  }
+
+  private static async getUserDashboard(userId: string, cargo: Cargo) {
+    const cacheKey = `user_dash:${userId}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
+    const today = new Date()
+    const firstDay = startOfMonth(today)
+    const lastDay = endOfMonth(today)
+    
+    const isAgent = cargo === Cargo.Agente_Social
+    const filterField = isAgent ? 'agenteAcolhidaId' : 'especialistaPAEFIId'
+    
+    // Status que contam como "Meus Ativos"
+    const statusFilter = isAgent 
+        ? { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } 
+        : { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] }
+
+    const [myActive, myClosed, myNew] = await Promise.all([
+        prisma.case.count({ where: { [filterField]: userId, status: statusFilter } }),
+        prisma.case.count({ where: { [filterField]: userId, status: CaseStatus.DESLIGADO, dataDesligamento: { gte: firstDay, lte: lastDay } } }),
+        prisma.case.count({ where: { [filterField]: userId, [isAgent ? 'dataEntrada' : 'dataInicioPAEFI']: { gte: firstDay, lte: lastDay } } })
+    ])
+
+    const result = { role: cargo, myActiveCases: myActive, myClosedMonth: myClosed, myNewCasesMonth: myNew }
+    cache.set(cacheKey, result, 1000 * 30) // 30 segundos
+    return result
+  }
+
+  // --- PRODUTIVIDADE ---
+  static async getProductivity(mode: 'workload' | 'performance', months: number) {
+    const cacheKey = `productivity:${mode}:${months}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
+    const users = await prisma.user.findMany({ 
+        where: { ativo: true, cargo: { not: Cargo.Gerente } }, 
+        select: { id: true, nome: true, cargo: true } 
+    })
+
+    let result: any
+
+    if (mode === 'performance') {
+      const startDate = subMonths(new Date(), months)
+      
+      const rawActivity = await prisma.caseLog.findMany({ 
+        where: { 
+            createdAt: { gte: startDate }, 
+            acao: { in: [LogAction.MUDANCA_STATUS, LogAction.DESLIGAMENTO, LogAction.ATRIBUICAO, LogAction.EVOLUCAO_CRIADA, LogAction.PAF_CRIADO] } 
+        }, 
+        select: { autorId: true, casoId: true } 
+      })
+      
+      const statsMap = new Map<string, number>()
+      rawActivity.forEach(log => {
+        statsMap.set(log.autorId, (statsMap.get(log.autorId) || 0) + 1)
+      })
+      
+      result = users.map(u => ({ 
+          name: u.nome.split(' ')[0], 
+          value: statsMap.get(u.id) || 0,
+          role: u.cargo 
+      })).sort((a, b) => b.value - a.value)
+
+    } else {
+      const [specialistStats, agentStats] = await Promise.all([
+        prisma.case.groupBy({ by: ['especialistaPAEFIId', 'status'], where: { especialistaPAEFIId: { in: users.map(u => u.id) }, status: { not: CaseStatus.DESLIGADO } }, _count: { _all: true } }),
+        prisma.case.groupBy({ by: ['agenteAcolhidaId', 'status'], where: { agenteAcolhidaId: { in: users.map(u => u.id) }, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }, _count: { _all: true } })
+      ])
+
+      result = users.map(u => {
+          let active = 0, monitoring = 0
+          
+          if (u.cargo === Cargo.Especialista) {
+              const stats = specialistStats.filter(s => s.especialistaPAEFIId === u.id)
+              active = stats.filter(s => s.status !== CaseStatus.EM_MONITORAMENTO).reduce((acc, curr) => acc + curr._count._all, 0)
+              monitoring = stats.filter(s => s.status === CaseStatus.EM_MONITORAMENTO).reduce((acc, curr) => acc + curr._count._all, 0)
+          } else if (u.cargo === Cargo.Agente_Social) {
+              active = agentStats.filter(s => s.agenteAcolhidaId === u.id).reduce((acc, curr) => acc + curr._count._all, 0)
+          }
+          
+          return { 
+              id: u.id, 
+              name: u.nome.split(' ')[0], 
+              role: u.cargo, 
+              active, 
+              monitoring, 
+              totalLoad: active + (monitoring * 0.2) 
+          }
+      }).sort((a,b) => b.totalLoad - a.totalLoad)
+    }
+
+    cache.set(cacheKey, result, 1000 * 60 * 60)
+    return result
+  }
+
+  // --- OBSERVATÓRIO SOCIAL (VIGILÂNCIA) ---
+  static async getVigilanceStats() {
+    const cacheKey = "vigilance_stats"
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
+    const today = new Date()
+    const sixMonthsAgo = subMonths(today, 6)
+
+    const cases = await prisma.case.findMany({
+      where: { 
+          OR: [
+              { createdAt: { gte: sixMonthsAgo } }, 
+              { dataDesligamento: { gte: sixMonthsAgo } }, 
+              { status: { not: CaseStatus.DESLIGADO } } 
+          ] 
+      },
+      select: {
+        id: true, createdAt: true, dataEntrada: true, dataDesligamento: true, dataInicioPAEFI: true,
+        status: true, urgencia: true, violacao: true, categoria: true, sexo: true, nascimento: true, 
+        origem: true, orgaoDemandante: true,
+        latitude: true, longitude: true, endereco_ra: true,
+        encaminhamentos: { select: { instituicao: true } }, 
+        entregas: { select: { tipo: true } }
+      }
+    })
+
+    const monthsMap = new Map()
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(today, i)
+      const key = format(d, 'yyyy-MM')
+      monthsMap.set(key, { name: format(d, 'MMM/yy', { locale: ptBR }), novos: 0, desligados: 0 })
+    }
+
+    const benefitsMap: Record<string, number> = {}
+    const violationMap: Record<string, number> = {}
+    const urgencyMap: Record<string, number> = {}
+    const entryTypeMap: Record<string, number> = {}
+    const originMap: Record<string, number> = {}
+    const networkMap: Record<string, number> = {}
+    
+    const demographics = { 
+        sexo: { Masculino: 0, Feminino: 0, Outro: 0 } as any, 
+        etaria: { '0-11 (Criança)': 0, '12-17 (Adolescente)': 0, '18-59 (Adulto)': 0, '60+ (Idoso)': 0 } as any 
+    }
+    
+    let totalWaitTime = 0, countWaitTime = 0, totalPermanence = 0, countPermanence = 0
+
+    cases.forEach(c => {
+        const entryKey = format(c.dataEntrada, 'yyyy-MM')
+        if (monthsMap.has(entryKey)) monthsMap.get(entryKey).novos++
+        
+        if (c.dataDesligamento) {
+            const exitKey = format(c.dataDesligamento, 'yyyy-MM')
+            if (monthsMap.has(exitKey)) monthsMap.get(exitKey).desligados++
+        }
+
+        const entryLabel = ORIGIN_LABELS[c.origem] || "Outros"
+        entryTypeMap[entryLabel] = (entryTypeMap[entryLabel] || 0) + 1
+
+        const originLabel = c.orgaoDemandante || "Não Informado"
+        originMap[originLabel] = (originMap[originLabel] || 0) + 1
+
+        c.encaminhamentos.forEach(e => networkMap[e.instituicao] = (networkMap[e.instituicao] || 0) + 1)
+        c.entregas.forEach(e => benefitsMap[e.tipo] = (benefitsMap[e.tipo] || 0) + 1)
+
+        if (c.status !== CaseStatus.DESLIGADO) {
+            const vArr = Array.isArray(c.violacao) ? c.violacao : [c.violacao]
+            vArr.forEach((vStr: any) => {
+                if (typeof vStr === 'string') {
+                    vStr.split(',').forEach((subV: string) => {
+                        const label = subV.trim()
+                        if(label) violationMap[label] = (violationMap[label] || 0) + 1
+                    })
+                }
+            })
+
+            const urg = c.urgencia || "Não Classificado"
+            urgencyMap[urg] = (urgencyMap[urg] || 0) + 1
+
+            if (c.sexo === 'Masculino') demographics.sexo.Masculino++
+            else if (c.sexo === 'Feminino') demographics.sexo.Feminino++
+            else demographics.sexo.Outro++
+            
+            if (c.nascimento) {
+                const age = today.getFullYear() - c.nascimento.getFullYear()
+                if (age < 12) demographics.etaria['0-11 (Criança)']++
+                else if (age < 18) demographics.etaria['12-17 (Adolescente)']++
+                else if (age < 60) demographics.etaria['18-59 (Adulto)']++
+                else demographics.etaria['60+ (Idoso)']++
+            }
+        }
+
+        if (c.dataEntrada && c.dataInicioPAEFI) {
+            const wait = differenceInDays(new Date(c.dataInicioPAEFI), new Date(c.dataEntrada))
+            if (wait >= 0) { totalWaitTime += wait; countWaitTime++ }
+        }
+        if (c.status === CaseStatus.DESLIGADO && c.dataInicioPAEFI && c.dataDesligamento) {
+            const perm = differenceInDays(new Date(c.dataDesligamento), new Date(c.dataInicioPAEFI))
+            if (perm >= 0) { totalPermanence += perm; countPermanence++ }
+        }
+    })
+
+    const avgWaitTime = countWaitTime ? Math.round(totalWaitTime / countWaitTime) : 0
+    const avgPermanence = countPermanence ? Math.round(totalPermanence / countPermanence) : 0
+    const totalClosed = cases.filter(c => c.dataDesligamento && c.dataDesligamento >= sixMonthsAgo).length
+
+    const mapData = cases
+        .filter(c => c.latitude && c.longitude && c.status !== CaseStatus.DESLIGADO)
+        .map(c => ({
+            id: c.id, 
+            lat: c.latitude, 
+            lng: c.longitude, 
+            // [REFATORAÇÃO] Uso da função centralizada
+            intensity: calculateUrgencyWeight(c.urgencia), 
+            label: c.categoria || 'Caso',
+            violacao: c.violacao, 
+            categoria: c.categoria, 
+            endereco: c.endereco_ra 
+        }))
+
+    const collectiveData = { totalGroups: 0, totalParticipants: 0, avgAttendance: 0 }
+    try {
+        collectiveData.totalGroups = await prisma.groupActivity.count({ where: { dataRealizacao: { gte: sixMonthsAgo } } })
+        collectiveData.totalParticipants = await prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: sixMonthsAgo } } } })
+        if(collectiveData.totalGroups > 0) collectiveData.avgAttendance = Math.round(collectiveData.totalParticipants / collectiveData.totalGroups)
+    } catch(e) {
+        console.warn("Erro ao buscar dados coletivos:", e)
+    }
+
+    const result = {
+        evolutionData: Array.from(monthsMap.values()),
+        violationData: Object.entries(violationMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
+        urgencyData: Object.entries(urgencyMap).map(([name, value]) => ({ name, value, weight: calculateUrgencyWeight(name) })).sort((a, b) => b.weight - a.weight),
+        
+        originData: Object.entries(originMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
+        networkData: Object.entries(networkMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
+        entryTypeData: Object.entries(entryTypeMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
+        
+        benefitsData: Object.entries(benefitsMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5),
+        
+        mapData,
+        efficiencyData: { avgWaitTime, avgPermanence, totalClosed, retentionRate: totalClosed > 0 ? 85 : 0 },
+        collectiveData,
+        ageData: Object.entries(demographics.etaria).map(([name, value]) => ({ name, value })),
+        sexData: Object.entries(demographics.sexo).map(([name, value]) => ({ name, value }))
+    }
+
+    cache.set(cacheKey, result, 1000 * 60 * 60 * 2) 
+    return result
+  }
+
+  // --- ANALYTICS AVANÇADO (IA E PREDITIVO) ---
+  static async getAdvancedStats(months: number, violacao?: string) {
+    const cacheKey = `advanced_analytics:${months}:${violacao || 'all'}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
+    const today = new Date()
+    const startDate = startOfMonth(subMonths(today, months - 1))
+    
+    const whereClause: any = { 
+        OR: [{ dataEntrada: { gte: startDate } }, { dataDesligamento: { gte: startDate } }] 
+    }
+    if (violacao && violacao !== 'all') { 
+        whereClause.violacao = { has: violacao } 
+    }
+    
+    const cases = await prisma.case.findMany({ 
+        where: whereClause, 
+        select: { id: true, dataEntrada: true, dataDesligamento: true, status: true, violacao: true, urgencia: true } 
+    })
+    
+    const monthlyStats = new Map()
+    for (let i = 0; i < months; i++) {
+        const d = subMonths(today, (months - 1) - i)
+        const key = `${d.getFullYear()}-${d.getMonth()}`
+        monthlyStats.set(key, { name: d.toLocaleDateString("pt-BR", { month: "short" }).toUpperCase(), novos: 0, fechados: 0 })
+    }
+    
+    const violationCount: Record<string, number> = {}
+    
+    cases.forEach(c => {
+        const inKey = `${c.dataEntrada.getFullYear()}-${c.dataEntrada.getMonth()}`
+        if (monthlyStats.has(inKey)) monthlyStats.get(inKey).novos++
+        
+        if (c.dataDesligamento) {
+            const outKey = `${c.dataDesligamento.getFullYear()}-${c.dataDesligamento.getMonth()}`
+            if (monthlyStats.has(outKey)) monthlyStats.get(outKey).fechados++
+        }
+
+        const vArr = Array.isArray(c.violacao) ? c.violacao : [c.violacao]
+        vArr.forEach((vStr: any) => {
+            if (typeof vStr === 'string') {
+                vStr.split(',').forEach((subV: string) => {
+                    const label = subV.trim()
+                    if(label) violationCount[label] = (violationCount[label] || 0) + 1
+                })
+            }
+        })
+    })
+    
+    const pieData = Object.entries(violationCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10)
+    const totalActive = await prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } })
+
+    const { AnalyticsAI } = require('./AnalyticsAI'); 
+    const insights = await AnalyticsAI.generateInsights(months);
+
+    const result = { 
+        trendData: Array.from(monthlyStats.values()), 
+        totalActive, 
+        insights, 
+        pieData, 
+        avgHandlingTime: 45 
+    }
+
+    cache.set(cacheKey, result, 1000 * 60 * 30)
+    return result
+  }
+
+  // --- ATIVIDADE RECENTE (Feed) ---
+  static async getRecentActivity(user: { sub: string, cargo: string }) {
+    const cacheKey = `activity_feed:${user.sub}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
+    const whereScope = user.cargo === Cargo.Gerente 
+        ? {} 
+        : { caso: { OR: [{ agenteAcolhidaId: user.sub }, { especialistaPAEFIId: user.sub }] } }
+        
+    const result = await prisma.caseLog.findMany({
+        where: whereScope, 
+        take: 10, 
+        orderBy: { createdAt: 'desc' },
+        include: { 
+            autor: { select: { nome: true, cargo: true } }, 
+            caso: { select: { id: true, nomeCompleto: true } } 
+        }
+    })
+
+    cache.set(cacheKey, result, 1000 * 15)
+    return result
+  }
+}
+
+FILE: backend\src\services\UserService.ts
+--------------------------------------------------
+// backend/src/services/UserService.ts
+import { prisma } from '../lib/prisma'
+import { Cargo, CaseStatus } from '@prisma/client'
+import bcrypt from 'bcryptjs'
+
+interface CreateUserInput {
+  nome: string
+  email: string
+  matricula?: string
+  cargo: Cargo
+  senhaInicial: string
+}
+
+interface UpdateUserInput {
+  id: string
+  nome?: string
+  email?: string
+  matricula?: string
+  cargo?: Cargo
+}
+
+export class UserService {
+
+  // --- CRUD BÁSICO ---
+
+  static async create({ nome, email, matricula, cargo, senhaInicial }: CreateUserInput) {
+    const userExists = await prisma.user.findUnique({ where: { email } })
+    if (userExists) throw new Error('EMAIL_ALREADY_EXISTS')
+
+    const passwordHash = await bcrypt.hash(senhaInicial, 10)
+
+    return prisma.user.create({
+      data: {
+        nome,
+        email,
+        matricula,
+        cargo,
+        senha: passwordHash,
+        ativo: true
+      }
+    })
+  }
+
+  static async update(id: string, data: UpdateUserInput) {
+    return prisma.user.update({
+      where: { id },
+      data
+    })
+  }
+
+  static async deactivate(id: string) {
+    return prisma.user.update({
+      where: { id },
+      data: { ativo: false }
+    })
+  }
+
+  // --- SEGURANÇA ---
+
+  static async changePassword(userId: string, senhaAtual: string, novaSenha: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) throw new Error('NOT_FOUND')
+
+    const isPasswordValid = await bcrypt.compare(senhaAtual, user.senha)
+    if (!isPasswordValid) throw new Error('INVALID_PASSWORD')
+
+    const newPasswordHash = await bcrypt.hash(novaSenha, 10)
+    
+    await prisma.user.update({ 
+      where: { id: userId }, 
+      data: { senha: newPasswordHash } 
+    })
+    
+    return true
+  }
+
+  // --- LISTAGENS E REGRAS DE NEGÓCIO ---
+
+  static async listAll(currentUserId: string, cargo?: Cargo, active: boolean = true) {
+    return prisma.user.findMany({
+      where: { 
+        id: { not: currentUserId }, 
+        ativo: active, 
+        ...(cargo ? { cargo } : {}) 
+      },
+      orderBy: { nome: 'asc' },
+    })
+  }
+
+  static async listAgents() {
+    return prisma.user.findMany({
+      where: { cargo: Cargo.Agente_Social, ativo: true },
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true },
+    })
+  }
+
+  /**
+   * Lista especialistas com a contagem de carga de trabalho atual (Casos ativos)
+   * Útil para o gerente decidir para quem atribuir um novo caso (Load Balancing)
+   */
+  static async listSpecialistsWithLoad() {
+    // 1. Busca especialistas ativos
+    const users = await prisma.user.findMany({
+      where: { ativo: true, cargo: Cargo.Especialista },
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true, cargo: true }
+    })
+
+    // 2. Calcula carga de trabalho (Query N+1 otimizada com Promise.all)
+    // Nota: Poderíamos usar include: { _count: ... } se a relação estiver direta,
+    // mas a lógica de "status != DESLIGADO" exige filtro no count.
+    const results = await Promise.all(users.map(async (u) => {
+      const count = await prisma.case.count({
+          where: { 
+              especialistaPAEFIId: u.id,
+              status: { not: CaseStatus.DESLIGADO }
+          }
+      })
+
+      return {
+          id: u.id,
+          nome: u.nome,
+          cargo: u.cargo,
+          activeCases: count
+      }
+    }))
+
+    return results
+  }
+}
+
+FILE: backend\src\services\WaitingListService.ts
+--------------------------------------------------
+// backend/src/services/WaitingListService.ts
+import { prisma } from '../lib/prisma'
+import { Cargo, CaseStatus, LogAction } from '@prisma/client'
+
+interface ProcessActionInput {
+  caseId: string
+  userId: string
+  cargo: Cargo
+  targetUserId?: string
+}
+
+export class WaitingListService {
+
+  /**
+   * Retorna os casos da fila baseados na permissão do cargo
+   * ORDENAÇÃO: 
+   * 1. Urgência/Peso (Decrescente - 4 para 1)
+   * 2. Data de Entrada (Crescente - Mais antigo primeiro)
+   */
+  static async getWaitingList(userId: string, cargo: Cargo) {
+    let whereCondition: any = { deletado: false }
+
+    // Regras de Visibilidade (Quem vê o quê)
+    if (cargo === Cargo.Agente_Social) {
+      whereCondition.status = CaseStatus.AGUARDANDO_ACOLHIDA
+      // Agentes veem o que foi atribuído a eles OU o que está na fila geral sem dono
+      whereCondition.OR = [
+          { agenteAcolhidaId: userId },
+          { agenteAcolhidaId: null }
+      ]
+    } 
+    else if (cargo === Cargo.Gerente) {
+      whereCondition.status = CaseStatus.AGUARDANDO_DISTRIBUICAO
+    } 
+    else if (cargo === Cargo.Especialista) {
+      // Especialistas veem o que foi distribuído para eles
+      whereCondition.status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA
+      whereCondition.especialistaPAEFIId = userId 
+    }
+    else if (cargo === Cargo.Auditor) {
+      whereCondition.status = { 
+        in: [
+          CaseStatus.AGUARDANDO_ACOLHIDA, 
+          CaseStatus.AGUARDANDO_DISTRIBUICAO, 
+          CaseStatus.EM_ACOLHIDA_ESPECIALIZADA
+        ] 
+      }
+    } else {
+      return [] // Outros cargos não têm fila de espera
+    }
+
+    return prisma.case.findMany({
+      where: whereCondition,
+      orderBy: [
+        { pesoUrgencia: 'desc' }, // Mais grave no topo
+        { dataEntrada: 'asc' }    // Mais antigo no topo
+      ],
+      select: {
+        id: true,
+        nomeCompleto: true,
+        dataEntrada: true,
+        urgencia: true,
+        pesoUrgencia: true,
+        violacao: true,
+        status: true,
+        agenteAcolhida: { select: { nome: true } },
+        especialistaPAEFI: { select: { nome: true } }
+      }
+    })
+  }
+
+  // ... (Método processAction mantido igual)
+  static async processAction({ caseId, userId, cargo, targetUserId }: ProcessActionInput) {
+    const existingCase = await prisma.case.findUnique({ where: { id: caseId } })
+    if (!existingCase) throw new Error('NOT_FOUND')
+
+    let updateData: any = {}
+    let logDescricao = ''
+    let logAction: LogAction = LogAction.MUDANCA_STATUS
+
+    // 1. Agente: Iniciar Acolhida (Check-in) ou Pegar da Fila Geral
+    if (cargo === Cargo.Agente_Social && existingCase.status === CaseStatus.AGUARDANDO_ACOLHIDA) {
+      updateData = { 
+          status: CaseStatus.EM_ACOLHIDA,
+          agenteAcolhidaId: userId // Auto-atribuição se vier da fila geral
+      }
+      logDescricao = 'Iniciou a Acolhida (Check-in)'
+    }
+    
+    // 2. Gerente: Distribuir para Especialista
+    else if (cargo === Cargo.Gerente && existingCase.status === CaseStatus.AGUARDANDO_DISTRIBUICAO) {
+      if (!targetUserId) throw new Error('MISSING_TARGET_USER')
+      
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { nome: true } })
+      
+      updateData = {
+        status: CaseStatus.EM_ACOLHIDA_ESPECIALIZADA,
+        especialistaPAEFIId: targetUserId
+      }
+      
+      logAction = LogAction.ATRIBUICAO
+      logDescricao = `Distribuiu caso para: ${targetUser?.nome || 'Especialista'}`
+    }
+    
+    // 3. Especialista: Aceitar Caso (Iniciar PAEFI)
+    else if (cargo === Cargo.Especialista && existingCase.status === CaseStatus.EM_ACOLHIDA_ESPECIALIZADA) {
+      if (existingCase.especialistaPAEFIId !== userId) throw new Error('FORBIDDEN_OWNERSHIP')
+      
+      updateData = { 
+        status: CaseStatus.EM_ACOMPANHAMENTO,
+        dataInicioPAEFI: new Date()
+      }
+      logDescricao = 'Iniciou Acompanhamento PAEFI (Aceite)'
+    }
+    
+    else {
+      throw new Error('INVALID_TRANSITION')
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.case.update({
+        where: { id: caseId },
+        data: updateData,
+        select: { status: true }
+      })
+
+      await tx.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: userId,
+          acao: logAction,
+          descricao: logDescricao,
+          valorAnterior: existingCase.status,
+          valorNovo: updated.status
+        }
+      })
+
+      return updated
+    })
+  }
+}
+
+FILE: backend\src\services\WorkspaceService.ts
+--------------------------------------------------
+// backend/src/services/WorkspaceService.ts
+import { prisma } from '../lib/prisma'
+import { Cargo, CaseStatus, LogAction } from '@prisma/client'
+import { startOfDay, endOfDay, subDays, differenceInDays } from 'date-fns'
+
+enum CaseAlertType {
+  PAF_NOT_STARTED = 'PAF_NOT_STARTED',
+  PAF_STALLED = 'PAF_STALLED', 
+  PAF_REVIEW_OVERDUE = 'PAF_REVIEW_OVERDUE', 
+  RECEPTION_DELAY = 'RECEPTION_DELAY', 
+  NOT_STARTED_YET = 'NOT_STARTED_YET' 
+}
+
+export class WorkspaceService {
+
+  // --- HELPERS ---
+
+  private static processTopViolations(violationArrays: (string[] | null)[]) {
+    const counts: Record<string, number> = {}
+    violationArrays.forEach(arr => {
+      if (Array.isArray(arr)) {
+        arr.forEach(rawItem => {
+          if (!rawItem) return
+          String(rawItem).split(',').forEach(p => {
+              const name = p.trim()
+              if (name) counts[name] = (counts[name] || 0) + 1
+          })
+        })
+      }
+    })
+    return Object.entries(counts)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+  }
+
+  // --- MÉTODOS DE NEGÓCIO ---
+
+  static async getAppointments(userId: string, isAuditor: boolean) {
+    if (isAuditor) return []
+    const now = new Date()
+    return prisma.agendamento.findMany({
+      where: { 
+        responsavelId: userId, 
+        data: { gte: startOfDay(now), lte: endOfDay(now) } 
+      },
+      include: { caso: { select: { id: true, nomeCompleto: true } } },
+      orderBy: { data: 'asc' }
+    })
+  }
+
+  static async getManagerDashboard() {
+    const [totalActive, waitingForReception, waitingForDistribution, allViolations] = await Promise.all([
+      prisma.case.count({ where: { status: { not: CaseStatus.DESLIGADO } } }),
+      prisma.case.count({ where: { status: CaseStatus.AGUARDANDO_ACOLHIDA } }),
+      prisma.case.count({ where: { status: CaseStatus.AGUARDANDO_DISTRIBUICAO } }),
+      prisma.case.findMany({ 
+        where: { status: { not: CaseStatus.DESLIGADO } },
+        select: { violacao: true } 
+      })
+    ])
+    
+    const teamMembers = await prisma.user.findMany({
+      where: { cargo: { in: [Cargo.Especialista, Cargo.Agente_Social] }, ativo: true },
+      select: { id: true, nome: true, cargo: true }
+    })
+
+    const teamLoad = await Promise.all(teamMembers.map(async (member) => {
+      let count = 0
+      if (member.cargo === Cargo.Agente_Social) {
+        count = await prisma.case.count({
+          where: { agenteAcolhidaId: member.id, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
+        })
+      } else {
+        count = await prisma.case.count({
+          where: { especialistaPAEFIId: member.id, status: { not: CaseStatus.DESLIGADO } }
+        })
+      }
+      return { id: member.id, nome: member.nome, role: member.cargo, cases: count }
+    }))
+
+    return {
+      role: 'GERENTE',
+      stats: { totalActive, waitingForReception, waitingForDistribution },
+      teamLoad,
+      topViolations: this.processTopViolations(allViolations.map(c => c.violacao))
+    }
+  }
+
+  static async getAuditorDashboard() {
+    const incompleteCases = await prisma.case.findMany({
+      where: { 
+        status: { not: CaseStatus.DESLIGADO },
+        // CORREÇÃO: Removido '{ cpf: null }' pois o campo é obrigatório no schema.
+        // Mantemos a busca por endereço incompleto (que é opcional) ou string vazia.
+        OR: [ 
+            { endereco_logradouro: null }, 
+            { endereco_logradouro: '' } 
+        ] 
+      },
+      take: 20,
+      select: { id: true, nomeCompleto: true, cpf: true, endereco_logradouro: true }
+    })
+
+    const recentLogs = await prisma.caseLog.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: { autor: { select: { nome: true } } }
+    })
+
+    return { 
+      role: 'AUDITOR', 
+      incompleteCases, 
+      recentLogs: recentLogs.map(l => ({ ...l, acao: String(l.acao) })) 
+    }
+  }
+
+  static async getOperationalDashboard(userId: string, cargo: Cargo) {
+    const isEspecialista = cargo === Cargo.Especialista
+    const now = new Date()
+    
+    const myCases = await prisma.case.findMany({
+      where: isEspecialista 
+        ? { especialistaPAEFIId: userId, status: { not: CaseStatus.DESLIGADO } }
+        : { agenteAcolhidaId: userId, status: { in: [CaseStatus.EM_ACOLHIDA, CaseStatus.AGUARDANDO_ACOLHIDA] } },
+      orderBy: [ { pesoUrgencia: 'desc' }, { updatedAt: 'desc' } ],
+      select: {
+        id: true, nomeCompleto: true, status: true, 
+        urgencia: true, violacao: true, updatedAt: true, dataEntrada: true
+      }
+    })
+
+    let detailedStats = { monitoramento: 0, acolhidaEsp: 0, acompanhamento: 0, meusAguardando: 0, meusEmAtendimento: 0, filaGeral: 0 }
+
+    if (isEspecialista) {
+      const stats = await prisma.case.groupBy({
+        by: ['status'],
+        where: { especialistaPAEFIId: userId, status: { not: CaseStatus.DESLIGADO } },
+        _count: { _all: true }
+      })
+      detailedStats.monitoramento = stats.find(s => s.status === CaseStatus.EM_MONITORAMENTO)?._count._all || 0
+      detailedStats.acolhidaEsp = stats.find(s => s.status === CaseStatus.EM_ACOLHIDA_ESPECIALIZADA)?._count._all || 0
+      detailedStats.acompanhamento = stats.find(s => s.status === CaseStatus.EM_ACOMPANHAMENTO)?._count._all || 0
+    } else {
+      const stats = await prisma.case.groupBy({
+        by: ['status'],
+        where: { agenteAcolhidaId: userId },
+        _count: { _all: true }
+      })
+      const generalQueue = await prisma.case.count({ 
+        where: { status: CaseStatus.AGUARDANDO_ACOLHIDA, agenteAcolhidaId: null } 
+      })
+      detailedStats.meusAguardando = stats.find(s => s.status === CaseStatus.AGUARDANDO_ACOLHIDA)?._count._all || 0
+      detailedStats.meusEmAtendimento = stats.find(s => s.status === CaseStatus.EM_ACOLHIDA)?._count._all || 0
+      detailedStats.filaGeral = generalQueue
+    }
+
+    // Alertas de Prazos
+    const caseIds = myCases.map(c => c.id)
+    const lastEvolutions = await prisma.evolucao.findMany({
+      where: { casoId: { in: caseIds } },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['casoId'],
+      select: { casoId: true, createdAt: true }
+    })
+    const evoMap = new Map(lastEvolutions.map(e => [e.casoId, e.createdAt]))
+
+    const alerts = myCases.map(c => {
+      const lastDate = evoMap.get(c.id)
+      const dataEntrada = new Date(c.dataEntrada)
+      
+      if (isEspecialista) {
+        if (!lastDate) return { ...c, type: CaseAlertType.PAF_NOT_STARTED, days: differenceInDays(now, dataEntrada) }
+        if (differenceInDays(now, lastDate) > 90) return { ...c, type: CaseAlertType.PAF_REVIEW_OVERDUE, days: differenceInDays(now, lastDate) }
+        if (differenceInDays(now, lastDate) > 30) return { ...c, type: CaseAlertType.PAF_STALLED, days: differenceInDays(now, lastDate) }
+      } else {
+        if (c.status === CaseStatus.AGUARDANDO_ACOLHIDA && differenceInDays(now, dataEntrada) > 2) 
+          return { ...c, type: CaseAlertType.NOT_STARTED_YET, days: differenceInDays(now, dataEntrada) }
+        if (c.status === CaseStatus.EM_ACOLHIDA && !lastDate && differenceInDays(now, dataEntrada) > 5) 
+          return { ...c, type: CaseAlertType.RECEPTION_DELAY, days: differenceInDays(now, dataEntrada) }
+      }
+      return null
+    }).filter((a): a is any => a !== null)
+
+    return { role: cargo, myCases, alerts, detailedStats }
+  }
+
+  static async distributeCase(caseId: string, targetUserId: string, roleType: 'AGENTE' | 'ESPECIALISTA', managerId: string) {
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, nome: true, cargo: true, ativo: true }
+    })
+
+    if (!targetUser || !targetUser.ativo) throw new Error('INVALID_USER')
+
+    const dataToUpdate: any = {}
+    
+    if (roleType === 'AGENTE') {
+      if (targetUser.cargo !== Cargo.Agente_Social) throw new Error('ROLE_MISMATCH')
+      dataToUpdate.agenteAcolhidaId = targetUserId
+      dataToUpdate.status = CaseStatus.AGUARDANDO_ACOLHIDA 
+    } else {
+      if (targetUser.cargo !== Cargo.Especialista) throw new Error('ROLE_MISMATCH')
+      dataToUpdate.especialistaPAEFIId = targetUserId
+      dataToUpdate.status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA
+    }
+
+    await prisma.$transaction([
+      prisma.case.update({ where: { id: caseId }, data: dataToUpdate }),
+      prisma.caseLog.create({
+        data: {
+          casoId: caseId,
+          autorId: managerId,
+          acao: LogAction.ATRIBUICAO,
+          descricao: `Atribuído para ${targetUser.nome} (${roleType})`
+        }
+      })
+    ])
+    
+    return true
+  }
+}

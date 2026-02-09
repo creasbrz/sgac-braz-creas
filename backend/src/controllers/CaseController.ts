@@ -4,7 +4,7 @@ import { CaseService } from '../services/CaseService'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
 import { Cargo, CaseStatus } from '@prisma/client'
 
-// Interfaces locais para Tipagem estrita dos Bodys
+// Interfaces locais
 interface UpdateStatusBody {
   status: CaseStatus
 }
@@ -17,11 +17,12 @@ interface CloseCaseBody {
   parecerFinal: string
   motivoDesligamento: string
   destinoDesligamento?: string
+  manterReferencia?: boolean
 }
 
 export class CaseController {
   
-  static async create(req: FastifyRequest<{ Body: CreateCaseInput }>, reply: FastifyReply) {
+  static async create(req: FastifyRequest<{ Body: CreateCaseInput & { email?: string, casoPrincipalId?: string } }>, reply: FastifyReply) {
     const { sub: userId } = req.user as { sub: string }
     
     try {
@@ -49,7 +50,8 @@ export class CaseController {
     return reply.send(caso)
   }
 
-  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateCaseInput }>, reply: FastifyReply) {
+  // [CORREÇÃO] Tipagem do body aceitando casoPrincipalId nullable
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateCaseInput & { email?: string, casoPrincipalId?: string | null } }>, reply: FastifyReply) {
     const { id } = req.params
     const { sub: userId } = req.user as { sub: string }
     
@@ -90,12 +92,10 @@ export class CaseController {
     }
   }
 
-  // [CORREÇÃO AQUI] Definida a interface CloseCaseBody explicitamente no Generic
   static async closeCase(req: FastifyRequest<{ Params: { id: string }, Body: CloseCaseBody }>, reply: FastifyReply) {
     const { id } = req.params
     const { sub: userId } = req.user as { sub: string }
     
-    // Agora req.body é tipado como CloseCaseBody, satisfazendo o Service
     const updated = await CaseService.closeCase(id, req.body, userId)
     return reply.send(updated)
   }

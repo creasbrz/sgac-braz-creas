@@ -74,9 +74,9 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relacionamentos
-  casosCriados      Case[]               @relation("Criador")
-  casosAcolhida     Case[]               @relation("AgenteAcolhida")
-  casosPAEFI        Case[]               @relation("EspecialistaPAEFI")
+  casosCriados      Case[]            @relation("Criador")
+  casosAcolhida     Case[]            @relation("AgenteAcolhida")
+  casosPAEFI        Case[]            @relation("EspecialistaPAEFI")
   evolucoes         Evolucao[]
   pafs              Paf[]
   pafVersions       PafVersion[]
@@ -87,6 +87,7 @@ model User {
   encaminhamentos   Encaminhamento[]
   entregas          ServiceDeliverable[]
   gruposFacilitados GroupActivity[]
+  documentosTecnicos TechnicalDocument[]
 }
 
 model Case {
@@ -100,6 +101,9 @@ model Case {
   cpf          String   @unique
   nascimento   DateTime
   sexo         String
+  
+  // [NOVO v8.2] Comunicação
+  email        String? 
 
   // 2. Dados Socioeconômicos do Titular
   ocupacao String?
@@ -122,6 +126,11 @@ model Case {
   // 5. Responsável (Menores/Incapazes)
   responsavelLegal      String?
   parentescoResponsavel String?
+
+  // [NOVO v8.2] Vínculo Familiar (Relacionamento entre Prontuários)
+  casoPrincipalId String?
+  casoPrincipal   Case?   @relation("VinculoFamiliar", fields: [casoPrincipalId], references: [id])
+  casosVinculados Case[]  @relation("VinculoFamiliar")
 
   // 6. Dados Técnicos da Demanda
   dataEntrada     DateTime   @default(now())
@@ -151,12 +160,16 @@ model Case {
   especialistaPAEFIId String?
   especialistaPAEFI   User?   @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
 
-  // 9. Desligamento
+  // 9. Desligamento e Monitoramento
   dataInicioPAEFI     DateTime?
   dataDesligamento    DateTime?
   motivoDesligamento  String?
   destinoDesligamento String?
   parecerFinal        String?
+
+  // [NOVO v8.2] Controle Pós-Desligamento e Gerencial
+  manterReferencia    Boolean   @default(false)
+  dataUltimaRevisaoGerencial DateTime?
 
   // 10. Soft Delete
   deletado     Boolean   @default(false)
@@ -172,6 +185,7 @@ model Case {
   familia         MembroFamilia[]
   entregas        ServiceDeliverable[]
   participacoes   GroupAttendance[]
+  documentos      TechnicalDocument[]
 
   // Índices para Performance
   @@index([status])
@@ -181,6 +195,7 @@ model Case {
   @@index([especialistaPAEFIId])
   @@index([violacao])
   @@index([endereco_ra])
+  @@index([cpf])
   @@map("cases")
 }
 
@@ -198,6 +213,21 @@ model Evolucao {
   autor   User   @relation(fields: [autorId], references: [id])
 
   @@index([casoId, createdAt(sort: Desc)])
+}
+
+// [NOVO v8.3 - Preparação] Tabela genérica para Relatórios, Ofícios, etc.
+model TechnicalDocument {
+  id        String   @id @default(uuid())
+  tipo      String   // 'RELATORIO_SOCIO', 'INFORMATIVO', 'SOLICITACAO_ACOLHIMENTO'
+  conteudo  Json     // Armazena a estrutura do formulário
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  casoId    String
+  caso      Case     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  
+  autorId   String
+  autor     User     @relation(fields: [autorId], references: [id])
 }
 
 model Paf {

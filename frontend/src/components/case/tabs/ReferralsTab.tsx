@@ -27,7 +27,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 
-// Função utilitária para classes
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
 
 interface Referral {
@@ -47,7 +46,6 @@ const TIPOS_REDE = [
   "Trabalho & Renda (SETEMP)", "Habitação (CODHAB)", "Transporte (Mobilidade)", "Outros"
 ]
 
-// Base de dados de sugestões para Autocomplete
 const SUGESTOES_POR_EIXO: Record<string, string[]> = {
   "Saúde (SES/DF)": [
     "Hospital Regional de Brazlândia (HRBz)",
@@ -114,7 +112,6 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
   // Estado para o Combobox
   const [openCombobox, setOpenCombobox] = useState(false)
 
-  // Memoiza as sugestões baseadas no tipo selecionado
   const sugestoesAtuais = useMemo(() => {
     return tipo ? (SUGESTOES_POR_EIXO[tipo] || []) : []
   }, [tipo])
@@ -159,9 +156,9 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
   // Renderização do Badge de Status
   const StatusBadge = ({ status }: { status: string }) => {
     const config = {
-      'CONCLUIDO': { bg: 'bg-status-success-bg text-status-success-fg border-status-success-border', icon: CheckCircle2, text: 'Concluído' },
+      'CONCLUIDO': { bg: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800', icon: CheckCircle2, text: 'Concluído' },
       'CANCELADO': { bg: 'bg-muted text-muted-foreground border-border', icon: XCircle, text: 'Cancelado' },
-      'PENDENTE': { bg: 'bg-status-warning-bg text-status-warning-fg border-status-warning-border', icon: Clock, text: 'Pendente' }
+      'PENDENTE': { bg: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800', icon: Clock, text: 'Pendente' }
     }
     const { bg, icon: Icon, text } = config[status as keyof typeof config] || config['PENDENTE']
     
@@ -206,11 +203,11 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
 
         {referrals.map((ref) => {
           const statusColors = {
-            'PENDENTE': 'border-l-status-warning-fg',
-            'CONCLUIDO': 'border-l-status-success-fg',
-            'CANCELADO': 'border-l-muted-foreground'
+            'PENDENTE': 'border-l-amber-500',
+            'CONCLUIDO': 'border-l-green-500',
+            'CANCELADO': 'border-l-muted'
           }
-          const borderClass = statusColors[ref.status] || 'border-l-primary'
+          const borderClass = statusColors[ref.status as keyof typeof statusColors] || 'border-l-primary'
 
           return (
             <Card key={ref.id} className={cn("border-l-4 shadow-sm hover:shadow-md transition-shadow group bg-card", borderClass)}>
@@ -239,9 +236,9 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                       <DropdownMenuLabel>Ações</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       {ref.status !== 'CONCLUIDO' && (
-                         <DropdownMenuItem onClick={() => updateStatus({ id: ref.id, status: 'CONCLUIDO' })}>
-                           <CheckCircle2 className="mr-2 h-4 w-4 text-status-success-fg" /> Marcar Concluído
-                         </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateStatus({ id: ref.id, status: 'CONCLUIDO' })}>
+                            <CheckCircle2 className="mr-2 h-4 w-4 text-green-600" /> Marcar Concluído
+                          </DropdownMenuItem>
                       )}
                       {ref.status !== 'CANCELADO' && (
                         <DropdownMenuItem onClick={() => updateStatus({ id: ref.id, status: 'CANCELADO' })}>
@@ -258,28 +255,28 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
 
                 {/* Corpo: Motivo */}
                 <div className="flex-1 space-y-3">
-                   <div className="bg-muted/30 p-3 rounded-md border border-border/40">
+                    <div className="bg-muted/30 p-3 rounded-md border border-border/40">
                       <p className="text-sm text-foreground/90 italic leading-relaxed">"{ref.motivo}"</p>
-                   </div>
-                   
-                   {/* Retorno */}
-                   {ref.retorno && (
-                      <div className="pl-3 border-l-2 border-status-success-fg/50">
-                         <p className="text-xs font-bold text-status-success-fg uppercase mb-0.5">Retorno</p>
-                         <p className="text-sm text-foreground/80">{ref.retorno}</p>
+                    </div>
+                    
+                    {/* Retorno */}
+                    {ref.retorno && (
+                      <div className="pl-3 border-l-2 border-green-500/50">
+                          <p className="text-xs font-bold text-green-600 uppercase mb-0.5">Retorno</p>
+                          <p className="text-sm text-foreground/80">{ref.retorno}</p>
                       </div>
-                   )}
+                    )}
                 </div>
 
                 {/* Rodapé */}
                 <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-auto">
-                   <div className="flex flex-col text-xs text-muted-foreground">
+                    <div className="flex flex-col text-xs text-muted-foreground">
                       <span className="flex items-center gap-1 font-medium">
-                         <Calendar className="h-3 w-3" /> {format(new Date(ref.dataEnvio), "dd MMM yyyy", { locale: ptBR })}
+                          <Calendar className="h-3 w-3" /> {format(new Date(ref.dataEnvio), "dd MMM yyyy", { locale: ptBR })}
                       </span>
                       <span className="opacity-70">Por: {ref.autor?.nome.split(' ')[0]}</span>
-                   </div>
-                   <StatusBadge status={ref.status} />
+                    </div>
+                    <StatusBadge status={ref.status} />
                 </div>
 
               </CardContent>
@@ -290,7 +287,7 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
 
       {/* Dialog Novo Encaminhamento */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-125 gap-0 p-0 overflow-hidden bg-background border-border">
+        <DialogContent className="sm:max-w-lg gap-0 p-0 overflow-hidden bg-background border-border">
           <DialogHeader className="px-6 pt-6 pb-4 bg-muted/30 border-b border-border/60">
             <DialogTitle className="flex items-center gap-2">
                <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20"><Network className="h-4 w-4 text-primary"/></div>
@@ -329,7 +326,7 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-112.5 p-0" align="start">
+                <PopoverContent className="w-[300px] sm:w-[400px] p-0" align="start">
                   <Command>
                     <CommandInput placeholder="Buscar instituição..." />
                     <CommandList>
@@ -343,8 +340,9 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                           <CommandItem
                             key={item}
                             value={item}
-                            onSelect={(currentValue) => {
-                              setInstituicao(currentValue === instituicao ? "" : currentValue)
+                            onSelect={() => {
+                              // [FIX] Usar 'item' diretamente para preservar casing
+                              setInstituicao(item === instituicao ? "" : item)
                               setOpenCombobox(false)
                             }}
                           >
@@ -360,21 +358,23 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                       </CommandGroup>
                     </CommandList>
                   </Command>
+                  
+                  {/* Campo livre para digitação manual caso não encontre na lista */}
                   <div className="p-2 border-t bg-muted/20">
                       <p className="text-[10px] text-muted-foreground mb-1.5 px-1 font-bold uppercase tracking-wider">Outra Instituição (Digite Abaixo):</p>
                       <input 
-                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                         placeholder="Digite o nome manualmente..."
-                         value={instituicao}
-                         onChange={(e) => setInstituicao(e.target.value)}
-                         onKeyDown={(e) => e.stopPropagation()}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          placeholder="Digite o nome manualmente..."
+                          value={instituicao}
+                          onChange={(e) => setInstituicao(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
                       />
                   </div>
                 </PopoverContent>
               </Popover>
 
               <p className="text-[10px] text-muted-foreground">
-                 {sugestoesAtuais.length > 0 ? "Selecione da lista ou digite um novo local." : "Digite o nome do local manualmente."}
+                  {sugestoesAtuais.length > 0 ? "Selecione da lista ou digite um novo local." : "Digite o nome do local manualmente."}
               </p>
             </div>
 
@@ -388,7 +388,7 @@ export function ReferralsTab({ caseId }: { caseId: string }) {
                 className="resize-none bg-background focus-visible:ring-primary/20"
               />
               <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/30 p-1.5 rounded border border-border/40 w-fit">
-                 <AlertCircle className="h-3 w-3 text-primary" /> Seja breve e objetivo.
+                  <AlertCircle className="h-3 w-3 text-primary" /> Seja breve e objetivo.
               </p>
             </div>
           </div>

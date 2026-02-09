@@ -30,7 +30,7 @@ import { UserManagement } from "./pages/UserManagement";
 import { TeamOverview } from "./pages/TeamOverview";
 import { GlobalAudit } from "./pages/GlobalAudit";
 import { NotFound } from "./pages/NotFound";
-import { AdvancedAnalytics } from "./pages/AdvancedAnalytics";
+import { AdvancedAnalytics } from "./pages/dashboard/AdvancedAnalytics";
 import { GroupManagement } from "./pages/GroupManagement";
 import { WaitingList } from "./pages/WaitingList";
 

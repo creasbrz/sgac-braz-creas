@@ -6,23 +6,23 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  // 1. Pastas ignoradas globalmente
-  { ignores: ['dist', 'node_modules', 'public'] },
+  // 1. Ignora pastas de build e dependências
+  { ignores: ['dist', 'node_modules', 'public', 'coverage'] },
 
-  // 2. Extensões de configuração recomendadas
+  // 2. Configuração Base
   {
     extends: [
       js.configs.recommended,
       ...tseslint.configs.recommended,
     ],
     
+    // Aplica apenas aos arquivos de código fonte
     files: ['**/*.{ts,tsx}'],
     
     languageOptions: {
-      ecmaVersion: 2022,
+      ecmaVersion: 2024, // Bleeding Edge
       globals: {
-        ...globals.browser,
-        ...globals.node 
+        ...globals.browser, // Apenas globais do navegador (window, document)
       },
     },
     
@@ -34,6 +34,7 @@ export default tseslint.config(
     rules: {
       // --- React Hooks ---
       ...reactHooks.configs.recommended.rules,
+      'react-hooks/exhaustive-deps': 'warn', // Crucial para evitar loops infinitos em useEffect
       
       // --- Fast Refresh (Vite) ---
       'react-refresh/only-export-components': [
@@ -41,10 +42,10 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
 
-      // --- TypeScript ---
-      // Permite 'any' explicito, mas avisa.
+      // --- TypeScript & Code Quality ---
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }], // Em prod, console.log é lixo
     },
   },
 )

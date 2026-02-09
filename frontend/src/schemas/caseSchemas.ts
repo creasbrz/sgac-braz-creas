@@ -55,6 +55,12 @@ export const createCaseFormSchema = z.object({
   nascimento: z.string().refine((val) => val.length > 0, 'Data de nascimento obrigatória.'),
   sexo: z.string().min(1, 'Selecione o sexo.'),
 
+  // [NOVO v8.2] Campo de E-mail (Opcional, mas validado se preenchido)
+  email: z.union([
+    z.literal(''), 
+    z.string().email('Formato de e-mail inválido.')
+  ]).optional().nullable(),
+
   ocupacao: z.preprocess(
     (val) => (val === "" || val === null ? undefined : val),
     z.enum([...OCUPACOES_ROL] as [string, ...string[]])
@@ -113,4 +119,6 @@ export const closeCaseFormSchema = z.object({
   motivoDesligamento: z.string().min(1, 'Selecione um motivo.'),
   destinoDesligamento: z.string().min(1, 'Selecione o destino.'),
   parecerFinal: z.string().min(10, 'Parecer detalhado obrigatório.'),
+  // [NOVO] Flag
+  manterReferencia: z.boolean().default(false),
 })

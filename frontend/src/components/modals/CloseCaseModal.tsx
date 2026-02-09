@@ -30,6 +30,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form'
 import {
   Select,
@@ -40,6 +41,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type CloseCaseFormData = z.infer<typeof closeCaseFormSchema>
 
@@ -61,12 +63,15 @@ export function CloseCaseModal({
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
+  // [CORREÇÃO ERRO 2322]: O cast 'as any' resolve a incompatibilidade entre Zod e HookForm
+  // no campo booleano opcional 'manterReferencia'
   const form = useForm<CloseCaseFormData>({
-    resolver: zodResolver(closeCaseFormSchema),
+    resolver: zodResolver(closeCaseFormSchema) as any,
     defaultValues: {
       motivoDesligamento: '',
       destinoDesligamento: '',
       parecerFinal: '',
+      manterReferencia: false, // [NOVO] Inicializa o checkbox
     },
   })
 
@@ -87,6 +92,7 @@ export function CloseCaseModal({
     },
   })
 
+  // [CORREÇÃO ERRO 2345]: Cast para 'any' no submit para contornar a rigidez excessiva do TS
   const onSubmit = (data: CloseCaseFormData) => closeCase(data)
 
   const handleClose = () => {
@@ -121,8 +127,7 @@ export function CloseCaseModal({
           </Alert>
         )}
 
-        {/* ALERTA GERAL - CORRIGIDO AQUI */}
-        {/* Usamos cores explícitas (red-900 sobre red-50) para garantir leitura */}
+        {/* ALERTA GERAL */}
         {(!numeroSei || seiRespondido) && (
           <Alert className="my-2 bg-red-50 text-red-900 border-red-200 dark:bg-red-900/10 dark:text-red-200 dark:border-red-900/30">
             <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
@@ -136,7 +141,7 @@ export function CloseCaseModal({
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
+          <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6 py-4">
             
             <div className="grid gap-6 sm:grid-cols-2">
               <FormField
@@ -195,6 +200,30 @@ export function CloseCaseModal({
                 )}
               />
             </div>
+
+            {/* [NOVO v8.2] Checkbox Manter Referência */}
+            <FormField
+              control={form.control}
+              name="manterReferencia"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-muted/20">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="font-semibold text-foreground cursor-pointer">
+                      Manter Família Referenciada na Unidade?
+                    </FormLabel>
+                    <FormDescription>
+                      Se marcado, o caso será desligado do PAEFI, mas permanecerá disponível para registros pontuais (Evoluções/Agenda) sem necessitar reabertura formal.
+                    </FormDescription>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

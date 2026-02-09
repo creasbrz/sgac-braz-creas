@@ -2,11 +2,7 @@
 import { FastifyInstance } from 'fastify'
 import { ZodTypeProvider } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
-import { startOfMonth, endOfMonth } from 'date-fns'
-import { CaseStatus } from '@prisma/client'
-import { RMAService } from '../services/RMAService'
-import { cache } from '../lib/cache' // [NOVO]
+import { RmaController } from '../controllers/RMAController'
 
 export async function rmaRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
@@ -19,98 +15,10 @@ export async function rmaRoutes(app: FastifyInstance) {
         month: z.coerce.number().min(1).max(12),
         year: z.coerce.number().min(2020),
       })
+    },
+    // Middleware de Auth implícito (se necessário adicionar hook onRequest)
+    onRequest: async (req, reply) => {
+        try { await req.jwtVerify() } catch { return reply.status(401).send() }
     }
-  }, async (request, reply) => {
-    try {
-      const { month, year } = request.query
-      
-      // [CACHE V1.1] Chave de cache baseada no período
-      const cacheKey = `rma_report:${year}:${month}`
-      const cachedReport = cache.get(cacheKey)
-      
-      if (cachedReport) {
-        reply.header('X-Cache', 'HIT')
-        return reply.send(cachedReport)
-      }
-
-      const dateRef = new Date(year, month - 1, 1)
-      const startDate = startOfMonth(dateRef)
-      const endDate = endOfMonth(dateRef)
-
-      // 1. Busca Eficiente de Dados (Paralelismo)
-      const [activeCases, newCases, evolucoesCount, groupParticipants, referralsCRAS, visitasCount] = await Promise.all([
-        // A.1: Estoque de Casos Ativos no PAEFI
-        prisma.case.findMany({
-          where: {
-            status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] },
-            dataInicioPAEFI: { lte: endDate },
-            OR: [
-              { dataDesligamento: null },
-              { dataDesligamento: { gt: endDate } }
-            ]
-          }
-        }),
-        
-        // A.2: Novos Casos (Entradas no Mês)
-        prisma.case.findMany({
-          where: {
-            status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] },
-            dataInicioPAEFI: { gte: startDate, lte: endDate }
-          }
-        }),
-
-        // M.1: Atendimentos Individualizados (Evoluções)
-        prisma.evolucao.count({ where: { createdAt: { gte: startDate, lte: endDate } } }),
-
-        // M.2: Atendimentos em Grupo
-        prisma.groupAttendance.count({
-          where: {
-            presente: true,
-            grupo: { dataRealizacao: { gte: startDate, lte: endDate } }
-          }
-        }),
-
-        // M.3: Encaminhamentos CRAS
-        prisma.encaminhamento.count({
-          where: {
-            dataEnvio: { gte: startDate, lte: endDate },
-            instituicao: { contains: 'CRAS', mode: 'insensitive' }
-          }
-        }),
-
-        // M.4: Visitas Domiciliares
-        prisma.agendamento.count({
-          where: {
-            data: { gte: startDate, lte: endDate },
-            titulo: { contains: 'Visita', mode: 'insensitive' }
-          }
-        })
-      ])
-
-      // 2. Processamento de Regras de Negócio
-      const rmaData = RMAService.calculate(activeCases, newCases, endDate)
-
-      // 3. Montagem da Resposta
-      const response = {
-        ...rmaData,
-        bloco2: {
-          m1_individual: evolucoesCount,
-          m2_grupo: groupParticipants,
-          m3_cras: referralsCRAS,
-          m4_visitas: visitasCount
-        }
-      }
-
-      // [CACHE V1.1] Salva por 1 hora. RMA de meses passados não muda, do mês atual muda pouco em 1h.
-      // Em um cenário ideal, invalidaríamos ao adicionar evoluções, mas 1h é aceitável para relatórios.
-      cache.set(cacheKey, response, 1000 * 60 * 60)
-      reply.header('X-Cache', 'MISS')
-
-      return reply.send(response)
-
-    } catch (error) {
-      request.log.error(error)
-      return reply.status(500).send({ message: 'Erro ao processar RMA.', details: String(error) })
-    }
-  })
+  }, RmaController.generate)
 }

@@ -1,10 +1,10 @@
 // backend/src/services/StatsService.ts
 import { prisma } from '../lib/prisma'
 import { cache } from '../lib/cache'
-// [CORREÇÃO] Adicionado 'differenceInDays' na importação
 import { startOfMonth, endOfMonth, subMonths, format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Cargo, CaseStatus, LogAction, CaseOrigin } from '@prisma/client'
+import { calculateUrgencyWeight } from '../domain/UrgencyRules';
 
 // Helper para traduzir o Enum do Banco para Texto legível no Gráfico
 const ORIGIN_LABELS: Record<CaseOrigin, string> = {
@@ -17,18 +17,10 @@ const ORIGIN_LABELS: Record<CaseOrigin, string> = {
 export class StatsService {
 
   // --- HELPERS PRIVADOS ---
-  
-  private static calculateUrgencyWeight(urgencia: string | null): number {
-    if (!urgencia) return 1
-    const term = urgencia.trim()
-    if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça'].includes(term)) return 4;
-    if (['Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso'].includes(term)) return 3;
-    if (['Internação', 'Acolhimento'].includes(term)) return 2;
-    if (['Sem risco imediato', 'Visita periódica'].includes(term)) return 1;
-    return 1
-  }
+  // [REFATORAÇÃO] Método calculateUrgencyWeight removido daqui. 
+  // A lógica agora reside em src/domain/UrgencyRules.ts para evitar duplicidade.
 
- // --- DASHBOARD GERAL (HOME) ---
+  // --- DASHBOARD GERAL (HOME) ---
   static async getDashboard(user: { sub: string, cargo: string }) {
     if (user.cargo === Cargo.Gerente) {
       return this.getManagerDashboard()
@@ -209,7 +201,7 @@ export class StatsService {
           OR: [
               { createdAt: { gte: sixMonthsAgo } }, 
               { dataDesligamento: { gte: sixMonthsAgo } }, 
-              { status: { not: CaseStatus.DESLIGADO } }
+              { status: { not: CaseStatus.DESLIGADO } } 
           ] 
       },
       select: {
@@ -289,12 +281,10 @@ export class StatsService {
         }
 
         if (c.dataEntrada && c.dataInicioPAEFI) {
-            // [CORREÇÃO] Aqui estava faltando a importação de differenceInDays, agora está no topo
             const wait = differenceInDays(new Date(c.dataInicioPAEFI), new Date(c.dataEntrada))
             if (wait >= 0) { totalWaitTime += wait; countWaitTime++ }
         }
         if (c.status === CaseStatus.DESLIGADO && c.dataInicioPAEFI && c.dataDesligamento) {
-            // [CORREÇÃO] Aqui também
             const perm = differenceInDays(new Date(c.dataDesligamento), new Date(c.dataInicioPAEFI))
             if (perm >= 0) { totalPermanence += perm; countPermanence++ }
         }
@@ -310,7 +300,8 @@ export class StatsService {
             id: c.id, 
             lat: c.latitude, 
             lng: c.longitude, 
-            intensity: this.calculateUrgencyWeight(c.urgencia), 
+            // [REFATORAÇÃO] Uso da função centralizada
+            intensity: calculateUrgencyWeight(c.urgencia), 
             label: c.categoria || 'Caso',
             violacao: c.violacao, 
             categoria: c.categoria, 
@@ -329,7 +320,7 @@ export class StatsService {
     const result = {
         evolutionData: Array.from(monthsMap.values()),
         violationData: Object.entries(violationMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
-        urgencyData: Object.entries(urgencyMap).map(([name, value]) => ({ name, value, weight: this.calculateUrgencyWeight(name) })).sort((a, b) => b.weight - a.weight),
+        urgencyData: Object.entries(urgencyMap).map(([name, value]) => ({ name, value, weight: calculateUrgencyWeight(name) })).sort((a, b) => b.weight - a.weight),
         
         originData: Object.entries(originMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),
         networkData: Object.entries(networkMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10),

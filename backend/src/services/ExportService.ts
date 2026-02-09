@@ -142,7 +142,7 @@ export class ExportService {
       { header: 'CPF', key: 'cpf', width: 18 }, // D
       { header: 'Data Nascimento', key: 'nasc', width: 15 }, // E
       
-      { header: 'Sexo', key: 'sexo', width: 15 },        // F
+      { header: 'Sexo', key: 'sexo', width: 15 },         // F
       { header: 'Categoria', key: 'cat', width: 25 },     // G
       
       { header: 'Ocupação', key: 'ocupacao', width: 25 }, // H

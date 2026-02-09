@@ -1,0 +1,3312 @@
+CONTEXTO: 2_frontend_features_01
+
+
+FILE: frontend\src\components\analytics\sections\NetworkSection.tsx
+--------------------------------------------------
+// frontend/src/components/analytics/sections/NetworkSection.tsx
+import { useMemo } from 'react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  LabelList
+} from 'recharts'
+import { 
+  Share2, 
+  DoorOpen, 
+  BarChart3, 
+  ArrowUpRight, 
+  ArrowDownLeft,
+  FileInput,
+  type LucideIcon 
+} from 'lucide-react'
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle, 
+  CardDescription 
+} from '@/components/ui/card'
+
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent 
+} from "@/components/ui/chart"
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+
+// --- TYPES ---
+interface ChartData {
+  name: string
+  value: number
+}
+
+interface NetworkSectionProps {
+  data: {
+    originData?: ChartData[]     // Porta de Entrada (Órgãos)
+    networkData?: ChartData[]    // Porta de Saída (Encaminhamentos)
+    entryTypeData?: ChartData[]  // Tipo de Entrada (Modalidade)
+  }
+}
+
+// --- CHART CONFIGURATION ---
+const chartConfig = {
+  origins: {
+    label: "Origem",
+    color: "hsl(var(--chart-4))", // Laranja (Amber)
+  },
+  network: {
+    label: "Destino",
+    color: "hsl(var(--chart-2))", // Verde (Emerald)
+  },
+  types: {
+    label: "Modalidade",
+    color: "hsl(var(--chart-1))", // Azul (Primary)
+  }
+} satisfies ChartConfig
+
+// --- SUB-COMPONENT: REUSABLE WIDGET ---
+interface NetworkWidgetProps {
+  title: string
+  subtitle: string
+  icon: LucideIcon
+  data: ChartData[]
+  variant: 'entry' | 'exit' | 'type'
+}
+
+function NetworkChartWidget({ 
+  title, 
+  subtitle, 
+  icon: Icon, 
+  data, 
+  variant
+}: NetworkWidgetProps) {
+  
+  // Processamento de dados: Top 10 + Ordenação
+  const { sortedData, total } = useMemo(() => {
+    if (!data?.length) return { sortedData: [], total: 0 }
+    
+    // Para 'type' (poucas categorias), não precisamos limitar tanto, mas mantemos a ordenação
+    const sorted = [...data]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+    
+    const sum = sorted.reduce((acc, curr) => acc + curr.value, 0)
+    
+    return { sortedData: sorted, total: sum }
+  }, [data])
+
+  // Estilos Dinâmicos baseados na variante
+  const styles = {
+    entry: {
+      iconBg: "bg-status-warning-bg text-status-warning-fg border-status-warning-border",
+      trendIcon: ArrowDownLeft,
+      barColor: "var(--color-origins)" 
+    },
+    exit: {
+      iconBg: "bg-status-success-bg text-status-success-fg border-status-success-border",
+      trendIcon: ArrowUpRight,
+      barColor: "var(--color-network)"
+    },
+    type: {
+      iconBg: "bg-status-info-bg text-status-info-fg border-status-info-border",
+      trendIcon: FileInput,
+      barColor: "var(--color-types)"
+    }
+  }
+
+  const activeStyle = styles[variant]
+  const TrendIcon = activeStyle.trendIcon
+
+  return (
+    <Card className="flex flex-col h-full shadow-sm hover:shadow-md transition-all duration-300 border relative group overflow-hidden">
+      {/* Faixa decorativa lateral */}
+      <div className={cn("absolute left-0 top-0 bottom-0 w-1 opacity-0 group-hover:opacity-100 transition-opacity bg-current", activeStyle.iconBg.split(' ')[1])} />
+
+      <CardHeader className="pb-2 border-b border-border/40 bg-muted/5">
+        <div className="flex justify-between items-start">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <div className={cn("p-2 rounded-lg shrink-0 border shadow-sm", activeStyle.iconBg)}>
+                <Icon className="h-4 w-4" />
+              </div>
+              <CardTitle className="text-base font-bold text-foreground tracking-tight">
+                {title}
+              </CardTitle>
+            </div>
+            <CardDescription className="text-xs max-w-55 leading-relaxed line-clamp-2">
+              {subtitle}
+            </CardDescription>
+          </div>
+          
+          {/* KPI Badge */}
+          <div className="flex flex-col items-end">
+             <div className="flex items-center gap-1.5 bg-background px-2.5 py-1 rounded-md border shadow-sm">
+                <TrendIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xl font-bold tabular-nums tracking-tight leading-none">
+                  {total}
+                </span>
+             </div>
+             <span className="text-[10px] text-muted-foreground font-medium mt-1 uppercase tracking-wide">
+               Total
+             </span>
+          </div>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="flex-1 p-0">
+        {sortedData.length > 0 ? (
+          <div className="p-4 pt-6 pl-0">
+            <ChartContainer config={chartConfig} className="w-full h-80">
+              <BarChart
+                accessibilityLayer
+                data={sortedData}
+                layout="vertical"
+                margin={{ left: 0, right: 35, top: 0, bottom: 0 }}
+                barCategoryGap="20%"
+              >
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.3} stroke="hsl(var(--border))" />
+                
+                <XAxis type="number" hide />
+                
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={140} 
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ 
+                    fontSize: 11, 
+                    fill: 'hsl(var(--muted-foreground))', 
+                    fontWeight: 500,
+                    textAnchor: 'end',
+                    dy: 4 
+                  }}
+                  tickFormatter={(val) => val.length > 20 ? `${val.slice(0, 20)}...` : val}
+                />
+                
+                <ChartTooltip
+                  cursor={{ fill: 'hsl(var(--muted)/0.3)', radius: 4 }}
+                  content={
+                    <ChartTooltipContent 
+                      indicator="line" 
+                      className="min-w-37.5"
+                      labelClassName="font-bold text-foreground"
+                    />
+                  }
+                />
+                
+                <Bar
+                  dataKey="value"
+                  fill={activeStyle.barColor}
+                  radius={[0, 4, 4, 0]}
+                  barSize={20}
+                  animationDuration={1000}
+                >
+                  <LabelList
+                    dataKey="value"
+                    position="right"
+                    offset={8}
+                    className="fill-foreground font-bold text-[11px]"
+                    fontSize={11}
+                  />
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+          </div>
+        ) : (
+          <div className="h-80 flex flex-col items-center justify-center text-muted-foreground/50 space-y-4">
+            <div className="bg-muted/30 p-4 rounded-full ring-1 ring-border/50">
+              <BarChart3 className="h-8 w-8 opacity-60" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-medium text-foreground/70">Sem dados</p>
+              <p className="text-xs max-w-45">Nenhum registro para este indicador.</p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- MAIN COMPONENT ---
+export function NetworkSection({ data }: NetworkSectionProps) {
+  const originData = data?.originData || []
+  const networkData = data?.networkData || []
+  const entryTypeData = data?.entryTypeData || []
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-backwards">
+      
+      {/* 1. PORTA DE ENTRADA (Órgãos) */}
+      <NetworkChartWidget 
+        title="Porta de Entrada"
+        subtitle="Principais órgãos demandantes."
+        icon={DoorOpen}
+        data={originData}
+        variant="entry"
+      />
+
+      {/* 2. TIPO DE ENTRADA (Modalidade) */}
+      <NetworkChartWidget 
+        title="Tipo de Entrada"
+        subtitle="Modalidade de acesso (Espontânea, Busca Ativa, etc)."
+        icon={FileInput}
+        data={entryTypeData}
+        variant="type"
+      />
+
+      {/* 3. PORTA DE SAÍDA (Rede) */}
+      <NetworkChartWidget 
+        title="Rede de Apoio"
+        subtitle="Encaminhamentos realizados para a rede."
+        icon={Share2}
+        data={networkData}
+        variant="exit"
+      />
+      
+    </div>
+  )
+}
+
+FILE: frontend\src\components\analytics\sections\OverviewSection.tsx
+--------------------------------------------------
+// frontend/src/components/analytics/sections/OverviewSection.tsx
+import { useMemo } from 'react'
+import {
+  XAxis, YAxis, CartesianGrid, 
+  PieChart, Pie, Label, BarChart, Bar, LabelList, Cell
+} from 'recharts'
+import { 
+  TrendingUp, AlertTriangle, PieChart as PieIcon, 
+  Activity, UserPlus, CheckCircle2, LucideIcon, BarChart3
+} from 'lucide-react'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent
+} from "@/components/ui/chart"
+
+import type { ObservatoryData } from '@/types/case'
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// --- LOCAL COMPONENTS ---
+interface StatCardProps {
+  title: string
+  value: string | number
+  icon: LucideIcon
+  description?: string
+  variant?: 'blue' | 'green' | 'rose' | 'purple' | 'amber'
+}
+
+const StatCard = ({ title, value, icon: Icon, description, variant = 'blue' }: StatCardProps) => {
+  const themes = {
+    blue: {
+      border: "border-status-info-border",
+      bg: "bg-status-info-bg",
+      text: "text-status-info-fg",
+      stripe: "bg-status-info-fg"
+    },
+    green: {
+      border: "border-status-success-border",
+      bg: "bg-status-success-bg",
+      text: "text-status-success-fg",
+      stripe: "bg-status-success-fg"
+    },
+    rose: {
+      border: "border-status-error-border",
+      bg: "bg-status-error-bg",
+      text: "text-status-error-fg",
+      stripe: "bg-status-error-fg"
+    },
+    purple: {
+      border: "border-status-ai-border",
+      bg: "bg-status-ai-bg",
+      text: "text-status-ai-fg",
+      stripe: "bg-status-ai-fg"
+    },
+    amber: {
+      border: "border-status-warning-border",
+      bg: "bg-status-warning-bg",
+      text: "text-status-warning-fg",
+      stripe: "bg-status-warning-fg"
+    }
+  }
+
+  const theme = themes[variant] || themes.blue
+
+  return (
+    <Card className={cn("overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border relative group", theme.border)}>
+      <div className={cn("absolute left-0 top-0 bottom-0 w-1 opacity-0 group-hover:opacity-100 transition-opacity", theme.stripe)} />
+      <div className="p-6 flex items-start justify-between">
+        <div className="space-y-1 relative z-10">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">{title}</p>
+          <div className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{value}</div>
+          {description && (
+            <p className="text-xs text-muted-foreground font-medium pt-1 line-clamp-1">{description}</p>
+          )}
+        </div>
+        <div className={cn("p-2.5 rounded-xl transition-colors border shadow-sm", theme.bg, theme.border)}>
+          <Icon className={cn("w-5 h-5", theme.text)} strokeWidth={2.5} />
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// --- CONFIGURAÇÕES DE CHART ---
+const evolutionChartConfig = {
+  novos: {
+    label: "Novos Casos",
+    color: "hsl(var(--chart-1))", 
+  },
+  desligados: {
+    label: "Desligamentos",
+    color: "hsl(var(--chart-2))", 
+  },
+} satisfies ChartConfig
+
+const urgencyChartConfig = {
+  value: {
+    label: "Quantidade",
+    color: "hsl(var(--primary))"
+  }
+} satisfies ChartConfig
+
+export function OverviewSection({ data }: { data: ObservatoryData }) {
+  
+  // --- 1. PROCESSAMENTO DE DADOS ---
+  
+  const kpis = useMemo(() => ({
+    novos: data.evolutionData.reduce((acc, c) => acc + c.novos, 0),
+    desligados: data.efficiencyData.totalClosed,
+    riscoAlto: data.urgencyData.filter((u) => u.weight >= 3).reduce((acc, c) => acc + c.value, 0)
+  }), [data])
+
+  const getUrgencyColor = (weight: number) => {
+    if (weight >= 4) return 'hsl(var(--destructive))'; // Crítico
+    if (weight === 3) return 'hsl(var(--chart-5))';    // Alto (Amber)
+    if (weight === 2) return 'hsl(var(--chart-4))';    // Médio (Yellow)
+    return 'hsl(var(--chart-2))';                      // Baixo (Green)
+  }
+
+  // --- Lógica Refinada para o Gráfico de Pizza (Violações) ---
+  const { pieData, violationConfig, principalDemanda, totalViolations } = useMemo(() => {
+    const rawCounts: Record<string, number> = {}
+
+    data.violationData.forEach((item) => {
+      const categories = item.name.split(',').map(s => s.trim())
+      categories.forEach(cat => {
+        if (cat) rawCounts[cat] = (rawCounts[cat] || 0) + item.value
+      })
+    })
+
+    let processedData = Object.entries(rawCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+
+    if (processedData.length > 6) {
+        const top5 = processedData.slice(0, 6)
+        const outrosVal = processedData.slice(6).reduce((acc, curr) => acc + curr.value, 0)
+        processedData = [...top5, { name: 'Outros', value: outrosVal }]
+    }
+
+    const dynamicConfig: ChartConfig = {
+        occurrences: { label: "Ocorrências" }
+    }
+
+    const finalData = processedData.map((item, index) => {
+      const colorVar = item.name === 'Outros' ? 'muted-foreground' : `chart-${(index % 5) + 1}`
+      const color = `hsl(var(--${colorVar}))`
+      
+      dynamicConfig[item.name] = { 
+        label: item.name,
+        color: color 
+      }
+      return { ...item, fill: color }
+    })
+
+    return {
+        pieData: finalData,
+        violationConfig: dynamicConfig,
+        principalDemanda: finalData.length > 0 ? finalData[0].name : 'N/A',
+        totalViolations: finalData.reduce((acc, curr) => acc + curr.value, 0)
+    }
+  }, [data])
+
+  const urgencyData = useMemo(() => 
+    data.urgencyData.map(d => ({ 
+      ...d, 
+      fill: getUrgencyColor(d.weight) 
+    })), 
+  [data])
+
+  // Helper para Empty State
+  const EmptyState = ({ message }: { message: string }) => (
+    <div className="h-full flex flex-col items-center justify-center text-muted-foreground/60 gap-2">
+      <div className="p-3 bg-muted/20 rounded-full">
+        <BarChart3 className="h-6 w-6 opacity-50" />
+      </div>
+      <p className="text-sm font-medium">{message}</p>
+    </div>
+  )
+
+  // --- 2. RENDERIZAÇÃO ---
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      
+      {/* KPIS */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard 
+          title="Novos Casos" 
+          description="Últimos 6 meses"
+          value={kpis.novos} 
+          icon={UserPlus} 
+          variant="blue" 
+        />
+        <StatCard 
+          title="Desligamentos" 
+          description="Casos concluídos"
+          value={kpis.desligados} 
+          icon={CheckCircle2} 
+          variant="green" 
+        />
+        <StatCard 
+          title="Risco Elevado" 
+          description="Prioridade máxima"
+          value={kpis.riscoAlto} 
+          icon={AlertTriangle} 
+          variant="rose" 
+        />
+        <StatCard 
+          title="Demanda Principal" 
+          value={principalDemanda} 
+          icon={Activity} 
+          variant="purple" 
+          description="Maior incidência" 
+        />
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        
+        {/* FLUXO DE ATENDIMENTO */}
+        <Card className="lg:col-span-3 flex flex-col shadow-sm border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base font-bold">
+              <TrendingUp className="h-4 w-4 text-primary"/> Fluxo de Atendimento
+            </CardTitle>
+            <CardDescription>Comparativo de entradas e saídas mensais</CardDescription>
+          </CardHeader>
+          <CardContent className="pl-0 flex-1 min-h-87.5">
+            {data.evolutionData.length > 0 ? (
+                <div className="h-87.5 w-full">
+                    <ChartContainer config={evolutionChartConfig} className="h-full w-full">
+                    <BarChart accessibilityLayer data={data.evolutionData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.5} />
+                        <XAxis 
+                            dataKey="name" 
+                            tickLine={false} 
+                            axisLine={false} 
+                            tickMargin={10} 
+                            fontSize={12} 
+                            className="text-muted-foreground font-medium" 
+                        />
+                        {/* Tooltip melhorado e sem legendas fixas */}
+                        <ChartTooltip 
+                            cursor={{ fill: 'hsl(var(--muted)/0.2)' }} 
+                            content={<ChartTooltipContent className="min-w-37.5" />} 
+                        />
+                        
+                        <Bar dataKey="novos" fill="var(--color-novos)" radius={[4, 4, 0, 0]} barSize={28} />
+                        <Bar dataKey="desligados" fill="var(--color-desligados)" radius={[4, 4, 0, 0]} barSize={28} />
+                    </BarChart>
+                    </ChartContainer>
+                </div>
+            ) : (
+                <EmptyState message="Sem dados de fluxo" />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* MATRIZ DE RISCO */}
+        <Card className="lg:col-span-2 flex flex-col shadow-sm border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base font-bold">
+              <div className="p-1.5 bg-status-warning-bg rounded-md">
+                 <AlertTriangle className="h-4 w-4 text-status-warning-fg"/> 
+              </div>
+              Matriz de Risco
+            </CardTitle>
+            <CardDescription>Volume de casos por gravidade</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 min-h-87.5">
+            {urgencyData.length > 0 ? (
+                <div className="h-87.5 w-full">
+                    <ChartContainer config={urgencyChartConfig} className="h-full w-full">
+                    <BarChart 
+                        accessibilityLayer 
+                        data={urgencyData} 
+                        layout="vertical" 
+                        margin={{ left: 0, right: 40, top: 0, bottom: 0 }}
+                        barCategoryGap="20%"
+                    >
+                        <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4} />
+                        <YAxis 
+                            dataKey="name" 
+                            type="category" 
+                            width={100} 
+                            tickLine={false} 
+                            axisLine={false} 
+                            fontSize={11} 
+                            className="text-muted-foreground font-medium"
+                            tickFormatter={(val) => val.length > 15 ? `${val.slice(0, 15)}...` : val}
+                        />
+                        <XAxis type="number" hide />
+                        {/* Tooltip ativado, legenda fixa removida */}
+                        <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                        
+                        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                            {urgencyData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                            <LabelList 
+                                dataKey="value" 
+                                position="right" 
+                                className="fill-foreground font-bold text-xs" 
+                                offset={8}
+                            />
+                        </Bar>
+                    </BarChart>
+                    </ChartContainer>
+                </div>
+            ) : (
+                <EmptyState message="Sem dados de risco" />
+            )}
+          </CardContent>
+        </Card>
+
+       {/* NATUREZA DAS VIOLAÇÕES */}
+        <Card className="lg:col-span-5 flex flex-col shadow-sm border-border/60">
+          <CardHeader className="items-center pb-0 border-b border-border/40 bg-muted/5">
+            <div className="flex flex-col items-center gap-1.5 py-2">
+                <div className="p-2 bg-status-ai-bg rounded-full border border-status-ai-border">
+                    <PieIcon className="h-5 w-5 text-status-ai-fg"/>
+                </div>
+                <CardTitle className="text-lg font-bold">Natureza das Violações</CardTitle>
+                <CardDescription>Distribuição tipificada das ocorrências registradas</CardDescription>
+            </div>
+          </CardHeader>
+          
+          <CardContent className="flex-1 pb-4 pt-6 min-h-100">
+            {pieData.length > 0 ? (
+                <ChartContainer config={violationConfig} className="mx-auto aspect-square max-h-87.5 w-full">
+                    <PieChart>
+                        {/* Tooltip Aprimorado */}
+                        <ChartTooltip cursor={false} content={<ChartTooltipContent className="min-w-37.5" />} />
+                        <Pie 
+                            data={pieData} 
+                            dataKey="value" 
+                            nameKey="name" 
+                            innerRadius={85} 
+                            outerRadius={120} 
+                            strokeWidth={5}
+                            stroke="hsl(var(--card))"
+                            paddingAngle={2}
+                        >
+                            <Label
+                                content={({ viewBox }) => {
+                                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                                        return (
+                                            <text 
+                                                x={viewBox.cx} 
+                                                y={viewBox.cy} 
+                                                textAnchor="middle" 
+                                                dominantBaseline="middle"
+                                            >
+                                                <tspan
+                                                    x={viewBox.cx}
+                                                    y={viewBox.cy}
+                                                    className="fill-foreground text-4xl font-bold tracking-tighter"
+                                                >
+                                                    {totalViolations}
+                                                </tspan>
+                                                <tspan
+                                                    x={viewBox.cx}
+                                                    y={(viewBox.cy || 0) + 24}
+                                                    className="fill-muted-foreground text-xs font-semibold uppercase tracking-widest"
+                                                >
+                                                    Ocorrências
+                                                </tspan>
+                                            </text>
+                                        )
+                                    }
+                                }}
+                            />
+                        </Pie>
+                        {/* Legendas Fixas Removidas - Apenas Tooltip interativo */}
+                    </PieChart>
+                </ChartContainer>
+            ) : (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+                    <PieIcon className="h-8 w-8 opacity-20" />
+                    <span>Sem dados de violações para exibir.</span>
+                </div>
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+    </div>
+  )
+}
+
+FILE: frontend\src\components\analytics\sections\PerformanceSection.tsx
+--------------------------------------------------
+// frontend/src/components/analytics/sections/PerformanceSection.tsx
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts'
+import { Users, Gift, Clock, Activity, CheckCircle, AlertCircle, LucideIcon } from 'lucide-react'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent 
+} from "@/components/ui/chart"
+
+import type { ObservatoryData } from '@/types/case'
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// --- LOCAL COMPONENTS (Design System) ---
+interface StatCardProps {
+  title: string
+  value: string | number
+  icon: LucideIcon
+  description?: string
+  variant?: 'blue' | 'amber' | 'green' | 'purple'
+}
+
+const StatCard = ({ title, value, icon: Icon, description, variant = 'blue' }: StatCardProps) => {
+  const themes = {
+    blue: {
+      border: "border-status-info-border",
+      bg: "bg-status-info-bg",
+      text: "text-status-info-fg",
+      stripe: "bg-status-info-fg"
+    },
+    amber: {
+      border: "border-status-warning-border",
+      bg: "bg-status-warning-bg",
+      text: "text-status-warning-fg",
+      stripe: "bg-status-warning-fg"
+    },
+    green: {
+      border: "border-status-success-border",
+      bg: "bg-status-success-bg",
+      text: "text-status-success-fg",
+      stripe: "bg-status-success-fg"
+    },
+    purple: {
+      border: "border-status-ai-border",
+      bg: "bg-status-ai-bg",
+      text: "text-status-ai-fg",
+      stripe: "bg-status-ai-fg"
+    }
+  }
+
+  const theme = themes[variant] || themes.blue
+
+  return (
+    <Card className={cn("overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border relative group", theme.border)}>
+      <div className={cn("absolute left-0 top-0 bottom-0 w-1 opacity-0 group-hover:opacity-100 transition-opacity", theme.stripe)} />
+      <div className="p-6 flex items-start justify-between">
+        <div className="space-y-1 relative z-10">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">{title}</p>
+          <div className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{value}</div>
+          {description && (
+            <p className="text-xs text-muted-foreground font-medium pt-1 line-clamp-1">{description}</p>
+          )}
+        </div>
+        <div className={cn("p-2.5 rounded-xl transition-colors border shadow-sm", theme.bg, theme.border)}>
+          <Icon className={cn("w-5 h-5", theme.text)} strokeWidth={2.5} />
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// --- CHART CONFIG ---
+const benefitsChartConfig = {
+  value: {
+    label: "Concessões",
+    color: "hsl(var(--chart-2))", // Emerald/Green
+  },
+} satisfies ChartConfig
+
+// --- MAIN COMPONENT ---
+export function PerformanceSection({ data }: { data: ObservatoryData }) {
+  
+  // Data extraction with safe defaults
+  const benefits = data.benefitsData || []
+  // Top 5 benefícios mais concedidos
+  const sortedBenefits = [...benefits].sort((a, b) => b.value - a.value).slice(0, 5)
+  const efficiency = data.efficiencyData || {}
+
+  // Collective Data Helpers
+  const totalParticipants = data.collectiveData?.totalParticipants ?? 0
+  const avgAttendance = data.collectiveData?.avgAttendance ?? 0
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* 1. KPIs de Eficiência */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <StatCard 
+          title="Tempo de Acompanhamento" 
+          value={efficiency.avgPermanence ?? 0} 
+          description="dias (média)"
+          icon={Clock} 
+          variant="blue" 
+        />
+        <StatCard 
+          title="Tempo de Espera" 
+          value={efficiency.avgWaitTime ?? 0} 
+          description="dias até 1º atendimento"
+          icon={Activity} 
+          variant="amber" 
+        />
+        <StatCard 
+          title="Total Desligamentos" 
+          value={efficiency.totalClosed ?? 0} 
+          description="casos finalizados"
+          icon={CheckCircle} 
+          variant="green" 
+        />
+      </section>
+
+      {/* 2. Métricas de Volume e Benefícios */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Card: Grupos e Oficinas (Custom Layout) */}
+        <Card className="lg:col-span-1 shadow-sm border-border/60 flex flex-col">
+          <CardHeader className="pb-3 border-b border-border/40 bg-muted/5">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-status-ai-bg border border-status-ai-border">
+                 <Users className="h-4 w-4 text-status-ai-fg"/>
+              </div>
+              Atividades Coletivas
+            </CardTitle>
+            <CardDescription>Engajamento em grupos e oficinas.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col justify-center gap-4 p-6">
+              
+              {/* Sub-metric 1: Total Participantes */}
+              <div className="flex items-center justify-between p-4 bg-status-ai-bg/10 rounded-xl border border-status-ai-border/20">
+                <div>
+                   <p className="text-xs font-bold text-status-ai-fg uppercase tracking-wider">Participantes</p>
+                   <p className="text-3xl font-bold text-foreground mt-1 tabular-nums">
+                     {totalParticipants}
+                   </p>
+                </div>
+                <div className="p-3 bg-background rounded-full border border-status-ai-border/20 shadow-sm">
+                   <Users className="h-6 w-6 text-status-ai-fg" />
+                </div>
+              </div>
+              
+              {/* Sub-metric 2: Média por Grupo */}
+              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50">
+                <div>
+                   <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Média por Grupo</p>
+                   <p className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+                     {avgAttendance} <span className="text-sm font-medium text-muted-foreground ml-1">pessoas</span>
+                   </p>
+                </div>
+              </div>
+          </CardContent>
+        </Card>
+
+        {/* Card: Benefícios (Chart) */}
+        <Card className="lg:col-span-2 shadow-sm border-border/60 flex flex-col">
+          <CardHeader className="pb-3 border-b border-border/40 bg-muted/5">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-status-success-bg border border-status-success-border">
+                 <Gift className="h-4 w-4 text-status-success-fg"/>
+              </div>
+              Concessão de Benefícios
+            </CardTitle>
+            <CardDescription>Principais benefícios entregues no período.</CardDescription>
+          </CardHeader>
+          {/* [CORREÇÃO] min-h-[300px] -> min-h-75 */}
+          <CardContent className="flex-1 p-6 min-h-75">
+            {sortedBenefits.length > 0 ? (
+              // [CORREÇÃO] max-h-[280px] -> max-h-70
+              <ChartContainer config={benefitsChartConfig} className="w-full h-full max-h-70">
+                <BarChart 
+                  accessibilityLayer
+                  data={sortedBenefits} 
+                  layout="vertical" 
+                  margin={{ top: 0, right: 30, left: 10, bottom: 0 }}
+                  barCategoryGap="25%"
+                >
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.4} />
+                  <XAxis type="number" hide />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    width={130} 
+                    tickLine={false} 
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
+                    // Truncate long names to keep layout clean
+                    tickFormatter={(val) => val.length > 20 ? `${val.substring(0, 20)}...` : val}
+                  />
+                  <ChartTooltip 
+                    cursor={{ fill: 'hsl(var(--muted)/0.2)', radius: 4 }}
+                    // [CORREÇÃO] min-w-[150px] -> min-w-37.5
+                    content={<ChartTooltipContent indicator="line" className="min-w-37.5" />} 
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    fill="var(--color-value)" 
+                    radius={[0, 4, 4, 0]} 
+                    barSize={24}
+                  >
+                    <LabelList 
+                      dataKey="value" 
+                      position="right" 
+                      className="fill-foreground font-bold text-xs" 
+                      // [CORREÇÃO TS] Usando 'any' e cast para Number para evitar erro 2322
+                      formatter={(val: any) => Number(val) > 0 ? val : ''}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-60">
+                <div className="bg-muted p-4 rounded-full mb-3">
+                   <AlertCircle className="h-8 w-8 opacity-50" />
+                </div>
+                <p className="text-sm font-medium">Nenhum benefício registrado.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+    </div>
+  )
+}
+
+FILE: frontend\src\components\analytics\sections\SocialSection.tsx
+--------------------------------------------------
+// frontend/src/components/analytics/sections/SocialSection.tsx
+import { useMemo } from 'react'
+import {
+  BarChart, Bar, XAxis, CartesianGrid, LabelList, PieChart, Pie, Label, Cell
+} from 'recharts'
+import { BarChart3, Fingerprint, Users } from 'lucide-react'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent, 
+  ChartLegend, 
+  ChartLegendContent 
+} from "@/components/ui/chart"
+
+import type { ObservatoryData } from '@/types/case'
+
+// --- UTILS ---
+
+// --- CHART CONFIG ---
+const ageChartConfig = {
+  value: {
+    label: "Usuários",
+    color: "hsl(var(--chart-1))",
+  },
+} satisfies ChartConfig
+
+// Mapeamento correto para a legenda funcionar automaticamente
+const genderChartConfig = {
+  value: { label: "Usuários" },
+  // As chaves correspondem ao 'configKey' gerado no useMemo
+  masculino: {
+    label: "Masculino",
+    color: "hsl(var(--chart-1))", // Azul
+  },
+  feminino: {
+    label: "Feminino",
+    color: "hsl(var(--chart-3))", // Rosa/Roxo
+  },
+  outros: {
+    label: "Outros",
+    color: "hsl(var(--muted-foreground))", // Cinza
+  }
+} satisfies ChartConfig
+
+export function SocialSection({ data }: { data: ObservatoryData }) {
+
+  // Processamento de Dados com Cores e Chaves de Configuração
+  const sexData = useMemo(() => {
+    return data.sexData.map(item => {
+      const nameLower = item.name.toLowerCase()
+      let fill = "hsl(var(--muted-foreground))"
+      let configKey = "outros" // Chave padrão
+      
+      if (nameLower.includes('masculino') || nameLower.startsWith('m')) {
+        fill = "hsl(var(--chart-1))"
+        configKey = "masculino"
+      } else if (nameLower.includes('feminino') || nameLower.startsWith('f')) {
+        fill = "hsl(var(--chart-3))"
+        configKey = "feminino"
+      }
+      
+      // Retornamos 'configKey' para a legenda saber qual label/cor usar
+      return { 
+        ...item, 
+        fill,
+        configKey 
+      }
+    })
+  }, [data.sexData])
+
+  const totalUsers = data.sexData.reduce((acc, curr) => acc + curr.value, 0)
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      
+      {/* 1. FAIXA ETÁRIA */}
+      <Card className="shadow-sm border-border/60 flex flex-col">
+        <CardHeader className="pb-3 border-b border-border/40 bg-muted/5">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+               <BarChart3 className="h-4 w-4 text-primary"/> 
+            </div>
+            Faixa Etária
+          </CardTitle>
+          <CardDescription>Distribuição demográfica por idade.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex-1 p-6 min-h-87.5">
+          {data.ageData.length > 0 ? (
+            <div className="w-full h-80">
+              <ChartContainer config={ageChartConfig} className="w-full h-full">
+                <BarChart 
+                  accessibilityLayer
+                  data={data.ageData} 
+                  layout="horizontal"
+                  margin={{ left: 0, right: 0, top: 20, bottom: 0 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.4}/>
+                  <XAxis 
+                    dataKey="name" 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tickMargin={10}
+                    fontSize={11}
+                    className="text-muted-foreground font-medium"
+                    tickFormatter={(val) => val.replace(' anos', '')}
+                  />
+                  <ChartTooltip 
+                    cursor={{fill: 'hsl(var(--muted)/0.2)'}} 
+                    content={<ChartTooltipContent indicator="dashed" />} 
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    fill="var(--color-value)" 
+                    radius={[4, 4, 0, 0]} 
+                    barSize={40}
+                  >
+                    <LabelList 
+                      dataKey="value" 
+                      position="top" 
+                      className="fill-foreground font-bold text-xs" 
+                      offset={8}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
+              Sem dados de idade disponíveis.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 2. GÊNERO */}
+      <Card className="shadow-sm border-border/60 flex flex-col">
+        <CardHeader className="pb-3 border-b border-border/40 bg-muted/5">
+          <div className="flex justify-between items-start">
+            <div className="space-y-1.5">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-status-info-bg border border-status-info-border">
+                   <Fingerprint className="h-4 w-4 text-status-info-fg"/>
+                </div>
+                Gênero
+              </CardTitle>
+              <CardDescription>Perfil dos assistidos.</CardDescription>
+            </div>
+            
+            {/* KPI Badge */}
+            <div className="flex items-center gap-2 bg-background px-3 py-1.5 rounded-md border shadow-sm">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                <div>
+                    <span className="text-sm font-bold block leading-none tabular-nums text-foreground">
+                        {totalUsers}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">
+                        Total
+                    </span>
+                </div>
+            </div>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="flex-1 p-6 min-h-87.5">
+          {sexData.length > 0 ? (
+            <div className="w-full h-80">
+              <ChartContainer config={genderChartConfig} className="mx-auto aspect-square h-full max-h-75">
+                <PieChart>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                  <Pie 
+                    data={sexData} 
+                    dataKey="value" 
+                    nameKey="configKey" // [IMPORTANTE] Usa a chave mapeada para ligar ao config
+                    innerRadius={70} 
+                    outerRadius={105} 
+                    strokeWidth={4}
+                    paddingAngle={3}
+                    stroke="hsl(var(--card))"
+                  >
+                    {sexData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                    
+                    {/* LABEL CENTRALIZADO */}
+                    <Label 
+                      content={({ viewBox }) => {
+                        if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                          return (
+                            <text 
+                              x={viewBox.cx} 
+                              y={viewBox.cy} 
+                              textAnchor="middle" 
+                              dominantBaseline="middle"
+                            >
+                              <tspan 
+                                x={viewBox.cx} 
+                                y={viewBox.cy} 
+                                dy="-0.5em"
+                                className="fill-foreground text-3xl font-bold tracking-tighter"
+                              >
+                                {totalUsers}
+                              </tspan>
+                              <tspan 
+                                x={viewBox.cx} 
+                                y={viewBox.cy} 
+                                dy="1.7em"
+                                className="fill-muted-foreground text-xs font-semibold uppercase tracking-widest"
+                              >
+                                USUÁRIOS
+                              </tspan>
+                            </text>
+                          )
+                        }
+                      }}
+                    />
+                  </Pie>
+                  
+                  {/* LEGENDA */}
+                  <ChartLegend 
+                    content={<ChartLegendContent nameKey="configKey" />} 
+                    className="-translate-y-2 flex-wrap gap-3 justify-center mt-6" 
+                  />
+                </PieChart>
+              </ChartContainer>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm opacity-60">
+              Sem dados de gênero disponíveis.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+FILE: frontend\src\components\analytics\sections\TerritorySection.tsx
+--------------------------------------------------
+// frontend/src/components/analytics/sections/TerritorySection.tsx
+import { useState, useMemo } from 'react'
+import { MapPin, Filter, X, Globe2 } from 'lucide-react'
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { TerritoryMap, type MapPoint } from '@/components/analytics/TerritoryMap'
+
+interface TerritorySectionProps {
+  mapData: MapPoint[]
+}
+
+export function TerritorySection({ mapData }: TerritorySectionProps) {
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [selectedIntensity, setSelectedIntensity] = useState<string>('all')
+
+  // Deduplicação de categorias (Memoized)
+  const categories = useMemo(() => {
+    const allCats = mapData.map(p => p.categoria).filter(Boolean) as string[]
+    return Array.from(new Set(allCats)).sort()
+  }, [mapData])
+
+  // Lógica de Filtragem
+  const filteredData = useMemo(() => {
+    return mapData.filter(point => {
+      const matchCat = selectedCategory === 'all' || point.categoria === selectedCategory
+      const matchInt = selectedIntensity === 'all' || String(point.intensity) === selectedIntensity
+      return matchCat && matchInt
+    })
+  }, [mapData, selectedCategory, selectedIntensity])
+
+  const hasActiveFilters = selectedCategory !== 'all' || selectedIntensity !== 'all'
+
+  const clearFilters = () => {
+    setSelectedCategory('all')
+    setSelectedIntensity('all')
+  }
+
+  return (
+    // Altura fixa de 600px (37.5rem)
+    <Card className="flex flex-col h-150 border shadow-sm overflow-hidden bg-background group/map-section">
+      <CardHeader className="pb-3 border-b border-border/40 bg-muted/10 px-6 py-4 space-y-4 md:space-y-0">
+        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+          
+          {/* TÍTULO E DESCRIÇÃO */}
+          <div className="space-y-1.5">
+            <CardTitle className="flex items-center gap-2 text-lg font-bold">
+              <Globe2 className="h-5 w-5 text-primary" />
+              Territorialização
+            </CardTitle>
+            <CardDescription className="flex items-center gap-2">
+              Distribuição geoespacial ativa
+              <Badge 
+                variant="outline" 
+                className={`h-5 px-1.5 text-[10px] font-normal transition-colors ${hasActiveFilters ? 'bg-primary/10 text-primary border-primary/20' : 'text-muted-foreground'}`}
+              >
+                {filteredData.length} pontos
+              </Badge>
+            </CardDescription>
+          </div>
+          
+          {/* BARRA DE CONTROLE UNIFICADA */}
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Input Group: Agrupamento visual dos filtros */}
+            <div className="flex items-center p-1 bg-background border rounded-lg shadow-sm focus-within:ring-2 focus-within:ring-ring/20 transition-shadow">
+              
+              <div className="pl-2 pr-1 text-muted-foreground/50">
+                <Filter className="h-3.5 w-3.5" />
+              </div>
+
+              {/* Filtro: Categoria */}
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="h-8 w-40 border-0 focus:ring-0 shadow-none bg-transparent hover:bg-muted/50 rounded-sm px-2 text-xs font-medium focus:bg-accent">
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all" className="font-medium text-muted-foreground">Todas as Categorias</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Separador Vertical */}
+              <div className="h-4 w-px bg-border mx-1" />
+
+              {/* Filtro: Risco (Com indicadores visuais) */}
+              <Select value={selectedIntensity} onValueChange={setSelectedIntensity}>
+                <SelectTrigger className="h-8 w-32 border-0 focus:ring-0 shadow-none bg-transparent hover:bg-muted/50 rounded-sm px-2 text-xs font-medium focus:bg-accent">
+                  <SelectValue placeholder="Risco" />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all" className="text-muted-foreground">Todos</SelectItem>
+                  <SelectItem value="4">
+                    <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-red-500"/> Extremo</span>
+                  </SelectItem>
+                  <SelectItem value="3">
+                      <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-orange-500"/> Alto</span>
+                  </SelectItem>
+                  <SelectItem value="2">
+                      <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-yellow-500"/> Médio</span>
+                  </SelectItem>
+                  <SelectItem value="1">
+                      <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500"/> Baixo</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Botão Limpar (Condicional com Animação) */}
+            {hasActiveFilters && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={clearFilters}
+                className="h-9 px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors animate-in fade-in zoom-in-95 duration-200"
+              >
+                <X className="h-4 w-4 mr-1" />
+                <span className="text-xs font-medium">Limpar</span>
+              </Button>
+            )}
+            
+          </div>
+        </div>
+      </CardHeader>
+      
+      {/* ÁREA DO MAPA */}
+      <CardContent className="p-0 flex-1 relative isolate">
+        <TerritoryMap data={filteredData} />
+        
+        {/* Empty State Overlay (Backdrop Blur) */}
+        {filteredData.length === 0 && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px] z-50 animate-in fade-in duration-300">
+            <div className="flex flex-col items-center text-center p-6 max-w-sm bg-card/90 border shadow-lg rounded-xl">
+              <div className="bg-muted p-3 rounded-full mb-3">
+                 <MapPin className="h-6 w-6 text-muted-foreground opacity-50" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Nenhum caso encontrado</p>
+              <p className="text-xs text-muted-foreground mt-1 mb-3">
+                Não há registros para os filtros selecionados nesta região.
+              </p>
+              <Button variant="outline" size="sm" onClick={clearFilters} className="h-8 text-xs">
+                Limpar filtros
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+FILE: frontend\src\components\analytics\TerritoryMap.tsx
+--------------------------------------------------
+// frontend/src/components/analytics/TerritoryMap.tsx
+import { useEffect } from 'react'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ExternalLink, AlertTriangle, Navigation, MapPin } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+export interface MapPoint {
+  id: string
+  lat: number
+  lng: number
+  intensity: number 
+  label: string
+  violacao?: string
+  endereco?: string
+  categoria?: string
+}
+
+interface TerritoryMapProps {
+  data: MapPoint[]
+}
+
+// --- CONSTANTES DE ESTILO ---
+const RISK_COLORS = {
+  4: { hex: '#ef4444', tailwind: 'bg-red-500', border: 'border-red-500', label: 'Extremo' },
+  3: { hex: '#f97316', tailwind: 'bg-orange-500', border: 'border-orange-500', label: 'Alto' },
+  2: { hex: '#eab308', tailwind: 'bg-yellow-500', border: 'border-yellow-500', label: 'Médio' },
+  1: { hex: '#10b981', tailwind: 'bg-emerald-500', border: 'border-emerald-500', label: 'Baixo' },
+} as const
+
+// --- SUB-COMPONENTS ---
+
+function MapController({ points }: { points: MapPoint[] }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!points || points.length === 0) return
+
+    const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]))
+    
+    if (points.length === 1) {
+      map.setView([points[0].lat, points[0].lng], 15)
+    } else {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 })
+    }
+  }, [points, map])
+
+  return null
+}
+
+export function TerritoryMap({ data }: TerritoryMapProps) {
+  const defaultCenter: [number, number] = [-15.668, -48.201] // Brasília
+
+  // Helper para abertura segura de link
+  const openMapLink = (lat: number, lng: number) => {
+    const url = `http://googleusercontent.com/maps.google.com/search/${lat},${lng}`
+    const newWindow = window.open(url, '_blank', 'noopener,noreferrer')
+    if (newWindow) newWindow.opener = null
+  }
+
+  // Empty State
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center bg-muted/20 rounded-xl border border-dashed border-border text-muted-foreground gap-3 animate-in fade-in">
+        <div className="bg-muted p-4 rounded-full ring-1 ring-border/50">
+          <AlertTriangle className="h-6 w-6 opacity-50" />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-medium text-foreground">Sem dados georreferenciados</p>
+          <p className="text-xs opacity-70 mt-1 max-w-50 mx-auto">
+            Nenhum caso com coordenadas para os filtros atuais.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full w-full rounded-xl overflow-hidden border shadow-sm relative group isolate z-0 bg-slate-50 dark:bg-slate-950">
+      <MapContainer 
+        center={defaultCenter} 
+        zoom={13} 
+        scrollWheelZoom={true}
+        style={{ height: '100%', width: '100%' }}
+        className="z-0"
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          className="transition-all duration-500 ease-in-out dark:filter dark:invert-[1] dark:grayscale-[1] dark:brightness-90 dark:contrast-125"
+        />
+        
+        <MapController points={data} />
+        
+        {data.map((point) => {
+           const risk = RISK_COLORS[point.intensity as keyof typeof RISK_COLORS] || RISK_COLORS[1]
+           
+           return (
+            <CircleMarker
+              key={point.id}
+              center={[point.lat, point.lng]}
+              radius={point.intensity === 4 ? 10 : point.intensity === 3 ? 8 : 6} 
+              pathOptions={{ 
+                color: 'white', 
+                weight: 1.5,
+                fillColor: risk.hex,
+                fillOpacity: 0.85,
+              }}
+            >
+              <Tooltip 
+                direction="top" 
+                offset={[0, -10]} 
+                opacity={1} 
+                className="font-sans text-xs font-semibold rounded-md shadow-sm border-0 px-2 py-1 text-slate-900 bg-white"
+              >
+                {point.label}
+              </Tooltip>
+              
+              <Popup className="custom-popup-clean" closeButton={false}>
+                <div className="flex flex-col gap-2 min-w-50 font-sans p-1 text-slate-900">
+                  
+                  {/* Header do Popup */}
+                  <div className="border-b border-slate-200 pb-2 mb-1">
+                    <h5 className="text-sm font-bold leading-tight flex items-start gap-2 text-slate-900">
+                      <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      {point.label}
+                    </h5>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                        <span className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                            {point.categoria || "Geral"}
+                        </span>
+                        {point.violacao && (
+                            <span className="text-[10px] font-medium bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-100">
+                                {point.violacao}
+                            </span>
+                        )}
+                    </div>
+                  </div>
+
+                  {/* Endereço */}
+                  {point.endereco && (
+                    <div className="flex items-start gap-1.5 bg-slate-50 p-2 rounded text-xs text-slate-600 border border-slate-100">
+                      <Navigation className="h-3 w-3 shrink-0 mt-0.5 opacity-70" />
+                      <span className="leading-snug line-clamp-2">{point.endereco}</span>
+                    </div>
+                  )}
+
+                  {/* Footer com Ações */}
+                  <div className="flex items-center justify-between mt-1 pt-1">
+                    <Badge variant="outline" className={cn("text-[10px] h-5 px-1.5 bg-white shadow-sm font-bold border-slate-200", risk.border)} style={{ color: risk.hex }}>
+                      Risco {risk.label}
+                    </Badge>
+                    
+                    <Button 
+                      size="sm" 
+                      variant="default"
+                      className="h-7 text-[10px] px-3 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-sm transition-all active:scale-95"
+                      title="Abrir rota no Google Maps"
+                      onClick={() => openMapLink(point.lat, point.lng)}
+                    >
+                      Rotas <ExternalLink className="h-2.5 w-2.5" />
+                    </Button>
+                  </div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          )
+        })}
+      </MapContainer>
+      
+      {/* Legenda Flutuante */}
+      <div className="absolute bottom-6 right-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 rounded-xl shadow-lg border border-border/40 z-400 text-xs transition-all hover:opacity-100">
+        <h4 className="font-bold text-foreground mb-2 text-[10px] uppercase tracking-wider opacity-80 border-b pb-1 border-border/50">
+          Nível de Risco
+        </h4>
+        <div className="space-y-1.5">
+          {Object.entries(RISK_COLORS).reverse().map(([key, config]) => (
+            <div key={key} className="flex items-center gap-2">
+              <span 
+                className={cn("w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-inset ring-black/10", config.tailwind)} 
+              /> 
+              <span className="text-muted-foreground font-medium">{config.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+FILE: frontend\src\components\dashboard\DashboardStatCard.tsx
+--------------------------------------------------
+// frontend/src/components/dashboard/DashboardStatCard.tsx
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { LucideIcon, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { cn } from '@/lib/utils'
+
+// --- CONFIGURAÇÃO DE VARIANTES ---
+const VARIANTS = {
+  default: {
+    text: "text-primary",
+    bg: "bg-primary/10",
+  },
+  blue: {
+    text: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-100 dark:bg-blue-900/30",
+  },
+  green: {
+    text: "text-emerald-600 dark:text-emerald-400",
+    bg: "bg-emerald-100 dark:bg-emerald-900/30",
+  },
+  emerald: {
+    text: "text-emerald-600 dark:text-emerald-400",
+    bg: "bg-emerald-100 dark:bg-emerald-900/30",
+  },
+  amber: {
+    text: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-100 dark:bg-amber-900/30",
+  },
+  rose: {
+    text: "text-rose-600 dark:text-rose-400",
+    bg: "bg-rose-100 dark:bg-rose-900/30",
+  },
+  purple: {
+    text: "text-purple-600 dark:text-purple-400",
+    bg: "bg-purple-100 dark:bg-purple-900/30",
+  }
+} as const
+
+export interface DashboardStatCardProps {
+  title: string
+  value: number | string | undefined
+  icon: LucideIcon
+  variant?: keyof typeof VARIANTS
+  description?: string
+  index?: number
+  isLoading?: boolean
+  className?: string
+  trend?: {
+    value: number
+    isPositive?: boolean
+  }
+}
+
+export function DashboardStatCard({ 
+  title, 
+  value, 
+  icon: Icon, 
+  variant = 'default', 
+  description,
+  index = 0,
+  isLoading = false,
+  className,
+  trend
+}: DashboardStatCardProps) {
+  
+  const styles = VARIANTS[variant] || VARIANTS.default
+
+  // Garante formatação Brasileira e trata valor 0 como válido
+  const displayValue = typeof value === 'number' 
+    ? new Intl.NumberFormat('pt-BR').format(value) 
+    : (value ?? '-')
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -4 }}
+      transition={{ 
+        duration: 0.3, 
+        delay: index * 0.04, 
+        ease: "easeOut" 
+      }}
+      className="w-full h-full"
+    >
+      <Card className={cn(
+        "h-full relative overflow-hidden transition-shadow duration-300",
+        "rounded-xl border-border/50 bg-card/50 backdrop-blur-md shadow-sm hover:shadow-md",
+        className
+      )}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            {title}
+          </CardTitle>
+          <div className={cn("p-2 rounded-lg shrink-0 transition-colors", styles.bg)}>
+            <Icon className={cn("h-4 w-4", styles.text)} aria-hidden="true" />
+          </div>
+        </CardHeader>
+        
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3 py-1">
+              <Skeleton className="h-9 w-20 rounded-md" />
+              <Skeleton className="h-3 w-full max-w-35 rounded-full opacity-50" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground tabular-nums">
+                  {displayValue}
+                </div>
+                
+                {trend && (
+                  <div className={cn(
+                    "flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors",
+                    trend.isPositive === true ? "text-emerald-700 bg-emerald-100 dark:bg-emerald-500/20 dark:text-emerald-400" :
+                    trend.isPositive === false ? "text-rose-700 bg-rose-100 dark:bg-rose-500/20 dark:text-rose-400" :
+                    "text-muted-foreground bg-muted"
+                  )}>
+                    {trend.isPositive === true ? <ArrowUpRight className="h-3 w-3 mr-0.5" /> : 
+                     trend.isPositive === false ? <ArrowDownRight className="h-3 w-3 mr-0.5" /> :
+                     <Minus className="h-3 w-3 mr-0.5" />}
+                    {Math.abs(trend.value)}%
+                  </div>
+                )}
+              </div>
+
+              {description && (
+                <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug font-medium line-clamp-2 min-h-10">
+                  {description}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+
+        {/* Efeito visual sutil de brilho no topo */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-linear-to-r from-transparent via-border/40 to-transparent" />
+      </Card>
+    </motion.div>
+  )
+}
+
+FILE: frontend\src\components\dashboard\RecentActivityFeed.tsx
+--------------------------------------------------
+// frontend/src/components/dashboard/RecentActivityFeed.tsx
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { formatDistanceToNow } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { 
+  Activity, FileText, UserPlus, CheckCircle2, AlertCircle, 
+  MessageSquare, History, FileEdit} from 'lucide-react'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollArea } from '@/components/ui/scroll-area'
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// --- TYPES ---
+interface ActivityLog {
+  id: string
+  acao: string
+  descricao: string
+  createdAt: string
+  caso?: { nomeCompleto: string }
+  autor?: { nome: string }
+}
+
+// --- CONFIGURAÇÃO VISUAL ---
+const ACTION_CONFIG = [
+  { 
+    match: ['CRIACAO', 'ADICIONADO', 'CADASTRO'], 
+    icon: UserPlus, 
+    style: 'text-status-success-fg bg-status-success-bg border-status-success-border' 
+  },
+  { 
+    match: ['URGENCIA', 'RISCO', 'CRITICO'], 
+    icon: AlertCircle, 
+    style: 'text-status-error-fg bg-status-error-bg border-status-error-border' 
+  },
+  { 
+    match: ['EVOLUCAO', 'ATENDIMENTO', 'INTERVENCAO'], 
+    icon: MessageSquare, 
+    style: 'text-status-info-fg bg-status-info-bg border-status-info-border' 
+  },
+  { 
+    match: ['PAF', 'PLANO', 'DOCUMENTO'], 
+    icon: FileText, 
+    style: 'text-status-ai-fg bg-status-ai-bg border-status-ai-border' 
+  },
+  { 
+    match: ['DESLIGAMENTO', 'FINALIZADO', 'ENCERRAMENTO'], 
+    icon: CheckCircle2, 
+    style: 'text-status-neutral-fg bg-status-neutral-bg border-status-neutral-border' 
+  },
+  { 
+    match: ['EDICAO', 'ATUALIZACAO', 'ALTERACAO'], 
+    icon: FileEdit, 
+    style: 'text-status-warning-fg bg-status-warning-bg border-status-warning-border' 
+  }
+]
+
+const getActivityConfig = (action: string) => {
+  const config = ACTION_CONFIG.find(c => c.match.some(key => action.toUpperCase().includes(key)))
+  return config || { 
+    icon: Activity, 
+    style: 'text-muted-foreground bg-muted border-border' 
+  }
+}
+
+// --- SUB-COMPONENTE: ITEM DA LISTA ---
+function ActivityItem({ log, isLast }: { log: ActivityLog, isLast: boolean }) {
+  const { icon: Icon, style } = getActivityConfig(log.acao)
+  const timeAgo = formatDistanceToNow(new Date(log.createdAt), { locale: ptBR, addSuffix: true })
+
+  return (
+    <div className="flex gap-4 group relative">
+      {/* Coluna da Linha do Tempo */}
+      <div className="flex flex-col items-center min-w-8">
+        {!isLast && (
+           <div className="absolute top-8 -bottom-2 left-[15.5px] w-px bg-border/60 group-hover:bg-primary/20 transition-colors" />
+        )}
+        <div className={cn(
+          "relative z-10 flex h-8 w-8 items-center justify-center rounded-full border shadow-sm transition-all duration-300 group-hover:scale-110 shrink-0",
+          style
+        )}>
+          <Icon className="h-4 w-4" strokeWidth={2.5} />
+        </div>
+      </div>
+
+      {/* Coluna de Conteúdo */}
+      <div className={cn("flex-1 pb-6 pt-1 space-y-1.5 min-w-0", isLast ? "pb-2" : "")}>
+        <div className="flex justify-between items-start gap-3">
+          <p className="text-sm font-medium leading-snug text-foreground/90 line-clamp-2 group-hover:text-primary transition-colors">
+            {log.descricao}
+          </p>
+          <span className="text-[10px] text-muted-foreground/70 whitespace-nowrap tabular-nums shrink-0 mt-0.5 bg-background px-1.5 py-0.5 rounded-md border border-transparent group-hover:border-border transition-colors">
+            {timeAgo}
+          </span>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {log.caso && (
+            <span className="inline-flex items-center font-medium text-primary/80 bg-primary/5 px-2 py-0.5 rounded-md border border-primary/10 max-w-40 truncate hover:bg-primary/10 transition-colors">
+              {log.caso.nomeCompleto}
+            </span>
+          )}
+          {log.autor && (
+            <span className="flex items-center gap-1 opacity-70">
+              <span className="text-[10px] uppercase tracking-wider">por</span> 
+              <span className="font-medium text-foreground capitalize">{log.autor.nome.split(' ')[0].toLowerCase()}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- COMPONENTE PRINCIPAL ---
+interface RecentActivityFeedProps { className?: string }
+
+export function RecentActivityFeed({ className }: RecentActivityFeedProps) {
+  const { data: logs, isLoading } = useQuery<ActivityLog[]>({
+    queryKey: ['recent-activity'],
+    queryFn: async () => (await api.get('/stats/activity')).data,
+    refetchInterval: 15000 
+  })
+
+  return (
+    <Card className={cn("flex flex-col border shadow-sm overflow-hidden bg-card", className)}>
+      <CardHeader className="pb-3 px-5 py-4 shrink-0 border-b border-border/40">
+        <CardTitle className="flex items-center gap-2.5 text-base font-bold">
+           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-status-ai-bg border border-status-ai-border text-status-ai-fg">
+              <History className="h-4 w-4" />
+           </div>
+           <span className="text-foreground">Feed de Atividades</span>
+        </CardTitle>
+      </CardHeader>
+      
+      <CardContent className="p-0 flex-1 min-h-0 relative">
+        <div className="absolute inset-0">
+          <ScrollArea className="h-full">
+            <div className="p-5">
+              {isLoading ? (
+                <div className="space-y-6">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="flex gap-4 animate-pulse">
+                      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                      <div className="space-y-2 flex-1 pt-1">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/3" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : logs?.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground/60">
+                  <div className="p-3 bg-muted/30 rounded-full mb-2">
+                     <Activity className="h-6 w-6 opacity-50" />
+                  </div>
+                  <p className="text-sm font-medium">Nenhuma atividade recente.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {logs?.map((log, index) => (
+                    <ActivityItem key={log.id} log={log} isLast={index === (logs.length - 1)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+FILE: frontend\src\components\dashboard\SmartInsightsCard.tsx
+--------------------------------------------------
+// frontend/src/components/dashboard/SmartInsightsCard.tsx
+import { useMemo } from "react"
+import { 
+  TrendingUp, AlertTriangle, 
+  Sparkles, CheckCircle2, Minus, LucideIcon, Info 
+} from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
+
+// --- TYPES ---
+interface SmartInsightsCardProps {
+  insights: string[]
+  isLoading?: boolean
+  className?: string
+}
+
+interface InsightConfig {
+  icon: LucideIcon
+  color: string
+  bg: string
+  border: string
+}
+
+// --- LOGIC: Paleta Calibrada (Pastel 50 + Vivid 500) ---
+const getIconConfig = (text: string): InsightConfig => {
+  const lower = text.toLowerCase()
+
+  // 1. ALERTAS / RISCOS (Critical - Rose)
+  if (['crítico', 'alto', 'risco', 'atenção', 'urgente', 'queda', 'negativo', 'estagnado'].some(k => lower.includes(k)))
+    return { 
+      icon: AlertTriangle, 
+      color: "text-rose-600 dark:text-rose-400", 
+      bg: "bg-rose-50 dark:bg-rose-500/10", 
+      border: "border-rose-100 dark:border-rose-500/20" 
+    }
+
+  // 2. CRESCIMENTO / ALTAS (Positive - Blue)
+  if (['aumento', 'crescimento', 'subiu', 'alta', 'expansão', 'novos'].some(k => lower.includes(k)))
+    return { 
+      icon: TrendingUp, 
+      color: "text-blue-600 dark:text-blue-400", 
+      bg: "bg-blue-50 dark:bg-blue-500/10", 
+      border: "border-blue-100 dark:border-blue-500/20" 
+    }
+
+  // 3. SUCESSO / RESOLUÇÃO (Success - Emerald)
+  if (['resolvido', 'concluído', 'eficaz', 'positivo', 'sucesso', 'ativo', 'monitoramento'].some(k => lower.includes(k)))
+    return { 
+      icon: CheckCircle2, 
+      color: "text-emerald-600 dark:text-emerald-400", 
+      bg: "bg-emerald-50 dark:bg-emerald-500/10", 
+      border: "border-emerald-100 dark:border-emerald-500/20" 
+    }
+
+  // 4. ESTABILIDADE (Neutral - Slate)
+  if (['estável', 'mantém', 'igual', 'neutro', 'normal'].some(k => lower.includes(k)))
+    return { 
+      icon: Minus, 
+      color: "text-slate-600 dark:text-slate-400", 
+      bg: "bg-slate-50 dark:bg-slate-500/10", 
+      border: "border-slate-100 dark:border-slate-500/20" 
+    }
+
+  // 5. DEFAULT (Info - Violet)
+  return { 
+    icon: Sparkles, 
+    color: "text-violet-600 dark:text-violet-400", 
+    bg: "bg-violet-50 dark:bg-violet-500/10", 
+    border: "border-violet-100 dark:border-violet-500/20" 
+  }
+}
+
+// Componente para processar o texto e destacar (Negrito antes de ':' e Números)
+const FormattedText = ({ text }: { text: string }) => {
+  // Separa Título da Descrição (ex: "Alerta: Aumento de 20%")
+  const [title, ...rest] = text.split(':')
+  const description = rest.join(':') // Junta o resto caso haja mais de um ':'
+
+  // Se não tiver ':', trata o texto inteiro como descrição
+  if (!description) {
+    return <HighlightNumbers text={text} />
+  }
+
+  return (
+    <span className="text-sm leading-relaxed text-muted-foreground">
+      <span className="font-bold text-foreground block mb-0.5">{title}</span>
+      <HighlightNumbers text={description.trim()} />
+    </span>
+  )
+}
+
+// Helper para destacar números e porcentagens
+const HighlightNumbers = ({ text }: { text: string }) => {
+  // Regex para capturar números, porcentagens e valores monetários
+  const parts = text.split(/(\d+(?:[.,]\d+)?%?|\bR\$\s?\d+(?:[.,]\d+)?\b)/g)
+  
+  return (
+    <span className="text-sm text-muted-foreground">
+      {parts.map((part, i) => 
+        /(\d+(?:[.,]\d+)?%?|\bR\$\s?\d+(?:[.,]\d+)?\b)/.test(part) ? (
+          <span key={i} className="font-bold text-foreground mx-0.5 bg-accent/50 px-1 rounded-xs">
+            {part}
+          </span>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
+export function SmartInsightsCard({ insights, isLoading = false, className }: SmartInsightsCardProps) {
+  
+  const processedInsights = useMemo(() => {
+    return insights.map(text => ({
+      text,
+      config: getIconConfig(text)
+    }))
+  }, [insights])
+
+  return (
+    <Card className={cn("h-full border shadow-sm relative overflow-hidden group flex flex-col bg-card", className)}>
+      {/* Header Gradient (Tailwind v4 syntax) */}
+      <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-violet-500 via-fuchsia-500 to-amber-500" />
+
+      <CardHeader className="pb-4 pt-5 px-5 shrink-0">
+        <CardTitle className="flex items-center gap-2.5 text-base font-bold text-foreground">
+          {/* Header Icon Container */}
+          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-linear-to-br from-violet-50 to-fuchsia-50 dark:from-violet-500/20 dark:to-fuchsia-500/20 text-violet-600 dark:text-violet-400 shadow-sm border border-violet-100 dark:border-violet-500/30">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            Análise Inteligente
+            <p className="text-[10px] font-normal text-muted-foreground uppercase tracking-wider mt-0.5">
+              Powered by Analytics
+            </p>
+          </div>
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="px-5 pb-5 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <Skeleton className="h-10 w-10 rounded-lg shrink-0" />
+                <div className="space-y-2 flex-1 pt-1">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : insights.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full min-h-50 text-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-muted/60 p-6">
+            <div className="p-3 bg-background rounded-full mb-3 shadow-sm ring-1 ring-border">
+              <Info className="h-6 w-6 text-muted-foreground/50" />
+            </div>
+            <p className="text-sm font-medium text-foreground">Sem insights no momento</p>
+            <p className="text-xs opacity-70 mt-1 max-w-50">
+              O sistema precisa de mais dados para gerar análises relevantes.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <AnimatePresence mode="popLayout">
+              {processedInsights.map(({ text, config }, index) => {
+                const Icon = config.icon
+
+                return (
+                  <motion.div
+                    key={`${index}-${text.substring(0, 15)}`}
+                    initial={{ opacity: 0, x: -10, scale: 0.98 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, x: 10, scale: 0.95 }}
+                    transition={{ duration: 0.3, delay: index * 0.1 }}
+                    className={cn(
+                      "flex gap-3.5 p-3.5 rounded-xl border transition-all duration-200",
+                      "bg-card hover:bg-accent/5 hover:shadow-md hover:-translate-y-0.5",
+                      config.border
+                    )}
+                  >
+                    {/* Ícone Lateral */}
+                    <div className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm transition-colors mt-0.5", 
+                      config.bg, 
+                      config.color
+                    )}>
+                      <Icon className="h-4.5 w-4.5" strokeWidth={2.5} />
+                    </div>
+
+                    {/* Conteúdo de Texto Formatado */}
+                    <div className="flex-1">
+                       <FormattedText text={text} />
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </AnimatePresence>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+FILE: frontend\src\components\dashboard\UpcomingPafDeadlines.tsx
+--------------------------------------------------
+// frontend/src/components/dashboard/UpcomingPafDeadlines.tsx
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { 
+  AlertTriangle, ArrowRight, CheckCircle2, 
+  Clock, AlertCircle, Info, LucideIcon 
+} from 'lucide-react'
+import { formatDistanceToNow, isValid, isPast } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+import { api } from '@/lib/api'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollArea } from '@/components/ui/scroll-area'
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// --- TYPES ---
+interface AlertItem {
+  id: string
+  title: string
+  description: string
+  link: string
+  type: 'critical' | 'warning' | 'info'
+  dueDate?: string 
+}
+
+// --- CONFIGURAÇÃO DE ESTILOS (Usa Tokens Semânticos do CSS) ---
+const ALERT_STYLES: Record<string, { 
+    icon: LucideIcon, 
+    colorClass: string, 
+    bgClass: string,
+    borderClass: string,
+    badgeVariant: "destructive" | "secondary" | "outline" | "default"
+}> = {
+  critical: {
+    icon: AlertCircle,
+    colorClass: "text-status-error-fg",
+    bgClass: "bg-status-error-bg",
+    borderClass: "border-status-error-border",
+    badgeVariant: "destructive"
+  },
+  warning: {
+    icon: Clock,
+    colorClass: "text-status-warning-fg",
+    bgClass: "bg-status-warning-bg",
+    borderClass: "border-status-warning-border",
+    badgeVariant: "secondary"
+  },
+  info: {
+    icon: Info,
+    colorClass: "text-status-info-fg",
+    bgClass: "bg-status-info-bg",
+    borderClass: "border-status-info-border",
+    badgeVariant: "outline"
+  }
+}
+
+interface UpcomingPafDeadlinesProps {
+  className?: string
+}
+
+export function UpcomingPafDeadlines({ className }: UpcomingPafDeadlinesProps) {
+  const { data: alerts, isLoading, isError } = useQuery<AlertItem[]>({
+    queryKey: ['alerts'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/alerts')
+        if (!Array.isArray(res.data)) return []
+        
+        return res.data
+          .filter((item: AlertItem) => 
+            item.title.includes('PAF') || 
+            item.id.startsWith('paf-') ||
+            item.type === 'critical'
+          )
+          .sort((a, b) => {
+             // Ordena por Criticidade primeiro, depois mantém a ordem
+             if (a.type === 'critical' && b.type !== 'critical') return -1;
+             if (b.type === 'critical' && a.type !== 'critical') return 1;
+             return 0;
+          })
+      } catch {
+        return []
+      }
+    },
+    refetchInterval: 1000 * 60 
+  })
+
+  // Helper de Data
+  const renderDate = (dateStr?: string) => {
+    if (!dateStr) return null
+    const date = new Date(dateStr)
+    if (!isValid(date)) return null
+    
+    const isOverdue = isPast(date)
+    const text = formatDistanceToNow(date, { locale: ptBR, addSuffix: true })
+    
+    return { text, isOverdue }
+  }
+
+  const safeAlerts = Array.isArray(alerts) ? alerts : []
+  const hasAlerts = safeAlerts.length > 0
+  const criticalCount = safeAlerts.filter(a => a.type === 'critical').length
+
+  return (
+    <Card className={cn("flex flex-col border shadow-sm overflow-hidden bg-card", className)}>
+      <CardHeader className="pb-3 px-5 py-4 shrink-0 border-b border-border/40">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-bold flex items-center gap-2.5">
+            {/* Ícone do Título também usa cor semântica (Warning neste caso) */}
+            <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-status-warning-bg border border-status-warning-border">
+                <AlertTriangle className="h-4 w-4 text-status-warning-fg" />
+            </div>
+            <span className="text-foreground">Prazos e Alertas PAF</span>
+          </CardTitle>
+          
+          {hasAlerts && (
+            <Badge 
+              variant={criticalCount > 0 ? "destructive" : "secondary"} 
+              className="h-5 px-1.5 text-[10px]"
+            >
+              {safeAlerts.length}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      
+      <CardContent className="flex-1 p-0 min-h-0 relative">
+        {/* ScrollArea com posicionamento absoluto para respeitar o grid pai */}
+        <div className="absolute inset-0">
+          <ScrollArea className="h-full">
+            <div className="p-0">
+              
+              {isLoading ? (
+                <div className="p-4 space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex flex-col gap-2 p-3 rounded-lg border bg-muted/20 animate-pulse">
+                      <div className="flex justify-between">
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-16 rounded-full" />
+                      </div>
+                      <Skeleton className="h-3 w-3/4" />
+                    </div>
+                  ))}
+                </div>
+              ) : isError ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3 opacity-80 p-4">
+                  <div className="p-3 rounded-full bg-status-error-bg border border-status-error-border">
+                    <AlertCircle className="h-6 w-6 text-status-error-fg" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">Erro ao carregar alertas.</span>
+                </div>
+              ) : !hasAlerts ? (
+                // --- EMPTY STATE (SUCCESS) ---
+                <div className="flex flex-col items-center justify-center h-64 text-center p-6">
+                  {/* Usa Tokens Semânticos de Sucesso */}
+                  <div className="p-4 rounded-full bg-status-success-bg border border-status-success-border mb-3 animate-in zoom-in duration-300">
+                    <CheckCircle2 className="h-8 w-8 text-status-success-fg" />
+                  </div>
+                  <h4 className="font-semibold text-foreground">Tudo em dia!</h4>
+                  <p className="text-xs mt-1 text-muted-foreground max-w-50 leading-relaxed">
+                    Não há pendências de PAF ou prazos críticos no momento.
+                  </p>
+                </div>
+              ) : (
+                // --- LISTA DE ALERTAS ---
+                <ul className="divide-y divide-border/40">
+                  {safeAlerts.slice(0, 10).map((item) => {
+                    const style = ALERT_STYLES[item.type] || ALERT_STYLES.info
+                    const StatusIcon = style.icon
+                    const dateInfo = renderDate(item.dueDate)
+
+                    return (
+                      <li key={item.id} className="group hover:bg-muted/30 transition-colors duration-200">
+                        <div className="p-4 flex flex-col gap-3">
+                           {/* Header da linha */}
+                           <div className="flex items-start gap-3.5">
+                              {/* Ícone com Cores Semânticas (Pastel + Vivo) */}
+                              <div className={cn(
+                                "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-sm", 
+                                style.bgClass,
+                                style.borderClass
+                              )}>
+                                <StatusIcon className={cn("h-4 w-4", style.colorClass)} />
+                              </div>
+                              
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <h4 className="text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors">
+                                  {item.title}
+                                </h4>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                                  {item.description}
+                                </p>
+                                
+                                {dateInfo && (
+                                  <div className={cn(
+                                    "flex items-center gap-1.5 mt-2.5 text-[11px] font-medium border w-fit px-2 py-0.5 rounded-md",
+                                    dateInfo.isOverdue 
+                                        ? "bg-status-error-bg text-status-error-fg border-status-error-border" 
+                                        : "bg-muted/50 text-muted-foreground border-border"
+                                  )}>
+                                    <Clock className="h-3 w-3" />
+                                    <span>
+                                      {dateInfo.isOverdue ? "Venceu " : "Vence "} 
+                                      {dateInfo.text}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                           </div>
+
+                           {/* Ação (Resolver) */}
+                           <div className="pl-11.5">
+                             <Button 
+                               asChild 
+                               variant="ghost" 
+                               size="sm" 
+                               className="h-7 text-xs px-2 text-muted-foreground hover:text-primary hover:bg-primary/10 -ml-2"
+                             >
+                               <Link to={item.link} className="flex items-center gap-1.5">
+                                 Resolver Pendência
+                                 <ArrowRight className="h-3 w-3 opacity-70 group-hover:translate-x-1 transition-transform" />
+                               </Link>
+                             </Button>
+                           </div>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+FILE: frontend\src\components\layout\GdfLogo.tsx
+--------------------------------------------------
+// frontend/src/components/layout/GdfLogo.tsx
+import { memo } from 'react'
+// Ajuste o caminho abaixo se o nome do seu arquivo for diferente
+import logoGdf from '@/assets/logo-gdf.png' 
+
+// Mudamos a tipagem de SVGProps para ImgHTMLAttributes, pois agora é uma imagem
+export const GdfLogo = memo(function GdfLogo({ className, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  return (
+    <img
+      src={logoGdf}
+      alt="Logo GDF"
+      // object-contain garante que o logo não fique esticado/distorcido
+      className={`object-contain ${className}`}
+      {...props}
+    />
+  )
+})
+
+FILE: frontend\src\components\layout\Header.tsx
+--------------------------------------------------
+// frontend/src/components/layout/Header.tsx
+import { useLocation, Link } from "react-router-dom"
+import { LogOut, Eye, EyeOff, ChevronDown, User } from "lucide-react"
+
+import { useAuth } from "@/contexts/AuthContext"
+import { ThemeToggle } from "@/components/common/ThemeToggle"
+import { Button } from "@/components/ui/button"
+import { MobileSidebar } from "./MobileSidebar"
+import { NotificationBell } from "./NotificationBell"
+import { ChangePasswordDialog } from "@/components/settings/ChangePasswordDialog"
+import { usePrivacy } from "@/contexts/PrivacyContext"
+import { ROUTE_PATHS } from "@/constants/app-routes" 
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuGroup
+} from "@/components/ui/dropdown-menu"
+
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+
+// Mapeamento de Rotas para Labels Amigáveis
+const ROUTE_LABELS: Record<string, string> = {
+  'dashboard': 'Painel Gerencial',
+  'workspace': 'Minha Mesa',
+  'cases': 'Prontuários',
+  'waiting': 'Fila de Espera',
+  'closed': 'Arquivo',
+  'agenda': 'Agenda',
+  'groups': 'Grupos',
+  'reports': 'Relatórios',
+  'team': 'Equipe',
+  'users': 'Usuários',
+  'audit': 'Auditoria',
+  'analytics': 'Indicadores'
+}
+
+export function Header() {
+  const { user, logout } = useAuth()
+  const location = useLocation()
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy()
+
+  // --- LÓGICA DE BREADCRUMBS ---
+  const pathSegments = location.pathname.split('/').filter(Boolean)
+  const displaySegments = pathSegments.filter(s => s !== 'app')
+
+  // Lógica de Iniciais (Garante 2 letras maiúsculas)
+  const initials = user?.nome
+    ? user.nome.split(' ').map((n:string) => n[0]).slice(0, 2).join('').toUpperCase()
+    : 'U'
+
+  return (
+    <header className="sticky top-0 z-40 flex h-16 w-full items-center gap-4 border-b border-border bg-background/80 px-6 backdrop-blur-md transition-all">
+      
+      {/* Mobile Trigger */}
+      <div className="md:hidden">
+        <MobileSidebar />
+      </div>
+
+      {/* Navegação Estrutural (Breadcrumbs) */}
+      <div className="hidden md:flex items-center min-w-0 flex-1">
+        <Breadcrumb>
+          <BreadcrumbList className="flex-nowrap overflow-hidden text-sm text-muted-foreground">
+            <BreadcrumbItem>
+               <BreadcrumbLink asChild>
+                 <Link to={ROUTE_PATHS.WORKSPACE} className="hover:text-primary transition-colors font-medium">Início</Link>
+               </BreadcrumbLink>
+            </BreadcrumbItem>
+            
+            {displaySegments.length > 0 && <BreadcrumbSeparator />}
+
+            {displaySegments.map((segment, index) => {
+               const isLast = index === displaySegments.length - 1
+               
+               // Verifica se é um UUID (v4)
+               const isUUID = /^[0-9a-fA-F-]{36}$/.test(segment);
+               const displayName = isUUID 
+                 ? 'Detalhes' 
+                 : (ROUTE_LABELS[segment] || segment.charAt(0).toUpperCase() + segment.slice(1));
+
+               const href = `/app/${displaySegments.slice(0, index + 1).join('/')}`
+
+               return (
+                 <div key={href} className="flex items-center whitespace-nowrap">
+                   {index > 0 && <BreadcrumbSeparator className="mx-2" />}
+                   <BreadcrumbItem>
+                     {isLast ? (
+                       <BreadcrumbPage className="font-semibold text-foreground truncate max-w-50 block">{displayName}</BreadcrumbPage>
+                     ) : (
+                       <BreadcrumbLink asChild>
+                         <Link to={href} className="hover:text-primary transition-colors">{displayName}</Link>
+                       </BreadcrumbLink>
+                     )}
+                   </BreadcrumbItem>
+                 </div>
+               )
+            })}
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+
+      {/* Área de Ações do Usuário (Direita) */}
+      <div className="ml-auto flex items-center gap-3 md:gap-4 shrink-0">
+        
+        {/* Toolbar de Ferramentas */}
+        <div className="flex items-center gap-1 rounded-full border border-border bg-muted/20 p-1 pr-2 shadow-sm">
+          
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={togglePrivacyMode}
+                  className={`
+                    h-8 w-8 rounded-full transition-all duration-300
+                    ${isPrivacyMode 
+                      ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" 
+                      : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    }
+                  `}
+                >
+                  {isPrivacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                 {isPrivacyMode ? "Desativar Modo Privacidade" : "Ativar Modo Privacidade"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <div className="h-4 w-px bg-border mx-1" />
+
+          <NotificationBell />
+          <ThemeToggle />
+        </div>
+
+        {/* Menu de Perfil */}
+        <div className="border-l border-border pl-3 ml-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="relative h-10 w-full md:w-auto justify-start md:justify-center px-2 rounded-full md:rounded-lg hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-primary/20 transition-all gap-2"
+              >
+                 <Avatar className="h-9 w-9 border ring-2 ring-background transition-shadow group-hover:ring-primary/20">
+                    <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs tracking-wider">
+                      {initials}
+                    </AvatarFallback>
+                 </Avatar>
+                 
+                 <div className="hidden md:flex flex-col items-start text-left gap-0.5">
+                    <span className="text-sm font-semibold leading-none max-w-32 truncate">
+                      {user?.nome?.split(' ')[0]}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                      {user?.cargo?.replace(/_/g, ' ')}
+                    </span>
+                 </div>
+                 <ChevronDown className="h-3 w-3 text-muted-foreground/50 hidden md:block" />
+              </Button>
+            </DropdownMenuTrigger>
+            
+            <DropdownMenuContent className="w-64 p-1" align="end" forceMount>
+              <DropdownMenuLabel className="font-normal p-3 bg-muted/10 mb-1 rounded-t-md">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none text-foreground">{user?.nome}</p>
+                  <p className="text-xs leading-none text-muted-foreground break-all opacity-80 font-mono">
+                    {user?.email}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              
+              <DropdownMenuGroup>
+                 <DropdownMenuItem className="cursor-pointer">
+                    <User className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Meu Perfil</span>
+                 </DropdownMenuItem>
+                 
+                 {/* Item Customizado para o Dialog dentro do Menu */}
+                 <div className="relative flex cursor-pointer select-none items-center rounded-sm text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground w-full py-0.5">
+                    <ChangePasswordDialog /> 
+                 </div>
+              </DropdownMenuGroup>
+
+              <DropdownMenuSeparator />
+              
+              <DropdownMenuItem 
+                onClick={logout} 
+                className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer font-medium"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Sair da Conta</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+FILE: frontend\src\components\layout\MainLayout.tsx
+--------------------------------------------------
+// frontend/src/components/layout/MainLayout.tsx
+import { Outlet } from "react-router-dom"
+import { Sidebar } from "./Sidebar"
+import { Header } from "./Header"
+import { NewCaseModal } from "../modals/NewCaseModal"
+import { CommandMenu } from "../common/CommandMenu"
+import { cn } from "@/lib/utils"
+
+export function MainLayout() {
+  return (
+    // Container Principal: Ocupa toda a tela, sem scroll no body
+    <div className="flex h-screen w-full bg-background overflow-hidden text-foreground antialiased font-sans selection:bg-primary/20">
+      
+      {/* [Acessibilidade] Skip Link aprimorado */}
+      <a 
+        href="#main-content" 
+        className={cn(
+          "sr-only focus:not-sr-only focus:absolute focus:z-100 focus:top-4 focus:left-4",
+          "px-6 py-3 bg-primary text-primary-foreground font-medium rounded-lg shadow-xl",
+          "transition-transform duration-200 focus:translate-y-0 -translate-y-12"
+        )}
+      >
+        Pular para o conteúdo principal
+      </a>
+
+      {/* Barra Lateral (Controla sua própria largura/colapso) */}
+      <Sidebar />
+      
+      {/* Coluna da Direita (Header + Conteúdo) */}
+      <div className="flex flex-col flex-1 h-full min-w-0 relative transition-all duration-300 bg-muted/20 dark:bg-background/50">
+        
+        {/* Cabeçalho Fixo no topo da coluna */}
+        <Header />
+        
+        {/* Área de Scroll Principal */}
+        <main 
+          id="main-content"
+          tabIndex={-1} // Permite foco programático para o skip link
+          className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth focus:outline-none scrollbar-thin"
+        >
+          {/* Container Centralizado para limitar largura em telas ultrawide */}
+          {/* max-w-400 equivale a 1600px no Tailwind v4 (400 * 4px) */}
+          <div className="mx-auto w-full max-w-400 p-4 sm:p-6 lg:p-8 pb-24 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+      
+      {/* Camada de Modais e Menus Globais */}
+      <NewCaseModal />
+      <CommandMenu />
+    </div>
+  )
+}
+
+FILE: frontend\src\components\layout\MobileSidebar.tsx
+--------------------------------------------------
+// frontend/src/components/layout/MobileSidebar.tsx
+import { useState, useMemo } from "react"
+import { NavLink } from "react-router-dom"
+import { Menu, Plus, ShieldCheck } from "lucide-react"
+import { clsx } from "clsx"
+
+import { Button } from "@/components/ui/button"
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetDescription,
+  SheetHeader
+} from "@/components/ui/sheet"
+
+import { useAuth } from "@/contexts/AuthContext"
+import { useModal } from "@/contexts/ModalContext"
+import { NAV_LINKS, type NavLink as NavLinkType } from "@/constants/app-navigation"
+
+// --- TYPES ---
+interface MobileGroupProps {
+  title: string
+  links: NavLinkType[]
+  close: () => void
+}
+
+interface MobileLinkProps {
+  item: NavLinkType
+  onClick: () => void
+}
+
+// --- COMPONENTS ---
+
+const MobileGroup = ({ title, links, close }: MobileGroupProps) => {
+  if (links.length === 0) return null
+  return (
+    <div className="grid gap-1">
+      <h4 className="px-3 mb-2 text-xs font-bold text-muted-foreground/70 uppercase tracking-widest">
+        {title}
+      </h4>
+      {links.map((link) => (
+        <MobileLink key={link.to} item={link} onClick={close} />
+      ))}
+    </div>
+  )
+}
+
+const MobileLink = ({ item, onClick }: MobileLinkProps) => {
+  const Icon = item.icon
+  
+  return (
+    <NavLink
+      to={item.to}
+      onClick={onClick}
+      end
+      className={({ isActive }) =>
+        clsx(
+          "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 active:scale-[0.98]",
+          isActive
+            ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20"
+            : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+        )
+      }
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      <span className="truncate">{item.label}</span>
+    </NavLink>
+  )
+}
+
+// --- MAIN COMPONENT ---
+
+export function MobileSidebar() {
+  const { user } = useAuth()
+  const { openNewCaseModal } = useModal()
+  const [open, setOpen] = useState(false)
+
+  const closeMenu = () => setOpen(false)
+
+  // Memoização dos links acessíveis
+  const accessibleLinks = useMemo(() => {
+    if (!user) return []
+    return NAV_LINKS.filter((link) => {
+       if (!link.allowedRoles) return true
+       return link.allowedRoles.includes(user.cargo)
+    })
+  }, [user])
+
+  // Agrupamento
+  const groupedLinks = useMemo(() => ({
+    MeuTrabalho: accessibleLinks.filter(l => l.section === "Meu Trabalho"),
+    GestaoCasos: accessibleLinks.filter(l => l.section === "Gestão de Casos"),
+    Administracao: accessibleLinks.filter(l => l.section === "Administração"),
+  }), [accessibleLinks])
+
+  if (!user) return null
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="-ml-2 md:hidden hover:bg-muted/50" aria-label="Abrir Menu">
+          <Menu className="h-6 w-6" />
+        </Button>
+      </SheetTrigger>
+
+      <SheetContent side="left" className="flex flex-col w-72 sm:w-80 p-0 border-r border-border shadow-xl bg-background"> 
+        
+        {/* HEADER */}
+        <SheetHeader className="p-6 border-b border-border text-left bg-muted/10">
+            <div className="flex items-center gap-3">
+                <div className="bg-primary/10 p-2 rounded-lg border border-primary/20 shrink-0">
+                   <ShieldCheck className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                    <SheetTitle className="text-xl font-bold tracking-tight text-foreground">SGAC<span className="text-muted-foreground font-normal ml-1 text-base">Braz</span></SheetTitle>
+                    <SheetDescription className="text-xs font-medium text-muted-foreground/80">Sistema de Gestão CREAS</SheetDescription>
+                </div>
+            </div>
+        </SheetHeader>
+
+        {/* CONTEÚDO */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-8 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+            
+            {/* Ação Principal */}
+            <Button
+              onClick={() => {
+                  closeMenu()
+                  openNewCaseModal()
+              }}
+              className="w-full shadow-md font-bold tracking-wide h-11 text-base bg-primary hover:bg-primary/90 active:scale-[0.98] transition-all"
+              size="lg"
+            >
+              <Plus className="mr-2 h-5 w-5" /> Novo Caso
+            </Button>
+
+            {/* Links de Navegação */}
+            <nav className="flex flex-col gap-6">
+                <MobileGroup title="Meu Trabalho" links={groupedLinks.MeuTrabalho} close={closeMenu} />
+                <MobileGroup title="Gestão de Casos" links={groupedLinks.GestaoCasos} close={closeMenu} />
+                <MobileGroup title="Administração" links={groupedLinks.Administracao} close={closeMenu} />
+            </nav>
+        </div>
+
+        {/* RODAPÉ DO USUÁRIO */}
+        <div className="border-t border-border p-4 bg-muted/5">
+          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20 shrink-0 shadow-sm">
+              {user.nome.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex flex-col overflow-hidden min-w-0">
+              <span className="text-sm font-semibold truncate text-foreground leading-tight">{user.nome}</span>
+              <span className="text-[10px] text-muted-foreground uppercase truncate font-bold tracking-wide mt-0.5">{user.cargo.replace('_', ' ')}</span>
+            </div>
+          </div>
+        </div>
+
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+FILE: frontend\src\components\layout\NotificationBell.tsx
+--------------------------------------------------
+// frontend/src/components/layout/NotificationBell.tsx
+import { useState, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { 
+  Bell, Info, AlertTriangle, CheckCircle2, Check, 
+  Clock, Activity, AlertCircle 
+} from 'lucide-react' // [CORREÇÃO] Removido 'X'
+import { Link } from 'react-router-dom'
+import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { ROUTES } from '@/constants/app-routes'
+
+// UI Components
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from "@/components/ui/tooltip"
+
+// --- TYPES ---
+
+type AlertType = 'PAF_NOT_STARTED' | 'PAF_REVIEW_OVERDUE' | 'RECEPTION_DELAY' | 'NOT_STARTED_YET' | 'PAF_STALLED'
+
+interface AlertRaw {
+  id: string
+  nomeCompleto: string
+  type: AlertType
+  days: number
+  urgencia?: 'BAIXA' | 'MEDIA' | 'ALTA'
+}
+
+interface NotificationConfig {
+  title: string
+  description: string
+  icon: React.ElementType
+  bg: string
+  critical: boolean
+}
+
+interface NotificationItem extends AlertRaw {
+  config: NotificationConfig
+}
+
+// --- HELPERS ---
+
+const getNotificationConfig = (type: string, days: number): NotificationConfig => {
+  switch (type) {
+    case 'PAF_NOT_STARTED':
+      return { 
+        title: 'Plano não iniciado', 
+        description: 'Caso sem PAF cadastrado.',
+        icon: AlertCircle, 
+        bg: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+        critical: true
+      }
+    case 'PAF_REVIEW_OVERDUE':
+      return { 
+        title: 'Revisão Vencida', 
+        description: `PAF sem revisão há ${days} dias.`,
+        icon: AlertTriangle, 
+        bg: 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
+        critical: true
+      }
+    case 'RECEPTION_DELAY':
+      return { 
+        title: 'Acolhida Atrasada', 
+        description: `Aguardando há ${days} dias.`,
+        icon: Clock, 
+        bg: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+        critical: true
+      }
+    case 'NOT_STARTED_YET':
+      return { 
+        title: 'Não Iniciado', 
+        description: `Atribuído há ${days} dias sem ação.`,
+        icon: Clock, 
+        bg: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
+        critical: false
+      }
+    case 'PAF_STALLED':
+      return { 
+        title: 'Sem Evolução', 
+        description: `Nenhum registro há ${days} dias.`,
+        icon: Activity, 
+        bg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+        critical: false
+      }
+    default:
+      return { 
+        title: 'Atenção Necessária', 
+        description: 'Verifique o status do caso.',
+        icon: Info, 
+        bg: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+        critical: false
+      }
+  }
+}
+
+const getCaseUrl = (id: string) => {
+  if (typeof ROUTES.CASE_DETAIL === 'function') {
+    return ROUTES.CASE_DETAIL(id)
+  }
+  return `/app/cases/${id}`
+}
+
+// --- COMPONENT ---
+
+export function NotificationBell() {
+  const [isOpen, setIsOpen] = useState(false)
+  const [readIds, setReadIds] = useState<string[]>([])
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('sgac_read_notifications')
+      if (stored) setReadIds(JSON.parse(stored))
+    } catch (e) {
+      console.error("Erro ao ler notificações salvas", e)
+    }
+  }, [])
+
+  const { data: rawData } = useQuery({
+    queryKey: ['notifications-bell'],
+    queryFn: async () => (await api.get('/alerts')).data,
+    refetchInterval: 1000 * 60 * 2,
+    retry: false,
+  })
+
+  const notifications = useMemo<NotificationItem[]>(() => {
+    let validList: AlertRaw[] = []
+
+    if (Array.isArray(rawData)) {
+      validList = rawData
+    } else if (rawData?.data && Array.isArray(rawData.data)) {
+      validList = rawData.data
+    }
+
+    return validList
+      .filter(n => !readIds.includes(n.id))
+      .map(n => ({
+        ...n,
+        config: getNotificationConfig(n.type, n.days)
+      }))
+      .sort((a, b) => {
+        if (a.config.critical && !b.config.critical) return -1
+        if (!a.config.critical && b.config.critical) return 1
+        return b.days - a.days
+      })
+  }, [rawData, readIds])
+
+  const criticalCount = notifications.filter(n => n.config.critical).length
+  const hasNotifications = notifications.length > 0
+
+  const handleRead = (id: string) => {
+    const newReadIds = [...readIds, id]
+    setReadIds(newReadIds)
+    localStorage.setItem('sgac_read_notifications', JSON.stringify(newReadIds))
+    setIsOpen(false)
+  }
+
+  const markAllAsRead = () => {
+    const currentVisibleIds = notifications.map(n => n.id)
+    const newReadIds = Array.from(new Set([...readIds, ...currentVisibleIds]))
+    
+    setReadIds(newReadIds)
+    localStorage.setItem('sgac_read_notifications', JSON.stringify(newReadIds))
+  }
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative hover:bg-muted/60 transition-all">
+          <Bell className="h-5 w-5 text-muted-foreground" />
+          
+          {hasNotifications && (
+            <span className="absolute top-2.5 right-2.5 flex h-2.5 w-2.5">
+              <span className={cn(
+                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                criticalCount > 0 ? "bg-red-400" : "bg-blue-400"
+              )} />
+              <span className={cn(
+                "relative inline-flex rounded-full h-2.5 w-2.5",
+                criticalCount > 0 ? "bg-red-500" : "bg-blue-500"
+              )} />
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      
+      {/* [CORREÇÃO TAILWIND] w-[380px] -> w-95 */}
+      <PopoverContent align="end" className="w-95 p-0 shadow-xl border-border/60 overflow-hidden">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between border-b px-4 py-3 bg-muted/30">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Notificações</h4>
+            {hasNotifications && (
+              <Badge variant="secondary" className="text-xs font-normal h-5 px-1.5">
+                {notifications.length}
+              </Badge>
+            )}
+          </div>
+          
+          {hasNotifications && (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 hover:bg-background hover:text-primary transition-colors" 
+                    onClick={markAllAsRead}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Marcar todas como lidas</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        
+        {/* Lista */}
+        {/* [CORREÇÃO TAILWIND] h-[350px] -> h-87.5 */}
+        <ScrollArea className="h-87.5">
+          {!hasNotifications ? (
+            // [CORREÇÃO TAILWIND] h-[300px] -> h-75
+            <div className="flex flex-col items-center justify-center h-75 text-muted-foreground gap-4 animate-in fade-in zoom-in-95 duration-300">
+              <div className="bg-muted/50 p-4 rounded-full ring-1 ring-border/50">
+                <CheckCircle2 className="h-8 w-8 opacity-50 text-emerald-500" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-foreground">Tudo em dia!</p>
+                <p className="text-xs text-muted-foreground/80">Você não tem pendências urgentes.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {notifications.map((item) => {
+                const Icon = item.config.icon
+                return (
+                  <Link 
+                    key={item.id} 
+                    to={getCaseUrl(item.id)}
+                    onClick={() => handleRead(item.id)}
+                    className="flex gap-4 px-4 py-3.5 hover:bg-muted/50 transition-colors items-start group relative"
+                  >
+                    {/* Ícone Indicativo */}
+                    <div className={cn("mt-1 p-2 rounded-full shrink-0", item.config.bg)}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    
+                    {/* Conteúdo */}
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <p className="text-sm font-medium leading-none group-hover:text-primary transition-colors">
+                          {item.config.title}
+                        </p>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {item.days}d atrás
+                        </span>
+                      </div>
+                      
+                      <p className="text-sm text-foreground/90 font-medium truncate">
+                        {item.nomeCompleto}
+                      </p>
+                      
+                      <p className="text-xs text-muted-foreground line-clamp-1">
+                        {item.config.description}
+                      </p>
+                    </div>
+
+                    {/* Dot de Urgência Alta */}
+                    {item.urgencia === 'ALTA' && (
+                      <span className="absolute top-4 right-4 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background animate-pulse" />
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+FILE: frontend\src\components\layout\Sidebar.tsx
+--------------------------------------------------
+// frontend/src/components/layout/Sidebar.tsx
+import { memo, useMemo, useState } from "react"
+import { NavLink } from "react-router-dom"
+import { 
+  Plus, ChevronLeft, PanelLeft, ShieldCheck 
+} from "lucide-react"
+import { clsx } from "clsx"
+
+import { useAuth } from "@/contexts/AuthContext"
+import { useModal } from "@/contexts/ModalContext" // Caminho corrigido
+import { ROUTES } from "@/constants/app-routes"
+import { Button } from "@/components/ui/button"
+import { NAV_LINKS, type NavLink as NavLinkType } from "@/constants/app-navigation" // Constantes atualizadas
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Separator } from "@/components/ui/separator"
+
+// Versão da aplicação (Injetada pelo Vite define)
+declare const __APP_VERSION__: string
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0'
+
+// --- TYPES ---
+interface SidebarSectionProps {
+  title: string
+  links: NavLinkType[]
+  collapsed: boolean
+  isFirst?: boolean
+}
+
+interface SidebarLinkProps {
+  item: NavLinkType
+  collapsed: boolean
+}
+
+// --- SUB-COMPONENTES ---
+
+const SidebarSection = ({ title, links, collapsed, isFirst }: SidebarSectionProps) => {
+  if (links.length === 0) return null
+
+  return (
+    <div className={clsx("flex flex-col", collapsed ? "gap-2" : "gap-1")}>
+      {/* Separador Sutil entre seções */}
+      {!isFirst && !collapsed && (
+        <div className="px-3 py-2">
+           <Separator className="bg-border/60" />
+        </div>
+      )}
+
+      {!collapsed && (
+        <h4 className="px-4 py-1.5 text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest animate-in fade-in duration-300 whitespace-nowrap overflow-hidden select-none">
+          {title}
+        </h4>
+      )}
+
+      {links.map((link) => (
+        <SidebarLink key={link.to} item={link} collapsed={collapsed} />
+      ))}
+    </div>
+  )
+}
+
+const SidebarLink = ({ item, collapsed }: SidebarLinkProps) => {
+  const Icon = item.icon
+
+  const content = (
+    <NavLink
+      to={item.to}
+      end={item.to === ROUTES.DASHBOARD}
+      className={({ isActive }) =>
+        clsx(
+          "flex items-center rounded-md transition-all duration-200 group relative overflow-hidden text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+          collapsed 
+            ? "justify-center w-10 h-10 p-0 mx-auto" 
+            : "gap-3 px-3 py-2 w-full",
+          isActive
+            ? "bg-primary/10 text-primary font-semibold shadow-sm" // Active State
+            : "text-muted-foreground hover:bg-muted/80 hover:text-foreground" // Hover State
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/* Indicador Lateral de Ativo */}
+          {!collapsed && isActive && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-primary rounded-r-full" />
+          )}
+
+          <Icon 
+            aria-hidden="true"
+            className={clsx(
+              "shrink-0 transition-transform duration-200", 
+              collapsed ? "h-5 w-5" : "h-4 w-4",
+              isActive && "scale-105"
+            )} 
+          />
+          
+          {!collapsed && (
+            <span className="truncate animate-in fade-in slide-in-from-left-1 duration-300">
+              {item.label}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  )
+
+  if (collapsed) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>{content}</TooltipTrigger>
+          <TooltipContent side="right" sideOffset={10} className="font-medium bg-popover text-popover-foreground border shadow-md z-50">
+            {item.label}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
+  return content
+}
+
+// --- MAIN COMPONENT ---
+
+export const Sidebar = memo(function Sidebar() {
+  const { user } = useAuth()
+  const { openNewCaseModal } = useModal()
+  
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  // Filtragem de Links baseada em Cargo
+  const accessibleLinks = useMemo(() => {
+    if (!user) return []
+    return NAV_LINKS.filter((link) => {
+       if (!link.allowedRoles) return true
+       return link.allowedRoles.includes(user.cargo)
+    })
+  }, [user])
+
+  // Agrupamento das seções
+  const groupedLinks = useMemo(() => ({
+    MeuTrabalho: accessibleLinks.filter((l) => l.section === "Meu Trabalho"),
+    GestaoCasos: accessibleLinks.filter((l) => l.section === "Gestão de Casos"),
+    Administracao: accessibleLinks.filter((l) => l.section === "Administração"),
+  }), [accessibleLinks])
+
+  if (!user) return null
+
+  return (
+    <aside 
+      className={clsx(
+        "hidden md:flex flex-col border-r border-border bg-card h-screen sticky top-0 transition-[width] duration-300 ease-in-out z-30 shadow-sm will-change-[width]",
+        isCollapsed ? "w-20" : "w-64" // Tailwind v4 canonical sizes
+      )}
+    >
+      
+      {/* HEADER LOGO */}
+      <div className={clsx(
+        "flex h-16 items-center border-b border-border transition-all duration-300 overflow-hidden shrink-0", 
+        isCollapsed ? "justify-center px-0" : "px-6"
+      )}>
+        <NavLink
+          to={user?.cargo === "Gerente" ? ROUTES.DASHBOARD : ROUTES.WORKSPACE}
+          className="flex items-center gap-2 font-extrabold text-lg tracking-tight whitespace-nowrap text-primary hover:opacity-90 transition-opacity"
+        >
+          <div className="bg-primary/10 p-1.5 rounded-lg border border-primary/20 shrink-0">
+             <ShieldCheck className="h-6 w-6" />
+          </div>
+          
+          <span className={clsx(
+            "transition-all duration-300 origin-left text-foreground", 
+            isCollapsed ? "opacity-0 w-0 scale-90 hidden" : "opacity-100 ml-1 scale-100"
+          )}>
+            SGAC<span className="text-muted-foreground font-normal ml-0.5 text-base">Braz</span>
+          </span>
+        </NavLink>
+      </div>
+
+      {/* CONTEÚDO SCROLLÁVEL */}
+      <div className="flex-1 overflow-y-auto py-6 px-3 space-y-6 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        
+        {/* AÇÃO PRINCIPAL (Novo Caso) */}
+        <div className={clsx("flex", isCollapsed ? "justify-center" : "px-0")}>
+          {isCollapsed ? (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={openNewCaseModal} 
+                    size="icon" 
+                    className="h-10 w-10 bg-primary hover:bg-primary/90 shadow-md hover:scale-105 transition-all rounded-xl focus-visible:ring-2 focus-visible:ring-primary/50"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={10} className="font-bold z-50">Novo Caso</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button 
+              onClick={openNewCaseModal} 
+              className="w-full shadow-sm font-bold tracking-wide bg-primary hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/50 transition-all active:scale-[0.98] h-10" 
+              size="default"
+            >
+              <div className="bg-primary-foreground/20 p-0.5 rounded mr-2">
+                 <Plus className="h-4 w-4" /> 
+              </div>
+              Novo Caso
+            </Button>
+          )}
+        </div>
+
+        {/* NAVEGAÇÃO ORGANIZADA */}
+        <nav className="flex flex-col gap-2">
+          <SidebarSection title="Meu Trabalho" links={groupedLinks.MeuTrabalho} collapsed={isCollapsed} isFirst />
+          <SidebarSection title="Gestão de Casos" links={groupedLinks.GestaoCasos} collapsed={isCollapsed} />
+          <SidebarSection title="Administração" links={groupedLinks.Administracao} collapsed={isCollapsed} />
+        </nav>
+      </div>
+
+      {/* FOOTER & TOGGLE */}
+      <div className="border-t border-border p-3 bg-muted/5 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={clsx(
+            "w-full flex items-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors h-9", 
+            isCollapsed ? "justify-center px-0" : "justify-between px-2"
+          )}
+          title={isCollapsed ? "Expandir" : "Recolher"}
+        >
+          {!isCollapsed && <span className="text-xs font-semibold">Recolher Menu</span>}
+          {isCollapsed ? <PanelLeft className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </Button>
+        
+        {!isCollapsed && (
+          <div className="mt-3 text-[10px] text-center text-muted-foreground/40 font-mono tracking-widest uppercase">
+            v{APP_VERSION} • SEDES/DF
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+})

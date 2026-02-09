@@ -1,4 +1,3 @@
-// frontend/src/components/case/tabs/HistoryTab.tsx
 import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"

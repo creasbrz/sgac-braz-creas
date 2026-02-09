@@ -19,8 +19,8 @@ interface ListQuery {
 export class AppointmentController {
 
   static async getUpcoming(req: FastifyRequest, reply: FastifyReply) {
-    const { sub: userId } = req.user as { sub: string }
-    const upcoming = await AppointmentService.getUpcoming(userId)
+    // Autocomplete funciona aqui: req.user.sub
+    const upcoming = await AppointmentService.getUpcoming(req.user.sub)
     return reply.send(upcoming)
   }
 

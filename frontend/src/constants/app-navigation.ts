@@ -25,7 +25,8 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.WORKSPACE,
     icon: Briefcase,
     label: 'Minha Mesa',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
+    // Todos têm acesso à mesa pessoal
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
     section: 'Meu Trabalho',
   },
   {
@@ -48,7 +49,8 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.DASHBOARD,
     icon: LayoutDashboard,
     label: 'Painel Geral',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    // [MUDANÇA v8.1] Restrito apenas a Gerentes e Auditores
+    allowedRoles: ['Gerente', 'Auditor'],
     section: 'Gestão de Casos',
   },
   {
@@ -62,7 +64,7 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.TEAM_OVERVIEW,
     icon: Users,
     label: 'Gestão da Equipe',
-    allowedRoles: ['Gerente', 'Auditor'], // Apenas Gerente/Auditor veem
+    allowedRoles: ['Gerente', 'Auditor'],
     section: 'Gestão de Casos',
   },
   {

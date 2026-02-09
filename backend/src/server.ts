@@ -39,6 +39,7 @@ import { groupRoutes } from './routes/groups'
 import { workspaceRoutes } from './routes/workspace'
 import { waitingListRoutes } from './routes/waitingList'
 import { rmaRoutes } from './routes/rma'
+import { instrumentalRoutes } from './routes/instrumentals'
 
 const isDev = process.env.NODE_ENV !== 'production'
 
@@ -94,7 +95,7 @@ app.register(multipart, {
 
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS Brazlândia API', version: '8.0.0' },
+    info: { title: 'CREAS Brazlândia API', version: '8.3.0' }, // Atualizado para v8.3
     components: { 
       securitySchemes: { 
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } 
@@ -112,7 +113,7 @@ app.register(fastifySwaggerUi, {
   }
 })
 
-// [FIX] Casting para any para evitar erro de TS na propriedade decorada
+// Decorator de Autenticação Global
 app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
   try { 
     await request.jwtVerify() 
@@ -121,60 +122,53 @@ app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply
   }
 })
 
-// --- ROTAS (Com Logs de Debug) ---
+// --- REGISTRO DE ROTAS ---
 app.register(async (api) => {
   try {
-    console.log('📦 Registrando rotas...')
+    console.log('📦 Registrando rotas da API...')
     
-    // Core
-    if (!authRoutes) console.error('❌ ERRO: authRoutes está undefined')
+    // Core & Auth
     api.register(authRoutes)
-    
-    if (!userRoutes) console.error('❌ ERRO: userRoutes está undefined')
     api.register(userRoutes)
-    
-    if (!workspaceRoutes) console.error('❌ ERRO: workspaceRoutes está undefined')
     api.register(workspaceRoutes)
     
-    // Casos
-    if (!caseRoutes) console.error('❌ ERRO: caseRoutes está undefined')
+    // Casos e Atendimento
     api.register(caseRoutes)
-    
-    if (!evolutionRoutes) console.error('❌ ERRO: evolutionRoutes está undefined')
     api.register(evolutionRoutes)
-    
-    if (!pafRoutes) console.error('❌ ERRO: pafRoutes está undefined')
-    api.register(pafRoutes)
-    
-    if (!appointmentRoutes) console.error('❌ ERRO: appointmentRoutes está undefined')
     api.register(appointmentRoutes)
-    
-    // Outros
-    api.register(referralRoutes)
     api.register(familyRoutes)
-    api.register(rmaRoutes)
+    api.register(referralRoutes)
     api.register(waitingListRoutes)
     
-    // Gestão
+    // Instrumentais Técnicos (v8.3)
+    // [CORREÇÃO] Registrado corretamente no escopo 'api'
+    api.register(instrumentalRoutes)
+    api.register(pafRoutes) // Mantido por compatibilidade legado, se necessário
+    
+    // Gestão e Relatórios
     api.register(statsRoutes)
-    api.register(statsRoutes, { prefix: '/dashboard' })
+    api.register(statsRoutes, { prefix: '/dashboard' }) // Alias
     api.register(reportRoutes)
+    api.register(rmaRoutes)
+    api.register(deliverablesRoutes)
+    
+    // Sistema e Arquivos
     api.register(alertRoutes)
     api.register(auditRoutes)
     api.register(importRoutes)
     api.register(filterRoutes)
-    api.register(deliverablesRoutes)
     api.register(groupRoutes)
     api.register(attachmentRoutes)
     
-    console.log('✅ Rotas registradas com sucesso.')
+    console.log('✅ Todas as rotas registradas com sucesso.')
   } catch (err) {
     console.error('❌ Falha fatal no registro de rotas:', err)
+    process.exit(1) // Falha no boot se rotas críticas falharem
   }
 
 }, { prefix: '/api' })
 
-// --- STATIC FILES ---
+// --- STATIC FILES (Frontend Serving) ---
 const possibleDistPaths = [
   path.join(__dirname, '../../frontend/dist'),
   path.join(__dirname, '../frontend/dist'),    
@@ -190,6 +184,7 @@ app.register(fastifyStatic, {
   preCompressed: true
 })
 
+// Fallback para SPA (Single Page Application)
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && req.raw.url.startsWith('/api')) {
     return reply.status(404).send({ 
@@ -197,6 +192,7 @@ app.setNotFoundHandler((req, reply) => {
       message: `Endpoint não encontrado: ${req.raw.url}` 
     })
   }
+  // Se não for API, retorna o index.html do React
   return reply.sendFile('index.html')
 })
 

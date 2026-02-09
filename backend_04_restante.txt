@@ -1,0 +1,1769 @@
+CONTEXTO: backend_04_restante
+
+
+FILE: backend\prisma\schema.prisma
+--------------------------------------------------
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS ---
+
+enum Cargo {
+  Gerente
+  Agente_Social
+  Especialista
+  Auditor
+}
+
+enum CaseStatus {
+  AGUARDANDO_ACOLHIDA
+  EM_ACOLHIDA
+  AGUARDANDO_DISTRIBUICAO
+  EM_ACOLHIDA_ESPECIALIZADA
+  EM_ACOMPANHAMENTO
+  EM_MONITORAMENTO
+  DESLIGADO
+}
+
+enum LogAction {
+  CRIACAO
+  MUDANCA_STATUS
+  ATRIBUICAO
+  DESLIGAMENTO
+  EVOLUCAO_CRIADA
+  AGENDAMENTO_CRIADO
+  PAF_CRIADO
+  PAF_ATUALIZADO
+  ANEXO_ADICIONADO
+  MEMBRO_FAMILIA_ADICIONADO
+  ENTREGA_BENEFICIO_CRIADA
+  ENTREGA_BENEFICIO_ATUALIZADA
+  ATIVIDADE_GRUPO_CRIADA
+  PRESENCA_REGISTRADA
+  OUTRO
+}
+
+enum CaseOrigin {
+  ESPONTANEA
+  DOCUMENTAL
+  REFERENCIADA
+  BUSCA_ATIVA
+}
+
+enum GroupType {
+  ACOLHIDA_COLETIVA
+  OFICINA
+  GRUPO_PAEFI
+  REUNIAO_REDE
+}
+
+// --- MODELS ---
+
+model User {
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  senha     String
+  cargo     Cargo
+  matricula String?  @unique
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relacionamentos
+  casosCriados      Case[]               @relation("Criador")
+  casosAcolhida     Case[]               @relation("AgenteAcolhida")
+  casosPAEFI        Case[]               @relation("EspecialistaPAEFI")
+  evolucoes         Evolucao[]
+  pafs              Paf[]
+  pafVersions       PafVersion[]
+  agendamentos      Agendamento[]
+  logs              CaseLog[]
+  anexos            Anexo[]
+  filtrosSalvos     SavedFilter[]
+  encaminhamentos   Encaminhamento[]
+  entregas          ServiceDeliverable[]
+  gruposFacilitados GroupActivity[]
+}
+
+model Case {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 1. Identificação
+  nomeCompleto String
+  nomeSocial   String?
+  cpf          String   @unique
+  nascimento   DateTime
+  sexo         String
+
+  // 2. Dados Socioeconômicos do Titular
+  ocupacao String?
+  renda    Decimal? @db.Decimal(10, 2)
+
+  // 3. Contato (JSON Flexível)
+  contatos Json?
+
+  // 4. Endereço e Localização
+  endereco_logradouro  String?
+  endereco_complemento String?
+  endereco_bairro      String?
+  endereco_cidade      String? @default("Brasília")
+  endereco_uf          String? @default("DF")
+  endereco_cep         String?
+  endereco_ra          String?
+  latitude             Float?
+  longitude            Float?
+
+  // 5. Responsável (Menores/Incapazes)
+  responsavelLegal      String?
+  parentescoResponsavel String?
+
+  // 6. Dados Técnicos da Demanda
+  dataEntrada     DateTime   @default(now())
+  orgaoDemandante String
+  origem          CaseOrigin @default(ESPONTANEA)
+  urgencia        String
+  pesoUrgencia    Int        @default(1)
+  violacao        String[]
+  categoria       String
+
+  // 7. Dados Administrativos & SEI
+  numeroSei       String?
+  linkSei         String?
+  seiRespondido   Boolean    @default(false)
+  dataRespostaSei DateTime?
+  observacoes     String?
+  status          CaseStatus @default(AGUARDANDO_ACOLHIDA)
+  beneficios      String[]   @default([])
+
+  // 8. Gestão de Equipe (Relacionamentos)
+  criadoPorId String
+  criadoPor   User   @relation("Criador", fields: [criadoPorId], references: [id])
+
+  agenteAcolhidaId String?
+  agenteAcolhida   User?   @relation("AgenteAcolhida", fields: [agenteAcolhidaId], references: [id])
+
+  especialistaPAEFIId String?
+  especialistaPAEFI   User?   @relation("EspecialistaPAEFI", fields: [especialistaPAEFIId], references: [id])
+
+  // 9. Desligamento
+  dataInicioPAEFI     DateTime?
+  dataDesligamento    DateTime?
+  motivoDesligamento  String?
+  destinoDesligamento String?
+  parecerFinal        String?
+
+  // 10. Soft Delete
+  deletado     Boolean   @default(false)
+  dataDeletado DateTime?
+
+  // 11. Relacionamentos Detalhados
+  evolucoes       Evolucao[]
+  paf             Paf?
+  agendamentos    Agendamento[]
+  logs            CaseLog[]
+  anexos          Anexo[]
+  encaminhamentos Encaminhamento[]
+  familia         MembroFamilia[]
+  entregas        ServiceDeliverable[]
+  participacoes   GroupAttendance[]
+
+  // Índices para Performance
+  @@index([status])
+  @@index([dataEntrada])
+  @@index([pesoUrgencia])
+  @@index([agenteAcolhidaId])
+  @@index([especialistaPAEFIId])
+  @@index([violacao])
+  @@index([endereco_ra])
+  @@map("cases")
+}
+
+model Evolucao {
+  id        String   @id @default(uuid())
+  conteudo  String
+  sigilo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+
+  @@index([casoId, createdAt(sort: Desc)])
+}
+
+model Paf {
+  id          String   @id @default(uuid())
+  diagnostico String
+  objetivos   String
+  estrategias String
+  deadline    DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  casoId String @unique
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+
+  versaoAtual Int          @default(1)
+  versoes     PafVersion[]
+}
+
+model PafVersion {
+  id          String   @id @default(uuid())
+  diagnostico String
+  objetivos   String
+  estrategias String
+  deadline    DateTime
+  savedAt     DateTime @default(now())
+
+  pafId String
+  paf   Paf    @relation(fields: [pafId], references: [id], onDelete: Cascade)
+
+  autorId      String
+  autor        User   @relation(fields: [autorId], references: [id])
+  versaoNumero Int    @default(1)
+}
+
+model Agendamento {
+  id          String   @id @default(uuid())
+  titulo      String
+  data        DateTime
+  tipo        String   @default("Atendimento")
+  observacoes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  responsavelId String
+  responsavel   User   @relation(fields: [responsavelId], references: [id])
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  @@index([responsavelId, data])
+}
+
+model CaseLog {
+  id            String    @id @default(uuid())
+  acao          LogAction
+  descricao     String
+  valorAnterior String?
+  valorNovo     String?
+  createdAt     DateTime  @default(now())
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+}
+
+model Anexo {
+  id        String   @id @default(uuid())
+  nome      String
+  tipo      String
+  url       String
+  tamanho   Int?
+  createdAt DateTime @default(now())
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+}
+
+model SavedFilter {
+  id        String   @id @default(uuid())
+  nome      String
+  config    Json
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Encaminhamento {
+  id          String   @id @default(uuid())
+  tipo        String
+  instituicao String
+  motivo      String
+  status      String   @default("PENDENTE")
+  dataEnvio   DateTime @default(now())
+  retorno     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  autorId String
+  autor   User   @relation(fields: [autorId], references: [id])
+}
+
+model MembroFamilia {
+  id         String  @id @default(uuid())
+  nome       String
+  parentesco String
+
+  idade       Int?
+  cpf         String?
+  nascimento  DateTime?
+  telefone    String?
+  ocupacao    String?
+  renda       Decimal?  @db.Decimal(10, 2)
+  observacoes String?
+
+  violacao String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+}
+
+model ServiceDeliverable {
+  id              String    @id @default(uuid())
+  tipo            String // "Cesta Básica", "Auxílio Natalidade"
+  status          String // "SOLICITADO", "ENTREGUE"
+  dataSolicitacao DateTime  @default(now())
+  dataEntrega     DateTime?
+  observacoes     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  responsavelId String
+  responsavel   User   @relation(fields: [responsavelId], references: [id])
+}
+
+model GroupActivity {
+  id                  String    @id @default(uuid())
+  tema                String
+  tipo                GroupType
+  dataRealizacao      DateTime
+  local               String?
+  descricao           String?
+  orgaosEnvolvidos    String[]  @default([])
+  attendanceConfirmed Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  facilitadorId String
+  facilitador   User   @relation(fields: [facilitadorId], references: [id])
+
+  participantes GroupAttendance[]
+}
+
+model GroupAttendance {
+  id          String   @id @default(uuid())
+  presente    Boolean  @default(false)
+  observacoes String?
+  createdAt   DateTime @default(now())
+
+  grupoId String
+  grupo   GroupActivity @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  casoId String
+  caso   Case   @relation(fields: [casoId], references: [id], onDelete: Cascade)
+
+  @@unique([grupoId, casoId])
+}
+
+FILE: backend\prisma\seed-users.ts
+--------------------------------------------------
+// backend/prisma/seed-users.ts
+import { PrismaClient, Cargo } from '@prisma/client'
+import bcrypt from 'bcryptjs'
+
+const prisma = new PrismaClient()
+
+const TEAM_DATA = [
+  { nome: 'Alecio Marques', cargo: Cargo.Agente_Social, email: 'alecio.marques@sedes.df.gov.br', matricula: '0280473-5' },
+  { nome: 'Gilberto Félix', cargo: Cargo.Agente_Social, email: 'gilberto.felix@sedes.df.gov.br', matricula: '1847597-7' },
+  { nome: 'Katiane Silva', cargo: Cargo.Agente_Social, email: 'katiane.silva@sedes.df.gov.br', matricula: '0279689-9' },
+  { nome: 'Glísia Mariano', cargo: Cargo.Especialista, email: 'glisia.mariano@sedes.df.gov.br', matricula: '0283051-5' },
+  { nome: 'Lara Rodrigues', cargo: Cargo.Especialista, email: 'lara.rodrigues@sedes.df.gov.br', matricula: '00279203-6' },
+  { nome: 'Sara Nascimento', cargo: Cargo.Especialista, email: 'sara.nascimento@sedes.df.gov.br', matricula: '0283032-9' },
+  { nome: 'Silvia Bitencourt', cargo: Cargo.Especialista, email: 'silvia.bitencourt@sedes.df.gov.br', matricula: '0283269-0' },
+  { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
+]
+
+async function main() {
+  console.log('👥 Iniciando criação da equipe técnica...')
+  
+  // Senha padrão para todos os usuários iniciais
+  const passwordHash = await bcrypt.hash('123456', 10)
+
+  for (const user of TEAM_DATA) {
+    await prisma.user.upsert({
+      where: { email: user.email },
+      update: {
+        nome: user.nome,
+        cargo: user.cargo,
+        matricula: user.matricula,
+        ativo: true,
+      },
+      create: {
+        nome: user.nome,
+        email: user.email,
+        matricula: user.matricula,
+        senha: passwordHash,
+        cargo: user.cargo,
+        ativo: true,
+      },
+    })
+  }
+
+  console.log('✅ Equipe técnica criada/atualizada com sucesso!')
+}
+
+main()
+  .catch((e) => {
+    console.error('❌ Erro ao gerar seed de usuários:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })
+
+FILE: backend\prisma\seed.ts
+--------------------------------------------------
+// backend/prisma/seed.ts
+import { PrismaClient, CaseStatus, Cargo, LogAction, CaseOrigin, GroupType, Prisma } from '@prisma/client'
+import { faker } from '@faker-js/faker/locale/pt_BR'
+import bcrypt from 'bcryptjs'
+import { subDays, addDays } from 'date-fns'
+import { CryptoService } from '../src/lib/crypto' // [NOVO] Import do serviço de criptografia
+
+const prisma = new PrismaClient()
+
+// --- 1. DADOS MESTRES (EQUIPE FIXA) ---
+const TEAM_DATA = [
+  { nome: 'Alecio Marques', cargo: Cargo.Agente_Social, email: 'alecio.marques@sedes.df.gov.br', matricula: '0280473-5' },
+  { nome: 'Gilberto Félix', cargo: Cargo.Agente_Social, email: 'gilberto.felix@sedes.df.gov.br', matricula: '1847597-7' },
+  { nome: 'Katiane Silva', cargo: Cargo.Agente_Social, email: 'katiane.silva@sedes.df.gov.br', matricula: '0279689-9' },
+  { nome: 'Glísia Mariano', cargo: Cargo.Especialista, email: 'glisia.mariano@sedes.df.gov.br', matricula: '0283051-5' },
+  { nome: 'Lara Rodrigues', cargo: Cargo.Especialista, email: 'lara.rodrigues@sedes.df.gov.br', matricula: '00279203-6' },
+  { nome: 'Sara Nascimento', cargo: Cargo.Especialista, email: 'sara.nascimento@sedes.df.gov.br', matricula: '0283032-9' },
+  { nome: 'Silvia Bitencourt', cargo: Cargo.Especialista, email: 'silvia.bitencourt@sedes.df.gov.br', matricula: '0283269-0' },
+  { nome: 'Henrique Rabelo', cargo: Cargo.Gerente, email: 'luiz.araujo@sedes.df.gov.br', matricula: '0277366-X' },
+]
+
+// --- 2. LISTAS DE NEGÓCIO ---
+
+const LISTA_URGENCIAS = [
+  'Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Risco de reincidência', 'Sofre ameaça',
+  'Risco de desabrigo', 'Criança/Adolescente', 'PCD', 'Idoso', 
+  'Internação', 'Acolhimento', 'Gestante/Lactante',
+  'Sem risco imediato', 'Visita periódica'
+]
+
+const LISTA_VIOLACOES = [
+  'Abandono', 
+  'Negligência', 
+  'Afastamento do convívio familiar', 
+  'Violência física', 
+  'Violência psicológica', 
+  'Abuso sexual', 
+  'Exploração sexual',
+  'Tráfico de seres humanos', 
+  'Abuso financeiro/patrimonial', 
+  'Trabalho infantil', 
+  'Discriminação', 
+  'Situação de rua', 
+  'Outros'
+]
+
+const LISTA_DESTINOS = [
+  'Referenciado ao CRAS (PAIF)', 'Serviço de Saúde (CAPS/UBS)', 'Sistema de Justiça',
+  'Acolhimento Institucional', 'Superação da Vulnerabilidade (Autonomia)',
+  'Mudança de Município/Estado', 'Outro'
+]
+
+const TRANSFERENCIA_RENDA = [
+  'PROGRAMA BOLSA FAMÍLIA (PBF)', 'PROGRAMA DF SOCIAL', 
+  'PROGRAMA CARTÃO GÁS', 'BENEFÍCIO DE PRESTAÇÃO CONTINUADA (BPC)'
+]
+
+const LISTA_MOTIVOS_DESLIGAMENTO = [
+  'Transferência de território', 'Falecimento do(a) usuário(a)',
+  'Recusa do atendimento por parte do(a) usuário(a)', 'Usuário(a) não localizado(a) após tentativas exaustivas',
+  'Usuário(a) acolhido(a)', 'Crianças e adolescentes inseridos em serviço de acolhimento institucional',
+  'Minimização dos riscos (Autonomia)', 'Situação não pertencente à demanda do CREAS'
+]
+
+const ORGAOS_REDE = ['Conselho Tutelar', 'UBS', 'CAPS', 'Escola', 'CRAS', 'Defensoria Pública', 'MPDFT']
+const TEMAS_GRUPO = ['Oficina de Parentalidade', 'Grupo de Mulheres', 'Acolhida Coletiva', 'Roda de Conversa BPC', 'Grupo de Idosos']
+const REGIOES_ADMINISTRATIVAS = ['Brazlândia', 'Ceilândia', 'Taguatinga', 'Sol Nascente/Pôr do Sol']
+const LISTA_OCUPACOES = ['Do lar', 'Desempregado(a)', 'Autônomo(a)', 'Estudante', 'Aposentado(a)', 'Diarista', 'Pedreiro(a)', 'Vendedor(a)']
+
+const EVOLUCAO_TEMPLATES = [
+  "Realizada visita domiciliar. Família apresenta vulnerabilidade habitacional. Orientado sobre documentação necessária para inclusão no Cadastro Único.",
+  "Atendimento presencial na unidade. Usuário relata melhora na convivência familiar após encaminhamento para o CAPS.",
+  "Contato telefônico com a rede de saúde (UBS) para verificar agendamento de consulta psiquiátrica. Confirmado para a próxima semana.",
+  "Escuta qualificada realizada. Identificada demanda de violação de direitos (negligência). Inserido em acompanhamento sistemático.",
+  "Usuário compareceu para solicitar benefícios eventuais (Cesta de Alimentos). Benefício concedido mediante parecer técnico favorável.",
+  "Realizada articulação com o Conselho Tutelar para discussão de caso complexo envolvendo evasão escolar e trabalho infantil.",
+  "Genitora compareceu solicitando orientações jurídicas. Encaminhada para a Defensoria Pública."
+]
+
+const PAF_OBJETIVOS = [
+  "Fortalecer a função protetiva da família.",
+  "Superar a situação de violação de direitos (Negligência).",
+  "Promover o acesso à rede de serviços socioassistenciais.",
+  "Garantir a convivência familiar e comunitária.",
+  "Inserção no mercado de trabalho e autonomia financeira."
+]
+
+// --- UTILS ---
+const randInt = (min: number, max: number) => faker.number.int({ min, max })
+const generateCPF = () => faker.string.numeric(11).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+
+const generateCoords = () => {
+  const latBase = -15.668
+  const lngBase = -48.201
+  const lat = latBase + (Math.random() - 0.5) * 0.04
+  const lng = lngBase + (Math.random() - 0.5) * 0.04
+  return { lat, lng }
+}
+
+const calculateUrgencyWeight = (u: string) => {
+  if (['Convive com agressor', 'Idoso 80+', 'Primeira infância', 'Risco de morte', 'Violência sexual'].includes(u)) return 4;
+  if (['Risco de reincidência', 'Sofre ameaça', 'Risco de desabrigo', 'Criança/Adolescente'].includes(u)) return 3;
+  if (['PCD', 'Idoso', 'Internação', 'Acolhimento', 'Gestante/Lactante'].includes(u)) return 2;
+  return 1;
+}
+
+// [NOVO] Helper para encryptar (ignora null)
+const encrypt = (text: string | null | undefined) => CryptoService.encrypt(text) || ''
+
+async function main() {
+  console.log('🌱 [SEED V2.0 - LGPD READY] Iniciando...')
+
+  // 1. Limpeza Segura
+  try {
+    console.log('🧹 Limpando banco de dados...')
+    await prisma.groupAttendance.deleteMany()
+    await prisma.groupActivity.deleteMany()
+    await prisma.serviceDeliverable.deleteMany()
+    await prisma.encaminhamento.deleteMany()
+    await prisma.membroFamilia.deleteMany()
+    await prisma.caseLog.deleteMany()
+    await prisma.agendamento.deleteMany()
+    await prisma.pafVersion.deleteMany()
+    await prisma.paf.deleteMany()
+    await prisma.evolucao.deleteMany()
+    await prisma.anexo.deleteMany()
+    await prisma.case.deleteMany()
+    await prisma.savedFilter.deleteMany()
+    await prisma.user.deleteMany()
+  } catch (e) {
+    console.warn("⚠️  Aviso: Banco já estava limpo ou erro não-crítico.")
+  }
+
+  // 2. Usuários
+  console.log('👥 Criando equipe técnica...')
+  const passwordHash = await bcrypt.hash('123456', 6)
+  const users = []
+  
+  for (const u of TEAM_DATA) {
+    const user = await prisma.user.create({
+      data: {
+        nome: u.nome, email: u.email, matricula: u.matricula, senha: passwordHash, cargo: u.cargo, ativo: true
+      }
+    })
+    users.push(user)
+  }
+  
+  const gerentes = users.filter(u => u.cargo === Cargo.Gerente)
+  const especialistas = users.filter(u => u.cargo === Cargo.Especialista)
+  const agentes = users.filter(u => u.cargo === Cargo.Agente_Social)
+  const createdCases: any[] = []
+
+  // 3. Casos (Reduzido para 60 conforme solicitado, mais complexos)
+  const NUM_CASES = 60
+  console.log(`📂 Gerando ${NUM_CASES} casos simulados com dados criptografados...`)
+
+  for (let i = 0; i < NUM_CASES; i++) {
+    const dataEntrada = faker.date.past({ years: 1 })
+    const origem = faker.helpers.arrayElement(Object.values(CaseOrigin))
+    const coords = generateCoords()
+    
+    // Status Logic
+    const statusRoll = Math.random()
+    let status: CaseStatus = CaseStatus.AGUARDANDO_ACOLHIDA 
+    
+    if (statusRoll > 0.10) status = CaseStatus.EM_ACOLHIDA 
+    if (statusRoll > 0.25) status = CaseStatus.AGUARDANDO_DISTRIBUICAO 
+    if (statusRoll > 0.35) status = CaseStatus.EM_ACOLHIDA_ESPECIALIZADA 
+    if (statusRoll > 0.45) status = CaseStatus.EM_ACOMPANHAMENTO 
+    if (statusRoll > 0.75) status = CaseStatus.EM_MONITORAMENTO 
+    if (statusRoll > 0.90) status = CaseStatus.DESLIGADO 
+
+    const criador = faker.helpers.arrayElement([...gerentes, ...agentes])
+    const agenteResp = faker.helpers.arrayElement(agentes)
+    
+    const needsSpecialistStates: CaseStatus[] = [
+        CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, 
+        CaseStatus.EM_ACOMPANHAMENTO, 
+        CaseStatus.EM_MONITORAMENTO, 
+        CaseStatus.DESLIGADO
+    ]
+    const needsSpecialist = needsSpecialistStates.includes(status)
+    const especialistaResp = needsSpecialist ? faker.helpers.arrayElement(especialistas) : null
+
+    // Desligamento
+    let desligamentoData = {}
+    if (status === CaseStatus.DESLIGADO) {
+        desligamentoData = {
+            dataDesligamento: addDays(dataEntrada, randInt(60, 300)),
+            motivoDesligamento: faker.helpers.arrayElement(LISTA_MOTIVOS_DESLIGAMENTO),
+            destinoDesligamento: faker.helpers.arrayElement(LISTA_DESTINOS),
+            parecerFinal: "Superação de vulnerabilidade identificada após intervenção técnica."
+        }
+    }
+
+    // SEI
+    const numeroSei = `00431-${faker.string.numeric(8)}/2025-${randInt(10, 99)}`
+    const chanceSeiRespondido = status === CaseStatus.DESLIGADO ? 0.9 : 0.3
+    const isSeiRespondido = Math.random() < chanceSeiRespondido
+    const dataRespostaSei = isSeiRespondido ? faker.date.recent({ days: 60 }) : null
+
+    const urgencia = faker.helpers.arrayElement(LISTA_URGENCIAS)
+    const category = faker.helpers.arrayElement(['Idoso', 'PCD', 'Mulher', 'Família', 'Criança/Adolescente'])
+
+    // Dados de Endereço e Contato (PARA CRIPTOGRAFIA)
+    const rawLogradouro = `Quadra ${randInt(1, 50)} Conjunto ${String.fromCharCode(65 + randInt(0, 20))} Casa ${randInt(1, 40)}`
+    const rawComplemento = Math.random() > 0.5 ? 'Fundos' : null
+    const rawTelefone1 = `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`
+    const rawTelefone2 = `(61) 9${randInt(8000, 9999)}-${randInt(1000, 9999)}`
+
+    // --- CRIAÇÃO DO CASO ---
+    const newCase = await prisma.case.create({
+      data: {
+        nomeCompleto: faker.person.fullName(),
+        nomeSocial: Math.random() > 0.8 ? faker.person.firstName() : null,
+        cpf: generateCPF(), 
+        nascimento: faker.date.birthdate({ min: 14, max: 85, mode: 'age' }),
+        sexo: faker.helpers.arrayElement(['Masculino', 'Feminino']),
+        ocupacao: faker.helpers.arrayElement(LISTA_OCUPACOES),
+        
+        renda: new Prisma.Decimal(faker.number.float({ min: 0, max: 2500, fractionDigits: 2 })),
+
+        // [CRIPTOGRAFIA] Contatos criptografados
+        contatos: [
+            { numero: encrypt(rawTelefone1), tipo: "Pessoal" },
+            { numero: encrypt(rawTelefone2), tipo: "Recado", nome: "Vizinha" }
+        ],
+
+        // [CRIPTOGRAFIA] Endereço criptografado
+        endereco_logradouro: encrypt(rawLogradouro),
+        endereco_complemento: encrypt(rawComplemento),
+        
+        // Dados Abertos (Indexáveis)
+        endereco_ra: faker.helpers.arrayElement(REGIOES_ADMINISTRATIVAS),
+        endereco_cidade: 'Brasília',
+        endereco_uf: 'DF',
+        endereco_cep: '72700-000',
+        endereco_bairro: 'Setor Tradicional',
+        
+        latitude: coords.lat,
+        longitude: coords.lng,
+        
+        urgencia,
+        pesoUrgencia: calculateUrgencyWeight(urgencia),
+        violacao: faker.helpers.arrayElements(LISTA_VIOLACOES, randInt(1, 2)),
+        categoria: category,
+        
+        origem,
+        dataEntrada,
+        orgaoDemandante: origem === CaseOrigin.ESPONTANEA ? 'Demanda Espontânea' : faker.helpers.arrayElement(['Disque 100', 'MPDFT', 'UBS 01', 'CRAS', 'Conselho Tutelar']),
+        
+        // SEI
+        numeroSei,
+        linkSei: `https://sei.df.gov.br/sei/controlador.php?acao=procedimento_trabalhar&id_procedimento=${randInt(100000, 999999)}`,
+        seiRespondido: isSeiRespondido,
+        dataRespostaSei,
+
+        beneficios: faker.helpers.arrayElements(TRANSFERENCIA_RENDA, randInt(0, 2)), 
+        
+        status,
+        
+        criadoPor: { connect: { id: criador.id } },
+        agenteAcolhida: agenteResp ? { connect: { id: agenteResp.id } } : undefined,
+        especialistaPAEFI: especialistaResp ? { connect: { id: especialistaResp.id } } : undefined,
+        
+        dataInicioPAEFI: especialistaResp ? addDays(dataEntrada, randInt(10, 30)) : null,
+        
+        ...desligamentoData
+      }
+    })
+    createdCases.push(newCase)
+
+    // Log Inicial
+    await prisma.caseLog.create({
+      data: { casoId: newCase.id, autorId: criador.id, acao: LogAction.CRIACAO, descricao: 'Caso criado via Seed (Criptografado).', createdAt: dataEntrada }
+    })
+
+    // Evoluções
+    if (status !== CaseStatus.AGUARDANDO_ACOLHIDA) {
+        const numEvolucoes = randInt(2, 6); // Mais evoluções para parecer real
+        for(let e = 0; e < numEvolucoes; e++) {
+            const dataEvolucao = faker.date.between({ from: dataEntrada, to: new Date() });
+            const autorEvolucao = especialistaResp || agenteResp || criador;
+            await prisma.evolucao.create({
+                data: {
+                    casoId: newCase.id,
+                    autorId: autorEvolucao.id,
+                    conteudo: `[ATENDIMENTO] ` + faker.helpers.arrayElement(EVOLUCAO_TEMPLATES), 
+                    sigilo: Math.random() > 0.9, 
+                    createdAt: dataEvolucao
+                }
+            });
+        }
+    }
+
+    // PAF
+    const pafStates: CaseStatus[] = [CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO]
+    if (pafStates.includes(status) && especialistaResp) {
+        await prisma.paf.create({
+            data: {
+                casoId: newCase.id,
+                autorId: especialistaResp.id,
+                diagnostico: `Situação de risco: ${urgencia}. Violações: ${newCase.violacao.join(', ')}`,
+                objetivos: faker.helpers.arrayElement(PAF_OBJETIVOS),
+                estrategias: "Visitas mensais, encaminhamento para CRAS e BPC.",
+                deadline: addDays(dataEntrada, 180),
+                createdAt: addDays(dataEntrada, 30)
+            }
+        });
+    }
+
+    // Encaminhamentos (Mais frequentes para realidade)
+    if (Math.random() > 0.3) {
+      const autorEnc = especialistaResp || agenteResp
+      if (autorEnc) {
+          const numEnc = randInt(1, 4)
+          for(let k=0; k<numEnc; k++) {
+            await prisma.encaminhamento.create({
+                data: {
+                casoId: newCase.id,
+                autorId: autorEnc.id,
+                tipo: faker.helpers.arrayElement(['Saúde', 'Jurídico', 'Educação', 'Assistência Social']),
+                instituicao: faker.helpers.arrayElement(ORGAOS_REDE),
+                motivo: "Necessidade identificada em atendimento.",
+                status: faker.helpers.arrayElement(['PENDENTE', 'CONCLUIDO']),
+                dataEnvio: subDays(new Date(), randInt(1, 150))
+                }
+            })
+          }
+      }
+    }
+
+    // Membros
+    const numMembros = randInt(1, 4)
+    for (let m = 0; m < numMembros; m++) {
+      const hasViolation = Math.random() > 0.7;
+      const memberViolations = hasViolation ? faker.helpers.arrayElements(LISTA_VIOLACOES, 1) : [];
+
+      await prisma.membroFamilia.create({
+        data: {
+          casoId: newCase.id,
+          nome: faker.person.fullName(),
+          parentesco: faker.helpers.arrayElement(['Filho(a)', 'Cônjuge', 'Neto(a)', 'Irmão(ã)']),
+          idade: randInt(2, 90),
+          cpf: Math.random() > 0.3 ? generateCPF() : null,
+          renda: new Prisma.Decimal(randInt(0, 1412)),
+          ocupacao: faker.helpers.arrayElement([...LISTA_OCUPACOES, 'Estudante', 'Menor']),
+          violacao: memberViolations
+        }
+      })
+    }
+
+    // Feedback visual
+    if (i % 10 === 0) {
+        console.log(`⏳ Progresso: ${i}/${NUM_CASES}`)
+    }
+  }
+
+  // 4. Logs (Mais volume)
+  console.log('\n📈 Gerando logs históricos...')
+  const allWorkers = [...especialistas, ...agentes]
+  const safeActions = [LogAction.MUDANCA_STATUS, LogAction.OUTRO, LogAction.ATRIBUICAO]
+
+  for (const worker of allWorkers) {
+    const workVolume = randInt(30, 80) // Aumentado
+    for (let k = 0; k < workVolume; k++) {
+      const randomCase = faker.helpers.arrayElement(createdCases)
+      if (!randomCase) continue;
+      await prisma.caseLog.create({
+        data: {
+          casoId: randomCase.id,
+          autorId: worker.id,
+          acao: faker.helpers.arrayElement(safeActions),
+          descricao: `Atualização administrativa do caso (Seed).`,
+          createdAt: faker.date.past({ years: 1 })
+        }
+      })
+    }
+  }
+
+  // 5. Grupos
+  console.log('\n👥 Criando Grupos...')
+  const NUM_GROUPS = 15
+  for (let i = 0; i < NUM_GROUPS; i++) {
+    const facilitator = faker.helpers.arrayElement(especialistas)
+    const isFuture = Math.random() > 0.7
+    const groupDate = isFuture ? faker.date.soon({ days: 30 }) : faker.date.recent({ days: 90 })
+    
+    const grupo = await prisma.groupActivity.create({
+      data: {
+        tema: faker.helpers.arrayElement(TEMAS_GRUPO),
+        tipo: GroupType.OFICINA,
+        dataRealizacao: groupDate,
+        local: 'Sala de Grupos',
+        descricao: 'Atividade de fortalecimento de vínculos.',
+        facilitador: { connect: { id: facilitator.id } },
+        attendanceConfirmed: !isFuture 
+      }
+    })
+
+    const participantes = faker.helpers.arrayElements(createdCases, randInt(5, 12))
+    for (const p of participantes) {
+      await prisma.groupAttendance.create({
+        data: {
+          grupoId: grupo.id,
+          casoId: p.id,
+          presente: !isFuture 
+        }
+      })
+    }
+  }
+
+  console.log('\n✅ Seed V2.0 COMPLETO!')
+}
+
+main()
+  .catch((e) => {
+    console.error(e)
+    throw e 
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })
+
+FILE: backend\scripts\backup.ts
+--------------------------------------------------
+// backend/scripts/backup.ts
+import { exec } from 'child_process'
+import path from 'path'
+import fs from 'fs'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
+
+// Configurações
+const DB_URL = process.env.DATABASE_URL
+const BACKUP_DIR = path.resolve(__dirname, '../../backups') // Salva na raiz/backups
+
+if (!DB_URL) {
+  console.error("❌ Erro: DATABASE_URL não definida no .env")
+  process.exit(1)
+}
+
+// Cria diretório se não existir
+if (!fs.existsSync(BACKUP_DIR)) {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true })
+}
+
+async function runBackup() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const filename = `backup_sgac_${timestamp}.sql.gz`
+  const filepath = path.join(BACKUP_DIR, filename)
+
+  console.log(`📦 Iniciando backup do banco de dados...`)
+  console.log(`📂 Destino: ${filepath}`)
+
+  try {
+    // Comando pg_dump (assume que o cliente postgres está instalado no SO)
+    // O comando piped para gzip comprime o arquivo na hora
+    const command = `pg_dump "${DB_URL}" | gzip > "${filepath}"`
+    
+    await execAsync(command)
+
+    console.log(`✅ Backup concluído com sucesso!`)
+    console.log(`💾 Arquivo gerado: ${filename}`)
+    
+    // Opcional: Limpeza de backups antigos (manter últimos 7 dias)
+    cleanOldBackups()
+
+  } catch (error) {
+    console.error("❌ Falha ao realizar backup:", error)
+    process.exit(1)
+  }
+}
+
+function cleanOldBackups() {
+  const files = fs.readdirSync(BACKUP_DIR)
+  const now = Date.now()
+  const MAX_AGE = 7 * 24 * 60 * 60 * 1000 // 7 dias
+
+  files.forEach(file => {
+    if (!file.startsWith('backup_sgac_')) return
+    
+    const filePath = path.join(BACKUP_DIR, file)
+    const stats = fs.statSync(filePath)
+    
+    if (now - stats.mtimeMs > MAX_AGE) {
+      fs.unlinkSync(filePath)
+      console.log(`🗑️ Backup antigo removido: ${file}`)
+    }
+  })
+}
+
+runBackup()
+
+FILE: backend\scripts\fix-weights.ts
+--------------------------------------------------
+// backend/scripts/fix-weights.ts
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+const calculateWeight = (urgencia: string): number => {
+    if (!urgencia) return 1
+    const term = urgencia.trim().toLowerCase()
+
+    // 🔴 VERMELHO (4)
+    if (
+        term.includes('convive com agressor') ||
+        term.includes('idoso 80+') ||
+        term.includes('primeira infância') ||
+        term.includes('risco de morte') ||
+        term.includes('risco de reincidência') ||
+        term.includes('sofre ameaça')
+    ) return 4;
+
+    // 🟠 LARANJA (3)
+    if (
+        term.includes('risco de desabrigo') ||
+        term.includes('criança/adolescente') ||
+        term.includes('pcd') ||
+        term.includes('idoso') // Captura Idoso < 80
+    ) return 3;
+
+    // 🟡 AMARELO (2)
+    if (
+        term.includes('internação') ||
+        term.includes('acolhimento') ||
+        term.includes('gestante/lactante')
+    ) return 2;
+
+    // 🟢 VERDE (1)
+    return 1;
+}
+
+async function main() {
+    console.log('🔄 Iniciando reclassificação rigorosa (Regra V2)...')
+    
+    const cases = await prisma.case.findMany({
+        select: { id: true, urgencia: true, pesoUrgencia: true }
+    })
+
+    let updatedCount = 0
+
+    for (const c of cases) {
+        const correctWeight = calculateWeight(c.urgencia)
+        
+        if (c.pesoUrgencia !== correctWeight) {
+            await prisma.case.update({
+                where: { id: c.id },
+                data: { pesoUrgencia: correctWeight }
+            })
+            console.log(`✅ Caso ${c.id}: "${c.urgencia}" corrigido de ${c.pesoUrgencia} -> ${correctWeight}`)
+            updatedCount++
+        }
+    }
+
+    console.log(`\n🎉 Concluído! ${updatedCount} casos foram corrigidos para a nova regra.`)
+}
+
+main()
+    .catch(console.error)
+    .finally(async () => await prisma.$disconnect())
+
+FILE: backend\src\lib\cache.ts
+--------------------------------------------------
+// backend/src/lib/cache.ts
+import { LRUCache } from 'lru-cache'
+
+/**
+ * Serviço de Cache em Memória (Wrapper sobre lru-cache).
+ * * ARQUITETURA (Neon/Render):
+ * O ambiente do Render é volátil. O cache em memória será perdido em cada deploy 
+ * ou reinicialização. Esta implementação usa 'lru-cache' para garantir que o uso 
+ * de memória seja limitado (evitando falhas por falta de memória - OOM) e para 
+ * gerenciar a expiração (TTL) automaticamente.
+ * * NOTA: Para persistência real entre reinicializações, migrar para Redis.
+ */
+export class CacheService {
+  private static instance: CacheService
+  
+  // LRU Cache substitui o Map nativo para gerenciar memória e TTL automaticamente
+  private cache: LRUCache<string, any>
+
+  private constructor() {
+    this.cache = new LRUCache({
+      max: 500, // Limite de segurança para proteger a RAM do container (Plano Free/Starter)
+      ttl: 1000 * 60 * 5, // TTL Padrão: 5 minutos
+      allowStale: false,
+    })
+  }
+
+  public static getInstance(): CacheService {
+    if (!CacheService.instance) {
+      CacheService.instance = new CacheService()
+    }
+    return CacheService.instance
+  }
+
+  /**
+   * Recupera um valor do cache.
+   * @param key Chave única
+   */
+  public get<T>(key: string): T | undefined {
+    return this.cache.get(key) as T | undefined
+  }
+
+  /**
+   * Salva um valor no cache.
+   * @param key Chave única
+   * @param data Dados a serem salvos
+   * @param ttlMs Tempo de vida opcional em ms (se omitido, usa o padrão do construtor)
+   */
+  public set<T>(key: string, data: T, ttlMs?: number): void {
+    this.cache.set(key, data, { ttl: ttlMs })
+  }
+
+  /**
+   * Invalida chaves que começam com um prefixo.
+   * Útil para limpar "stats_*" ou "reports_*" quando dados mudam.
+   */
+  public invalidate(keyPrefix: string): void {
+    // Itera sobre as chaves para remover as que correspondem ao prefixo.
+    // Seguro em produção pois o 'max' é limitado, evitando bloqueio do Event Loop.
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.cache.delete(key)
+      }
+    }
+  }
+  
+  public clearAll(): void {
+    this.cache.clear()
+  }
+}
+
+export const cache = CacheService.getInstance()
+
+FILE: backend\src\lib\crypto.ts
+--------------------------------------------------
+// backend/src/lib/crypto.ts
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+
+// A chave deve ter 32 bytes (64 caracteres hexadecimais)
+const ALGORITHM = 'aes-256-gcm'
+const SECRET_KEY = Buffer.from(process.env.ENCRYPTION_KEY || '', 'hex')
+
+if (SECRET_KEY.length !== 32) {
+  throw new Error('FATAL: ENCRYPTION_KEY inválida. Deve ser uma string hex de 32 bytes.')
+}
+
+export class CryptoService {
+  /**
+   * Criptografa um texto sensível.
+   * Retorna formato: iv:authTag:encryptedData
+   */
+  static encrypt(text: string | null | undefined): string | null {
+    if (!text) return null
+
+    const iv = randomBytes(16) // Vetor de Inicialização
+    const cipher = createCipheriv(ALGORITHM, SECRET_KEY, iv)
+
+    let encrypted = cipher.update(text, 'utf8', 'hex')
+    encrypted += cipher.final('hex')
+
+    const authTag = cipher.getAuthTag().toString('hex')
+
+    return `${iv.toString('hex')}:${authTag}:${encrypted}`
+  }
+
+  /**
+   * Descriptografa um texto.
+   * Retorna null se falhar ou se o dado não estiver criptografado.
+   */
+  static decrypt(encryptedText: string | null | undefined): string | null {
+    if (!encryptedText) return null
+    
+    // Verifica se o formato é válido (iv:tag:content)
+    const parts = encryptedText.split(':')
+    if (parts.length !== 3) return encryptedText // Assume que não está criptografado (migração gradual)
+
+    try {
+      const [ivHex, authTagHex, contentHex] = parts
+      
+      const decipher = createDecipheriv(
+        ALGORITHM, 
+        SECRET_KEY, 
+        Buffer.from(ivHex, 'hex')
+      )
+      
+      decipher.setAuthTag(Buffer.from(authTagHex, 'hex'))
+
+      let decrypted = decipher.update(contentHex, 'hex', 'utf8')
+      decrypted += decipher.final('utf8')
+
+      return decrypted
+    } catch (error) {
+      console.error('[Crypto] Falha na descriptografia:', error)
+      return null // Ou lança erro, dependendo da criticidade
+    }
+  }
+}
+
+FILE: backend\src\lib\errorHandler.ts
+--------------------------------------------------
+import { FastifyError, FastifyReply, FastifyRequest } from "fastify"
+import { ZodError } from "zod"
+
+// Classe de Erro Customizada (Opcional, mas útil para lançar erros controlados nos Services)
+export class AppError extends Error {
+  public readonly statusCode: number
+  
+  constructor(message: string, statusCode = 400) {
+    super(message)
+    this.statusCode = statusCode
+  }
+}
+
+export const errorHandler = (error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
+  // 1. Erro de Validação (Zod)
+  // O fastify-type-provider-zod lança erros com a propriedade 'validation' ou instância de ZodError
+  if (error instanceof ZodError) {
+    return reply.status(400).send({
+      message: 'Erro de validação nos dados enviados.',
+      issues: error.format()
+    })
+  }
+  
+  // Tratamento legado para o validador padrão do Fastify caso misture schemas
+  if (error.validation) {
+    return reply.status(400).send({
+      message: 'Erro de validação.',
+      issues: error.validation
+    })
+  }
+
+  // 2. Erros de Domínio (Lançados manualmente pelos Services)
+  if (error instanceof AppError) {
+    return reply.status(error.statusCode).send({
+      message: error.message
+    })
+  }
+
+  // 3. Erros do Prisma
+  // P2002: Unique constraint failed (ex: Email/CPF duplicado)
+  if (error.code === 'P2002') {
+    return reply.status(409).send({ 
+      message: 'Conflito: Um registro com este dado único já existe.' 
+    })
+  }
+  
+  // P2025: Record not found (quando tenta atualizar/deletar ID inexistente)
+  if (error.code === 'P2025') {
+    return reply.status(404).send({ message: 'Registro não encontrado.' })
+  }
+
+  // 4. Erros de Autenticação (JWT)
+  // O plugin @fastify/jwt lança erros com statusCode 401
+  if (error.statusCode === 401) {
+    return reply.status(401).send({ message: 'Sessão expirada ou token inválido.' })
+  }
+
+  // 5. Erro Interno (Genérico) - Loga o erro real e não vaza detalhes para o cliente
+  request.log.error(error)
+  
+  return reply.status(500).send({ 
+    message: 'Ocorreu um erro interno no servidor.',
+    code: 'INTERNAL_SERVER_ERROR' 
+  })
+}
+
+FILE: backend\src\lib\prisma.ts
+--------------------------------------------------
+// backend/src/lib/prisma.ts
+import { PrismaClient } from '@prisma/client'
+
+// Tipagem para o objeto global extendido para evitar erros de TS no global
+const globalForPrisma = global as unknown as { prisma: PrismaClient }
+
+/**
+ * Configuração de Logs Otimizada:
+ * - Em DEV: 'query' (para debug de performance), 'info', 'warn', 'error'.
+ * - Em PROD: Apenas 'warn' e 'error' para reduzir ruído e custos de ingestão de logs no Render.
+ */
+const logConfig: any[] = process.env.NODE_ENV === 'production' 
+  ? ['error', 'warn'] 
+  : ['query', 'error', 'warn', 'info']
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: logConfig,
+    // Nota Arquitetural: 
+    // Em arquiteturas Serverless (Neon), o controle de conexões deve ser feito 
+    // preferencialmente via Connection String (parametro ?pgbouncer=true) no .env
+  })
+
+// Singleton Pattern: Previne exaustão de conexões com o Neon durante Hot Reload em desenvolvimento
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+
+FILE: backend\src\schemas\caseSchema.ts
+--------------------------------------------------
+// backend/src/schemas/caseSchema.ts
+import { z } from 'zod'
+
+// --- Rol de Ocupações Padrão ---
+export const OCUPACOES_ROL = [
+  'Não trabalha',
+  'Estudante',
+  'Do lar',
+  'Aposentado/Pensionista',
+  'Autônomo/Informal',
+  'Trabalhador Assalariado (CLT)',
+  'Trabalhador Assalariado (Sem Carteira)',
+  'BPC/LOAS',
+  'Desempregado',
+  'Outro'
+] as const;
+
+// --- Sub-Schemas Reutilizáveis ---
+
+// Schema do Item de Contato
+const ContactItemSchema = z.object({
+  numero: z.string()
+    .min(8, "Número muito curto")
+    .transform(val => val.replace(/\D/g, '')),
+  tipo: z.enum(["Pessoal", "Residencial", "Trabalho", "Vizinho", "Parente", "Outro"])
+    .default("Pessoal"),
+  nome: z.string().nullish().transform(v => v?.trim() || ''),
+  observacao: z.string().nullish().transform(v => v?.trim())
+})
+
+// Schema do Endereço Detalhado
+const EnderecoSchema = z.object({
+  logradouro: z.string().min(3, "Logradouro obrigatório").transform(v => v.trim()),
+  complemento: z.string().nullish().transform(v => v?.trim()),
+  bairro: z.string().nullish().transform(v => v?.trim()),
+  cidade: z.string().default("Brasília").transform(v => v.trim()),
+  uf: z.string().default("DF").transform(v => v.trim()),
+  cep: z.string()
+    .nullish()
+    .transform(val => val ? val.replace(/\D/g, '') : ''),
+  ra: z.string().min(1, "Selecione a Região Administrativa"),
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
+})
+
+// --- Schema Principal (Criação) ---
+
+export const createCaseBodySchema = z.object({
+  // 1. Identificação
+  nomeCompleto: z.string().min(3, 'Nome muito curto').transform(v => v.trim()),
+  nomeSocial: z.string().nullish().transform(v => v?.trim()),
+  cpf: z.string()
+    .min(11, 'CPF incompleto')
+    .transform(val => val.replace(/\D/g, '')),
+  nascimento: z.coerce.date({ 
+    required_error: "Data de nascimento é obrigatória",
+    invalid_type_error: "Data inválida" 
+  }),
+  sexo: z.string().min(1, 'Selecione o sexo'),
+
+  // [NOVOS CAMPOS] Dados Socioeconômicos
+  ocupacao: z.enum(OCUPACOES_ROL).or(z.string()).optional().nullable(),
+  
+  // Renda: Aceita número ou string, converte vírgula para ponto e garante número
+  renda: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const clean = val.replace(',', '.').trim();
+      return clean === '' ? undefined : parseFloat(clean);
+    }
+    return val;
+  }, z.number().nonnegative().optional().nullable()),
+  
+  // 2. Contatos e Endereço
+  contatos: z.array(ContactItemSchema).min(1, "Adicione pelo menos um contato").optional().default([]),
+  endereco: EnderecoSchema,
+  
+  // 3. Responsável Legal
+  responsavelLegal: z.string().nullish().transform(v => v?.trim()),
+  parentescoResponsavel: z.string().nullish().transform(v => v?.trim()),
+
+  // 4. Dados Técnicos e Triagem
+  urgencia: z.string().min(1, "Selecione a urgência"),
+  violacao: z.array(z.string()).min(1, "Selecione ao menos uma violação"),
+  categoria: z.string().min(1, "Selecione a categoria"),
+  orgaoDemandante: z.string().min(2, "Informe o órgão demandante").transform(v => v.trim()),
+  origem: z.enum(['ESPONTANEA', 'DOCUMENTAL', 'REFERENCIADA', 'BUSCA_ATIVA']),
+  dataEntrada: z.coerce.date().default(() => new Date()),
+  
+  // 5. Relacionamentos
+  agenteAcolhidaId: z.string().uuid().nullish(),
+  
+  // 6. Administrativo
+  numeroSei: z.string().nullish().transform(v => v?.trim()),
+  linkSei: z.string().nullish().transform(v => v?.trim()),
+  observacoes: z.string().nullish().transform(v => v?.trim()),
+  beneficios: z.array(z.string()).default([]),
+
+  // [NOVOS CAMPOS] Controle Administrativo
+  seiRespondido: z.boolean().optional().default(false),
+  dataRespostaSei: z.coerce.date().nullish(),
+  dataInicioPAEFI: z.coerce.date().nullish(),
+})
+
+// --- Schema de Atualização ---
+export const updateCaseBodySchema = createCaseBodySchema.partial()
+
+// --- Inferência de Tipos ---
+export type CreateCaseInput = z.infer<typeof createCaseBodySchema>
+export type UpdateCaseInput = z.infer<typeof updateCaseBodySchema>
+export type ContactItem = z.infer<typeof ContactItemSchema>
+
+FILE: backend\src\utils\geocoding.ts
+--------------------------------------------------
+// backend/src/utils/geocoding.ts
+import { cache } from '../lib/cache'
+
+interface GeoResult {
+  lat: number
+  lng: number
+  display_name?: string
+}
+
+// Interface para tipar a resposta do Nominatim
+interface NominatimResponse {
+  lat: string
+  lon: string
+  display_name: string
+  [key: string]: any
+}
+
+const GEO_CACHE_TTL = 1000 * 60 * 60 * 24 * 30 // 30 dias (endereços são estáticos)
+
+// Delay para respeitar o Rate Limit do Nominatim (Max 1 req/seg)
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+export async function geocodeAddress(
+  logradouro: string, 
+  ra: string, 
+  cidade: string = 'Brasília'
+): Promise<GeoResult | null> {
+  // 1. Validação Básica
+  if (!logradouro || !ra) return null
+
+  // 2. Normalização e Cache (Usando CacheService centralizado para segurança de memória)
+  // Prefixo 'geo:' evita colisão com outros caches do sistema
+  const cacheKey = `geo:${logradouro.trim().toLowerCase()}|${ra.trim().toLowerCase()}|${cidade.trim().toLowerCase()}`
+  
+  const cached = cache.get<GeoResult>(cacheKey)
+  if (cached) {
+    // console.log(`📍 GeoCache Hit: ${cacheKey}`) // Debug
+    return cached
+  }
+
+  try {
+    // 3. Construção da Query
+    // Adiciona contexto explícito para melhorar precisão
+    const query = `${logradouro}, ${ra}, ${cidade}, Distrito Federal, Brazil`
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`
+
+    // Rate Limiting (Essencial para não ser banido pelo OSM)
+    await delay(1100) 
+
+    // 4. Requisição Externa
+    const response = await fetch(url, {
+      headers: {
+        // User-Agent específico é OBRIGATÓRIO pela política de uso do Nominatim
+        'User-Agent': 'SistemaCreasBrazlandia/2.1 (admin@creas.df.gov.br)' 
+      }
+    })
+
+    if (!response.ok) {
+      console.warn(`[GeoCoding] Erro na API externa [${response.status}]: ${response.statusText}`)
+      return null
+    }
+
+    const data = await response.json() as NominatimResponse[]
+
+    if (data && data.length > 0) {
+      const result: GeoResult = {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+        display_name: data[0].display_name
+      }
+
+      // 5. Salva no Cache Centralizado (com TTL longo)
+      cache.set(cacheKey, result, GEO_CACHE_TTL)
+
+      return result
+    }
+
+    return null
+  } catch (error) {
+    // Log de erro sem travar a aplicação (Feature não-crítica)
+    console.error('[GeoCoding] Erro crítico ao buscar coordenadas:', error)
+    return null 
+  }
+}
+
+FILE: backend\src\server.ts
+--------------------------------------------------
+// backend/src/server.ts
+import fastify, { FastifyRequest, FastifyReply } from 'fastify'
+import cors from '@fastify/cors'
+import jwt from '@fastify/jwt'
+import fastifyStatic from '@fastify/static'
+import multipart from '@fastify/multipart'
+import fastifySwagger from '@fastify/swagger'
+import fastifySwaggerUi from '@fastify/swagger-ui'
+import rateLimit from '@fastify/rate-limit' 
+import path from 'node:path'
+import fs from 'node:fs'
+import { 
+  serializerCompiler, 
+  validatorCompiler, 
+  jsonSchemaTransform, 
+  ZodTypeProvider 
+} from 'fastify-type-provider-zod'
+
+import { errorHandler } from './lib/errorHandler'
+
+// Importação das Rotas
+import { authRoutes } from './routes/auth'
+import { caseRoutes } from './routes/cases'
+import { userRoutes } from './routes/users'
+import { evolutionRoutes } from './routes/evolutions'
+import { pafRoutes } from './routes/paf'
+import { statsRoutes } from './routes/stats'
+import { appointmentRoutes } from './routes/appointments'
+import { reportRoutes } from './routes/reports'
+import { alertRoutes } from './routes/alerts'
+import { auditRoutes } from './routes/audit'
+import { attachmentRoutes } from './routes/attachments'
+import { importRoutes } from './routes/import'
+import { filterRoutes } from './routes/filters'
+import { referralRoutes } from './routes/referrals'
+import { familyRoutes } from './routes/family'
+import { deliverablesRoutes } from './routes/deliverables'
+import { groupRoutes } from './routes/groups'
+import { workspaceRoutes } from './routes/workspace'
+import { waitingListRoutes } from './routes/waitingList'
+import { rmaRoutes } from './routes/rma'
+
+const isDev = process.env.NODE_ENV !== 'production'
+
+const app = fastify({
+  logger: {
+    transport: isDev
+      ? {
+          target: 'pino-pretty',
+          options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname', colorize: true },
+        }
+      : undefined,
+    level: isDev ? 'debug' : 'info'
+  },
+  connectionTimeout: 30000,
+  bodyLimit: 10 * 1024 * 1024 
+}).withTypeProvider<ZodTypeProvider>()
+
+app.setValidatorCompiler(validatorCompiler)
+app.setSerializerCompiler(serializerCompiler)
+app.setErrorHandler(errorHandler)
+
+// --- PLUGINS ---
+
+app.register(cors, { 
+  origin: true, 
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  exposedHeaders: ['Content-Disposition'] 
+})
+
+app.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  allowList: ['127.0.0.1'],
+  errorResponseBuilder: () => ({ 
+    statusCode: 429, 
+    error: 'Too Many Requests', 
+    message: 'Muitas tentativas. Tente novamente em 1 minuto.' 
+  })
+})
+
+app.register(jwt, { 
+  secret: process.env.JWT_SECRET || 'dev-secret-change-in-prod' 
+})
+
+app.register(multipart, { 
+  limits: { 
+    fileSize: 20 * 1024 * 1024,
+    files: 1 
+  },
+  attachFieldsToBody: false 
+})
+
+app.register(fastifySwagger, {
+  openapi: {
+    info: { title: 'CREAS Brazlândia API', version: '8.0.0' },
+    components: { 
+      securitySchemes: { 
+        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } 
+      } 
+    },
+  },
+  transform: jsonSchemaTransform,
+})
+
+app.register(fastifySwaggerUi, { 
+  routePrefix: '/docs',
+  uiConfig: {
+    docExpansion: 'none',
+    deepLinking: false
+  }
+})
+
+// [FIX] Casting para any para evitar erro de TS na propriedade decorada
+app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
+  try { 
+    await request.jwtVerify() 
+  } catch (err) { 
+    reply.status(401).send({ message: 'Acesso não autorizado', code: 'UNAUTHORIZED' }) 
+  }
+})
+
+// --- ROTAS (Com Logs de Debug) ---
+app.register(async (api) => {
+  try {
+    console.log('📦 Registrando rotas...')
+    
+    // Core
+    if (!authRoutes) console.error('❌ ERRO: authRoutes está undefined')
+    api.register(authRoutes)
+    
+    if (!userRoutes) console.error('❌ ERRO: userRoutes está undefined')
+    api.register(userRoutes)
+    
+    if (!workspaceRoutes) console.error('❌ ERRO: workspaceRoutes está undefined')
+    api.register(workspaceRoutes)
+    
+    // Casos
+    if (!caseRoutes) console.error('❌ ERRO: caseRoutes está undefined')
+    api.register(caseRoutes)
+    
+    if (!evolutionRoutes) console.error('❌ ERRO: evolutionRoutes está undefined')
+    api.register(evolutionRoutes)
+    
+    if (!pafRoutes) console.error('❌ ERRO: pafRoutes está undefined')
+    api.register(pafRoutes)
+    
+    if (!appointmentRoutes) console.error('❌ ERRO: appointmentRoutes está undefined')
+    api.register(appointmentRoutes)
+    
+    // Outros
+    api.register(referralRoutes)
+    api.register(familyRoutes)
+    api.register(rmaRoutes)
+    api.register(waitingListRoutes)
+    
+    // Gestão
+    api.register(statsRoutes)
+    api.register(statsRoutes, { prefix: '/dashboard' })
+    api.register(reportRoutes)
+    api.register(alertRoutes)
+    api.register(auditRoutes)
+    api.register(importRoutes)
+    api.register(filterRoutes)
+    api.register(deliverablesRoutes)
+    api.register(groupRoutes)
+    api.register(attachmentRoutes)
+    
+    console.log('✅ Rotas registradas com sucesso.')
+  } catch (err) {
+    console.error('❌ Falha fatal no registro de rotas:', err)
+  }
+
+}, { prefix: '/api' })
+
+// --- STATIC FILES ---
+const possibleDistPaths = [
+  path.join(__dirname, '../../frontend/dist'),
+  path.join(__dirname, '../frontend/dist'),    
+  path.join(process.cwd(), 'frontend/dist')    
+]
+
+const frontendDist = possibleDistPaths.find(p => fs.existsSync(p)) || possibleDistPaths[0]
+
+app.register(fastifyStatic, {
+  root: frontendDist,
+  prefix: '/',
+  wildcard: false,
+  preCompressed: true
+})
+
+app.setNotFoundHandler((req, reply) => {
+  if (req.raw.url && req.raw.url.startsWith('/api')) {
+    return reply.status(404).send({ 
+      error: 'Not Found', 
+      message: `Endpoint não encontrado: ${req.raw.url}` 
+    })
+  }
+  return reply.sendFile('index.html')
+})
+
+const start = async () => {
+  try {
+    const port = Number(process.env.PORT) || 3333
+    const host = '0.0.0.0' 
+    
+    await app.ready()
+    await app.listen({ port, host })
+    
+    console.log(`🚀 Server running on http://${host}:${port}`)
+    console.log(`📂 Static files path: ${frontendDist} (${fs.existsSync(frontendDist) ? 'Found' : 'Not Found'})`)
+    console.log(`📚 Documentation: http://${host}:${port}/docs`)
+
+    const signals = ['SIGINT', 'SIGTERM']
+    signals.forEach((signal) => {
+      process.on(signal, async () => {
+        console.log(`\n🛑 Recebido ${signal}. Encerrando servidor graciosamente...`)
+        await app.close()
+        process.exit(0)
+      })
+    })
+
+  } catch (err) {
+    app.log.error(err)
+    process.exit(1)
+  }
+}
+
+start()
+
+FILE: backend\package.json
+--------------------------------------------------
+{
+  "name": "sgac-braz-backend",
+  "version": "8.0.0",
+  "description": "Backend para o Sistema de Gestão de Atendimentos do CREAS Brazlândia",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "npx prisma generate && tsup",
+    "start": "node dist/server.js",
+    "postinstall": "prisma generate",
+    "db:migrate": "npx prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:backup": "tsx scripts/backup.ts"
+  },
+  "keywords": [
+    "creas",
+    "assistencia-social",
+    "gestao"
+  ],
+  "author": "Henrique Rabelo - TDAS",
+  "license": "ISC",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/formbody": "^8.0.1",
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/jwt": "^9.0.1",
+    "@fastify/multipart": "^9.3.0",
+    "@fastify/rate-limit": "^10.1.1",
+    "@fastify/static": "^8.0.3",
+    "@fastify/swagger": "^9.4.0",
+    "@fastify/swagger-ui": "^5.1.0",
+    "@prisma/client": "^6.0.1",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.5.1",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "fast-csv": "^5.0.2",
+    "fastify": "^5.1.0",
+    "fastify-type-provider-zod": "^4.0.2",
+    "lru-cache": "^11.2.4",
+    "pg": "^8.13.1",
+    "prisma": "^6.0.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^9.3.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.19.7",
+    "pino-pretty": "^13.0.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
+
+
+FILE: backend\tsconfig.json
+--------------------------------------------------
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "." 
+  },
+  "include": [
+    "src/**/*",
+    "tsup.config.ts" 
+  ],
+  "exclude": ["node_modules", "dist"]
+}

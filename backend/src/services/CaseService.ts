@@ -3,11 +3,10 @@ import { prisma } from '../lib/prisma'
 import { cache } from '../lib/cache'
 import { CryptoService } from '../lib/crypto'
 import { geocodeAddress } from '../utils/geocoding'
-// [CORREÇÃO] Adicionado 'Cargo' na importação
-import { LogAction, CaseStatus, Cargo, Prisma } from '@prisma/client'
+import { LogAction, CaseStatus, Prisma } from '@prisma/client'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
+import { calculateUrgencyWeight } from '../domain/UrgencyRules'
 
-// Interface auxiliar para o objeto de endereço retornado ao Front
 interface AddressObject {
   logradouro: string | null
   ra: string | null
@@ -77,46 +76,6 @@ export class CaseService {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
   }
 
- private static calculateUrgencyWeight(urgencia: string): number {
-    if (!urgencia) return 1
-    const term = urgencia.trim().toLowerCase()
-
-    // --- PRIORIDADE 4: VERMELHO (GRAVÍSSIMA) ---
-    // Convive com agressor, Idoso 80+, Primeira infância, Risco de morte, Risco de reincidência, Sofre ameaça
-    const redTerms = [
-      'convive com agressor', 
-      'idoso 80+', // Importante verificar este antes de 'idoso' simples
-      'primeira infância', 
-      'risco de morte', 
-      'risco de reincidência', 
-      'sofre ameaça'
-    ]
-    if (redTerms.some(t => term.includes(t))) return 4
-
-    // --- PRIORIDADE 3: LARANJA (GRAVE) ---
-    // Risco de desabrigo, Criança/Adolescente, PCD, Idoso
-    const orangeTerms = [
-      'risco de desabrigo', 
-      'criança/adolescente', 
-      'pcd', 
-      'idoso' // Só cai aqui se não for 80+ (já verificado acima)
-    ]
-    if (orangeTerms.some(t => term.includes(t))) return 3
-
-    // --- PRIORIDADE 2: AMARELO (MÉDIO) ---
-    // Internação, Acolhimento, Gestante/Lactante
-    const yellowTerms = [
-      'internação', 
-      'acolhimento', 
-      'gestante/lactante'
-    ]
-    if (yellowTerms.some(t => term.includes(t))) return 2
-
-    // --- PRIORIDADE 1: VERDE (LEVE) ---
-    // Sem risco imediato, Visita periódica (e qualquer outro não listado)
-    return 1
-  }
-
   private static parseDecimal(value: any): Prisma.Decimal | null {
     if (value === null || value === undefined || value === '') return null
     try {
@@ -140,50 +99,60 @@ export class CaseService {
     
     const where = this.buildWhereClause(params, user)
 
-    // Ordenação Padrão de Triagem:
-    // 1. Urgência (Maior peso primeiro) -> Gravidade
-    // 2. Data de Entrada (Mais antigo primeiro) -> Tempo de espera
-    let orderBy: any = [
+    let orderBy: Prisma.CaseOrderByWithRelationInput | Prisma.CaseOrderByWithRelationInput[] = [
       { pesoUrgencia: 'desc' },
       { dataEntrada: 'asc' }
     ]
     
-    if (sortBy) {
+    if (sortBy && typeof sortBy === 'string' && sortBy !== 'undefined' && sortBy !== 'null') {
+      const direction = sortOrder === 'asc' ? 'asc' : 'desc'
+      
       if (sortBy === 'urgencia') {
-         orderBy = [{ pesoUrgencia: sortOrder || 'desc' }, { dataEntrada: 'asc' }]
+         orderBy = [{ pesoUrgencia: direction }, { dataEntrada: 'asc' }]
       } else {
-         orderBy = { [sortBy]: sortOrder || 'asc' }
+         const validSortFields = ['nomeCompleto', 'dataEntrada', 'status', 'updatedAt']
+         if (validSortFields.includes(sortBy)) {
+             orderBy = { [sortBy]: direction }
+         }
       }
     }
 
-    const [items, total] = await Promise.all([
-      prisma.case.findMany({
-        where,
-        orderBy,
-        take: Number(pageSize),
-        skip: (Number(page) - 1) * Number(pageSize),
-        include: {
-          agenteAcolhida: { select: { nome: true } },
-          especialistaPAEFI: { select: { nome: true } }
-        },
-      }),
-      prisma.case.count({ where }),
-    ])
+    try {
+        const [items, total] = await Promise.all([
+          prisma.case.findMany({
+            where,
+            orderBy,
+            take: Number(pageSize),
+            skip: (Number(page) - 1) * Number(pageSize),
+            include: {
+              agenteAcolhida: { select: { nome: true } },
+              especialistaPAEFI: { select: { nome: true } }
+            },
+          }),
+          prisma.case.count({ where }),
+        ])
 
-    const formattedItems = items.map(item => this.formatCaseOutput(item))
+        const formattedItems = items.map(item => this.formatCaseOutput(item))
 
-    return { 
-      data: formattedItems, 
-      meta: { 
-        total, 
-        page: Number(page), 
-        pageSize: Number(pageSize), 
-        totalPages: Math.ceil(total / Number(pageSize)) 
-      } 
+        return { 
+          data: formattedItems, 
+          meta: { 
+            total, 
+            page: Number(page), 
+            pageSize: Number(pageSize), 
+            totalPages: Math.ceil(total / Number(pageSize)) 
+          } 
+        }
+    } catch (error) {
+        console.error("[CaseService.findAll] Erro crítico na query:", error)
+        return { 
+            data: [], 
+            meta: { total: 0, page: 1, pageSize: 10, totalPages: 0 } 
+        }
     }
   }
 
-  static async create(data: CreateCaseInput, userId: string) {
+  static async create(data: CreateCaseInput & { email?: string, casoPrincipalId?: string }, userId: string) {
     const exists = await prisma.case.findUnique({ where: { cpf: data.cpf } })
     if (exists) throw new Error('CPF_ALREADY_EXISTS')
 
@@ -207,7 +176,7 @@ export class CaseService {
         numero: CryptoService.encrypt(c.numero) || ''
     }))
 
-    const pesoUrgencia = this.calculateUrgencyWeight(data.urgencia)
+    const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
 
     const newCase = await prisma.case.create({
       data: {
@@ -217,6 +186,8 @@ export class CaseService {
         pesoUrgencia,
         ocupacao: data.ocupacao || null,
         renda: this.parseDecimal(data.renda),
+        email: data.email || null,
+        casoPrincipalId: data.casoPrincipalId || null,
 
         endereco_logradouro: encryptedLogradouro,
         endereco_complemento: encryptedComplemento,
@@ -241,12 +212,13 @@ export class CaseService {
     return this.formatCaseOutput(newCase)
   }
 
-  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, linkSei?: string | null, numeroSei?: string | null }, userId: string) {
+  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, linkSei?: string | null, numeroSei?: string | null, email?: string, casoPrincipalId?: string | null }, userId: string) {
     const oldCase = await prisma.case.findUnique({ where: { id } })
     if (!oldCase) throw new Error('NOT_FOUND')
 
     const dataToUpdate: any = { ...data }
     
+    // Remove campos aninhados para tratar separadamente
     if (data.endereco) delete dataToUpdate.endereco
     if (data.contatos) delete dataToUpdate.contatos
 
@@ -254,11 +226,12 @@ export class CaseService {
     if (data.dataEntrada) dataToUpdate.dataEntrada = this.stripTime(data.dataEntrada)
     
     if (data.urgencia) {
-        dataToUpdate.pesoUrgencia = this.calculateUrgencyWeight(data.urgencia)
+        dataToUpdate.pesoUrgencia = calculateUrgencyWeight(data.urgencia)
     }
     
     if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
 
+    // Gestão do SEI
     if (typeof data.seiRespondido === 'boolean') {
         dataToUpdate.seiRespondido = data.seiRespondido
         if (data.seiRespondido === true) {
@@ -266,6 +239,11 @@ export class CaseService {
         } else {
             dataToUpdate.dataRespostaSei = null
         }
+    }
+
+    // [CORREÇÃO] Gestão de Vínculos (Permitindo null)
+    if (data.casoPrincipalId !== undefined) {
+        dataToUpdate.casoPrincipalId = data.casoPrincipalId
     }
 
     if (data.endereco) {
@@ -292,7 +270,13 @@ export class CaseService {
     const updated = await prisma.case.update({ where: { id }, data: dataToUpdate })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, userId, LogAction.OUTRO, `Editou dados cadastrais.`)
+    
+    // Log detalhado para vínculos
+    let logMsg = `Editou dados cadastrais.`
+    if (data.casoPrincipalId && data.casoPrincipalId !== oldCase.casoPrincipalId) logMsg = `Vinculou ao prontuário ${data.casoPrincipalId}.`
+    if (data.casoPrincipalId === null && oldCase.casoPrincipalId) logMsg = `Removeu vínculo de prontuário.`
+
+    await this.createLog(id, userId, LogAction.OUTRO, logMsg)
     
     return this.formatCaseOutput(updated)
   }
@@ -305,6 +289,8 @@ export class CaseService {
         agenteAcolhida: { select: { id: true, nome: true } },
         especialistaPAEFI: { select: { id: true, nome: true } },
         familia: true,
+        casosVinculados: { select: { id: true, nomeCompleto: true, status: true } },
+        casoPrincipal: { select: { id: true, nomeCompleto: true } },
         encaminhamentos: { include: { autor: { select: { nome: true } } }, orderBy: { dataEnvio: 'desc' } },
         entregas: { include: { responsavel: { select: { nome: true } } }, orderBy: { dataSolicitacao: 'desc' } },
         evolucoes: { include: { autor: { select: { nome: true, cargo: true } } }, orderBy: { createdAt: 'desc' } },
@@ -349,7 +335,8 @@ export class CaseService {
         motivoDesligamento: null, 
         destinoDesligamento: null, 
         dataDesligamento: null, 
-        parecerFinal: null 
+        parecerFinal: null,
+        manterReferencia: false 
       }
     }
 
@@ -361,7 +348,6 @@ export class CaseService {
 
   static async assignSpecialist(id: string, specialistId: string, managerId: string) {
     const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
-    const spec = await prisma.user.findUnique({ where: { id: specialistId } })
     
     if (!oldCase) throw new Error('NOT_FOUND')
     
@@ -375,12 +361,12 @@ export class CaseService {
     })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, managerId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldCase?.especialistaPAEFI?.nome, spec?.nome)
+    await this.createLog(id, managerId, LogAction.ATRIBUICAO, `Atribuiu especialista`, oldCase?.especialistaPAEFI?.nome, 'Novo')
     
     return this.formatCaseOutput(updated)
   }
 
-  static async closeCase(id: string, data: { parecerFinal: string, motivoDesligamento: string, destinoDesligamento?: string }, userId: string) {
+  static async closeCase(id: string, data: { parecerFinal: string, motivoDesligamento: string, destinoDesligamento?: string, manterReferencia?: boolean }, userId: string) {
     const updated = await prisma.case.update({ 
       where: { id }, 
       data: { 
@@ -391,46 +377,70 @@ export class CaseService {
     })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${data.motivoDesligamento}`)
+    
+    const refMsg = data.manterReferencia ? ' (Mantendo referência)' : '';
+    await this.createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${data.motivoDesligamento}${refMsg}`)
     
     return this.formatCaseOutput(updated)
   }
 
   static buildWhereClause(query: any, user: { cargo: string, sub: string }) {
     const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId } = query
-    let where: any = {}
+    
+    const conditions: any[] = []
 
-    if (agenteId) where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
-    else if (specialistId) where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
-    else if (view === 'all') {
-      if (status === 'DESLIGADO') where = { status: CaseStatus.DESLIGADO }
-      else where = { status: { not: CaseStatus.DESLIGADO } }
+    if (view === 'all') {
+      if (status === 'DESLIGADO') {
+         conditions.push({ status: CaseStatus.DESLIGADO })
+      } else if (!status || status === 'all') {
+         conditions.push({ status: { not: CaseStatus.DESLIGADO } })
+      }
     } else {
-      // [USO DO ENUM CARGO CORRIGIDO]
-      if (user.cargo === Cargo.Gerente) where = { status: CaseStatus.AGUARDANDO_DISTRIBUICAO }
-      else if (user.cargo === Cargo.Agente_Social) where = { agenteAcolhidaId: user.sub, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
-      else if (user.cargo === Cargo.Especialista) where = { especialistaPAEFIId: user.sub, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
+      if (user.cargo === 'Gerente') {
+         conditions.push({ status: CaseStatus.AGUARDANDO_DISTRIBUICAO })
+      } 
+      else if (user.cargo === 'Agente_Social') {
+         conditions.push({
+           OR: [
+             { agenteAcolhidaId: user.sub },
+             { status: CaseStatus.AGUARDANDO_ACOLHIDA, agenteAcolhidaId: null }
+           ]
+         })
+      } 
+      else if (user.cargo === 'Especialista') {
+         conditions.push({ especialistaPAEFIId: user.sub })
+         conditions.push({ status: { not: CaseStatus.DESLIGADO } })
+      }
     }
 
-    if (search) {
-      where.AND = [ ...(where.AND || []), {
-          OR: [
-            { nomeCompleto: { contains: search, mode: 'insensitive' } },
-            { cpf: { contains: search } },
-            { endereco_ra: { contains: search, mode: 'insensitive' } }
-          ]
-      }]
+    if (agenteId) conditions.push({ agenteAcolhidaId: agenteId })
+    if (specialistId) conditions.push({ especialistaPAEFIId: specialistId })
+
+    if (search && search.trim() !== '') {
+      conditions.push({
+        OR: [
+          { nomeCompleto: { contains: search, mode: 'insensitive' } },
+          { cpf: { contains: search } },
+          { endereco_ra: { contains: search, mode: 'insensitive' } }
+        ]
+      })
     }
 
     if (status && status !== 'all') {
       const validStatuses = status.split(',').filter((s: string) => Object.values(CaseStatus).includes(s as CaseStatus))
-      if (validStatuses.length > 0) where.status = { in: validStatuses }
+      if (validStatuses.length > 0) conditions.push({ status: { in: validStatuses } })
     }
-    if (urgencia && urgencia !== 'all') where.urgencia = urgencia
-    if (violacao && violacao !== 'all') where.violacao = { has: violacao }
-    if (categoria && categoria !== 'all') where.categoria = categoria
-    if (sexo && sexo !== 'all') where.sexo = sexo
 
-    return where
+    if (urgencia && urgencia !== 'all') conditions.push({ urgencia })
+    
+    if (violacao && violacao !== 'all') {
+      conditions.push({ violacao: { has: violacao } })
+    }
+    
+    if (categoria && categoria !== 'all') conditions.push({ categoria })
+    if (sexo && sexo !== 'all') conditions.push({ sexo })
+
+    if (conditions.length === 0) return {}
+    return { AND: conditions }
   }
 }

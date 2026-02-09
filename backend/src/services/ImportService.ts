@@ -5,18 +5,7 @@ import ExcelJS from 'exceljs'
 import { parse, isValid } from 'date-fns'
 import { Buffer } from 'node:buffer'
 import { Readable } from 'stream'
-
-// Mapeamento EXATO da lista fornecida para os pesos
-const MAPA_PESO_URGENCIA: Record<string, number> = {
-  // GRAVISSIMA (4)
-  'Convive com agressor': 4, 'Idoso 80+': 4, 'Primeira infância': 4, 'Risco de morte': 4, 'Violência sexual': 4,
-  // MUITO GRAVE (3)
-  'Risco de reincidência': 3, 'Sofre ameaça': 3, 'Risco de desabrigo': 3, 'Criança/Adolescente': 3, 'Violação de Direitos (Peso 3)': 3,
-  // GRAVE (2)
-  'PCD': 2, 'Idoso': 2, 'Internação': 2, 'Acolhimento': 2, 'Gestante/Lactante': 2, 'Risco Social (Peso 2)': 2,
-  // LEVE (1)
-  'Sem risco imediato': 1, 'Visita periódica': 1
-}
+import { calculateUrgencyWeight } from '../domain/UrgencyRules';
 
 interface ImportResult {
   processed: number
@@ -203,14 +192,8 @@ export class ImportService {
 
           // --- URGÊNCIA E STATUS ---
           const urgenciaTexto = String(getValue(row, 'urgencia', 'risco') || 'Sem risco imediato')
-          let pesoUrgencia = MAPA_PESO_URGENCIA[urgenciaTexto] || Number(getValue(row, 'pesourgencia', 'peso')) || 1
-          
-          if (!MAPA_PESO_URGENCIA[urgenciaTexto] && pesoUrgencia === 1) {
-             const lower = urgenciaTexto.toLowerCase()
-             if (lower.includes('morte') || lower.includes('sexual')) pesoUrgencia = 4
-             else if (lower.includes('ameaça') || lower.includes('reincidência')) pesoUrgencia = 3
-             else if (lower.includes('acolhimento') || lower.includes('internação')) pesoUrgencia = 2
-          }
+          // [REFATORAÇÃO] Uso da função centralizada
+          const pesoUrgencia = calculateUrgencyWeight(urgenciaTexto);
           
           let statusRaw = String(getValue(row, 'status') || 'AGUARDANDO_DISTRIBUICAO').toUpperCase().replace(/ /g, '_')
           if (!Object.values(CaseStatus).includes(statusRaw as any)) statusRaw = 'AGUARDANDO_DISTRIBUICAO'

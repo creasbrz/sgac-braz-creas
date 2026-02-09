@@ -20,35 +20,42 @@ interface ListEvolutionInput {
 export class EvolutionService {
   
   /**
-   * Lista evoluções aplicando regras estritas de visualização (Sigilo)
+   * Lista evoluções aplicando regras estritas de visualização (Sigilo por Perfil)
+   * Regra v8.3: 
+   * - Gerente vê tudo.
+   * - Agentes veem sigilosos de Agentes.
+   * - Especialistas veem sigilosos de Especialistas.
    */
   static async list({ caseId, userId, cargo, page, pageSize }: ListEvolutionInput) {
-    // 1. Busca dados de atribuição do caso
-    const caso = await prisma.case.findUnique({
-      where: { id: caseId },
-      select: { agenteAcolhidaId: true, especialistaPAEFIId: true }
-    })
-
-    if (!caso) throw new Error('CASE_NOT_FOUND')
-
-    // 2. Regras de Permissão
-    const isGerente = cargo === Cargo.Gerente
-    const isResponsavel = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId
-    
-    // Quem pode ver tudo (incluindo sigilosos)? Gerentes e Técnicos Responsáveis
-    const canViewSigilo = isGerente || isResponsavel
-
-    const whereCondition: any = { casoId: caseId }
-
-    if (!canViewSigilo) {
-      // Regra: Se não for responsável, vê apenas PÚBLICAS ou AS SUAS PRÓPRIAS
-      whereCondition.OR = [
-        { sigilo: false },
-        { autorId: userId }
-      ]
+    // 1. Definição da cláusula WHERE base
+    const whereCondition: any = { 
+      casoId: caseId 
     }
 
-    // 3. Query
+    // 2. Lógica de Sigilo (Security Gate)
+    if (cargo !== Cargo.Gerente) {
+      // Se não for gerente, aplica filtros
+      const roleFilter = cargo === Cargo.Agente_Social ? Cargo.Agente_Social : Cargo.Especialista
+
+      whereCondition.OR = [
+        // A. Pode ver todas as públicas
+        { sigilo: false },
+        
+        // B. Pode ver as suas próprias (sempre)
+        { autorId: userId },
+
+        // C. Pode ver sigilosas SE forem do mesmo cargo (Perfil)
+        { 
+          AND: [
+            { sigilo: true },
+            { autor: { cargo: roleFilter } } 
+          ]
+        }
+      ]
+    }
+    // Se for Gerente, não adiciona filtros, vê tudo.
+
+    // 3. Query Otimizada
     const [items, total] = await Promise.all([
       prisma.evolucao.findMany({
         where: whereCondition,
@@ -56,7 +63,13 @@ export class EvolutionService {
         take: pageSize,
         skip: (page - 1) * pageSize,
         include: {
-          autor: { select: { id: true, nome: true, cargo: true } }
+          autor: { 
+            select: { 
+              id: true, 
+              nome: true, 
+              cargo: true 
+            } 
+          }
         }
       }),
       prisma.evolucao.count({ where: whereCondition })

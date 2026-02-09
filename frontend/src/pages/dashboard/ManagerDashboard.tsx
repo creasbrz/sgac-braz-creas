@@ -6,7 +6,7 @@ import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { 
   Users, UserPlus, FolderOpen, FolderCheck, RefreshCw, 
-  Activity, Briefcase, LucideIcon 
+  Activity, Briefcase, LucideIcon, BarChart3, LineChart
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, LabelList } from "recharts"
 import { clsx, type ClassValue } from 'clsx'
@@ -24,22 +24,14 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 
-// Domain Components
-import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
-import { UpcomingPafDeadlines } from '@/components/dashboard/UpcomingPafDeadlines'
-import { RecentActivityFeed } from '@/components/dashboard/RecentActivityFeed'
-import { AdvancedAnalytics } from '../AdvancedAnalytics'
-
-// Imports de PDF
+import { AdvancedAnalytics } from './AdvancedAnalytics'
 import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
 import { ManagementReportDoc } from '@/components/reports/templates/ManagementReportDoc'
 
-// --- UTILS ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// --- CONFIGURAÇÃO DOS GRÁFICOS ---
 const workloadChartConfig = {
   cases: {
     label: "Casos Ativos",
@@ -47,7 +39,6 @@ const workloadChartConfig = {
   },
 } satisfies ChartConfig
 
-// --- TYPES ---
 interface StatData {
   name: string
   value: number
@@ -63,8 +54,6 @@ interface ManagerStats {
   lastUpdated?: string
 }
 
-// --- SUB-COMPONENTS ---
-
 interface StatCardProps {
   title: string
   value: number
@@ -74,7 +63,6 @@ interface StatCardProps {
 }
 
 const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', description }: StatCardProps) => {
-  // Cores Modernizadas (Padrão Pastel 50 + Vivid 500)
   const themes = {
     blue: "bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400 border-blue-100 dark:border-blue-500/20",
     amber: "bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400 border-amber-100 dark:border-amber-500/20",
@@ -84,7 +72,6 @@ const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', descripti
 
   return (
     <Card className="border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative group">
-       {/* Faixa lateral colorida no hover [CORREÇÃO: w-[3px] -> w-0.75] */}
        <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", themes[variant].split(' ')[0].replace('50', '500'))} />
        
       <CardContent className="p-6 flex items-start justify-between relative z-10">
@@ -121,14 +108,11 @@ function DashboardSkeleton() {
         {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full" />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* [CORREÇÃO: h-[300px] -> h-75] */}
         {[1,2].map(i => <Skeleton key={i} className="h-75 rounded-xl w-full" />)}
       </div>
     </div>
   )
 }
-
-// --- MAIN COMPONENT ---
 
 export function ManagerDashboard() {
   const queryClient = useQueryClient()
@@ -192,8 +176,6 @@ export function ManagerDashboard() {
 
     if (!stats) return null
 
-    // [CORREÇÃO: ORDENAÇÃO DECRESCENTE]
-    // Preparando e ordenando dados para gráficos (Maior para Menor)
     const agentData = stats.workloadByAgent
         .sort((a, b) => b.value - a.value)
         .map(d => ({ ...d, fill: "hsl(var(--primary))" }))
@@ -205,44 +187,6 @@ export function ManagerDashboard() {
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         
-        {/* HEADER & TOOLBAR (Sticky Glass) */}
-        <div className="sticky top-0 z-10 -mx-6 -mt-2 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Visão Geral</h2>
-            <p className="text-muted-foreground text-sm">Monitoramento operacional e estratégico.</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {stats.lastUpdated && (
-              <span className="text-xs text-muted-foreground mr-2 hidden sm:inline-block">
-                Atualizado: {format(new Date(stats.lastUpdated), "HH:mm", { locale: ptBR })}
-              </span>
-            )}
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleForceRefresh}
-              disabled={isRefetching}
-              className="h-9 gap-2 bg-background border-border/60 shadow-sm"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", isRefetching && 'animate-spin')} />
-              <span className="sr-only sm:not-sr-only">Atualizar</span>
-            </Button>
-
-            {reportData && (
-              <PDFDownloadButton 
-                document={<ManagementReportDoc data={reportData as any} />}
-                fileName={`Relatorio_Gerencial_${format(new Date(), 'MM-yyyy')}.pdf`}
-                label="Relatório Mensal"
-                variant="default"
-                size="sm"
-                className="h-9"
-              />
-            )}
-          </div>
-        </div>
-
         {/* 1. KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 px-1">
           <ManagerStatCard 
@@ -275,7 +219,7 @@ export function ManagerDashboard() {
           />
         </div>
 
-        {/* 2. GRÁFICOS DE CARGA */}
+        {/* 2. GRÁFICO DE CARGA */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Carga Agentes */}
           <Card className="shadow-sm border-border/50">
@@ -286,8 +230,8 @@ export function ManagerDashboard() {
               <CardDescription>Distribuição de casos ativos por técnico.</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* [CORREÇÃO: min-h-[200px] -> min-h-50, max-h-[300px] -> max-h-75] */}
-              <ChartContainer config={workloadChartConfig} className="min-h-50 max-h-75 w-full">
+              {/* [CORREÇÃO] ResponsiveContainer removido, altura aplicada no ChartContainer */}
+              <ChartContainer config={workloadChartConfig} className="min-h-75 w-full">
                 <BarChart
                   accessibilityLayer
                   data={agentData}
@@ -311,7 +255,7 @@ export function ManagerDashboard() {
                   <Bar 
                     dataKey="value" 
                     radius={[0, 4, 4, 0]} 
-                    barSize={20}
+                    barSize={20} 
                     className="opacity-90 hover:opacity-100 transition-opacity"
                   >
                     <LabelList 
@@ -336,8 +280,8 @@ export function ManagerDashboard() {
               <CardDescription>Volume de PAEFI por técnico de referência.</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* [CORREÇÃO: min-h-[200px] -> min-h-50, max-h-[300px] -> max-h-75] */}
-              <ChartContainer config={workloadChartConfig} className="min-h-50 max-h-75 w-full">
+              {/* [CORREÇÃO] Altura fixa aplicada no ChartContainer */}
+              <ChartContainer config={workloadChartConfig} className="min-h-75 w-full">
                 <BarChart
                   accessibilityLayer
                   data={specialistData}
@@ -361,7 +305,7 @@ export function ManagerDashboard() {
                   <Bar 
                     dataKey="value" 
                     radius={[0, 4, 4, 0]} 
-                    barSize={20}
+                    barSize={20} 
                     className="opacity-90 hover:opacity-100 transition-opacity"
                   >
                     <LabelList 
@@ -377,36 +321,46 @@ export function ManagerDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* 3. OPERATIONAL FEEDS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 flex flex-col h-full">
-            {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
-            <UpcomingAppointments enableScroll className="h-full min-h-100 shadow-sm border-border/50" />
-          </div>
-          <div className="lg:col-span-1 flex flex-col h-full">
-             {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
-            <UpcomingPafDeadlines className="h-full min-h-100 shadow-sm border-border/50" />
-          </div>
-          <div className="lg:col-span-1 flex flex-col h-full">
-             {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
-            <RecentActivityFeed className="h-full min-h-100 shadow-sm border-border/50" />
-          </div>
-        </div>
       </div>
     )
   }
 
   return (
-    // [CORREÇÃO: max-w-[1600px] -> max-w-400]
-    <div className="w-full space-y-6 p-4 md:p-8 max-w-400 mx-auto">
+    <div className="w-full space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
        <Tabs defaultValue="overview" className="w-full space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            {/* [CORREÇÃO: sm:w-[400px] -> sm:w-100] */}
-            <TabsList className="grid w-full sm:w-100 grid-cols-2 bg-muted/50 p-1">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">Visão Operacional</TabsTrigger>
-            <TabsTrigger value="analytics" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">Indicadores & IA</TabsTrigger>
-            </TabsList>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-muted/20 p-2 rounded-xl border border-border/60">
+           <TabsList className="grid w-full sm:w-auto grid-cols-2 bg-muted/50 p-1 h-auto">
+             <TabsTrigger value="overview" className="data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 gap-2">
+                <BarChart3 className="h-4 w-4" /> Visão Operacional
+             </TabsTrigger>
+             <TabsTrigger value="analytics" className="data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 gap-2">
+                <LineChart className="h-4 w-4" /> Inteligência de Dados
+             </TabsTrigger>
+           </TabsList>
+
+           <div className="flex items-center gap-2 w-full sm:w-auto justify-end px-2">
+             <Button 
+               variant="ghost" 
+               size="sm" 
+               onClick={handleForceRefresh} 
+               disabled={isRefetching}
+               className="h-8 gap-2 text-muted-foreground"
+             >
+                <RefreshCw className={cn("h-3.5 w-3.5", isRefetching && 'animate-spin')} />
+                <span className="hidden sm:inline">Atualizar</span>
+             </Button>
+
+             {reportData && (
+               <PDFDownloadButton 
+                 document={<ManagementReportDoc data={reportData as any} />}
+                 fileName={`Relatorio_Gerencial_${format(new Date(), 'MM-yyyy')}.pdf`}
+                 label="Baixar Relatório"
+                 variant="default"
+                 size="sm"
+                 className="h-8"
+               />
+             )}
+           </div>
         </div>
 
         <TabsContent value="overview" className="mt-0 focus-visible:outline-none">
@@ -416,7 +370,7 @@ export function ManagerDashboard() {
         <TabsContent value="analytics" className="mt-0 focus-visible:outline-none">
             <AdvancedAnalytics />
         </TabsContent>
-        </Tabs>
+       </Tabs>
     </div>
   )
 }

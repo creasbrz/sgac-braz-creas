@@ -1,0 +1,1389 @@
+CONTEXTO: backend_03_routes
+
+
+FILE: backend\src\routes\alerts.ts
+--------------------------------------------------
+// backend/src/routes/alerts.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { AlertController } from '../controllers/AlertController'
+
+const alertResponseSchema = z.object({
+  id: z.string(),
+  nomeCompleto: z.string(),
+  type: z.enum(['PAF_NOT_STARTED', 'PAF_STALLED', 'PAF_REVIEW_OVERDUE', 'NOT_STARTED_YET', 'RECEPTION_DELAY']),
+  days: z.number(),
+  urgencia: z.string()
+})
+
+export async function alertRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send() }
+  })
+
+  server.get('/alerts', {
+    schema: {
+      tags: ['Alertas'],
+      summary: 'Monitoramento de prazos e pendências',
+      response: { 200: z.array(alertResponseSchema) }
+    }
+  }, AlertController.list)
+}
+
+FILE: backend\src\routes\appointments.ts
+--------------------------------------------------
+// backend/src/routes/appointments.ts
+import { type FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { AppointmentController } from '../controllers/AppointmentController'
+
+const calendarEventSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  start: z.coerce.date(),
+  end: z.coerce.date().nullable().optional(),
+  type: z.string(),
+  resourceId: z.string().optional(),
+  description: z.string().optional(),
+  status: z.string(),
+  nomeCompleto: z.string().optional()
+})
+
+const createAppointmentSchema = z.object({
+  titulo: z.string().min(3),
+  data: z.coerce.date(),
+  observacoes: z.string().nullable().optional(),
+  casoId: z.string().uuid(),
+  tipo: z.string().optional()
+})
+
+export async function appointmentRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // 1. Widget Dashboard
+  server.get('/stats/my-agenda', {
+    schema: { tags: ['Agenda'] }
+  }, AppointmentController.getUpcoming)
+
+  // 2. Calendário Principal
+  server.get('/appointments', {
+    schema: {
+      tags: ['Agenda'],
+      querystring: z.object({ 
+        caseId: z.string().uuid().optional(), 
+        start: z.coerce.date().optional(), 
+        end: z.coerce.date().optional(),    
+      }),
+      response: { 200: z.array(calendarEventSchema) }
+    }
+  }, AppointmentController.list)
+
+  // 3. Criar
+  server.post('/appointments', {
+    schema: { tags: ['Agenda'], body: createAppointmentSchema }
+  }, AppointmentController.create)
+
+  // 4. Editar
+  server.put('/appointments/:id', {
+    schema: {
+      tags: ['Agenda'],
+      params: z.object({ id: z.string().uuid() }),
+      body: createAppointmentSchema.partial()
+    }
+  }, AppointmentController.update)
+
+  // 5. Deletar
+  server.delete('/appointments/:id', {
+    schema: {
+      tags: ['Agenda'],
+      params: z.object({ id: z.string().uuid() })
+    }
+  }, AppointmentController.delete)
+}
+
+FILE: backend\src\routes\attachments.ts
+--------------------------------------------------
+// backend/src/routes/attachments.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { AttachmentController } from '../controllers/AttachmentController'
+
+const attachmentResponseSchema = z.object({
+  id: z.string().uuid(),
+  nome: z.string(),
+  tipo: z.string(),
+  url: z.string(),
+  tamanho: z.number().nullable(),
+  createdAt: z.date(),
+  autor: z.object({ nome: z.string() }).optional()
+})
+
+export async function attachmentRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.get('/cases/:caseId/attachments', {
+    schema: {
+      tags: ['Anexos'],
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(attachmentResponseSchema) }
+    }
+  }, AttachmentController.list)
+
+  server.post('/attachments', {
+    schema: {
+      tags: ['Anexos'],
+      summary: 'Upload de arquivo (Multipart)',
+      querystring: z.object({ caseId: z.string().uuid() }), 
+    }
+  }, AttachmentController.upload)
+
+  server.delete('/attachments/:id', {
+    schema: {
+      tags: ['Anexos'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, AttachmentController.delete)
+}
+
+FILE: backend\src\routes\audit.ts
+--------------------------------------------------
+// backend/src/routes/audit.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { LogAction } from '@prisma/client'
+import { AuditController } from '../controllers/AuditController'
+
+const logResponseSchema = z.object({
+  id: z.string().uuid(),
+  acao: z.nativeEnum(LogAction),
+  descricao: z.string(),
+  createdAt: z.date(),
+  valorAnterior: z.string().nullable(),
+  valorNovo: z.string().nullable(),
+  autor: z.object({
+    nome: z.string(),
+    cargo: z.string(),
+    email: z.string()
+  }),
+  caso: z.object({
+    id: z.string(),
+    nomeCompleto: z.string()
+  }).nullable().optional()
+})
+
+const auditQuerySchema = z.object({
+  page: z.coerce.number().default(1),
+  pageSize: z.coerce.number().default(20),
+  search: z.string().optional(),
+  autorId: z.string().optional(),
+  acao: z.nativeEnum(LogAction).optional(),
+  periodo: z.enum(['hoje', '7dias', '30dias', 'todo']).default('7dias'),
+})
+
+export async function auditRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.get('/audit', {
+    schema: {
+      tags: ['Auditoria'],
+      summary: 'Pesquisar logs do sistema (Apenas Gerentes)',
+      querystring: auditQuerySchema,
+      response: {
+        200: z.object({
+          data: z.array(logResponseSchema),
+          meta: z.object({
+            page: z.number(),
+            pageSize: z.number(),
+            total: z.number(),
+            totalPages: z.number()
+          })
+        })
+      }
+    }
+  }, AuditController.list)
+
+  server.get('/audit/stats', {
+    schema: {
+      tags: ['Auditoria'],
+      summary: 'Resumo de atividades do dia',
+      response: {
+        200: z.array(z.object({
+          acao: z.nativeEnum(LogAction),
+          _count: z.object({ _all: z.number() })
+        }))
+      }
+    }
+  }, AuditController.getStats)
+}
+
+FILE: backend\src\routes\auth.ts
+--------------------------------------------------
+// backend/src/routes/auth.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { Cargo } from '@prisma/client'
+import { AuthController } from '../controllers/AuthController'
+
+export async function authRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  // Schema de resposta seguro (sem senha)
+  const userResponseSchema = z.object({
+    id: z.string().uuid(),
+    nome: z.string(),
+    email: z.string().email(),
+    cargo: z.nativeEnum(Cargo),
+    matricula: z.string().nullable().optional(),
+    ativo: z.boolean(),
+    createdAt: z.date().optional()
+  })
+
+  server.post('/register', {
+    schema: {
+      tags: ['Autenticação'],
+      summary: 'Registrar um novo usuário',
+      body: z.object({
+        nome: z.string().min(3),
+        email: z.string().email(),
+        senha: z.string().min(6),
+        cargo: z.nativeEnum(Cargo).or(z.string()),
+        matricula: z.string().optional()
+      }),
+      response: { 201: userResponseSchema }
+    }
+  }, AuthController.register)
+
+  server.post('/login', {
+    schema: {
+      tags: ['Autenticação'],
+      summary: 'Autenticar usuário',
+      body: z.object({
+        email: z.string().email(),
+        senha: z.string()
+      }),
+      response: {
+        200: z.object({ token: z.string() })
+      }
+    }
+  }, AuthController.login)
+
+  server.get('/me', {
+    // [CORREÇÃO] Cast para any para o TS aceitar o decorator customizado 'authenticate'
+    onRequest: [(app as any).authenticate],
+    schema: {
+      tags: ['Autenticação'],
+      summary: 'Dados do usuário logado',
+      security: [{ bearerAuth: [] }],
+      response: { 200: userResponseSchema }
+    }
+  }, AuthController.getProfile)
+}
+
+FILE: backend\src\routes\cases.ts
+--------------------------------------------------
+// backend/src/routes/cases.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { CaseStatus } from '@prisma/client'
+import { createCaseBodySchema, updateCaseBodySchema } from '../schemas/caseSchema'
+import { CaseController } from '../controllers/CaseController' // [V2.0]
+import { ExportService } from '../services/ExportService'
+import { ImportService } from '../services/ImportService'
+import { Cargo } from '@prisma/client'
+import { format } from 'date-fns'
+
+export async function caseRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  // Middleware de Autenticação
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } 
+    catch (err) { await reply.status(401).send({ message: 'Não autorizado' }) }
+  })
+
+  // --- CRUD CORE (Via Controller) ---
+
+  server.post('/cases', {
+    schema: { tags: ['Casos'], body: createCaseBodySchema }
+  }, CaseController.create)
+
+  server.get('/cases', {
+    schema: {
+      tags: ['Casos'],
+      querystring: z.object({
+        search: z.string().optional(),
+        page: z.coerce.number().min(1).default(1),
+        pageSize: z.coerce.number().min(1).max(100).default(10),
+        status: z.string().optional(), 
+        urgencia: z.string().optional(),
+        violacao: z.string().optional(),
+        categoria: z.string().optional(),
+        sexo: z.string().optional(),
+        view: z.enum(['my', 'all']).default('my').optional(),
+        sortBy: z.string().optional(),
+        sortOrder: z.enum(['asc', 'desc']).optional(),
+        agenteId: z.string().uuid().optional(),
+        specialistId: z.string().uuid().optional(),
+      })
+    }
+  }, CaseController.list)
+
+  server.get('/cases/:id', {
+    schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }) }
+  }, CaseController.getById)
+
+  server.put('/cases/:id', {
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: updateCaseBodySchema.extend({
+        seiRespondido: z.boolean().optional(),
+        linkSei: z.string().optional().nullable(),
+        numeroSei: z.string().optional().nullable()
+      })
+    }
+  }, CaseController.update)
+
+  // --- ACTIONS (Via Controller) ---
+
+  server.patch('/cases/:id/status', {
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: z.object({ status: z.nativeEnum(CaseStatus) }) 
+    }
+  }, CaseController.updateStatus)
+
+  server.patch('/cases/:id/assign', {
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: z.object({ specialistId: z.string().uuid() }) 
+    }
+  }, CaseController.assignSpecialist)
+
+  server.patch('/cases/:id/close', {
+    schema: { 
+      tags: ['Casos'], 
+      params: z.object({ id: z.string().uuid() }), 
+      body: z.object({ 
+        parecerFinal: z.string().min(10), 
+        motivoDesligamento: z.string().min(1), 
+        destinoDesligamento: z.string().optional() 
+      }) 
+    }
+  }, CaseController.closeCase)
+
+  // --- FEATURES ESPECIAIS (Mantidas aqui por simplicidade ou refatorar para ImportExportController futuramente) ---
+  
+  // [GET] CASOS FECHADOS
+  server.get('/cases/closed', {
+    schema: {
+      tags: ['Casos'],
+      summary: 'Listar casos desligados (Arquivo Morto)',
+      querystring: z.object({
+        search: z.string().optional(),
+        page: z.coerce.number().default(1),
+        pageSize: z.coerce.number().default(10),
+        view: z.string().optional(),
+      })
+    }
+  }, CaseController.list) // Reutiliza o list com filtro injetado no frontend
+
+  // [GET] EXPORTAR EXCEL
+  server.get('/cases/export', {
+    schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
+  }, async (req, reply) => {
+    const { cargo } = req.user as { cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    try {
+      const buffer = await ExportService.generateCasesExcel()
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      reply.header('Content-Disposition', `attachment; filename="Exportacao_Casos_${format(new Date(), 'yyyy-MM-dd')}.xlsx"`)
+      return reply.send(buffer)
+    } catch (error) {
+      req.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao gerar excel.' })
+    }
+  })
+
+  // [GET] DOWNLOAD MODELO IMPORTAÇÃO
+  server.get('/cases/import/template', {
+    schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
+  }, async (req, reply) => {
+    const buffer = await ExportService.generateTemplate() 
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    reply.header('Content-Disposition', `attachment; filename="Modelo_Importacao_Casos.xlsx"`)
+    return reply.send(buffer)
+  })
+
+  // [POST] IMPORTAR CASOS
+  server.post('/cases/import', {
+    schema: { tags: ['Casos'], summary: 'Importar casos em massa via Excel/CSV' }
+  }, async (req, reply) => {
+    const { cargo, sub } = req.user as { sub: string, cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    if (!req.isMultipart()) {
+      return reply.status(400).send({ message: 'Arquivo obrigatório (multipart/form-data).' })
+    }
+
+    const data = await req.file()
+    if (!data) return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
+
+    const buffer = await data.toBuffer()
+    const isCsv = data.mimetype === 'text/csv' || data.filename.endsWith('.csv')
+
+    const result = await ImportService.processImport(buffer, isCsv, sub)
+    return reply.send(result)
+  })
+}
+
+FILE: backend\src\routes\deliverables.ts
+--------------------------------------------------
+// backend/src/routes/deliverables.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { DeliverableController } from '../controllers/DeliverableController'
+
+const deliverableResponseSchema = z.object({
+  id: z.string(),
+  tipo: z.string(),
+  status: z.string(),
+  dataSolicitacao: z.date(),
+  dataEntrega: z.date().nullable(),
+  responsavel: z.object({ nome: z.string() })
+})
+
+export async function deliverablesRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.get('/cases/:caseId/deliverables', {
+    schema: {
+      tags: ['Benefícios'],
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(deliverableResponseSchema) }
+    }
+  }, DeliverableController.list)
+
+  server.post('/cases/:caseId/deliverables', {
+    schema: {
+      tags: ['Benefícios'],
+      params: z.object({ caseId: z.string().uuid() }),
+      body: z.object({
+        tipo: z.string().min(3),
+        observacoes: z.string().optional()
+      })
+    }
+  }, DeliverableController.create)
+
+  server.patch('/deliverables/:id', {
+    schema: {
+      tags: ['Benefícios'],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        status: z.enum(['SOLICITADO', 'CONCEDIDO', 'ENTREGUE', 'NEGADO']),
+        dataEntrega: z.string().datetime().optional()
+      })
+    }
+  }, DeliverableController.update)
+}
+
+FILE: backend\src\routes\evolutions.ts
+--------------------------------------------------
+// backend/src/routes/evolutions.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { Cargo } from '@prisma/client'
+import { EvolutionController } from '../controllers/EvolutionController'
+
+const authorSchema = z.object({
+  id: z.string().uuid(),
+  nome: z.string(),
+  cargo: z.nativeEnum(Cargo).optional()
+})
+
+const evolutionResponseSchema = z.object({
+  id: z.string().uuid(),
+  conteudo: z.string(),
+  sigilo: z.boolean(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  autorId: z.string(),
+  autor: authorSchema
+})
+
+export async function evolutionRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  server.addHook('onRequest', async (request, reply) => {
+    try { await request.jwtVerify() } 
+    catch (err) { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // 1. LISTAR
+  server.get('/cases/:caseId/evolutions', {
+    schema: {
+      tags: ['Evoluções'],
+      params: z.object({ caseId: z.string().uuid() }),
+      querystring: z.object({
+        page: z.coerce.number().min(1).default(1),
+        pageSize: z.coerce.number().min(1).max(50).default(10)
+      }),
+      response: {
+        200: z.object({
+          items: z.array(evolutionResponseSchema),
+          total: z.number(),
+        })
+      }
+    }
+  }, EvolutionController.list)
+
+  // 2. CRIAR
+  server.post('/cases/:caseId/evolutions', {
+    schema: {
+      tags: ['Evoluções'],
+      params: z.object({ caseId: z.string().uuid() }),
+      body: z.object({
+        conteudo: z.string().min(5),
+        sigilo: z.boolean().default(false)
+      }),
+      response: { 201: evolutionResponseSchema }
+    }
+  }, EvolutionController.create)
+
+  // 3. EDITAR
+  server.patch('/evolutions/:id', {
+    schema: {
+      tags: ['Evoluções'],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        conteudo: z.string().min(5).optional(),
+        sigilo: z.boolean().optional()
+      }),
+      response: { 200: evolutionResponseSchema }
+    }
+  }, EvolutionController.update)
+
+  // 4. DELETAR
+  server.delete('/evolutions/:id', {
+    schema: {
+      tags: ['Evoluções'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, EvolutionController.delete)
+}
+
+FILE: backend\src\routes\family.ts
+--------------------------------------------------
+// backend/src/routes/family.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { FamilyController } from '../controllers/FamilyController'
+
+const familyMemberResponseSchema = z.object({
+  id: z.string(),
+  nome: z.string(),
+  parentesco: z.string(),
+  idade: z.number().nullable().optional(),
+  cpf: z.string().nullable().optional(),
+  nascimento: z.date().nullable().optional(),
+  telefone: z.string().nullable().optional(),
+  ocupacao: z.string().nullable().optional(),
+  renda: z.number().nullable().optional(),
+  observacoes: z.string().nullable().optional(),
+  violacao: z.array(z.string()).optional()
+})
+
+const createMemberBodySchema = z.object({
+  nome: z.string().min(2),
+  parentesco: z.string().min(2),
+  idade: z.number().int().nonnegative().optional(),
+  cpf: z.string().optional().nullable(),
+  nascimento: z.coerce.date().optional().nullable(),
+  telefone: z.string().optional().nullable(),
+  ocupacao: z.string().optional(),
+  renda: z.number().nonnegative().optional(),
+  observacoes: z.string().optional()
+})
+
+export async function familyRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send() }
+  })
+
+  server.get('/cases/:caseId/family', {
+    schema: {
+      tags: ['Família'],
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(familyMemberResponseSchema) }
+    }
+  }, FamilyController.list)
+
+  server.post('/cases/:caseId/family', {
+    schema: {
+      tags: ['Família'],
+      params: z.object({ caseId: z.string().uuid() }),
+      body: createMemberBodySchema,
+      response: { 201: familyMemberResponseSchema }
+    }
+  }, FamilyController.create)
+
+  server.delete('/family/:id', {
+    schema: {
+      tags: ['Família'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, FamilyController.delete)
+}
+
+FILE: backend\src\routes\filters.ts
+--------------------------------------------------
+// backend/src/routes/filters.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { FilterController } from '../controllers/FilterController'
+
+const filterResponseSchema = z.object({
+  id: z.string().uuid(),
+  nome: z.string(),
+  config: z.any(),
+  createdAt: z.date()
+})
+
+const saveFilterSchema = z.object({
+  nome: z.string().min(1).max(50),
+  config: z.record(z.string(), z.any()).or(z.any())
+})
+
+export async function filterRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.get('/filters', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Listar filtros salvos do usuário',
+      response: { 200: z.array(filterResponseSchema) }
+    }
+  }, FilterController.list)
+
+  server.post('/filters', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Salvar configuração de filtro',
+      body: saveFilterSchema,
+      response: { 201: filterResponseSchema }
+    }
+  }, FilterController.create)
+
+  server.patch('/filters/:id', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Atualizar filtro existente',
+      params: z.object({ id: z.string().uuid() }),
+      body: saveFilterSchema.partial(),
+      response: { 200: filterResponseSchema }
+    }
+  }, FilterController.update)
+
+  server.delete('/filters/:id', {
+    schema: {
+      tags: ['Filtros'],
+      summary: 'Remover filtro salvo',
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, FilterController.delete)
+}
+
+FILE: backend\src\routes\groups.ts
+--------------------------------------------------
+// backend/src/routes/groups.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { GroupType } from '@prisma/client'
+import { GroupController } from '../controllers/GroupController'
+
+const groupResponseSchema = z.object({
+  id: z.string().uuid(),
+  tema: z.string(),
+  tipo: z.nativeEnum(GroupType),
+  dataRealizacao: z.date(),
+  local: z.string().nullable().optional(),
+  descricao: z.string().nullable().optional(),
+  facilitador: z.object({ nome: z.string() }).optional(),
+  _count: z.object({ participantes: z.number() }).optional(),
+  attendanceConfirmed: z.boolean(),
+  participantes: z.array(z.object({
+    id: z.string(),
+    presente: z.boolean(),
+    observacoes: z.string().nullable().optional(),
+    caso: z.object({ id: z.string(), nomeCompleto: z.string() })
+  })).optional()
+})
+
+const createGroupSchema = z.object({
+  tema: z.string().min(3),
+  tipo: z.nativeEnum(GroupType),
+  datas: z.array(z.string()).optional(),
+  dataRealizacao: z.string().optional(),
+  local: z.string().optional(),
+  descricao: z.string().optional(),
+  orgaosEnvolvidos: z.array(z.string()).default([])
+})
+
+export async function groupRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.get('/groups', {
+    schema: { tags: ['Grupos'], response: { 200: z.array(groupResponseSchema) } }
+  }, GroupController.list)
+
+  server.get('/groups/:id', {
+    schema: { tags: ['Grupos'], params: z.object({ id: z.string().uuid() }), response: { 200: groupResponseSchema } }
+  }, GroupController.getById)
+
+  server.get('/groups/:id/candidates', {
+    schema: {
+      tags: ['Grupos'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 200: z.array(z.object({ id: z.string(), nomeCompleto: z.string(), status: z.string() })) }
+    }
+  }, GroupController.getCandidates)
+
+  server.post('/groups', {
+    schema: {
+      tags: ['Grupos'],
+      body: createGroupSchema,
+      response: { 201: z.object({ count: z.number(), message: z.string() }) }
+    }
+  }, GroupController.create)
+
+  server.post('/groups/:id/participants', {
+    schema: {
+      tags: ['Grupos'],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ caseIds: z.array(z.string().uuid()) }),
+      response: { 200: z.object({ message: z.string() }) }
+    }
+  }, GroupController.addParticipants)
+
+  server.patch('/groups/:groupId/attendance/:caseId', {
+    schema: {
+      tags: ['Grupos'],
+      params: z.object({ groupId: z.string().uuid(), caseId: z.string().uuid() }),
+      body: z.object({ presente: z.boolean(), observacoes: z.string().optional() })
+    }
+  }, GroupController.updateAttendance)
+
+  server.patch('/groups/:id/confirm', {
+    schema: {
+      tags: ['Grupos'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 200: z.object({ message: z.string(), attendanceConfirmed: z.boolean() }) }
+    }
+  }, GroupController.confirmAttendance)
+}
+
+FILE: backend\src\routes\import.ts
+--------------------------------------------------
+// backend/src/routes/import.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { ImportController } from '../controllers/ImportController'
+
+// Schema de resposta
+const importResponseSchema = z.object({
+  processed: z.number(),
+  created: z.number(),
+  errors: z.number(),
+  logs: z.array(z.string())
+})
+
+export async function importRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.post('/import/cases', {
+    schema: {
+      tags: ['Importação'],
+      summary: 'Importar planilha completa de casos (Excel/CSV)',
+      consumes: ['multipart/form-data'],
+      response: {
+        200: importResponseSchema
+      }
+    }
+  }, ImportController.importCases)
+}
+
+FILE: backend\src\routes\paf.ts
+--------------------------------------------------
+// backend/src/routes/paf.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { PafController } from '../controllers/PafController'
+
+// --- SCHEMAS ---
+
+const pafBodySchema = z.object({
+  diagnostico: z.string().min(10, "O diagnóstico deve conter ao menos 10 caracteres."),
+  objetivos: z.string().min(10, "Os objetivos devem conter ao menos 10 caracteres."),
+  estrategias: z.string().min(10, "As estratégias devem conter ao menos 10 caracteres."),
+  deadline: z.coerce.date({ required_error: "O prazo é obrigatório." }),
+})
+
+const pafResponseSchema = z.object({
+  id: z.string().uuid(),
+  diagnostico: z.string(),
+  objetivos: z.string(),
+  estrategias: z.string(),
+  deadline: z.date(),
+  versaoAtual: z.number(),
+  updatedAt: z.date(),
+  autor: z.object({
+    id: z.string(),
+    nome: z.string()
+  }).optional()
+})
+
+const versionResponseSchema = z.object({
+  id: z.string().uuid(),
+  savedAt: z.date(),
+  versaoNumero: z.number(),
+  diagnostico: z.string(),
+  objetivos: z.string(),
+  estrategias: z.string(),
+  deadline: z.date(),
+  autor: z.object({ nome: z.string().nullable() }).optional()
+})
+
+// --- ROTAS ---
+
+export async function pafRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  // Middleware de Autenticação
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  // 1. [GET] Buscar PAF Atual do Caso
+  server.get('/cases/:caseId/paf', {
+    schema: {
+      tags: ['PAF'],
+      summary: 'Obter o Plano de Acompanhamento Familiar atual',
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: pafResponseSchema.nullable() }
+    }
+  }, PafController.getCurrent)
+
+  // 2. [GET] Histórico de Versões
+  server.get('/cases/:caseId/paf/history', {
+    schema: {
+      tags: ['PAF'],
+      summary: 'Listar versões anteriores do PAF',
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(versionResponseSchema) }
+    }
+  }, PafController.getHistory)
+
+  // 3. [POST] Criar PAF (Primeira versão)
+  server.post('/cases/:caseId/paf', {
+    schema: {
+      tags: ['PAF'],
+      summary: 'Criar o primeiro PAF do caso',
+      params: z.object({ caseId: z.string().uuid() }),
+      body: pafBodySchema,
+      response: { 201: pafResponseSchema }
+    }
+  }, PafController.create)
+
+  // 4. [PUT] Atualizar PAF (Gera Versão)
+  server.put('/cases/:caseId/paf', {
+    schema: {
+      tags: ['PAF'],
+      summary: 'Atualizar PAF (Gera nova versão automaticamente)',
+      params: z.object({ caseId: z.string().uuid() }),
+      body: pafBodySchema.partial(),
+      response: { 200: pafResponseSchema }
+    }
+  }, PafController.update)
+}
+
+FILE: backend\src\routes\referrals.ts
+--------------------------------------------------
+// backend/src/routes/referrals.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { ReferralController } from '../controllers/ReferralController'
+
+const referralResponseSchema = z.object({
+  id: z.string().uuid(),
+  instituicao: z.string(),
+  tipo: z.string(),
+  motivo: z.string(),
+  status: z.string(),
+  retorno: z.string().nullable().optional(),
+  dataEnvio: z.date(),
+  autor: z.object({ nome: z.string() }).optional()
+})
+
+export async function referralRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado' }) }
+  })
+
+  server.get('/cases/:caseId/referrals', {
+    schema: {
+      tags: ['Encaminhamentos'],
+      params: z.object({ caseId: z.string().uuid() }),
+      response: { 200: z.array(referralResponseSchema) }
+    }
+  }, ReferralController.list)
+
+  server.post('/cases/:caseId/referrals', {
+    schema: {
+      tags: ['Encaminhamentos'],
+      params: z.object({ caseId: z.string().uuid() }),
+      body: z.object({
+        instituicao: z.string().min(2),
+        tipo: z.string().min(2),
+        motivo: z.string().min(5),
+      }),
+      response: { 201: referralResponseSchema }
+    }
+  }, ReferralController.create)
+
+  server.patch('/referrals/:id', {
+    schema: {
+      tags: ['Encaminhamentos'],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        status: z.enum(['PENDENTE', 'CONCLUIDO', 'CANCELADO']),
+        retorno: z.string().optional()
+      }),
+      response: { 200: referralResponseSchema }
+    }
+  }, ReferralController.update)
+
+  server.delete('/referrals/:id', {
+    schema: {
+      tags: ['Encaminhamentos'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, ReferralController.delete)
+}
+
+FILE: backend\src\routes\reports.ts
+--------------------------------------------------
+// backend/src/routes/reports.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { ReportController } from '../controllers/ReportController'
+
+// Schemas simplificados para documentação (Respostas complexas tipadas como any/object para flexibilidade)
+const teamOverviewResponseSchema = z.array(z.object({
+  nome: z.string(),
+  cargo: z.string(),
+  cases: z.array(z.object({
+    id: z.string(),
+    nomeCompleto: z.string(),
+    status: z.string(),
+    urgencia: z.string(),
+    violacao: z.array(z.string())
+  }))
+}))
+
+export async function reportRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado.' }) }
+  })
+
+  server.get('/reports/team-overview', {
+    schema: {
+      tags: ['Relatórios'],
+      summary: 'Carga de trabalho detalhada por técnico',
+      response: { 200: teamOverviewResponseSchema }
+    }
+  }, ReportController.getTeamOverview)
+
+  server.get('/reports/dismissals', {
+    schema: {
+      tags: ['Relatórios'],
+      summary: 'Estatísticas de casos desligados/arquivados',
+      querystring: z.object({ months: z.coerce.number().default(12) })
+    }
+  }, ReportController.getDismissals)
+
+  server.get('/reports/vigilancia', {
+    schema: { 
+      tags: ['Relatórios'], 
+      summary: 'Dados para o Observatório (Mapa e Gráficos)' 
+    }
+  }, ReportController.getVigilance)
+}
+
+FILE: backend\src\routes\rma.ts
+--------------------------------------------------
+// backend/src/routes/rma.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { RmaController } from '../controllers/RMAController'
+
+export async function rmaRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  server.get('/rma/generate', {
+    schema: {
+      tags: ['Relatórios'],
+      summary: 'Gerar relatório RMA completo (Mensal)',
+      querystring: z.object({
+        month: z.coerce.number().min(1).max(12),
+        year: z.coerce.number().min(2020),
+      })
+    },
+    // Middleware de Auth implícito (se necessário adicionar hook onRequest)
+    onRequest: async (req, reply) => {
+        try { await req.jwtVerify() } catch { return reply.status(401).send() }
+    }
+  }, RmaController.generate)
+}
+
+FILE: backend\src\routes\stats.ts
+--------------------------------------------------
+// backend/src/routes/stats.ts
+import { FastifyInstance } from "fastify"
+import { ZodTypeProvider } from "fastify-type-provider-zod"
+import { z } from "zod"
+import { StatsController } from "../controllers/StatsController"
+
+// Schemas
+const statsQuerySchema = z.object({
+  months: z.coerce.number().min(1).max(60).default(12),
+  violacao: z.string().optional()
+})
+
+const productivityQuerySchema = z.object({
+  mode: z.enum(['workload', 'performance']).default('workload'),
+  months: z.coerce.number().default(1)
+})
+
+export async function statsRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook("onRequest", async (request, reply) => {
+    try { await request.jwtVerify() } 
+    catch { return reply.status(401).send({ message: "Não autorizado." }) }
+  })
+
+  server.get("/stats", {
+    schema: { tags: ['Dashboard'], summary: 'Indicadores principais' }
+  }, StatsController.getDashboard)
+
+  server.get("/stats/productivity", {
+    schema: { tags: ['Dashboard'], querystring: productivityQuerySchema }
+  }, StatsController.getProductivity)
+
+  server.get("/stats/vigilancia", {
+    schema: { tags: ['Dashboard'], summary: 'Relatório avançado de vigilância' }
+  }, StatsController.getVigilance)
+
+  server.get("/stats/advanced", {
+    schema: { tags: ['Dashboard'], querystring: statsQuerySchema }
+  }, StatsController.getAdvanced)
+
+  server.get("/stats/activity", {
+    schema: { tags: ['Dashboard'] }
+  }, StatsController.getActivity)
+}
+
+FILE: backend\src\routes\users.ts
+--------------------------------------------------
+// backend/src/routes/users.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { Cargo } from '@prisma/client'
+import { UserController } from '../controllers/UserController' // [V2.0]
+
+export async function userRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  const userResponseSchema = z.object({
+    id: z.string().uuid(),
+    nome: z.string(),
+    email: z.string().email(),
+    cargo: z.nativeEnum(Cargo),
+    matricula: z.string().nullable().optional(),
+    ativo: z.boolean(),
+  })
+
+  server.addHook('onRequest', async (request, reply) => {
+    try { await request.jwtVerify() } 
+    catch (err) { await reply.status(401).send({ message: 'Token inválido ou expirado.' }) }
+  })
+
+  // 1. CRIAR USUÁRIO
+  server.post('/users', {
+    schema: {
+      tags: ['Usuários'],
+      summary: 'Cadastrar novo servidor',
+      security: [{ bearerAuth: [] }],
+      body: z.object({
+        nome: z.string().min(3),
+        email: z.string().email(),
+        matricula: z.string().optional(),
+        cargo: z.string(),
+        senhaInicial: z.string().min(6).default('123456')
+      }),
+      response: { 201: userResponseSchema }
+    }
+  }, UserController.create)
+
+  // 2. ALTERAR MINHA SENHA
+  server.patch('/users/me/password', {
+    schema: {
+      tags: ['Usuários'],
+      summary: 'Alterar a própria senha',
+      security: [{ bearerAuth: [] }],
+      body: z.object({ senhaAtual: z.string(), novaSenha: z.string().min(6) }),
+      response: { 200: z.object({ message: z.string() }) }
+    }
+  }, UserController.changePassword)
+
+  // 3. LISTAR USUÁRIOS
+  server.get('/users', {
+    schema: {
+      tags: ['Usuários'],
+      security: [{ bearerAuth: [] }],
+      querystring: z.object({ cargo: z.string().optional(), active: z.coerce.boolean().optional().default(true) }),
+      response: { 200: z.array(userResponseSchema) }
+    }
+  }, UserController.list)
+
+  // 4. LISTAR AGENTES
+  server.get('/users/agents', {
+    schema: {
+      tags: ['Usuários'],
+      security: [{ bearerAuth: [] }],
+      response: { 200: z.array(z.object({ id: z.string(), nome: z.string() })) }
+    }
+  }, UserController.listAgents)
+
+  // 5. LISTAR ESPECIALISTAS COM CARGA
+  server.get('/users/specialists', {
+    schema: {
+      tags: ['Usuários'],
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: z.array(z.object({ 
+            id: z.string(), 
+            nome: z.string(), 
+            cargo: z.string(), 
+            activeCases: z.number() 
+        }))
+      }
+    }
+  }, UserController.listSpecialists)
+
+  // 6. EDITAR USUÁRIO
+  server.put('/users/:id', {
+    schema: {
+      tags: ['Usuários'],
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        nome: z.string().min(3).optional(),
+        email: z.string().email().optional(),
+        matricula: z.string().optional(),
+        cargo: z.string().optional(),
+      }),
+      response: { 200: userResponseSchema }
+    }
+  }, UserController.update)
+
+  // 7. DESATIVAR USUÁRIO
+  server.delete('/users/:id', {
+    schema: {
+      tags: ['Usuários'],
+      params: z.object({ id: z.string().uuid() }),
+      response: { 204: z.null() }
+    }
+  }, UserController.deactivate)
+}
+
+FILE: backend\src\routes\waitingList.ts
+--------------------------------------------------
+// backend/src/routes/waitingList.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { WaitingListController } from '../controllers/WaitingListController'
+
+const waitingCaseSchema = z.object({
+  id: z.string(),
+  nomeCompleto: z.string(),
+  dataEntrada: z.date(),
+  urgencia: z.string(),
+  pesoUrgencia: z.number(),
+  violacao: z.array(z.string()), 
+  status: z.string(),
+  agenteAcolhida: z.object({ nome: z.string() }).nullable().optional(),
+  especialistaPAEFI: z.object({ nome: z.string() }).nullable().optional()
+})
+
+export async function waitingListRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+  
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Não autorizado' }) }
+  })
+
+  server.get('/cases/waiting', {
+    schema: {
+      tags: ['Fila de Espera'],
+      summary: 'Listar casos parados aguardando ação do usuário logado',
+      response: {
+        200: z.array(waitingCaseSchema)
+      }
+    }
+  }, WaitingListController.list)
+
+  server.patch('/cases/waiting/:id/assign', {
+    schema: {
+      tags: ['Fila de Espera'],
+      summary: 'Realizar ação da fila (Iniciar Acolhida, Distribuir ou Aceitar)',
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ targetUserId: z.string().uuid().optional() }),
+      response: {
+        200: z.object({ status: z.string() })
+      }
+    }
+  }, WaitingListController.processAction)
+}
+
+FILE: backend\src\routes\workspace.ts
+--------------------------------------------------
+// backend/src/routes/workspace.ts
+import { FastifyInstance } from 'fastify'
+import { ZodTypeProvider } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { WorkspaceController } from '../controllers/WorkspaceController'
+
+// Schemas (Mantidos para documentação Swagger)
+const caseSummarySchema = z.object({
+  id: z.string(),
+  nomeCompleto: z.string(),
+  status: z.string(),
+  urgencia: z.string(),
+  violacao: z.array(z.string()).or(z.null()).transform(val => val || []), 
+  updatedAt: z.date(),
+  dataEntrada: z.date()
+})
+
+const appointmentSchema = z.object({
+  id: z.string(),
+  titulo: z.string(),
+  data: z.date(),
+  tipo: z.string().optional(),
+  caso: z.object({ id: z.string().optional(), nomeCompleto: z.string() }).optional().nullable()
+})
+
+const alertSchema = caseSummarySchema.extend({ type: z.string(), days: z.number() })
+const teamLoadSchema = z.object({ id: z.string(), nome: z.string(), role: z.string(), cases: z.number() })
+const logSchema = z.object({ id: z.string(), acao: z.string(), createdAt: z.date(), autor: z.object({ nome: z.string() }).optional() })
+
+const workspaceResponseSchema = z.object({
+  role: z.string(),
+  appointments: z.array(appointmentSchema).default([]),
+  stats: z.object({ totalActive: z.number(), waitingForReception: z.number(), waitingForDistribution: z.number() }).optional(),
+  teamLoad: z.array(teamLoadSchema).default([]),
+  topViolations: z.array(z.object({ label: z.string(), count: z.number() })).default([]),
+  incompleteCases: z.array(z.object({ id: z.string(), nomeCompleto: z.string(), cpf: z.string().nullable(), endereco_logradouro: z.string().nullable() })).default([]),
+  recentLogs: z.array(logSchema).default([]),
+  myCases: z.array(caseSummarySchema).default([]),
+  alerts: z.array(alertSchema).default([]),
+  detailedStats: z.object({ monitoramento: z.number().default(0), acolhidaEsp: z.number().default(0), acompanhamento: z.number().default(0), meusAguardando: z.number().default(0), meusEmAtendimento: z.number().default(0), filaGeral: z.number().default(0) }).optional()
+})
+
+export async function workspaceRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>()
+
+  server.addHook('onRequest', async (req, reply) => {
+    try { await req.jwtVerify() } catch { return reply.status(401).send({ message: 'Sessão expirada' }) }
+  })
+
+  server.get('/workspace/summary', {
+    schema: {
+      tags: ['Workspace'],
+      summary: 'Resumo do Dashboard Pessoal',
+      response: { 200: workspaceResponseSchema }
+    }
+  }, WorkspaceController.getSummary)
+
+  server.patch('/distribute', {
+    schema: {
+      tags: ['Workspace'],
+      body: z.object({
+        caseId: z.string().uuid(),
+        targetUserId: z.string().uuid(),
+        roleType: z.enum(['AGENTE', 'ESPECIALISTA'])
+      })
+    }
+  }, WorkspaceController.distributeCase)
+}

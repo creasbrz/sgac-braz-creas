@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Loader2, Plus, Trash2, MapPin, Phone, User, 
-  AlertCircle, Briefcase, Save
+  AlertCircle, Briefcase, Save, Mail
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { differenceInYears, isValid, parseISO } from 'date-fns'
@@ -48,7 +48,7 @@ const getLocalDateOnly = (date = new Date()) =>
   new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split("T")[0]
 
 const defaultValues: CreateCaseFormData = {
-  nomeCompleto: '', nomeSocial: '', cpf: '', nascimento: '', sexo: '', 
+  nomeCompleto: '', nomeSocial: '', cpf: '', nascimento: '', sexo: '', email: '',
   ocupacao: '', renda: 0, 
   contatos: [{ numero: '', tipo: 'Pessoal', nome: '' }],
   endereco: { ra: '', logradouro: '', complemento: '', bairro: '', cidade: 'Brasília', uf: 'DF', cep: '' },
@@ -153,12 +153,13 @@ function PersonalDataSection() {
         <div className="md:col-span-6">
           <FormField control={control} name="nomeCompleto" render={({ field }) => (
             <FormItem>
-               <FormLabel className="text-foreground/80">Nome Civil Completo <span className="text-status-error-fg">*</span></FormLabel>
+               <FormLabel>Nome Civil Completo <span className="text-status-error-fg">*</span></FormLabel>
                <FormControl><Input {...field} className="bg-background" /></FormControl>
                <FormMessage />
             </FormItem>
           )}/>
         </div>
+        
         <div className="md:col-span-6">
           <FormField control={control} name="nomeSocial" render={({ field }) => (
             <FormItem>
@@ -168,17 +169,19 @@ function PersonalDataSection() {
             </FormItem>
           )}/>
         </div>
+
+        {/* Linha Otimizada: CPF | Data Nasc | Sexo */}
         <div className="md:col-span-4">
-          <FormField control={control} name="cpf" render={({ field }) => (
+           <FormField control={control} name="cpf" render={({ field }) => (
             <FormItem>
-               <FormLabel className="text-foreground/80">CPF <span className="text-status-error-fg">*</span></FormLabel>
+               <FormLabel>CPF <span className="text-status-error-fg">*</span></FormLabel>
                <FormControl>
                  <MaskedInput 
-                    mask={MASKS.CPF} 
-                    placeholder="000.000.000-00" 
-                    value={field.value} 
-                    onChange={field.onChange} 
-                    className="bg-background" 
+                   mask={MASKS.CPF} 
+                   placeholder="000.000.000-00" 
+                   value={field.value} 
+                   onChange={field.onChange} 
+                   className="bg-background" 
                  />
                </FormControl>
                <FormMessage />
@@ -188,7 +191,7 @@ function PersonalDataSection() {
         <div className="md:col-span-4">
           <FormField control={control} name="nascimento" render={({ field }) => (
             <FormItem>
-               <FormLabel className="text-foreground/80">Data de Nascimento <span className="text-status-error-fg">*</span></FormLabel>
+               <FormLabel>Data de Nascimento <span className="text-status-error-fg">*</span></FormLabel>
                <FormControl><Input type="date" {...field} className="bg-background" /></FormControl>
                <FormMessage />
             </FormItem>
@@ -197,7 +200,7 @@ function PersonalDataSection() {
         <div className="md:col-span-4">
           <FormField control={control} name="sexo" render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-foreground/80">Sexo <span className="text-status-error-fg">*</span></FormLabel>
+              <FormLabel>Sexo <span className="text-status-error-fg">*</span></FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger></FormControl>
                 <SelectContent>{OPTIONS.sexo.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
@@ -206,6 +209,7 @@ function PersonalDataSection() {
             </FormItem>
           )}/>
         </div>
+
         <div className="md:col-span-6">
           <FormField control={control} name="ocupacao" render={({ field }) => (
             <FormItem>
@@ -273,71 +277,97 @@ function ContactSection() {
           <div className="p-1.5 bg-status-success-bg/20 rounded-md border border-status-success-border/30 text-status-success-fg">
              <Phone className="h-4 w-4" /> 
           </div>
-          Contatos
+          Canais de Contato
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {fields.map((field, index) => (
-          <div key={field.id} className="flex gap-3 items-end animate-in fade-in group">
-            <div className="grid grid-cols-12 gap-3 flex-1">
-              <div className="col-span-4 md:col-span-3">
-                <FormField control={control} name={`contatos.${index}.numero`} render={({ field }) => (
-                  <FormItem>
-                    {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Número <span className="text-status-error-fg">*</span></FormLabel>}
-                    <FormControl>
-                        <MaskedInput 
-                            mask={MASKS.PHONE} 
-                            placeholder="(61) 90000-0000" 
-                            value={field.value} 
-                            onChange={field.onChange} 
-                            className="bg-background" 
-                        />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}/>
+      <CardContent className="space-y-6">
+        
+        {/* Campo E-mail (Movido para cá) */}
+        <div className="bg-muted/10 p-3 rounded-lg border border-border/50">
+           <FormField control={control} name="email" render={({ field }) => (
+            <FormItem>
+               <FormLabel className="flex items-center gap-2 text-foreground font-medium">
+                 <Mail className="h-3.5 w-3.5 text-muted-foreground" /> E-mail de Contato
+                 <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-primary/20">Novo</span>
+               </FormLabel>
+               <FormControl>
+                 <Input {...field} type="email" placeholder="exemplo@email.com" value={field.value || ''} className="bg-background" />
+               </FormControl>
+               <FormMessage />
+               <p className="text-[11px] text-muted-foreground pt-1">
+                 O sistema enviará notificações automáticas de agenda para este endereço.
+               </p>
+            </FormItem>
+          )}/>
+        </div>
+
+        <Separator className="bg-border/60" />
+
+        {/* Lista Dinâmica de Telefones */}
+        <div className="space-y-4">
+          <Label className="text-sm font-semibold text-foreground/90">Telefones</Label>
+          {fields.map((field, index) => (
+            <div key={field.id} className="flex gap-3 items-end animate-in fade-in group">
+              <div className="grid grid-cols-12 gap-3 flex-1">
+                <div className="col-span-4 md:col-span-3">
+                  <FormField control={control} name={`contatos.${index}.numero`} render={({ field }) => (
+                    <FormItem>
+                      {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Número <span className="text-status-error-fg">*</span></FormLabel>}
+                      <FormControl>
+                          <MaskedInput 
+                              mask={MASKS.PHONE} 
+                              placeholder="(61) 90000-0000" 
+                              value={field.value} 
+                              onChange={field.onChange} 
+                              className="bg-background" 
+                          />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}/>
+                </div>
+                <div className="col-span-4 md:col-span-3">
+                  <FormField control={control} name={`contatos.${index}.tipo`} render={({ field }) => (
+                    <FormItem>
+                      {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Tipo</FormLabel>}
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl><SelectTrigger className="bg-background"><SelectValue /></SelectTrigger></FormControl>
+                        <SelectContent>{OPTIONS.tipoContato.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}/>
+                </div>
+                <div className="col-span-4 md:col-span-6">
+                  <FormField control={control} name={`contatos.${index}.nome`} render={({ field }) => (
+                    <FormItem>
+                      {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Nome (Recado/Obs)</FormLabel>}
+                      <FormControl><Input {...field} placeholder="Ex: Vizinha Maria" className="bg-background" value={field.value || ''} /></FormControl>
+                    </FormItem>
+                  )}/>
+                </div>
               </div>
-              <div className="col-span-4 md:col-span-3">
-                <FormField control={control} name={`contatos.${index}.tipo`} render={({ field }) => (
-                  <FormItem>
-                    {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Tipo</FormLabel>}
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl><SelectTrigger className="bg-background"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{OPTIONS.tipoContato.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </FormItem>
-                )}/>
-              </div>
-              <div className="col-span-4 md:col-span-6">
-                <FormField control={control} name={`contatos.${index}.nome`} render={({ field }) => (
-                  <FormItem>
-                    {index === 0 && <FormLabel className="text-xs uppercase font-bold text-muted-foreground">Nome (Recado/Obs)</FormLabel>}
-                    <FormControl><Input {...field} placeholder="Ex: Vizinha Maria" className="bg-background" value={field.value || ''} /></FormControl>
-                  </FormItem>
-                )}/>
-              </div>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="icon" 
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 mb-0.5" 
+                onClick={() => remove(index)} 
+                disabled={fields.length === 1}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-            <Button 
-              type="button" 
-              variant="ghost" 
-              size="icon" 
-              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 mb-0.5" 
-              onClick={() => remove(index)} 
-              disabled={fields.length === 1}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ))}
-        <Button 
-          type="button" 
-          variant="outline" 
-          size="sm" 
-          className="mt-2 text-xs border-dashed border-border hover:bg-muted" 
-          onClick={() => append({ numero: '', tipo: 'Pessoal', nome: '' })}
-        >
-          <Plus className="h-3 w-3 mr-2" /> Adicionar outro telefone
-        </Button>
+          ))}
+          <Button 
+            type="button" 
+            variant="outline" 
+            size="sm" 
+            className="mt-2 text-xs border-dashed border-border hover:bg-muted" 
+            onClick={() => append({ numero: '', tipo: 'Pessoal', nome: '' })}
+          >
+            <Plus className="h-3 w-3 mr-2" /> Adicionar outro telefone
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -402,8 +432,8 @@ function AddressSection() {
                   <MaskedInput 
                     mask={MASKS.CEP} 
                     placeholder="00000-000" 
-                    value={field.value}
-                    onChange={field.onChange}
+                    value={field.value} 
+                    onChange={field.onChange} 
                     onBlur={(e) => {
                       field.onBlur()
                       handleCepBlur(e)
@@ -627,8 +657,8 @@ function TechnicalDataSection({ agents, isLoadingAgents, isEditing }: { agents: 
           <div className="lg:col-span-5">
             <FormField control={control} name="linkSei" render={({ field }) => (
               <FormItem>
-                 <FormLabel>Link Processo SEI</FormLabel>
-                 <FormControl><Input type="url" {...field} placeholder="https://..." className="bg-background" value={field.value || ''} /></FormControl>
+                  <FormLabel>Link Processo SEI</FormLabel>
+                  <FormControl><Input type="url" {...field} placeholder="https://..." className="bg-background" value={field.value || ''} /></FormControl>
               </FormItem>
             )}/>
           </div>
@@ -686,6 +716,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
       linkSei: initialData.linkSei || '',
       observacoes: initialData.observacoes || '',
       agenteAcolhidaId: initialData.agenteAcolhidaId || '',
+      email: initialData.email || '' // [NOVO] Normalização do E-mail
     }
   }, [initialData])
 
@@ -708,6 +739,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         cpf: data.cpf.replace(/\D/g, ''),
         nascimento: data.nascimento,
         sexo: data.sexo,
+        email: data.email || null, // [NOVO] Envio do E-mail
         
         // Sócio-econômico
         ocupacao: data.ocupacao || null,
@@ -767,7 +799,8 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         nascimento: 'Data de Nascimento',
         violacao: 'Violações',
         contatos: 'Contatos (Número)',
-        responsavelLegal: 'Responsável Legal'
+        responsavelLegal: 'Responsável Legal',
+        email: 'E-mail'
       }
       return names[key] || key
     })

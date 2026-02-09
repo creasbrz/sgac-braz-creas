@@ -167,6 +167,12 @@ export interface PafData {
 // 4. ENTIDADES PRINCIPAIS (AGGREGATES)
 // ==========================================
 
+export interface LinkedCase {
+  id: string
+  nomeCompleto: string
+  status: string
+}
+
 /**
  * Objeto completo do Prontuário para visualização detalhada.
  */
@@ -181,6 +187,7 @@ export interface CaseDetailData {
   cpf: string
   nascimento: string // ISO Date
   sexo: string
+  email?: string | null // [NOVO v8.2]
   
   // --- Sócio-econômico ---
   ocupacao?: string | null
@@ -190,7 +197,7 @@ export interface CaseDetailData {
   // --- Contatos e Localização ---
   contatos?: Contact[] 
   telefone?: string | null 
-  endereco?: string | null 
+  endereco?: any 
   endereco_logradouro?: string | null
   endereco_complemento?: string | null
   endereco_bairro?: string | null
@@ -236,12 +243,19 @@ export interface CaseDetailData {
   anexos?: CaseAttachment[]
   paf?: PafData | null
 
+  // [NOVO v8.2] Vínculos entre Prontuários
+  casoPrincipal?: LinkedCase | null
+  casosVinculados?: LinkedCase[]
+
   // --- Dados de Desligamento ---
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
   dataInicioPAEFI?: string | null
   dataDesligamento?: string | null
+  
+  // [NOVO v8.2] Flag de Referência
+  manterReferencia?: boolean
 }
 
 /**

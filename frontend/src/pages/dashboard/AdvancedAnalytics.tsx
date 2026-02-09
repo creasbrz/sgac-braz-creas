@@ -1,4 +1,3 @@
-// frontend/src/pages/AdvancedAnalytics.tsx
 import { useState, useMemo, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -13,8 +12,8 @@ import {
 
 // Ícones e UI
 import { 
-  AlertTriangle, Clock, TrendingUp, FileBarChart, 
-  Activity, Briefcase, Calendar, RefreshCw
+  Clock, TrendingUp, FileBarChart, 
+  Activity, Briefcase, Calendar, RefreshCw, AlertTriangle
 } from "lucide-react"
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -69,7 +68,6 @@ const ProductivityItemSchema = z.object({
   value: z.number().default(0),
 })
 
-// --- CONFIGURAÇÃO DE GRÁFICOS (Design System) ---
 const trendChartConfig = {
   novos: {
     label: "Novos Casos",
@@ -88,7 +86,6 @@ const productivityChartConfig = {
   },
 } satisfies ChartConfig
 
-// --- UTILITÁRIOS PUROS ---
 function calculateRegression(xs: number[], ys: number[]): number | null {
   if (xs.length < 2) return null
   const n = xs.length
@@ -107,18 +104,16 @@ function calculateRegression(xs: number[], ys: number[]): number | null {
   return m * (xs[n - 1] + 1) + b
 }
 
-// --- COMPONENTE PRINCIPAL ---
 export function AdvancedAnalytics() {
   const [periodMonths, setPeriodMonths] = useState<number>(12)
 
-  // 1. Data Fetching
   const statsQuery = useQuery({
     queryKey: ["stats", "advanced", periodMonths],
     queryFn: async () => {
       const { data } = await api.get("/stats/advanced", { params: { months: periodMonths } })
       return AdvancedStatsSchema.parse(data)
     },
-    staleTime: 1000 * 60 * 5, // 5 minutos
+    staleTime: 1000 * 60 * 5,
   })
 
   const prodQuery = useQuery({
@@ -130,7 +125,6 @@ export function AdvancedAnalytics() {
     staleTime: 1000 * 60 * 5,
   })
 
-  // Feedback de erro gracioso
   useEffect(() => {
     if (statsQuery.isError || prodQuery.isError) {
       toast.error("Erro ao sincronizar dados analíticos", {
@@ -139,12 +133,10 @@ export function AdvancedAnalytics() {
     }
   }, [statsQuery.isError, prodQuery.isError])
 
-  // 2. Data Processing (Memoized)
   const processedData = useMemo(() => {
     const rawData = statsQuery.data || AdvancedStatsSchema.parse({})
     const rawProd = prodQuery.data || []
 
-    // Processamento do Pie Chart (Violações)
     const violationCounts: Record<string, number> = {}
     rawData.pieData.forEach((item) => {
       item.name.split(',').forEach((cat) => {
@@ -158,17 +150,15 @@ export function AdvancedAnalytics() {
         name: `segment_${index}`,
         realLabel: realName,
         value,
-        fill: `hsl(var(--chart-${(index % 5) + 1}))` // Cores cíclicas do tema
+        fill: `hsl(var(--chart-${(index % 5) + 1}))`
       }))
       .sort((a, b) => b.value - a.value)
 
-    // Configuração Dinâmica para Tooltips do Chart
     const dynamicConfig: ChartConfig = { occurrences: { label: "Ocorrências" } }
     pieChartData.forEach(item => {
       dynamicConfig[item.name] = { label: item.realLabel, color: item.fill }
     })
 
-    // Previsão Linear (IA Simples)
     const xs: number[] = []
     const ys: number[] = []
     rawData.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
@@ -176,7 +166,6 @@ export function AdvancedAnalytics() {
 
     const totalViolations = pieChartData.reduce((acc, curr) => acc + curr.value, 0)
 
-    // Formatação para Relatório PDF
     const reportData = {
       periodo: periodMonths,
       kpis: {
@@ -209,9 +198,9 @@ export function AdvancedAnalytics() {
   const isLoading = statsQuery.isLoading || prodQuery.isLoading
 
   return (
-    <div className="space-y-8 p-6 md:p-8 max-w-400 mx-auto animate-in fade-in duration-700">
+    <div className="space-y-8 p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-700">
       
-      {/* HEADER "GLASS" */}
+      {/* HEADER */}
       <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-8 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -239,12 +228,12 @@ export function AdvancedAnalytics() {
           <div className="hidden sm:block">
             {statsQuery.data && (
                 <PDFDownloadButton 
-                    document={<AnalyticsReportDoc data={processedData.reportData} />}
-                    fileName={`Relatorio_Sintetico_${periodMonths}M.pdf`}
-                    label="Exportar PDF"
-                    variant="outline" 
-                    size="sm"
-                    className="h-9"
+                  document={<AnalyticsReportDoc data={processedData.reportData} />}
+                  fileName={`Relatorio_Sintetico_${periodMonths}M.pdf`}
+                  label="Exportar PDF"
+                  variant="outline" 
+                  size="sm"
+                  className="h-9"
                 />
             )}
           </div>
@@ -278,7 +267,6 @@ export function AdvancedAnalytics() {
               icon={FileBarChart} 
               variant="default"
             />
-             {/* Card de Previsão IA - Gradiente Suave */}
              <Card className="flex flex-col justify-between border-l-4 border-l-primary shadow-sm bg-linear-to-br from-background to-muted/20">
                 <CardHeader className="p-4 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">Previsão (IA)</CardTitle>
@@ -298,110 +286,107 @@ export function AdvancedAnalytics() {
       {/* BENTO GRID LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* 1. GRÁFICO PRINCIPAL (Fluxo) */}
-        <Card className="lg:col-span-8 shadow-sm border-border/50 flex flex-col h-125">
+        {/* 1. GRÁFICO PRINCIPAL */}
+        <Card className="lg:col-span-8 shadow-sm border-border/50 flex flex-col">
           <CardHeader>
             <div className="flex items-center justify-between">
                 <div>
                     <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                        {/* Ícone usando cor do Chart-1 para consistência */}
                         <TrendingUp className="h-5 w-5 text-[hsl(var(--chart-1))]"/> Fluxo de Atendimentos
                     </CardTitle>
                     <CardDescription>Comparativo de entradas vs. saídas</CardDescription>
                 </div>
                 {!isLoading && (
-                    <Badge variant="outline" className="font-mono text-xs">
-                        LIVE DATA
-                    </Badge>
+                    <Badge variant="outline" className="font-mono text-xs">LIVE DATA</Badge>
                 )}
             </div>
           </CardHeader>
-          <CardContent className="flex-1 min-h-0 pb-2">
-            {isLoading ? <Skeleton className="w-full h-full rounded-lg" /> : (
-                <ChartContainer config={trendChartConfig} className="w-full h-full">
-                <LineChart data={processedData.kpis.trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
-                    <XAxis 
-                        dataKey="name" 
-                        tickLine={false} 
-                        axisLine={false} 
-                        tickMargin={12} 
-                        fontSize={12}
-                        stroke="hsl(var(--muted-foreground))"
-                    />
-                    <YAxis 
-                        tickLine={false} 
-                        axisLine={false} 
-                        fontSize={12}
-                        stroke="hsl(var(--muted-foreground))"
-                        width={30}
-                    />
-                    <ChartTooltip 
-                        content={
-                            <ChartTooltipContent 
-                                indicator="line" 
-                                className="bg-background/95 backdrop-blur border-border/50 shadow-xl" 
-                            />
-                        } 
-                    />
-                    <Line 
-                        type="monotone" 
-                        dataKey="novos" 
-                        stroke="var(--color-novos)" 
-                        strokeWidth={3} 
-                        dot={false}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
-                        animationDuration={1500}
-                    />
-                    <Line 
-                        type="monotone" 
-                        dataKey="fechados" 
-                        stroke="var(--color-fechados)" 
-                        strokeWidth={2} 
-                        strokeDasharray="4 4" 
-                        dot={false}
-                    />
-                    <ChartLegend content={<ChartLegendContent />} className="pt-4" />
-                </LineChart>
+          <CardContent className="flex-1 pb-2">
+            {/* [CORREÇÃO] Altura explícita no ChartContainer, removido ResponsiveContainer manual */}
+            {isLoading ? <Skeleton className="w-full h-75 rounded-lg" /> : (
+                <ChartContainer config={trendChartConfig} className="min-h-75 w-full">
+                  <LineChart data={processedData.kpis.trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                      <XAxis 
+                          dataKey="name" 
+                          tickLine={false} 
+                          axisLine={false} 
+                          tickMargin={12} 
+                          fontSize={12}
+                          stroke="hsl(var(--muted-foreground))"
+                      />
+                      <YAxis 
+                          tickLine={false} 
+                          axisLine={false} 
+                          fontSize={12}
+                          stroke="hsl(var(--muted-foreground))"
+                          width={30}
+                      />
+                      <ChartTooltip 
+                          content={
+                              <ChartTooltipContent 
+                                  indicator="line" 
+                                  className="bg-background/95 backdrop-blur border-border/50 shadow-xl" 
+                              />
+                          } 
+                      />
+                      <Line 
+                          type="monotone" 
+                          dataKey="novos" 
+                          stroke="var(--color-novos)" 
+                          strokeWidth={3} 
+                          dot={false}
+                          activeDot={{ r: 6, strokeWidth: 0 }}
+                          animationDuration={1500}
+                      />
+                      <Line 
+                          type="monotone" 
+                          dataKey="fechados" 
+                          stroke="var(--color-fechados)" 
+                          strokeWidth={2} 
+                          strokeDasharray="4 4" 
+                          dot={false}
+                      />
+                      <ChartLegend content={<ChartLegendContent />} className="pt-4" />
+                  </LineChart>
                 </ChartContainer>
             )}
           </CardContent>
         </Card>
 
-        {/* 2. INSIGHTS IA (Lateral) */}
-        <div className="lg:col-span-4 flex flex-col h-125">
+        {/* 2. INSIGHTS IA */}
+        <div className="lg:col-span-4 flex flex-col h-full">
            <SmartInsightsCard 
              insights={processedData.formattedInsights} 
              isLoading={isLoading} 
-             className="h-full border-border/50 shadow-sm"
+             className="h-full border-border/50 shadow-sm min-h-95"
            />
         </div>
 
-        {/* 3. GRÁFICO DE PIZZA (Violações) */}
-        <Card className="lg:col-span-5 shadow-sm border-border/50 h-100 flex flex-col">
+        {/* 3. GRÁFICO DE PIZZA */}
+        <Card className="lg:col-span-5 shadow-sm border-border/50 flex flex-col">
             <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                    {/* Ícone usando cor do Chart-4 (geralmente Amber/Orange) para alerta */}
                     <AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-4))]"/> Tipificação de Violações
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex items-center justify-center">
+            <CardContent className="flex-1 flex items-center justify-center p-6">
                 {isLoading ? <Skeleton className="h-64 w-64 rounded-full" /> : (
                     processedData.pieChartData.length > 0 ? (
-                        <ChartContainer config={processedData.violationConfig} className="aspect-square h-full max-h-75">
+                        <ChartContainer config={processedData.violationConfig} className="aspect-square h-full max-h-75 w-full mx-auto">
                             <PieChart>
                                 <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                                 <Pie 
                                     data={processedData.pieChartData} 
                                     dataKey="value" 
                                     nameKey="name" 
-                                    innerRadius={70} 
-                                    outerRadius={100} 
+                                    innerRadius={60} 
+                                    outerRadius={90} 
                                     strokeWidth={2}
                                     stroke="hsl(var(--background))"
                                     paddingAngle={3}
                                 >
-                                     {processedData.pieChartData.map((entry, index) => (
+                                    {processedData.pieChartData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.fill} />
                                     ))}
                                     <Label
@@ -428,24 +413,23 @@ export function AdvancedAnalytics() {
                             </PieChart>
                         </ChartContainer>
                     ) : (
-                        <div className="text-center text-muted-foreground text-sm">Nenhum dado disponível.</div>
+                        <div className="text-center text-muted-foreground text-sm py-12">Nenhum dado disponível.</div>
                     )
                 )}
             </CardContent>
         </Card>
 
-        {/* 4. GRÁFICO DE BARRAS (Produtividade) - Versão Compacta Corrigida */}
-        <Card className="lg:col-span-7 shadow-sm border-border/50 h-100 flex flex-col">
+        {/* 4. GRÁFICO DE BARRAS */}
+        <Card className="lg:col-span-7 shadow-sm border-border/50 flex flex-col">
              <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                    {/* Ícone usando cor Primary (Azul) */}
                     <Briefcase className="h-4 w-4 text-primary"/> Produtividade Técnica
                 </CardTitle>
                 <CardDescription>Intervenções registradas por técnico</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 min-h-0 p-4"> 
-                 {isLoading ? <Skeleton className="w-full h-full" /> : (
-                    <ChartContainer config={productivityChartConfig} className="w-full h-full">
+                 {isLoading ? <Skeleton className="w-full h-75" /> : (
+                    <ChartContainer config={productivityChartConfig} className="min-h-75 w-full">
                         <BarChart 
                             accessibilityLayer 
                             data={processedData.productivity} 

@@ -1,0 +1,1215 @@
+CONTEXTO: backend_01_controllers
+
+
+FILE: backend\src\controllers\AlertController.ts
+--------------------------------------------------
+// backend/src/controllers/AlertController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { AlertService } from '../services/AlertService'
+
+export class AlertController {
+  static async list(req: FastifyRequest, reply: FastifyReply) {
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
+    const alerts = await AlertService.getAlertsForUser(userId, cargo)
+    return reply.send(alerts)
+  }
+}
+
+FILE: backend\src\controllers\AppointmentController.ts
+--------------------------------------------------
+// backend/src/controllers/AppointmentController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { AppointmentService } from '../services/AppointmentService'
+
+interface CreateAppointmentBody {
+  titulo: string
+  data: Date
+  observacoes?: string | null
+  casoId: string
+  tipo?: string
+}
+
+interface ListQuery {
+  caseId?: string
+  start?: Date
+  end?: Date
+}
+
+export class AppointmentController {
+
+  static async getUpcoming(req: FastifyRequest, reply: FastifyReply) {
+    // Autocomplete funciona aqui: req.user.sub
+    const upcoming = await AppointmentService.getUpcoming(req.user.sub)
+    return reply.send(upcoming)
+  }
+
+  static async list(req: FastifyRequest<{ Querystring: ListQuery }>, reply: FastifyReply) {
+    const { caseId, start, end } = req.query
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
+
+    const now = new Date()
+    const queryStart = start || new Date(now.getFullYear(), now.getMonth(), 1)
+    const queryEnd = end || new Date(now.getFullYear(), now.getMonth() + 1, 0)
+
+    const events = await AppointmentService.getCalendarEvents(
+      userId,
+      cargo,
+      queryStart,
+      queryEnd,
+      caseId
+    )
+    return reply.send(events)
+  }
+
+  static async create(req: FastifyRequest<{ Body: CreateAppointmentBody }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    const agendamento = await AppointmentService.create(userId, req.body)
+    return reply.status(201).send(agendamento)
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: Partial<CreateAppointmentBody> }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
+
+    try {
+      const updated = await AppointmentService.update(id, userId, cargo, req.body)
+      if (!updated) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
+      return reply.send(updated)
+    } catch (err: any) {
+      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
+      throw err
+    }
+  }
+
+  static async delete(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
+
+    try {
+      const deleted = await AppointmentService.delete(id, userId, cargo)
+      if (!deleted) return reply.status(404).send({ message: 'Agendamento não encontrado.' })
+      return reply.status(204).send()
+    } catch (err: any) {
+      if (err.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
+      throw err
+    }
+  }
+}
+
+FILE: backend\src\controllers\AttachmentController.ts
+--------------------------------------------------
+// backend/src/controllers/AttachmentController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { AttachmentService } from '../services/AttachmentService'
+
+export class AttachmentController {
+  static async list(req: FastifyRequest<{ Params: { caseId: string } }>, reply: FastifyReply) {
+    const { caseId } = req.params
+    const attachments = await AttachmentService.list(caseId)
+    return reply.send(attachments)
+  }
+
+  static async upload(req: FastifyRequest<{ Querystring: { caseId: string } }>, reply: FastifyReply) {
+    const { caseId } = req.query
+    const data = await req.file()
+    
+    if (!data) return reply.status(400).send({ message: 'Nenhum arquivo enviado.' })
+
+    const buffer = await data.toBuffer()
+    const { sub: userId } = req.user as { sub: string }
+
+    try {
+      const anexo = await AttachmentService.upload({
+        caseId,
+        userId,
+        filename: data.filename,
+        buffer
+      })
+      return reply.status(201).send(anexo)
+    } catch (error: any) {
+      if (error.message === 'INVALID_FILE_TYPE') {
+        return reply.status(400).send({ message: 'Tipo de arquivo inválido. Apenas PDF e Imagens.' })
+      }
+      throw error
+    }
+  }
+
+  static async delete(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
+
+    try {
+      await AttachmentService.delete(id, userId, cargo)
+      return reply.status(204).send()
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Arquivo não encontrado.' })
+      if (error.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\AuditController.ts
+--------------------------------------------------
+// backend/src/controllers/AuditController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { AuditService, AuditFilters } from '../services/AuditService'
+import { Cargo } from '@prisma/client'
+
+export class AuditController {
+  static async list(req: FastifyRequest<{ Querystring: AuditFilters }>, reply: FastifyReply) {
+    const { cargo } = req.user as { cargo: Cargo }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso restrito.' })
+
+    const result = await AuditService.listLogs(req.query)
+    return reply.send({
+      data: result.items,
+      meta: {
+        page: req.query.page,
+        pageSize: req.query.pageSize,
+        total: result.total,
+        totalPages: Math.ceil(result.total / req.query.pageSize)
+      }
+    })
+  }
+
+  static async getStats(req: FastifyRequest, reply: FastifyReply) {
+    const { cargo } = req.user as { cargo: Cargo }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso restrito.' })
+
+    const stats = await AuditService.getDailyStats()
+    return reply.send(stats)
+  }
+}
+
+FILE: backend\src\controllers\AuthController.ts
+--------------------------------------------------
+// backend/src/controllers/AuthController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { AuthService } from '../services/AuthService'
+import { Cargo } from '@prisma/client'
+
+// Interfaces de Body para Tipagem
+interface LoginBody {
+  email: string
+  senha: string
+}
+
+interface RegisterBody {
+  nome: string
+  email: string
+  senha: string
+  cargo: Cargo | string
+  matricula?: string
+}
+
+export class AuthController {
+  
+  static async login(req: FastifyRequest<{ Body: LoginBody }>, reply: FastifyReply) {
+    const { email, senha } = req.body
+
+    const user = await AuthService.validateCredentials(email, senha)
+    
+    if (!user) {
+      return reply.status(401).send({ message: 'Credenciais inválidas ou usuário desativado.' })
+    }
+
+    // Geração do Token (Lógica de apresentação/infra fica no Controller)
+    const token = await reply.jwtSign(
+      { nome: user.nome, cargo: user.cargo, email: user.email },
+      { sub: user.id, expiresIn: '7d' }
+    )
+
+    return reply.status(200).send({ token })
+  }
+
+  static async register(req: FastifyRequest<{ Body: RegisterBody }>, reply: FastifyReply) {
+    try {
+      // Normalização do cargo (caso venha string solta)
+      const cargo = req.body.cargo === 'Agente Social' ? Cargo.Agente_Social : req.body.cargo as Cargo
+
+      const user = await AuthService.register({
+        ...req.body,
+        cargo
+      })
+      
+      return reply.status(201).send(user)
+    } catch (error: any) {
+      if (error.message === 'EMAIL_ALREADY_EXISTS') {
+        return reply.status(409).send({ message: 'Email já registrado.' })
+      }
+      throw error
+    }
+  }
+
+  static async getProfile(req: FastifyRequest, reply: FastifyReply) {
+    // [CORREÇÃO] Tipagem explícita do objeto req.user
+    const { sub: userId } = req.user as { sub: string }
+    
+    const user = await AuthService.getUserProfile(userId)
+
+    if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' })
+    if (!user.ativo) return reply.status(401).send({ message: 'Usuário desativado.' })
+
+    return reply.send(user)
+  }
+}
+
+FILE: backend\src\controllers\CaseController.ts
+--------------------------------------------------
+// backend/src/controllers/CaseController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { CaseService } from '../services/CaseService'
+import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
+import { Cargo, CaseStatus } from '@prisma/client'
+
+// Interfaces locais para Tipagem estrita dos Bodys
+interface UpdateStatusBody {
+  status: CaseStatus
+}
+
+interface AssignSpecialistBody {
+  specialistId: string
+}
+
+interface CloseCaseBody {
+  parecerFinal: string
+  motivoDesligamento: string
+  destinoDesligamento?: string
+}
+
+export class CaseController {
+  
+  static async create(req: FastifyRequest<{ Body: CreateCaseInput }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    
+    try {
+      const newCase = await CaseService.create(req.body, userId)
+      return reply.status(201).send(newCase)
+    } catch (error: any) {
+      if (error.message === 'CPF_ALREADY_EXISTS') {
+        return reply.status(409).send({ message: 'CPF já cadastrado.' })
+      }
+      throw error
+    }
+  }
+
+  static async list(req: FastifyRequest<{ Querystring: any }>, reply: FastifyReply) {
+    const user = req.user as { sub: string, cargo: string }
+    const result = await CaseService.findAll(req.query, user)
+    return reply.send(result)
+  }
+
+  static async getById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { id } = req.params
+    const caso = await CaseService.getCaseWithEconomics(id)
+    
+    if (!caso) return reply.status(404).send({ message: 'Caso não encontrado.' })
+    return reply.send(caso)
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateCaseInput }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId } = req.user as { sub: string }
+    
+    try {
+      const updated = await CaseService.update(id, req.body, userId)
+      return reply.send(updated)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
+      throw error
+    }
+  }
+
+  static async updateStatus(req: FastifyRequest<{ Params: { id: string }, Body: UpdateStatusBody }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { status } = req.body
+    const { sub: userId } = req.user as { sub: string }
+
+    try {
+      const updated = await CaseService.updateStatus(id, status, userId)
+      return reply.send(updated)
+    } catch (e) {
+      return reply.status(404).send({ message: 'Caso não encontrado.' })
+    }
+  }
+
+  static async assignSpecialist(req: FastifyRequest<{ Params: { id: string }, Body: AssignSpecialistBody }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { specialistId } = req.body
+    const { sub: managerId, cargo } = req.user as { sub: string, cargo: string }
+
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    try {
+      const updated = await CaseService.assignSpecialist(id, specialistId, managerId)
+      return reply.send(updated)
+    } catch (e) {
+      return reply.status(404).send({ message: 'Caso não encontrado.' })
+    }
+  }
+
+  // [CORREÇÃO AQUI] Definida a interface CloseCaseBody explicitamente no Generic
+  static async closeCase(req: FastifyRequest<{ Params: { id: string }, Body: CloseCaseBody }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId } = req.user as { sub: string }
+    
+    // Agora req.body é tipado como CloseCaseBody, satisfazendo o Service
+    const updated = await CaseService.closeCase(id, req.body, userId)
+    return reply.send(updated)
+  }
+}
+
+FILE: backend\src\controllers\DeliverableController.ts
+--------------------------------------------------
+// backend/src/controllers/DeliverableController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { DeliverableService } from '../services/DeliverableService'
+
+export class DeliverableController {
+  static async list(req: FastifyRequest<{ Params: { caseId: string } }>, reply: FastifyReply) {
+    const items = await DeliverableService.list(req.params.caseId)
+    return reply.send(items)
+  }
+
+  static async create(req: FastifyRequest<{ Params: { caseId: string }, Body: { tipo: string, observacoes?: string } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    const result = await DeliverableService.create({
+      caseId: req.params.caseId,
+      userId,
+      ...req.body
+    })
+    return reply.status(201).send(result)
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: { status: string, dataEntrega?: string } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    const { status, dataEntrega } = req.body
+    
+    try {
+      const updated = await DeliverableService.updateStatus({
+        id: req.params.id,
+        userId,
+        status,
+        dataEntrega: dataEntrega ? new Date(dataEntrega) : undefined
+      })
+      return reply.send(updated)
+    } catch (error) {
+      return reply.status(404).send({ message: 'Benefício não encontrado.' })
+    }
+  }
+}
+
+FILE: backend\src\controllers\EvolutionController.ts
+--------------------------------------------------
+// backend/src/controllers/EvolutionController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { EvolutionService } from '../services/EvolutionService'
+
+// Definição das Interfaces de Body/Query
+interface CreateEvolutionBody {
+  conteudo: string
+  sigilo: boolean
+}
+
+interface UpdateEvolutionBody {
+  conteudo?: string
+  sigilo?: boolean
+}
+
+interface ListEvolutionQuery {
+  page: number
+  pageSize: number
+}
+
+export class EvolutionController {
+
+  static async list(req: FastifyRequest<{ Params: { caseId: string }, Querystring: ListEvolutionQuery }>, reply: FastifyReply) {
+    const { caseId } = req.params
+    const { page, pageSize } = req.query
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: string }
+
+    try {
+      const result = await EvolutionService.list({
+        caseId,
+        userId,
+        cargo,
+        page,
+        pageSize
+      })
+      return reply.send(result)
+    } catch (error: any) {
+      if (error.message === 'CASE_NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
+      throw error
+    }
+  }
+
+  static async create(req: FastifyRequest<{ Params: { caseId: string }, Body: CreateEvolutionBody }>, reply: FastifyReply) {
+    const { caseId } = req.params
+    const { sub: userId } = req.user as { sub: string }
+    const { conteudo, sigilo } = req.body
+
+    const evolucao = await EvolutionService.create({
+      caseId,
+      userId,
+      conteudo,
+      sigilo
+    })
+
+    return reply.status(201).send(evolucao)
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateEvolutionBody }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId } = req.user as { sub: string }
+    
+    try {
+      const updated = await EvolutionService.update(id, userId, req.body)
+      return reply.send(updated)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Evolução não encontrada.' })
+      if (error.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Você só pode editar evoluções criadas por você.' })
+      throw error
+    }
+  }
+
+  static async delete(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId } = req.user as { sub: string }
+
+    try {
+      await EvolutionService.delete(id, userId)
+      return reply.status(204).send()
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Evolução não encontrada.' })
+      if (error.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Você só pode excluir evoluções criadas por você.' })
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\FamilyController.ts
+--------------------------------------------------
+// backend/src/controllers/FamilyController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { FamilyService } from '../services/FamilyService'
+
+// Interface para Body
+interface CreateMemberBody {
+  nome: string
+  parentesco: string
+  idade?: number
+  cpf?: string | null
+  nascimento?: Date | string
+  telefone?: string | null
+  ocupacao?: string
+  renda?: number
+  observacoes?: string
+}
+
+export class FamilyController {
+  static async list(req: FastifyRequest<{ Params: { caseId: string } }>, reply: FastifyReply) {
+    const { caseId } = req.params
+    const members = await FamilyService.list(caseId)
+    return reply.send(members)
+  }
+
+  static async create(req: FastifyRequest<{ Params: { caseId: string }, Body: CreateMemberBody }>, reply: FastifyReply) {
+    const { caseId } = req.params
+    const { sub: userId } = req.user as { sub: string }
+
+    try {
+      const member = await FamilyService.add({
+        caseId,
+        userId,
+        ...req.body,
+        nascimento: req.body.nascimento ? new Date(req.body.nascimento) : undefined
+      })
+      return reply.status(201).send(member)
+    } catch (error) {
+      req.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao adicionar familiar.' })
+    }
+  }
+
+  static async delete(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId } = req.user as { sub: string }
+    
+    try {
+      await FamilyService.remove(id, userId)
+      return reply.status(204).send()
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send()
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\FilterController.ts
+--------------------------------------------------
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { FilterService } from '../services/FilterService'
+
+export class FilterController {
+  static async list(req: FastifyRequest, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    const filters = await FilterService.listByUser(userId)
+    return reply.send(filters)
+  }
+
+  static async create(req: FastifyRequest<{ Body: { nome: string, config: any } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      const filter = await FilterService.create(userId, req.body.nome, req.body.config)
+      return reply.status(201).send(filter)
+    } catch (e: any) {
+      if (e.message === 'QUOTA_EXCEEDED') return reply.status(400).send({ message: 'Limite de filtros atingido.' })
+      throw e
+    }
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: { nome?: string, config?: any } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      const updated = await FilterService.update(req.params.id, userId, req.body.nome, req.body.config)
+      return reply.send(updated)
+    } catch (e: any) {
+      if (e.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Filtro não encontrado.' })
+      if (e.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
+      throw e
+    }
+  }
+
+  static async delete(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      await FilterService.delete(req.params.id, userId)
+      return reply.status(204).send()
+    } catch (e: any) {
+      return reply.status(404).send({ message: 'Filtro não encontrado ou sem permissão.' })
+    }
+  }
+}
+
+FILE: backend\src\controllers\GroupController.ts
+--------------------------------------------------
+// backend/src/controllers/GroupController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { GroupService } from '../services/GroupService'
+import { GroupType } from '@prisma/client'
+
+interface CreateGroupBody {
+  tema: string
+  tipo: GroupType
+  datas?: string[]
+  dataRealizacao?: string
+  local?: string
+  descricao?: string
+  orgaosEnvolvidos?: string[]
+}
+
+export class GroupController {
+  static async list(req: FastifyRequest, reply: FastifyReply) {
+    const groups = await GroupService.list()
+    return reply.send(groups)
+  }
+
+  static async getById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const group = await GroupService.getById(req.params.id)
+    if (!group) return reply.status(404).send({ message: 'Grupo não encontrado' })
+    return reply.send(group)
+  }
+
+  static async getCandidates(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    try {
+      const candidates = await GroupService.getCandidates(req.params.id)
+      return reply.send(candidates)
+    } catch (e) {
+      return reply.status(404).send({ message: 'Grupo não encontrado' })
+    }
+  }
+
+  static async create(req: FastifyRequest<{ Body: CreateGroupBody }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      const created = await GroupService.create({ ...req.body, facilitadorId: userId })
+      return reply.status(201).send({ 
+        count: created.length, 
+        message: created.length > 1 ? `Cronograma criado com ${created.length} atividades.` : 'Atividade agendada.' 
+      })
+    } catch (e: any) {
+      if (e.message === 'MISSING_DATE') return reply.status(400).send({ message: 'Data obrigatória.' })
+      throw e
+    }
+  }
+
+  static async addParticipants(req: FastifyRequest<{ Params: { id: string }, Body: { caseIds: string[] } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      const count = await GroupService.addParticipants(req.params.id, req.body.caseIds, userId)
+      return reply.send({ message: `${count} participantes adicionados.` })
+    } catch (e) {
+      return reply.status(404).send({ message: 'Grupo não encontrado.' })
+    }
+  }
+
+  static async updateAttendance(req: FastifyRequest<{ Params: { groupId: string, caseId: string }, Body: { presente: boolean, observacoes?: string } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      const updated = await GroupService.updateAttendance(req.params.groupId, req.params.caseId, req.body.presente, req.body.observacoes, userId)
+      return reply.send(updated)
+    } catch (e: any) {
+      if (e.message === 'ATTENDANCE_NOT_FOUND') return reply.status(404).send({ message: 'Participante não encontrado neste grupo.' })
+      throw e
+    }
+  }
+
+  static async confirmAttendance(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const group = await GroupService.confirmAttendance(req.params.id)
+    return reply.send({ message: 'Lista fechada.', attendanceConfirmed: group.attendanceConfirmed })
+  }
+}
+
+FILE: backend\src\controllers\ImportController.ts
+--------------------------------------------------
+// backend/src/controllers/ImportController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { ImportService } from '../services/ImportService'
+import { Cargo } from '@prisma/client'
+
+export class ImportController {
+  
+  static async importCases(req: FastifyRequest, reply: FastifyReply) {
+    // 1. Verificação de Permissão (Apenas Gerente)
+    const { cargo, sub } = req.user as { sub: string, cargo: string }
+    
+    if (cargo !== Cargo.Gerente) {
+      return reply.status(403).send({ message: 'Acesso negado. Apenas gerentes podem importar dados.' })
+    }
+
+    // 2. Verificação de Multipart
+    if (!req.isMultipart()) {
+      return reply.status(400).send({ message: 'O arquivo deve ser enviado como multipart/form-data.' })
+    }
+
+    try {
+      // 3. Leitura do Arquivo
+      const data = await req.file()
+      
+      if (!data) {
+        return reply.status(400).send({ 
+          processed: 0, created: 0, errors: 0, 
+          logs: ['Nenhum arquivo foi enviado.'] 
+        })
+      }
+
+      // 4. Bufferização e Validação Básica
+      const buffer = await data.toBuffer()
+      const isCsv = data.mimetype === 'text/csv' || data.filename.toLowerCase().endsWith('.csv')
+
+      // 5. Processamento via Service
+      const result = await ImportService.processImport(buffer, isCsv, sub)
+      
+      return reply.status(200).send(result)
+
+    } catch (error: any) {
+      req.log.error(error)
+
+      // Tratamento de Erros Específicos
+      if (error.message === 'PLANILHA_VAZIA') {
+        return reply.status(400).send({ 
+          processed: 0, created: 0, errors: 1, 
+          logs: ['A planilha está vazia ou possui um formato inválido.'] 
+        })
+      }
+
+      if (error.code === 'FST_FILES_LIMIT' || error.code === 'FST_PARTS_LIMIT') {
+        return reply.status(400).send({ 
+            processed: 0, created: 0, errors: 1, 
+            logs: ['O arquivo é muito grande ou excedeu os limites de upload.'] 
+        })
+      }
+
+      // Erro genérico
+      return reply.status(500).send({ 
+        processed: 0, created: 0, errors: 1, 
+        logs: [`Erro crítico no servidor: ${error.message || 'Desconhecido'}`] 
+      })
+    }
+  }
+}
+
+FILE: backend\src\controllers\PafController.ts
+--------------------------------------------------
+// backend/src/controllers/PafController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { PafService } from '../services/PafService'
+import { Cargo } from '@prisma/client'
+
+interface PafBody {
+  diagnostico: string
+  objetivos: string
+  estrategias: string
+  deadline: Date | string
+}
+
+export class PafController {
+
+  static async getCurrent(req: FastifyRequest<{ Params: { caseId: string } }>, reply: FastifyReply) {
+    const paf = await PafService.getByCaseId(req.params.caseId)
+    return reply.send(paf)
+  }
+
+  static async getHistory(req: FastifyRequest<{ Params: { caseId: string } }>, reply: FastifyReply) {
+    const history = await PafService.getHistory(req.params.caseId)
+    return reply.send(history)
+  }
+
+  static async create(req: FastifyRequest<{ Params: { caseId: string }, Body: PafBody }>, reply: FastifyReply) {
+    const { cargo, sub: autorId } = req.user as { sub: string, cargo: string }
+
+    if (cargo !== Cargo.Especialista && cargo !== Cargo.Gerente) {
+      return reply.status(403).send({ message: 'Apenas especialistas ou gerentes podem criar PAF.' })
+    }
+
+    try {
+      const created = await PafService.create({
+        casoId: req.params.caseId,
+        autorId,
+        diagnostico: req.body.diagnostico,
+        objetivos: req.body.objetivos,
+        estrategias: req.body.estrategias,
+        deadline: new Date(req.body.deadline)
+      })
+      return reply.status(201).send(created)
+    } catch (error: any) {
+      if (error.message === 'ALREADY_EXISTS') return reply.status(409).send({ message: 'Já existe um PAF para este caso. Use a atualização.' })
+      throw error
+    }
+  }
+
+  static async update(req: FastifyRequest<{ Params: { caseId: string }, Body: Partial<PafBody> }>, reply: FastifyReply) {
+    const { cargo, sub: userId } = req.user as { sub: string, cargo: string }
+
+    if (cargo !== Cargo.Gerente && cargo !== Cargo.Especialista) {
+      return reply.status(403).send({ message: 'Sem permissão para editar este PAF.' })
+    }
+
+    try {
+      const deadline = req.body.deadline ? new Date(req.body.deadline) : undefined
+
+      const updated = await PafService.update({
+        casoId: req.params.caseId,
+        userId,
+        ...req.body,
+        deadline
+      })
+      return reply.send(updated)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'PAF não encontrado.' })
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\ReferralController.ts
+--------------------------------------------------
+// backend/src/controllers/ReferralController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { ReferralService } from '../services/ReferralService'
+
+interface CreateReferralBody {
+  instituicao: string
+  tipo: string
+  motivo: string
+}
+
+export class ReferralController {
+  static async list(req: FastifyRequest<{ Params: { caseId: string } }>, reply: FastifyReply) {
+    const referrals = await ReferralService.listByCase(req.params.caseId)
+    return reply.send(referrals)
+  }
+
+  static async create(req: FastifyRequest<{ Params: { caseId: string }, Body: CreateReferralBody }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      const result = await ReferralService.create({
+        caseId: req.params.caseId,
+        userId,
+        ...req.body
+      })
+      return reply.status(201).send(result)
+    } catch (error: any) {
+      if (error.message === 'CASE_NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado' })
+      throw error
+    }
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: { status: any, retorno?: string } }>, reply: FastifyReply) {
+    try {
+      const updated = await ReferralService.update({
+        id: req.params.id,
+        ...req.body
+      })
+      return reply.send(updated)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Encaminhamento não encontrado.' })
+      throw error
+    }
+  }
+
+  static async delete(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    try {
+      await ReferralService.delete(req.params.id, userId)
+      return reply.status(204).send()
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Encaminhamento não encontrado.' })
+      if (error.message === 'FORBIDDEN') return reply.status(403).send({ message: 'Sem permissão.' })
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\ReportController.ts
+--------------------------------------------------
+// backend/src/controllers/ReportController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { ReportService } from '../services/ReportService'
+
+export class ReportController {
+  static async getTeamOverview(req: FastifyRequest, reply: FastifyReply) {
+    const overview = await ReportService.getTeamOverview()
+    return reply.send(overview)
+  }
+
+  static async getDismissals(req: FastifyRequest<{ Querystring: { months: number } }>, reply: FastifyReply) {
+    const report = await ReportService.getDismissalsReport(req.query.months)
+    return reply.send(report)
+  }
+
+  static async getVigilance(req: FastifyRequest, reply: FastifyReply) {
+    const stats = await ReportService.getVigilanceStats()
+    return reply.send(stats)
+  }
+}
+
+FILE: backend\src\controllers\RmaController.ts
+--------------------------------------------------
+// backend/src/controllers/RMAController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { prisma } from '../lib/prisma'
+import { RMAService } from '../services/RMAService'
+import { cache } from '../lib/cache'
+import { startOfMonth, endOfMonth } from 'date-fns'
+import { CaseStatus } from '@prisma/client'
+
+export class RmaController {
+  static async generate(req: FastifyRequest<{ Querystring: { month: number, year: number } }>, reply: FastifyReply) {
+    try {
+      const { month, year } = req.query
+      
+      const cacheKey = `rma_report:${year}:${month}`
+      const cachedReport = cache.get(cacheKey)
+      
+      if (cachedReport) {
+        reply.header('X-Cache', 'HIT')
+        return reply.send(cachedReport)
+      }
+
+      const dateRef = new Date(year, month - 1, 1)
+      const startDate = startOfMonth(dateRef)
+      const endDate = endOfMonth(dateRef)
+
+      // Execução Paralela (Copiado da sua rota original, agora organizado)
+      const [activeCases, newCases, evolucoesCount, groupParticipants, referralsCRAS, visitasCount] = await Promise.all([
+        prisma.case.findMany({
+          where: {
+            status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] },
+            dataInicioPAEFI: { lte: endDate },
+            OR: [{ dataDesligamento: null }, { dataDesligamento: { gt: endDate } }]
+          }
+        }),
+        prisma.case.findMany({
+          where: {
+            status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] },
+            dataInicioPAEFI: { gte: startDate, lte: endDate }
+          }
+        }),
+        prisma.evolucao.count({ where: { createdAt: { gte: startDate, lte: endDate } } }),
+        prisma.groupAttendance.count({ where: { presente: true, grupo: { dataRealizacao: { gte: startDate, lte: endDate } } } }),
+        prisma.encaminhamento.count({ where: { dataEnvio: { gte: startDate, lte: endDate }, instituicao: { contains: 'CRAS', mode: 'insensitive' } } }),
+        prisma.agendamento.count({ where: { data: { gte: startDate, lte: endDate }, titulo: { contains: 'Visita', mode: 'insensitive' } } })
+      ])
+
+      const rmaData = RMAService.calculate(activeCases, newCases, endDate)
+
+      const response = {
+        ...rmaData,
+        bloco2: {
+          m1_individual: evolucoesCount,
+          m2_grupo: groupParticipants,
+          m3_cras: referralsCRAS,
+          m4_visitas: visitasCount
+        }
+      }
+
+      cache.set(cacheKey, response, 1000 * 60 * 60) // 1h
+      reply.header('X-Cache', 'MISS')
+
+      return reply.send(response)
+
+    } catch (error) {
+      req.log.error(error)
+      return reply.status(500).send({ message: 'Erro ao processar RMA.', details: String(error) })
+    }
+  }
+}
+
+FILE: backend\src\controllers\StatsController.ts
+--------------------------------------------------
+// backend/src/controllers/StatsController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { StatsService } from '../services/StatsService'
+import { Cargo } from '@prisma/client'
+
+export class StatsController {
+  
+  static async getDashboard(req: FastifyRequest, reply: FastifyReply) {
+    const { cargo, sub } = req.user as { cargo: string; sub: string }
+    const result = await StatsService.getDashboard({ sub, cargo })
+    
+    // Header de Cache (se aplicável, lógica pode vir do Service)
+    if ((result as any).cached) {
+       reply.header('X-Cache', 'HIT')
+    }
+    return reply.send(result)
+  }
+
+  static async getProductivity(req: FastifyRequest<{ Querystring: { mode: 'workload' | 'performance', months: number } }>, reply: FastifyReply) {
+    const { mode, months } = req.query
+    const result = await StatsService.getProductivity(mode, months)
+    return reply.send(result)
+  }
+
+  static async getVigilance(req: FastifyRequest, reply: FastifyReply) {
+    const { cargo } = req.user as { cargo: string }
+    if (!['Gerente', 'Especialista', 'Auditor'].includes(cargo)) {
+       return reply.status(403).send({ message: "Acesso restrito." })
+    }
+    const result = await StatsService.getVigilanceStats()
+    return reply.send(result)
+  }
+
+  static async getAdvanced(req: FastifyRequest<{ Querystring: { months: number, violacao?: string } }>, reply: FastifyReply) {
+    const { cargo } = req.user as { cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: "Acesso restrito." })
+
+    const { months, violacao } = req.query
+    const result = await StatsService.getAdvancedStats(months, violacao)
+    return reply.send(result)
+  }
+
+  static async getActivity(req: FastifyRequest, reply: FastifyReply) {
+    const { cargo, sub } = req.user as { cargo: string; sub: string }
+    const result = await StatsService.getRecentActivity({ sub, cargo })
+    return reply.send(result)
+  }
+}
+
+FILE: backend\src\controllers\UserController.ts
+--------------------------------------------------
+// backend/src/controllers/UserController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { UserService } from '../services/UserService'
+import { Cargo } from '@prisma/client'
+
+// Interfaces de Body
+interface CreateUserBody {
+  nome: string
+  email: string
+  matricula?: string
+  cargo: string
+  senhaInicial: string
+}
+
+interface UpdateUserBody {
+  nome?: string
+  email?: string
+  matricula?: string
+  cargo?: string
+}
+
+interface ChangePasswordBody {
+  senhaAtual: string
+  novaSenha: string
+}
+
+export class UserController {
+
+  static async create(req: FastifyRequest<{ Body: CreateUserBody }>, reply: FastifyReply) {
+    const { cargo: userCargo } = req.user as { cargo: string }
+    if (userCargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso restrito.' })
+
+    try {
+      // Normalização de cargo
+      const normalizedCargo = req.body.cargo === 'Agente Social' ? Cargo.Agente_Social : req.body.cargo as Cargo
+      
+      const user = await UserService.create({ ...req.body, cargo: normalizedCargo })
+      return reply.status(201).send(user)
+    } catch (error: any) {
+      if (error.message === 'EMAIL_ALREADY_EXISTS') return reply.status(409).send({ message: 'E-mail já cadastrado.' })
+      throw error
+    }
+  }
+
+  static async list(req: FastifyRequest<{ Querystring: { cargo?: string, active?: boolean } }>, reply: FastifyReply) {
+    const { sub: userId } = req.user as { sub: string }
+    const { cargo, active } = req.query
+    
+    let cargoFilter: Cargo | undefined
+    if (cargo) {
+       if (cargo === 'Agente Social') cargoFilter = Cargo.Agente_Social
+       else if (Object.values(Cargo).includes(cargo as Cargo)) cargoFilter = cargo as Cargo
+    }
+
+    const users = await UserService.listAll(userId, cargoFilter, active)
+    return reply.send(users)
+  }
+
+  static async listAgents(req: FastifyRequest, reply: FastifyReply) {
+    const agents = await UserService.listAgents()
+    return reply.send(agents)
+  }
+
+  static async listSpecialists(req: FastifyRequest, reply: FastifyReply) {
+    try {
+      const results = await UserService.listSpecialistsWithLoad()
+      return reply.send(results)
+    } catch (error) {
+      req.log.error(error)
+      return reply.status(500).send({ message: "Erro interno ao buscar equipe." })
+    }
+  }
+
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateUserBody }>, reply: FastifyReply) {
+    const { cargo: requestCargo } = req.user as { cargo: string }
+    if (requestCargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    // Normalização opcional se vier cargo no update
+    const data = { ...req.body }
+    if (data.cargo && data.cargo === 'Agente Social') data.cargo = Cargo.Agente_Social
+
+    const updatedUser = await UserService.update(req.params.id, data as any)
+    return reply.send(updatedUser)
+  }
+
+  static async deactivate(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    const { cargo } = req.user as { cargo: string }
+    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: 'Acesso negado.' })
+
+    await UserService.deactivate(req.params.id)
+    return reply.status(204).send()
+  }
+
+  static async changePassword(req: FastifyRequest<{ Body: ChangePasswordBody }>, reply: FastifyReply) {
+    const { senhaAtual, novaSenha } = req.body
+    const userId = (req.user as any).sub
+
+    try {
+      await UserService.changePassword(userId, senhaAtual, novaSenha)
+      return reply.send({ message: 'Senha alterada com sucesso!' })
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Usuário não encontrado.' })
+      if (error.message === 'INVALID_PASSWORD') return reply.status(400).send({ message: 'Senha atual incorreta.' })
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\WaitingListController.ts
+--------------------------------------------------
+// backend/src/controllers/WaitingListController.ts
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { WaitingListService } from '../services/WaitingListService'
+import { Cargo } from '@prisma/client'
+
+export class WaitingListController {
+  static async list(req: FastifyRequest, reply: FastifyReply) {
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: Cargo }
+    const cases = await WaitingListService.getWaitingList(userId, cargo)
+    return reply.send(cases)
+  }
+
+  static async processAction(req: FastifyRequest<{ Params: { id: string }, Body: { targetUserId?: string } }>, reply: FastifyReply) {
+    const { id } = req.params
+    const { sub: userId, cargo } = req.user as { sub: string, cargo: Cargo }
+
+    try {
+      const result = await WaitingListService.processAction({
+        caseId: id,
+        userId,
+        cargo,
+        targetUserId: req.body.targetUserId
+      })
+      return reply.send(result)
+    } catch (error: any) {
+      if (error.message === 'NOT_FOUND') return reply.status(404).send({ message: 'Caso não encontrado.' })
+      if (error.message === 'FORBIDDEN_OWNERSHIP') return reply.status(403).send({ message: 'Este caso não foi atribuído a você.' })
+      if (error.message === 'MISSING_TARGET_USER') return reply.status(400).send({ message: 'Selecione um especialista.' })
+      if (error.message === 'INVALID_TRANSITION') return reply.status(400).send({ message: 'Ação não permitida para o status atual.' })
+      throw error
+    }
+  }
+}
+
+FILE: backend\src\controllers\WorkspaceController.ts
+--------------------------------------------------
+import { FastifyReply, FastifyRequest } from 'fastify'
+import { WorkspaceService } from '../services/WorkspaceService'
+import { z } from 'zod'
+import { Cargo } from '@prisma/client' // Uso do Enum nativo
+
+export class WorkspaceController {
+  
+  // GET /workspace/summary
+  static async getSummary(req: FastifyRequest, reply: FastifyReply) {
+    // A mágica acontece aqui: req.user agora é tipado!
+    // Sem 'as any', sem 'try/catch'
+    const { sub: userId, cargo } = req.user 
+
+    let response = {}
+
+    // Lógica limpa e direta
+    if (cargo === Cargo.Gerente) {
+      const managerData = await WorkspaceService.getManagerDashboard()
+      response = { ...response, ...managerData }
+    } 
+    else if (cargo === Cargo.Auditor) {
+      const auditorData = await WorkspaceService.getAuditorDashboard()
+      response = { ...response, ...auditorData }
+    } 
+    else {
+      // Agente ou Especialista
+      const operationalData = await WorkspaceService.getOperationalDashboard(userId, cargo)
+      response = { ...response, ...operationalData }
+    }
+
+    return reply.send(response)
+  }
+
+  // POST /workspace/distribute
+  static async distributeCase(
+    req: FastifyRequest<{ Body: { caseId: string, targetUserId: string, roleType: 'AGENTE' | 'ESPECIALISTA' } }>, 
+    reply: FastifyReply
+  ) {
+    const { caseId, targetUserId, roleType } = req.body
+    const { sub: managerId } = req.user
+
+    // Se o Service lançar erro (ex: 'INVALID_USER'), o GlobalHandler captura.
+    await WorkspaceService.distributeCase(caseId, targetUserId, roleType, managerId)
+    
+    return reply.send({ message: 'Caso distribuído com sucesso.' })
+  }
+}

@@ -1,11 +1,11 @@
-// frontend/src/components/case/tabs/AttachmentsTab.tsx
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { 
   FileText, Trash2, Download, Loader2, UploadCloud, 
-  Paperclip, MoreVertical, Eye, File as FileIcon} from 'lucide-react'
+  Paperclip, MoreVertical, Eye, File as FileIcon, Image as ImageIcon
+} from 'lucide-react'
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { format } from 'date-fns'
@@ -35,6 +35,13 @@ interface AttachmentsTabProps {
 }
 
 // --- HELPER: Ícone/Preview do Arquivo ---
+const getIconByMime = (type: string) => {
+  if (type === 'image') return <ImageIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+  if (type === 'pdf') return <FileText className="h-6 w-6 text-red-600 dark:text-red-400" />
+  if (type === 'doc' || type === 'docx') return <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+  return <FileIcon className="h-6 w-6 text-muted-foreground" />
+}
+
 const FilePreview = ({ type, url }: { type: string, url: string }) => {
   if (type === 'image') {
     return (
@@ -49,17 +56,12 @@ const FilePreview = ({ type, url }: { type: string, url: string }) => {
     )
   }
   
-  if (type === 'pdf') {
-    return (
-      <div className="h-12 w-12 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center shrink-0 border border-red-100 dark:border-red-900/50">
-        <FileText className="h-6 w-6 text-red-600 dark:text-red-400" />
-      </div>
-    )
-  }
-
   return (
-    <div className="h-12 w-12 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/50">
-      <FileIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+    <div className={cn(
+      "h-12 w-12 rounded-lg flex items-center justify-center shrink-0 border",
+      type === 'pdf' ? "bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900/50" : "bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50"
+    )}>
+      {getIconByMime(type)}
     </div>
   )
 }

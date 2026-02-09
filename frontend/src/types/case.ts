@@ -442,3 +442,17 @@ export interface RmaReportData {
     m4_visitas: number;
   };
 }
+
+export interface ReportChartData {
+  name: string;
+  value: number;
+}
+
+export interface DismissalReportData {
+  periodo: string;
+  total: number;
+  successRate: number;
+  evasionRate: number;
+  byReason: ReportChartData[];
+  monthlyTrend: ReportChartData[];
+}

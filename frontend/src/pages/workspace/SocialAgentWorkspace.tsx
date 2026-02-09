@@ -14,10 +14,15 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { KPICard, CaseListTable } from '@/components/workspace/SharedComponents'
 import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
-import { OperationalWorkspaceData } from '@/types/workspace'
+import { OperationalWorkspaceData, CaseAlert } from '@/types/workspace' // Importe CaseAlert
 import { ROUTES } from '@/constants/app-routes'
 import { cn } from '@/lib/utils'
 import type { UpcomingAppointment } from '@/components/agenda/UpcomingAppointments'
+
+// Interface estendida para acomodar propriedades dinâmicas ou calculadas
+interface ExtendedAlert extends CaseAlert {
+  days?: number;
+}
 
 // --- WORKSPACE COMPONENT ---
 
@@ -46,9 +51,12 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
         } : undefined
       }));
 
+    // Casting seguro para alertas
+    const alerts = (Array.isArray(data.alerts) ? data.alerts : []) as ExtendedAlert[];
+
     return {
       appointments: mappedAppointments,
-      alerts: Array.isArray(data.alerts) ? data.alerts : [],
+      alerts: alerts,
       myCases: Array.isArray(data.myCases) ? data.myCases : [],
       stats: data.detailedStats || { meusAguardando: 0, meusEmAtendimento: 0 }
     };
@@ -172,7 +180,9 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                   <ul className="divide-y divide-border/40">
                     {alerts.map((alert) => {
                       if (!alert) return null;
-                      const isCritical = (alert.days || 0) > 7
+                      // [CORREÇÃO] Acesso seguro à propriedade opcional 'days'
+                      const days = alert.days ?? 0; 
+                      const isCritical = days > 7
                       const isNavigating = navigatingId === alert.id
 
                       return (
@@ -205,7 +215,7 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                                 <span>{isCritical ? 'Crítico' : 'Pendente'}</span>
                               </div>
                               <span className="text-muted-foreground/40">•</span>
-                              <span className="text-muted-foreground font-medium">há {alert.days}d</span>
+                              <span className="text-muted-foreground font-medium">há {days}d</span>
                             </div>
                           </button>
                         </li>

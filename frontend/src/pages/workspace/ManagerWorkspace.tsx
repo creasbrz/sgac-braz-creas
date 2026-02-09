@@ -7,6 +7,13 @@ import { KPICard } from '@/components/workspace/SharedComponents'
 import { ManagerWorkspaceData } from '@/types/workspace'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
+// Extensão da tipagem para garantir compatibilidade se a API mudar
+interface TeamMemberLoad {
+  name: string
+  role: string
+  value: number // [CORREÇÃO] A API retorna 'value', não 'cases'
+}
+
 export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
   
   // --- CONFIGURAÇÃO DE LIMITES ---
@@ -93,12 +100,13 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
           
           <CardContent className="flex-1 p-6">
             <div className="space-y-6">
-              {data.teamLoad.map((member, idx) => (
+              {/* [CORREÇÃO] Casting para garantir tipagem correta durante o map */}
+              {(data.teamLoad as unknown as TeamMemberLoad[]).map((member, idx) => (
                 <div key={idx} className="group">
                   {/* Header do Item */}
                   <div className="flex justify-between items-end mb-2">
                     <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-sm text-foreground">{member.nome}</span>
+                      <span className="font-semibold text-sm text-foreground">{member.name}</span>
                       <div className="flex items-center gap-1.5">
                         <Badge 
                           variant="secondary" 
@@ -111,7 +119,7 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                     
                     <div className="text-right">
                       <span className="text-sm font-bold tabular-nums text-foreground">
-                        {member.cases}
+                        {member.value} {/* [CORREÇÃO] Usando .value ao invés de .cases */}
                       </span>
                       <span className="text-xs text-muted-foreground ml-1">/ {CONFIG.CASELOAD_LIMIT}</span>
                     </div>
@@ -120,10 +128,10 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                   {/* Barra de Progresso Customizada */}
                   <div className="h-2.5 w-full bg-muted/50 rounded-full overflow-hidden ring-1 ring-border/30">
                       <div 
-                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${getLoadColor(member.cases)}`} 
-                        style={{ width: `${getLoadPercentage(member.cases)}%` }} 
+                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${getLoadColor(member.value)}`} 
+                        style={{ width: `${getLoadPercentage(member.value)}%` }} 
                         role="progressbar"
-                        aria-valuenow={member.cases}
+                        aria-valuenow={member.value}
                         aria-valuemin={0}
                         aria-valuemax={CONFIG.CASELOAD_LIMIT}
                       />

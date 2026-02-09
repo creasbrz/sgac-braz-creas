@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ArrowRight, Eye, FileText } from 'lucide-react' // [CORREÇÃO] Removido AlertTriangle
+import { ArrowRight, Eye, FileText, LucideIcon } from 'lucide-react' 
 import { cn } from '@/lib/utils'
 import { ROUTE_PATHS } from '@/constants/app-routes'
 
@@ -17,10 +17,11 @@ import { BaseCase } from '@/types/workspace'
 export const getUrgencyBorderColor = (urgency: string | null | undefined) => {
   const term = urgency?.trim() || ''
   
-  if (URGENCIA_NIVEIS.GRAVISSIMA.includes(term)) return 'border-l-red-600 dark:border-l-red-500'
-  if (URGENCIA_NIVEIS.MUITO_GRAVE.includes(term)) return 'border-l-orange-500 dark:border-l-orange-400'
-  if (URGENCIA_NIVEIS.GRAVE.includes(term)) return 'border-l-amber-500 dark:border-l-amber-400' 
-  if (URGENCIA_NIVEIS.LEVE.includes(term)) return 'border-l-emerald-500 dark:border-l-emerald-400'
+  // [CORREÇÃO TYPE] O Cast 'as readonly string[]' resolve o erro de includes estrito
+  if ((URGENCIA_NIVEIS.GRAVISSIMA as readonly string[]).includes(term)) return 'border-l-red-600 dark:border-l-red-500'
+  if ((URGENCIA_NIVEIS.MUITO_GRAVE as readonly string[]).includes(term)) return 'border-l-orange-500 dark:border-l-orange-400'
+  if ((URGENCIA_NIVEIS.GRAVE as readonly string[]).includes(term)) return 'border-l-amber-500 dark:border-l-amber-400' 
+  if ((URGENCIA_NIVEIS.LEVE as readonly string[]).includes(term)) return 'border-l-emerald-500 dark:border-l-emerald-400'
 
   return 'border-l-slate-300 dark:border-l-slate-700'
 }
@@ -54,7 +55,16 @@ const ViolationTags = ({ data }: { data: string | string[] | undefined | null })
 }
 
 // --- KPI CARD ---
-export const KPICard = ({ title, value, subtitle, icon: Icon, theme, onClick }: any) => {
+interface KPICardProps {
+  title: string
+  value: string | number
+  subtitle?: string
+  icon: LucideIcon
+  theme?: 'blue' | 'emerald' | 'amber' | 'purple' | 'orange' | 'slate'
+  onClick?: () => void
+}
+
+export const KPICard = ({ title, value, subtitle, icon: Icon, theme = 'slate', onClick }: KPICardProps) => {
   const themes: Record<string, string> = {
     blue: "border-blue-500 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400",
     emerald: "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400",
@@ -92,7 +102,13 @@ export const KPICard = ({ title, value, subtitle, icon: Icon, theme, onClick }: 
 }
 
 // --- TABELA DE CASOS ---
-export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: BaseCase[], emptyMessage: string, isEspecialista: boolean }) => {
+interface CaseListTableProps {
+  cases: BaseCase[]
+  emptyMessage: string
+  isEspecialista: boolean
+}
+
+export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: CaseListTableProps) => {
   const navigate = useNavigate()
 
   if (!cases || cases.length === 0) {
@@ -126,7 +142,6 @@ export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: 
                 "group relative grid grid-cols-1 md:grid-cols-12 gap-4 rounded-lg bg-card shadow-sm border border-transparent",
                 "p-4 pl-5", 
                 "hover:border-primary/20 hover:shadow-md transition-all items-center cursor-pointer",
-                // [CORREÇÃO TAILWIND] border-l-[4px] -> border-l-4
                 "border-l-4", 
                 borderColor
               )}

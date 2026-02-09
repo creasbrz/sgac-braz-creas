@@ -1,9 +1,9 @@
 // frontend/src/types/workspace.ts
-import { UserRole } from './user'
-import { AppointmentCategory } from './agenda'
+import { UserRole } from './user' // Certifique-se que este arquivo existe
+import { AppointmentCategory } from './agenda' // Certifique-se que este arquivo existe
 
 // ==========================================
-// 1. ENUMS E AUXILIARES
+// 1. ENUMS E CONSTANTES
 // ==========================================
 
 export enum AlertType {
@@ -14,67 +14,80 @@ export enum AlertType {
   NOT_STARTED_YET = 'NOT_STARTED_YET'        // Caso atribuído, mas status não movido para "Em Atendimento"
 }
 
+// ==========================================
+// 2. ENTIDADES BASE (COMPARTILHADAS)
+// ==========================================
+
 /**
- * Representação leve de um agendamento para o widget do dashboard.
+ * Representação leve de um caso para listagens (Dashboard/Workspace).
+ * @note Substitui o antigo DashboardCase para manter compatibilidade com SharedComponents.tsx
+ */
+export interface BaseCase {
+  id: string
+  nomeCompleto: string
+  status: string
+  urgencia?: string | null
+  
+  /** * Pode vir como array do backend ou string CSV em views legadas 
+   */
+  violacao?: string | string[] | null 
+  
+  updatedAt: string
+  dataEntrada?: string // Usado para calcular SLA de acolhida
+  
+  // Opcionais úteis para UI
+  responsavelId?: string
+  tecnicoResponsavel?: {
+    nome: string
+  }
+}
+
+/**
+ * Representação leve de um agendamento para widgets.
  */
 export interface DashboardAppointment {
   id: string
   data: string // ISO Date string
   titulo: string
-  tipo?: AppointmentCategory
+  tipo?: AppointmentCategory | string
   caso?: { 
     id: string
     nomeCompleto: string 
   }
 }
 
-/**
- * Resumo de caso otimizado para listas rápidas e alertas.
- */
-export interface DashboardCase {
-  id: string
-  nomeCompleto: string
-  status: string
-  urgencia?: 'ALTA' | 'MEDIA' | 'BAIXA' | null
-  violacao?: string | null
-  updatedAt: string
-  dataEntrada?: string // Usado para calcular SLA de acolhida
-  
-  // Opcional: ID do responsável atual para filtragem rápida no front
-  responsavelId?: string
-}
-
-export interface CaseAlert extends DashboardCase {
-  type: AlertType
-  days: number // Dias de atraso ou estagnação
+export interface CaseAlert extends BaseCase {
+  alertType: AlertType // Renomeado de 'type' para evitar conflito com palavras reservadas
+  daysLate: number     // Renomeado de 'days' para ser mais semântico
 }
 
 // ==========================================
-// 2. DTOs DE RESPOSTA (WORKSPACES)
+// 3. WORKSPACES POR PERFIL (DISCRIMINATED UNIONS)
 // ==========================================
 
 /**
- * Workspace do Gerente: Visão macro da unidade.
+ * 🏢 Workspace do Gerente: Visão macro da unidade.
  */
 export interface ManagerWorkspaceData {
-  role: 'Gerente' // String literal para Discriminated Union
+  role: 'Gerente' // Discriminador
   
   stats: {
     totalActive: number
-    /** Casos que acabaram de chegar (Triagem/Recepção) */
-    waitingForReception: number 
-    /** Casos triados aguardando técnico de referência (Gargalo) */
-    waitingForDistribution: number 
+    waitingForReception: number     // Triagem
+    waitingForDistribution: number  // Gargalo (Sem técnico)
+    totalPaefi: number              // Adicionado para KPI
   }
   
+  /** Carga de trabalho da equipe */
   teamLoad: {
     id: string
     nome: string
-    role: UserRole
+    role: UserRole | string
     activeCases: number
     monitoringCases?: number
   }[]
   
+  /** Top violações para gráfico de barras */
   topViolations: { 
     label: string
     count: number 
@@ -84,12 +97,9 @@ export interface ManagerWorkspaceData {
 }
 
 /**
- * Tipos auxiliares para o Auditor
+ * ⚖️ Workspace do Auditor: Qualidade de dados e conformidade.
  */
-export interface IncompleteCase {
-  id: string
-  nome: string
-  status: string
+export interface IncompleteCase extends Pick<BaseCase, 'id' | 'nomeCompleto' | 'status'> {
   missingFields: string[] // Ex: ['CPF', 'Endereço', 'Telefone']
 }
 
@@ -101,28 +111,27 @@ export interface AuditLogSummary {
   data: string
 }
 
-/**
- * Workspace do Auditor: Foco em qualidade de dados e conformidade.
- */
 export interface AuditorWorkspaceData {
-  role: 'Auditor'
+  role: 'Auditor' // Discriminador
+  
   incompleteCases: IncompleteCase[]
   recentLogs: AuditLogSummary[]
+  
   complianceStats: {
     pafCoverage: number // % de casos ativos com PAF
     seiCoverage: number // % de casos com nº SEI
+    dataQualityScore: number // 0-100
   }
 }
 
 /**
- * Workspace Operacional: Foco nas tarefas do dia a dia.
- * (Compartilhado entre Agente Social e Especialista)
+ * 👷 Workspace Operacional: Agente Social e Especialista.
  */
 export interface OperationalWorkspaceData {
-  role: 'Agente_Social' | 'Especialista'
+  role: 'Agente_Social' | 'Especialista' // Discriminador
   
   /** Meus casos ativos ou monitorados */
-  myCases: DashboardCase[]
+  myCases: BaseCase[]
   
   /** Alertas de prazo e estagnação */
   alerts: CaseAlert[]
@@ -132,26 +141,23 @@ export interface OperationalWorkspaceData {
   
   /** Estatísticas específicas do cargo */
   detailedStats: {
+    // --- Comum ---
+    meusAtivos: number
+
     // --- Especialista (Técnico) ---
-    /** Casos em monitoramento (menos prioridade) */
     monitoramento?: number
-    /** Acolhidas especializadas pendentes */
     acolhidaEsp?: number
-    /** Casos em acompanhamento sistemático (PAEFI) */
-    acompanhamento?: number
+    acompanhamento?: number // PAEFI
     
     // --- Agente Social ---
-    /** Atribuídos a mim, aguardando 1º contato */
-    meusAguardando?: number    
-    /** Atribuídos a mim, triagem em andamento */
-    meusEmAtendimento?: number 
-    /** Fila geral da unidade (sem dono, para puxar) */
-    filaGeral?: number         
+    meusAguardando?: number    // Aguardando visita/contato
+    meusEmAtendimento?: number // Triagem em andamento
+    filaGeral?: number         // Sem dono (para puxar)
   }
 }
 
 // ==========================================
-// 3. UNION TYPE PRINCIPAL
+// 4. TIPO DE RETORNO DA API
 // ==========================================
 
 export type WorkspaceResponse = 

@@ -1,29 +1,513 @@
 CONTEXTO: 5_frontend_pages_01
 
 
-FILE: frontend\src\pages\dashboard\Dashboard.tsx
+FILE: frontend\src\pages\dashboard\AdvancedAnalytics.tsx
 --------------------------------------------------
-// frontend/src/pages/Dashboard.tsx
-import React, { Suspense } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
-import { Loader2, LayoutDashboard, UserCircle, LogOut } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { useState, useMemo, useEffect } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import { z } from "zod"
+import { toast } from "sonner"
 
-// Importação dinâmica para melhor performance de carregamento inicial
-const ManagerDashboard = React.lazy(() => import('./ManagerDashboard').then(module => ({ default: module.ManagerDashboard })))
-const SocialAgentDashboard = React.lazy(() => import('./SocialAgentDashboard').then(module => ({ default: module.SocialAgentDashboard })))
-const TechnicianDashboard = React.lazy(() => import('./TechnicianDashboard').then(module => ({ default: module.TechnicianDashboard })))
+// Gráficos (Recharts via Shadcn)
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, 
+  PieChart, Pie, Label, BarChart, Bar, LabelList, Cell
+} from "recharts"
 
-type Cargo = 'Gerente' | 'Agente_Social' | 'Especialista' | string
+// Ícones e UI
+import { 
+  Clock, TrendingUp, FileBarChart, 
+  Activity, Briefcase, Calendar, RefreshCw, AlertTriangle
+} from "lucide-react"
 
-const DASHBOARD_BY_ROLE: Record<Cargo, React.ReactNode> = {
-  Gerente: <ManagerDashboard />,
-  'Agente_Social': <SocialAgentDashboard />,
-  Especialista: <TechnicianDashboard />,
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { DashboardStatCard } from "@/components/dashboard/DashboardStatCard"
+import { SmartInsightsCard } from "@/components/dashboard/SmartInsightsCard"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+
+// Shadcn Charts
+import { 
+  ChartConfig, 
+  ChartContainer, 
+  ChartTooltip, 
+  ChartTooltipContent, 
+  ChartLegend,
+  ChartLegendContent
+} from "@/components/ui/chart"
+
+// PDF Imports
+import { PDFDownloadButton } from "@/components/reports/PDFDownloadButton"
+import { AnalyticsReportDoc } from "@/components/reports/templates/AnalyticsReportDoc"
+
+// --- SCHEMAS DE VALIDAÇÃO (ZOD) ---
+const TrendDataSchema = z.object({
+  name: z.string(),
+  novos: z.number().default(0),
+  fechados: z.number().default(0),
+})
+
+const PieDataSchema = z.object({
+  name: z.string(),
+  value: z.number(),
+})
+
+const InsightSchema = z.object({
+  type: z.enum(['success', 'warning', 'info']).default('info'),
+  title: z.string(),
+  description: z.string(),
+})
+
+const AdvancedStatsSchema = z.object({
+  avgHandlingTime: z.number().default(0),
+  totalActive: z.number().default(0),
+  trendData: z.array(TrendDataSchema).default([]),
+  pieData: z.array(PieDataSchema).default([]),
+  insights: z.array(InsightSchema).default([]),
+})
+
+const ProductivityItemSchema = z.object({
+  name: z.string(),
+  value: z.number().default(0),
+})
+
+const trendChartConfig = {
+  novos: {
+    label: "Novos Casos",
+    color: "hsl(var(--chart-1))", 
+  },
+  fechados: {
+    label: "Desligamentos",
+    color: "hsl(var(--chart-2))", 
+  },
+} satisfies ChartConfig
+
+const productivityChartConfig = {
+  value: {
+    label: "Intervenções",
+    color: "hsl(var(--primary))",
+  },
+} satisfies ChartConfig
+
+function calculateRegression(xs: number[], ys: number[]): number | null {
+  if (xs.length < 2) return null
+  const n = xs.length
+  const meanX = xs.reduce((a, b) => a + b, 0) / n
+  const meanY = ys.reduce((a, b) => a + b, 0) / n
+  let num = 0
+  let den = 0
+  for (let i = 0; i < n; i++) {
+    const diffX = xs[i] - meanX
+    num += diffX * (ys[i] - meanY)
+    den += diffX ** 2
+  }
+  if (den === 0) return null
+  const m = num / den
+  const b = meanY - m * meanX
+  return m * (xs[n - 1] + 1) + b
 }
 
+export function AdvancedAnalytics() {
+  const [periodMonths, setPeriodMonths] = useState<number>(12)
+
+  const statsQuery = useQuery({
+    queryKey: ["stats", "advanced", periodMonths],
+    queryFn: async () => {
+      const { data } = await api.get("/stats/advanced", { params: { months: periodMonths } })
+      return AdvancedStatsSchema.parse(data)
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const prodQuery = useQuery({
+    queryKey: ["stats", "productivity", periodMonths],
+    queryFn: async () => {
+      const { data } = await api.get("/stats/productivity", { params: { mode: 'performance', months: periodMonths } })
+      return z.array(ProductivityItemSchema).parse(data)
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
+  useEffect(() => {
+    if (statsQuery.isError || prodQuery.isError) {
+      toast.error("Erro ao sincronizar dados analíticos", {
+        description: "Exibindo dados em cache ou estado vazio."
+      })
+    }
+  }, [statsQuery.isError, prodQuery.isError])
+
+  const processedData = useMemo(() => {
+    const rawData = statsQuery.data || AdvancedStatsSchema.parse({})
+    const rawProd = prodQuery.data || []
+
+    const violationCounts: Record<string, number> = {}
+    rawData.pieData.forEach((item) => {
+      item.name.split(',').forEach((cat) => {
+        const trimmed = cat.trim()
+        if (trimmed) violationCounts[trimmed] = (violationCounts[trimmed] || 0) + item.value
+      })
+    })
+
+    const pieChartData = Object.entries(violationCounts)
+      .map(([realName, value], index) => ({
+        name: `segment_${index}`,
+        realLabel: realName,
+        value,
+        fill: `hsl(var(--chart-${(index % 5) + 1}))`
+      }))
+      .sort((a, b) => b.value - a.value)
+
+    const dynamicConfig: ChartConfig = { occurrences: { label: "Ocorrências" } }
+    pieChartData.forEach(item => {
+      dynamicConfig[item.name] = { label: item.realLabel, color: item.fill }
+    })
+
+    const xs: number[] = []
+    const ys: number[] = []
+    rawData.trendData.forEach((d, i) => { xs.push(i); ys.push(d.novos) })
+    const forecastValue = calculateRegression(xs, ys)
+
+    const totalViolations = pieChartData.reduce((acc, curr) => acc + curr.value, 0)
+
+    const reportData = {
+      periodo: periodMonths,
+      kpis: {
+        tempoMedio: rawData.avgHandlingTime,
+        ativosPaefi: rawData.totalActive,
+        previsaoNovos: forecastValue
+      },
+      insights: rawData.insights,
+      fluxo: rawData.trendData,
+      violacoes: pieChartData.map(p => ({
+        name: p.realLabel,
+        value: p.value,
+        percent: totalViolations > 0 ? (p.value / totalViolations) * 100 : 0
+      })),
+      produtividade: rawProd
+    }
+
+    return {
+      kpis: rawData,
+      pieChartData,
+      violationConfig: dynamicConfig,
+      forecast: forecastValue,
+      totalViolations,
+      productivity: rawProd,
+      reportData,
+      formattedInsights: rawData.insights.map(i => `${i.title}: ${i.description}`)
+    }
+  }, [statsQuery.data, prodQuery.data, periodMonths])
+
+  const isLoading = statsQuery.isLoading || prodQuery.isLoading
+
+  return (
+    <div className="space-y-8 p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-700">
+      
+      {/* HEADER */}
+      <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-8 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            Inteligência de Dados
+            {statsQuery.isFetching && <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Análise estratégica e preditiva da unidade.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Select value={String(periodMonths)} onValueChange={(v) => setPeriodMonths(Number(v))}>
+            <SelectTrigger className="w-45 bg-background border-border/60 shadow-sm h-9">
+              <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="3">Últimos 3 Meses</SelectItem>
+              <SelectItem value="6">Últimos 6 Meses</SelectItem>
+              <SelectItem value="12">Últimos 12 Meses</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <div className="hidden sm:block">
+            {statsQuery.data && (
+                <PDFDownloadButton 
+                  document={<AnalyticsReportDoc data={processedData.reportData} />}
+                  fileName={`Relatorio_Sintetico_${periodMonths}M.pdf`}
+                  label="Exportar PDF"
+                  variant="outline" 
+                  size="sm"
+                  className="h-9"
+                />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* KPI GRID */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {isLoading ? (
+           Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)
+        ) : (
+          <>
+            <DashboardStatCard 
+              title="Tempo Médio Resolução" 
+              value={processedData.kpis.avgHandlingTime} 
+              description="Dias triagem até desligamento" 
+              icon={Clock} 
+              variant="default" 
+            />
+            <DashboardStatCard 
+              title="Casos Ativos (PAEFI)" 
+              value={processedData.kpis.totalActive} 
+              description="Famílias em acompanhamento" 
+              icon={Activity} 
+              variant="default"
+            />
+            <DashboardStatCard 
+              title="Novos Casos" 
+              value={processedData.kpis.trendData.reduce((acc, curr) => acc + curr.novos, 0)} 
+              description={`Total no período (${periodMonths}m)`} 
+              icon={FileBarChart} 
+              variant="default"
+            />
+             <Card className="flex flex-col justify-between border-l-4 border-l-primary shadow-sm bg-linear-to-br from-background to-muted/20">
+                <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Previsão (IA)</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                    <div className="text-2xl font-bold flex items-baseline gap-1">
+                        ~{Math.round(processedData.forecast || 0)}
+                        <span className="text-xs font-normal text-muted-foreground">novos casos/mês</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Tendência linear baseada no histórico.</p>
+                </CardContent>
+             </Card>
+          </>
+        )}
+      </section>
+
+      {/* BENTO GRID LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* 1. GRÁFICO PRINCIPAL */}
+        <Card className="lg:col-span-8 shadow-sm border-border/50 flex flex-col">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+                <div>
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-[hsl(var(--chart-1))]"/> Fluxo de Atendimentos
+                    </CardTitle>
+                    <CardDescription>Comparativo de entradas vs. saídas</CardDescription>
+                </div>
+                {!isLoading && (
+                    <Badge variant="outline" className="font-mono text-xs">LIVE DATA</Badge>
+                )}
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 pb-2">
+            {/* [CORREÇÃO] Altura explícita no ChartContainer, removido ResponsiveContainer manual */}
+            {isLoading ? <Skeleton className="w-full h-75 rounded-lg" /> : (
+                <ChartContainer config={trendChartConfig} className="min-h-75 w-full">
+                  <LineChart data={processedData.kpis.trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                      <XAxis 
+                          dataKey="name" 
+                          tickLine={false} 
+                          axisLine={false} 
+                          tickMargin={12} 
+                          fontSize={12}
+                          stroke="hsl(var(--muted-foreground))"
+                      />
+                      <YAxis 
+                          tickLine={false} 
+                          axisLine={false} 
+                          fontSize={12}
+                          stroke="hsl(var(--muted-foreground))"
+                          width={30}
+                      />
+                      <ChartTooltip 
+                          content={
+                              <ChartTooltipContent 
+                                  indicator="line" 
+                                  className="bg-background/95 backdrop-blur border-border/50 shadow-xl" 
+                              />
+                          } 
+                      />
+                      <Line 
+                          type="monotone" 
+                          dataKey="novos" 
+                          stroke="var(--color-novos)" 
+                          strokeWidth={3} 
+                          dot={false}
+                          activeDot={{ r: 6, strokeWidth: 0 }}
+                          animationDuration={1500}
+                      />
+                      <Line 
+                          type="monotone" 
+                          dataKey="fechados" 
+                          stroke="var(--color-fechados)" 
+                          strokeWidth={2} 
+                          strokeDasharray="4 4" 
+                          dot={false}
+                      />
+                      <ChartLegend content={<ChartLegendContent />} className="pt-4" />
+                  </LineChart>
+                </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 2. INSIGHTS IA */}
+        <div className="lg:col-span-4 flex flex-col h-full">
+           <SmartInsightsCard 
+             insights={processedData.formattedInsights} 
+             isLoading={isLoading} 
+             className="h-full border-border/50 shadow-sm min-h-95"
+           />
+        </div>
+
+        {/* 3. GRÁFICO DE PIZZA */}
+        <Card className="lg:col-span-5 shadow-sm border-border/50 flex flex-col">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-4))]"/> Tipificação de Violações
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 flex items-center justify-center p-6">
+                {isLoading ? <Skeleton className="h-64 w-64 rounded-full" /> : (
+                    processedData.pieChartData.length > 0 ? (
+                        <ChartContainer config={processedData.violationConfig} className="aspect-square h-full max-h-75 w-full mx-auto">
+                            <PieChart>
+                                <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                                <Pie 
+                                    data={processedData.pieChartData} 
+                                    dataKey="value" 
+                                    nameKey="name" 
+                                    innerRadius={60} 
+                                    outerRadius={90} 
+                                    strokeWidth={2}
+                                    stroke="hsl(var(--background))"
+                                    paddingAngle={3}
+                                >
+                                    {processedData.pieChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                    <Label
+                                        content={({ viewBox }) => {
+                                            if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                                                return (
+                                                    <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                                                        <tspan x={viewBox.cx} y={viewBox.cy} dy="-0.2em" className="fill-foreground text-3xl font-bold">
+                                                            {processedData.totalViolations}
+                                                        </tspan>
+                                                        <tspan x={viewBox.cx} y={viewBox.cy} dy="1.4em" className="fill-muted-foreground text-xs font-semibold uppercase">
+                                                            Ocorrências
+                                                        </tspan>
+                                                    </text>
+                                                )
+                                            }
+                                        }}
+                                    />
+                                </Pie>
+                                <ChartLegend 
+                                    content={<ChartLegendContent nameKey="realLabel" />} 
+                                    className="-translate-y-2 flex-wrap gap-2 text-xs" 
+                                />
+                            </PieChart>
+                        </ChartContainer>
+                    ) : (
+                        <div className="text-center text-muted-foreground text-sm py-12">Nenhum dado disponível.</div>
+                    )
+                )}
+            </CardContent>
+        </Card>
+
+        {/* 4. GRÁFICO DE BARRAS */}
+        <Card className="lg:col-span-7 shadow-sm border-border/50 flex flex-col">
+             <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-primary"/> Produtividade Técnica
+                </CardTitle>
+                <CardDescription>Intervenções registradas por técnico</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-0 p-4"> 
+                 {isLoading ? <Skeleton className="w-full h-75" /> : (
+                    <ChartContainer config={productivityChartConfig} className="min-h-75 w-full">
+                        <BarChart 
+                            accessibilityLayer 
+                            data={processedData.productivity} 
+                            layout="vertical" 
+                            barCategoryGap="15%" 
+                            margin={{ left: -10, right: 40, top: 0, bottom: 0 }}
+                        >
+                            <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.3} />
+                            <YAxis 
+                                dataKey="name" 
+                                type="category" 
+                                tickLine={false} 
+                                axisLine={false}
+                                width={110}
+                                className="text-[11px] font-medium"
+                                interval={0} 
+                            />
+                            <XAxis type="number" hide />
+                            <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+                            
+                            <Bar 
+                                dataKey="value" 
+                                fill="var(--color-value)" 
+                                radius={[0, 3, 3, 0]} 
+                                barSize={16} 
+                                className="opacity-90 hover:opacity-100 transition-opacity"
+                            >
+                                <LabelList 
+                                    dataKey="value" 
+                                    position="right" 
+                                    className="fill-foreground font-bold text-[10px]"
+                                    formatter={(value: any) => (Number(value) > 0 ? value : "")}
+                                />
+                            </Bar>
+                        </BarChart>
+                    </ChartContainer>
+                 )}
+            </CardContent>
+        </Card>
+
+      </div>
+    </div>
+  )
+}
+
+FILE: frontend\src\pages\dashboard\Dashboard.tsx
+--------------------------------------------------
+// frontend/src/pages/dashboard/Dashboard.tsx
+import React, { Suspense, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
+import { Loader2 } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ROUTES } from '@/constants/app-routes'
+
+// Importação dinâmica (apenas do ManagerDashboard, já que os outros foram consolidados)
+const ManagerDashboard = React.lazy(() => import('./ManagerDashboard').then(module => ({ default: module.ManagerDashboard })))
+
 export function Dashboard() {
-  const { user, isSessionLoading, logout } = useAuth()
+  const { user, isSessionLoading } = useAuth()
+  const navigate = useNavigate()
+
+  // [LÓGICA v8.1] Redirecionamento Automático
+  useEffect(() => {
+    if (!isSessionLoading && user) {
+      const operationalRoles = ['Agente_Social', 'Especialista']
+      
+      // Se for operacional, manda direto para a Mesa de Trabalho (Workspace)
+      if (operationalRoles.includes(user.cargo)) {
+        navigate(ROUTES.WORKSPACE, { replace: true })
+      }
+    }
+  }, [user, isSessionLoading, navigate])
 
   if (isSessionLoading) {
     return (
@@ -32,90 +516,17 @@ export function Dashboard() {
           <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
           <Loader2 className="absolute h-10 w-10 animate-spin text-primary [animation-duration:1.5s]" />
         </div>
-        <p className="text-sm font-medium text-muted-foreground animate-pulse">A preparar o seu painel...</p>
+        <p className="text-sm font-medium text-muted-foreground animate-pulse">Carregando painel...</p>
       </div>
     )
   }
 
-  if (!user) {
-    return (
-      <div className="flex h-[70vh] items-center justify-center p-6">
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-status-error-bg border border-status-error-border p-6 rounded-2xl text-center space-y-4 shadow-sm"
-        >
-          <div className="mx-auto w-12 h-12 rounded-full bg-status-error-fg/10 flex items-center justify-center">
-            <UserCircle className="h-6 w-6 text-status-error-fg" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="font-bold text-foreground text-lg">Sessão Expirada</h3>
-            <p className="text-sm text-muted-foreground">Por segurança, por favor faça login novamente para aceder aos seus dados.</p>
-          </div>
-          <button 
-            onClick={() => window.location.href = '/login'}
-            className="w-full py-2.5 bg-foreground text-background rounded-xl font-semibold text-sm hover:opacity-90 transition-all active:scale-95"
-          >
-            Voltar ao Login
-          </button>
-        </motion.div>
-      </div>
-    )
-  }
+  if (!user) return null // AuthContext vai lidar com o redirecionamento para login
 
-  const dashboard = DASHBOARD_BY_ROLE[user.cargo] ?? (
-    <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-3xl border-muted/50 text-muted-foreground">
-       <LayoutDashboard className="h-12 w-12 mb-4 opacity-20" />
-       <p className="font-medium text-lg">Cargo "{user.cargo}" sem painel configurado.</p>
-       <p className="text-sm max-w-xs text-center mt-2">Contacte o administrador para associar as permissões correctas ao seu perfil.</p>
-    </div>
-  )
-
-  const subtitle =
-    user.cargo === 'Agente_Social'
-      ? 'Painel de Acolhida e Triagem.'
-      : user.cargo === 'Gerente'
-      ? 'Resumo estratégico e operacional da unidade.'
-      : 'Acompanhamento de casos e actividades recentes.'
-
+  // Se for operacional, o useEffect acima já redirecionou.
+  // Se chegou aqui, é Gerente ou Auditor, então renderiza o Dashboard Gerencial unificado.
   return (
     <div className="space-y-8 pb-12">
-      {/* Header com Design Premium */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/40 pb-6">
-        <motion.div 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="space-y-1"
-        >
-          <div className="flex items-center gap-2 text-primary mb-1">
-             <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-             <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Sistema Ativo</span>
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl text-foreground">
-            Olá, {user.nome.split(' ')[0]}!
-          </h1>
-          <p className="text-muted-foreground font-medium flex items-center gap-2">
-            {subtitle}
-          </p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-3"
-        >
-           {/* Informação de Cargo removida conforme solicitado */}
-           <button 
-             onClick={logout}
-             title="Sair do sistema"
-             className="p-3 rounded-2xl bg-muted/30 text-muted-foreground hover:bg-status-error-bg hover:text-status-error-fg transition-all duration-300 group border border-border/40"
-           >
-              <LogOut className="h-5 w-5 group-hover:-translate-x-0.5 transition-transform" />
-           </button>
-        </motion.div>
-      </header>
-
-      {/* Área do Dashboard com transição suave */}
       <main>
         <Suspense fallback={
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in zoom-in-95 duration-500">
@@ -125,12 +536,11 @@ export function Dashboard() {
           </div>
         }>
           <motion.div
-            key={user.cargo}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           >
-            {dashboard}
+            <ManagerDashboard />
           </motion.div>
         </Suspense>
       </main>
@@ -148,7 +558,7 @@ import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { 
   Users, UserPlus, FolderOpen, FolderCheck, RefreshCw, 
-  Activity, Briefcase, LucideIcon 
+  Activity, Briefcase, LucideIcon, BarChart3, LineChart
 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, LabelList } from "recharts"
 import { clsx, type ClassValue } from 'clsx'
@@ -166,22 +576,14 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 
-// Domain Components
-import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
-import { UpcomingPafDeadlines } from '@/components/dashboard/UpcomingPafDeadlines'
-import { RecentActivityFeed } from '@/components/dashboard/RecentActivityFeed'
-import { AdvancedAnalytics } from '../AdvancedAnalytics'
-
-// Imports de PDF
+import { AdvancedAnalytics } from './AdvancedAnalytics'
 import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
 import { ManagementReportDoc } from '@/components/reports/templates/ManagementReportDoc'
 
-// --- UTILS ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// --- CONFIGURAÇÃO DOS GRÁFICOS ---
 const workloadChartConfig = {
   cases: {
     label: "Casos Ativos",
@@ -189,7 +591,6 @@ const workloadChartConfig = {
   },
 } satisfies ChartConfig
 
-// --- TYPES ---
 interface StatData {
   name: string
   value: number
@@ -205,8 +606,6 @@ interface ManagerStats {
   lastUpdated?: string
 }
 
-// --- SUB-COMPONENTS ---
-
 interface StatCardProps {
   title: string
   value: number
@@ -216,7 +615,6 @@ interface StatCardProps {
 }
 
 const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', description }: StatCardProps) => {
-  // Cores Modernizadas (Padrão Pastel 50 + Vivid 500)
   const themes = {
     blue: "bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400 border-blue-100 dark:border-blue-500/20",
     amber: "bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400 border-amber-100 dark:border-amber-500/20",
@@ -226,7 +624,6 @@ const ManagerStatCard = ({ title, value, icon: Icon, variant = 'blue', descripti
 
   return (
     <Card className="border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative group">
-       {/* Faixa lateral colorida no hover [CORREÇÃO: w-[3px] -> w-0.75] */}
        <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", themes[variant].split(' ')[0].replace('50', '500'))} />
        
       <CardContent className="p-6 flex items-start justify-between relative z-10">
@@ -263,14 +660,11 @@ function DashboardSkeleton() {
         {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full" />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* [CORREÇÃO: h-[300px] -> h-75] */}
         {[1,2].map(i => <Skeleton key={i} className="h-75 rounded-xl w-full" />)}
       </div>
     </div>
   )
 }
-
-// --- MAIN COMPONENT ---
 
 export function ManagerDashboard() {
   const queryClient = useQueryClient()
@@ -334,8 +728,6 @@ export function ManagerDashboard() {
 
     if (!stats) return null
 
-    // [CORREÇÃO: ORDENAÇÃO DECRESCENTE]
-    // Preparando e ordenando dados para gráficos (Maior para Menor)
     const agentData = stats.workloadByAgent
         .sort((a, b) => b.value - a.value)
         .map(d => ({ ...d, fill: "hsl(var(--primary))" }))
@@ -347,44 +739,6 @@ export function ManagerDashboard() {
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         
-        {/* HEADER & TOOLBAR (Sticky Glass) */}
-        <div className="sticky top-0 z-10 -mx-6 -mt-2 px-6 py-4 bg-background/80 backdrop-blur-md border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">Visão Geral</h2>
-            <p className="text-muted-foreground text-sm">Monitoramento operacional e estratégico.</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {stats.lastUpdated && (
-              <span className="text-xs text-muted-foreground mr-2 hidden sm:inline-block">
-                Atualizado: {format(new Date(stats.lastUpdated), "HH:mm", { locale: ptBR })}
-              </span>
-            )}
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleForceRefresh}
-              disabled={isRefetching}
-              className="h-9 gap-2 bg-background border-border/60 shadow-sm"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", isRefetching && 'animate-spin')} />
-              <span className="sr-only sm:not-sr-only">Atualizar</span>
-            </Button>
-
-            {reportData && (
-              <PDFDownloadButton 
-                document={<ManagementReportDoc data={reportData as any} />}
-                fileName={`Relatorio_Gerencial_${format(new Date(), 'MM-yyyy')}.pdf`}
-                label="Relatório Mensal"
-                variant="default"
-                size="sm"
-                className="h-9"
-              />
-            )}
-          </div>
-        </div>
-
         {/* 1. KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 px-1">
           <ManagerStatCard 
@@ -417,7 +771,7 @@ export function ManagerDashboard() {
           />
         </div>
 
-        {/* 2. GRÁFICOS DE CARGA */}
+        {/* 2. GRÁFICO DE CARGA */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Carga Agentes */}
           <Card className="shadow-sm border-border/50">
@@ -428,8 +782,8 @@ export function ManagerDashboard() {
               <CardDescription>Distribuição de casos ativos por técnico.</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* [CORREÇÃO: min-h-[200px] -> min-h-50, max-h-[300px] -> max-h-75] */}
-              <ChartContainer config={workloadChartConfig} className="min-h-50 max-h-75 w-full">
+              {/* [CORREÇÃO] ResponsiveContainer removido, altura aplicada no ChartContainer */}
+              <ChartContainer config={workloadChartConfig} className="min-h-75 w-full">
                 <BarChart
                   accessibilityLayer
                   data={agentData}
@@ -453,7 +807,7 @@ export function ManagerDashboard() {
                   <Bar 
                     dataKey="value" 
                     radius={[0, 4, 4, 0]} 
-                    barSize={20}
+                    barSize={20} 
                     className="opacity-90 hover:opacity-100 transition-opacity"
                   >
                     <LabelList 
@@ -478,8 +832,8 @@ export function ManagerDashboard() {
               <CardDescription>Volume de PAEFI por técnico de referência.</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* [CORREÇÃO: min-h-[200px] -> min-h-50, max-h-[300px] -> max-h-75] */}
-              <ChartContainer config={workloadChartConfig} className="min-h-50 max-h-75 w-full">
+              {/* [CORREÇÃO] Altura fixa aplicada no ChartContainer */}
+              <ChartContainer config={workloadChartConfig} className="min-h-75 w-full">
                 <BarChart
                   accessibilityLayer
                   data={specialistData}
@@ -503,7 +857,7 @@ export function ManagerDashboard() {
                   <Bar 
                     dataKey="value" 
                     radius={[0, 4, 4, 0]} 
-                    barSize={20}
+                    barSize={20} 
                     className="opacity-90 hover:opacity-100 transition-opacity"
                   >
                     <LabelList 
@@ -519,36 +873,46 @@ export function ManagerDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* 3. OPERATIONAL FEEDS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 flex flex-col h-full">
-            {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
-            <UpcomingAppointments enableScroll className="h-full min-h-100 shadow-sm border-border/50" />
-          </div>
-          <div className="lg:col-span-1 flex flex-col h-full">
-             {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
-            <UpcomingPafDeadlines className="h-full min-h-100 shadow-sm border-border/50" />
-          </div>
-          <div className="lg:col-span-1 flex flex-col h-full">
-             {/* [CORREÇÃO: min-h-[400px] -> min-h-100] */}
-            <RecentActivityFeed className="h-full min-h-100 shadow-sm border-border/50" />
-          </div>
-        </div>
       </div>
     )
   }
 
   return (
-    // [CORREÇÃO: max-w-[1600px] -> max-w-400]
-    <div className="w-full space-y-6 p-4 md:p-8 max-w-400 mx-auto">
+    <div className="w-full space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
        <Tabs defaultValue="overview" className="w-full space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            {/* [CORREÇÃO: sm:w-[400px] -> sm:w-100] */}
-            <TabsList className="grid w-full sm:w-100 grid-cols-2 bg-muted/50 p-1">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">Visão Operacional</TabsTrigger>
-            <TabsTrigger value="analytics" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">Indicadores & IA</TabsTrigger>
-            </TabsList>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-muted/20 p-2 rounded-xl border border-border/60">
+           <TabsList className="grid w-full sm:w-auto grid-cols-2 bg-muted/50 p-1 h-auto">
+             <TabsTrigger value="overview" className="data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 gap-2">
+                <BarChart3 className="h-4 w-4" /> Visão Operacional
+             </TabsTrigger>
+             <TabsTrigger value="analytics" className="data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 gap-2">
+                <LineChart className="h-4 w-4" /> Inteligência de Dados
+             </TabsTrigger>
+           </TabsList>
+
+           <div className="flex items-center gap-2 w-full sm:w-auto justify-end px-2">
+             <Button 
+               variant="ghost" 
+               size="sm" 
+               onClick={handleForceRefresh} 
+               disabled={isRefetching}
+               className="h-8 gap-2 text-muted-foreground"
+             >
+                <RefreshCw className={cn("h-3.5 w-3.5", isRefetching && 'animate-spin')} />
+                <span className="hidden sm:inline">Atualizar</span>
+             </Button>
+
+             {reportData && (
+               <PDFDownloadButton 
+                 document={<ManagementReportDoc data={reportData as any} />}
+                 fileName={`Relatorio_Gerencial_${format(new Date(), 'MM-yyyy')}.pdf`}
+                 label="Baixar Relatório"
+                 variant="default"
+                 size="sm"
+                 className="h-8"
+               />
+             )}
+           </div>
         </div>
 
         <TabsContent value="overview" className="mt-0 focus-visible:outline-none">
@@ -558,696 +922,7 @@ export function ManagerDashboard() {
         <TabsContent value="analytics" className="mt-0 focus-visible:outline-none">
             <AdvancedAnalytics />
         </TabsContent>
-        </Tabs>
-    </div>
-  )
-}
-
-FILE: frontend\src\pages\dashboard\SocialAgentDashboard.tsx
---------------------------------------------------
-// frontend/src/pages/dashboard/SocialAgentDashboard.tsx
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { 
-  Users, ArrowRight, AlertCircle, Clock, Calendar, 
-  UserCheck, LucideIcon, Briefcase 
-} from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import { motion } from 'framer-motion'
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
-import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
-
-import { ROUTES } from '@/constants/app-routes'
-
-// --- UTILS ---
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
-// --- TYPES ---
-interface StatCardProps {
-  title: string
-  value: number | string
-  description?: string
-  icon: LucideIcon
-  variant?: 'purple' | 'blue' | 'emerald' | 'default'
-}
-
-interface CaseItem {
-  id: string
-  nomeCompleto: string
-  urgencia: string
-  dataEntrada: string
-}
-
-// --- COMPONENTS ---
-
-const AgentStatCard = ({ title, value, icon: Icon, description, variant = 'default' }: StatCardProps) => {
-  // Mapeamento para Tokens Semânticos
-  const variants = {
-    default: {
-      container: "bg-primary/5 border-primary/20",
-      icon: "text-primary bg-background border-primary/20",
-      text: "text-primary",
-      stripe: "bg-primary"
-    },
-    purple: {
-      // Usando Status AI (Violet)
-      container: "bg-status-ai-bg/50 border-status-ai-border",
-      icon: "text-status-ai-fg bg-status-ai-bg border-status-ai-border",
-      text: "text-status-ai-fg",
-      stripe: "bg-status-ai-fg"
-    },
-    blue: {
-      // Usando Status Info (Blue)
-      container: "bg-status-info-bg/50 border-status-info-border",
-      icon: "text-status-info-fg bg-status-info-bg border-status-info-border",
-      text: "text-status-info-fg",
-      stripe: "bg-status-info-fg"
-    },
-    emerald: {
-      // Usando Status Success (Emerald)
-      container: "bg-status-success-bg/50 border-status-success-border",
-      icon: "text-status-success-fg bg-status-success-bg border-status-success-border",
-      text: "text-status-success-fg",
-      stripe: "bg-status-success-fg"
-    },
-  }
-
-  const style = variants[variant]
-
-  return (
-    <Card className={cn("overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border relative group", style.container)}>
-      {/* Faixa lateral colorida no hover */}
-      <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", style.stripe)} />
-      
-      <div className="p-6 flex items-start justify-between">
-        <div className="space-y-1 relative z-10">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80">{title}</p>
-          <div className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{value}</div>
-          {description && (
-            <p className="text-xs text-muted-foreground font-medium pt-1 line-clamp-1">{description}</p>
-          )}
-        </div>
-        <div className={cn("p-2.5 rounded-xl transition-colors border shadow-sm", style.icon)}>
-          <Icon className="w-5 h-5" strokeWidth={2.5} />
-        </div>
-      </div>
-    </Card>
-  )
-}
-
-export function SocialAgentDashboard() {
-  const { data: summary, isLoading, isError } = useQuery({
-    queryKey: ['workspace-summary'],
-    queryFn: async () => (await api.get('/workspace/summary')).data,
-    refetchInterval: 1000 * 60 * 5
-  })
-
-  const { data: waitingList } = useQuery({
-    queryKey: ['cases', 'waiting-triage'],
-    queryFn: async () => {
-      const res = await api.get('/cases', { params: { status: 'AGUARDANDO_ACOLHIDA', pageSize: 5 } })
-      return res.data.data || []
-    }
-  })
-
-  // --- LOADING STATES ---
-  if (isLoading) return (
-    <div className="space-y-6 p-1 animate-pulse">
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-         {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full"/>)}
-       </div>
-       <div className="grid lg:grid-cols-3 gap-6">
-         <Skeleton className="h-100 lg:col-span-2 rounded-xl"/>
-         <Skeleton className="h-100 rounded-xl"/>
-       </div>
-    </div>
-  )
-
-  // --- ERROR STATE ---
-  if (isError) return (
-    <div className="flex flex-col items-center justify-center h-64 p-6 text-center border border-dashed rounded-lg bg-status-error-bg/10 border-status-error-border text-status-error-fg">
-      <AlertCircle className="h-10 w-10 mb-3 opacity-80" />
-      <p className="text-sm font-medium">Não foi possível carregar o painel.</p>
-    </div>
-  )
-
-  // Animation Variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  }
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 }
-  }
-
-  return (
-    <motion.div 
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="space-y-8 p-1"
-    >
-      
-      {/* 1. KPIs SECTION */}
-      <section aria-label="Métricas Principais">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <motion.div variants={itemVariants}>
-            <AgentStatCard 
-              title="Para Iniciar" 
-              value={summary?.detailedStats?.meusAguardando || 0} 
-              icon={Briefcase} 
-              variant="purple"
-              description="Casos na sua fila de entrada" 
-            />
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <AgentStatCard 
-              title="Em Acolhida" 
-              value={summary?.detailedStats?.meusEmAtendimento || 0} 
-              icon={Users} 
-              variant="blue"
-              description="Atendimentos em andamento" 
-            />
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <AgentStatCard 
-              title="Compromissos Hoje" 
-              value={summary?.appointments?.length || 0} 
-              icon={Calendar} 
-              variant="emerald"
-              description="Agendados para o dia" 
-            />
-          </motion.div>
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        
-        {/* 2. AGENDA (Maior prioridade visual) */}
-        <motion.div variants={itemVariants} className="lg:col-span-2 h-full">
-          <UpcomingAppointments 
-             data={summary?.appointments?.slice(0, 5)} 
-             title="Minha Agenda do Dia"
-             enableScroll={false}
-             className="h-full min-h-112.5 shadow-sm border-border/60"
-          />
-        </motion.div>
-
-        {/* 3. MINHA FILA DE AÇÃO */}
-        <motion.div variants={itemVariants} className="h-full">
-          <Card className="h-full flex flex-col shadow-sm border-border/60 bg-card overflow-hidden">
-            <CardHeader className="pb-3 px-5 py-4 shrink-0 border-b border-border/40">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold flex items-center gap-2.5 text-foreground">
-                  {/* Ícone Semântico (AI/Violet para Fila Inteligente) */}
-                  <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-status-ai-bg border border-status-ai-border text-status-ai-fg">
-                    <Clock className="h-4 w-4" /> 
-                  </div>
-                  Minha Fila
-                </CardTitle>
-                <Badge variant="outline" className="text-[10px] font-normal h-5 px-1.5">
-                  {waitingList?.length || 0}
-                </Badge>
-              </div>
-              <CardDescription className="line-clamp-1 text-xs mt-1">
-                Usuários aguardando sua primeira escuta.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="flex-1 p-0 overflow-hidden min-h-75">
-              {waitingList && waitingList.length > 0 ? (
-                <ul className="divide-y divide-border/40">
-                  {waitingList.slice(0, 5).map((c: CaseItem) => (
-                    <li key={c.id}>
-                      <Link to={ROUTES.CASE_DETAIL(c.id)} className="block group">
-                        <div className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0 space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
-                                {c.nomeCompleto}
-                              </p>
-                              {c.urgencia && (
-                                <span className={cn(
-                                  "text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border",
-                                  // Mapeamento de Urgência para Tokens Semânticos
-                                  c.urgencia === 'GRAVISSIMA' ? "bg-status-error-bg text-status-error-fg border-status-error-border" :
-                                  c.urgencia === 'MUITO_GRAVE' ? "bg-status-warning-bg text-status-warning-fg border-status-warning-border" :
-                                  "bg-status-neutral-bg text-status-neutral-fg border-status-neutral-border"
-                                )}>
-                                  {c.urgencia.replace('_', ' ')}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3 opacity-70" />
-                                <span>
-                                  há {formatDistanceToNow(new Date(c.dataEntrada), { locale: ptBR })}
-                                </span>
-                            </div>
-                          </div>
-                          
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-all -translate-x-1 group-hover:translate-x-0">
-                            <ArrowRight className="h-4 w-4" />
-                            <span className="sr-only">Ver caso</span>
-                          </Button>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full min-h-62.5 text-muted-foreground gap-3">
-                   <div className="p-4 bg-status-neutral-bg border border-status-neutral-border rounded-full">
-                     <UserCheck className="h-8 w-8 text-status-neutral-fg opacity-60"/>
-                   </div>
-                   <p className="text-sm font-medium">Sua fila está vazia</p>
-                </div>
-              )}
-            </CardContent>
-
-            <CardFooter className="p-4 border-t bg-muted/5">
-              <Link to={ROUTES.WAITING_LIST} className="w-full">
-                <Button className="w-full gap-2 shadow-sm border border-primary/20" variant="default">
-                   <Briefcase className="h-4 w-4" />
-                   Iniciar Triagem
-                </Button>
-              </Link>
-            </CardFooter>
-          </Card>
-        </motion.div>
-      </div>
-    </motion.div>
-  )
-}
-
-FILE: frontend\src\pages\dashboard\TechnicianDashboard.tsx
---------------------------------------------------
-// frontend/src/pages/dashboard/TechnicianDashboard.tsx
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { 
-  Users, Activity, FileCheck, Clock, AlertTriangle, ArrowUpRight, 
-  CheckCircle2, PieChart as PieIcon, AlertCircle, LucideIcon 
-} from 'lucide-react'
-import { PieChart, Pie, Label } from 'recharts'
-import { useNavigate } from 'react-router-dom'
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { 
-  ChartConfig, 
-  ChartContainer, 
-  ChartTooltip, 
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent
-} from '@/components/ui/chart'
-
-import { ROUTE_PATHS } from '@/constants/app-routes'
-import { URGENCIA_NIVEIS } from '@/constants/cases/definitions'
-import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
-
-// --- UTILS ---
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
-// --- CONFIGURAÇÃO DO GRÁFICO (Cores do Tema) ---
-const chartConfig = {
-  cases: { label: "Casos" },
-  alta: {
-    label: "Alta/Crítica",
-    color: "hsl(var(--destructive))", // Vermelho
-  },
-  media: {
-    label: "Média",
-    color: "hsl(var(--chart-4))", // Laranja/Amber
-  },
-  baixa: {
-    label: "Baixa/Estável",
-    color: "hsl(var(--chart-2))", // Verde/Emerald
-  },
-  neutro: {
-    label: "Sem Classif.",
-    color: "hsl(var(--muted-foreground))",
-  },
-} satisfies ChartConfig
-
-// --- TYPES & HELPERS ---
-interface AlertDetails {
-  label: string
-  icon: LucideIcon
-  colorClass: string
-  bgClass: string
-  borderClass: string
-}
-
-const getAlertDetails = (type: string, days: number): AlertDetails => {
-  switch (type) {
-    case 'PAF_NOT_STARTED':
-      return { 
-        label: 'PAF não iniciado', 
-        icon: AlertCircle, 
-        colorClass: 'text-status-error-fg',
-        bgClass: 'bg-status-error-bg',
-        borderClass: 'border-status-error-border'
-      }
-    case 'PAF_REVIEW_OVERDUE':
-      return { 
-        label: `Revisão vencida (${days}d)`, 
-        icon: Clock, 
-        colorClass: 'text-status-warning-fg',
-        bgClass: 'bg-status-warning-bg',
-        borderClass: 'border-status-warning-border'
-      }
-    case 'PAF_STALLED':
-      return { 
-        label: `Sem evolução (${days}d)`, 
-        icon: Activity, 
-        colorClass: 'text-status-warning-fg',
-        bgClass: 'bg-status-warning-bg',
-        borderClass: 'border-status-warning-border'
-      }
-    default:
-      return { 
-        label: 'Atenção necessária', 
-        icon: AlertTriangle, 
-        colorClass: 'text-muted-foreground',
-        bgClass: 'bg-muted',
-        borderClass: 'border-border'
-      }
-  }
-}
-
-interface StatCardProps {
-  title: string
-  value: string | number
-  icon: LucideIcon
-  trend?: number
-  trendLabel?: string
-  variant?: 'default' | 'success' | 'warning' | 'info'
-}
-
-const StatCard = ({ title, value, icon: Icon, trend, trendLabel, variant = 'default' }: StatCardProps) => {
-  // Mapeamento para Tokens Semânticos
-  const variants = {
-    default: {
-      container: "border-primary/20",
-      icon: "text-primary bg-primary/10",
-      stripe: "bg-primary"
-    },
-    success: {
-      container: "border-status-success-border",
-      icon: "text-status-success-fg bg-status-success-bg",
-      stripe: "bg-status-success-fg"
-    },
-    warning: {
-      container: "border-status-warning-border",
-      icon: "text-status-warning-fg bg-status-warning-bg",
-      stripe: "bg-status-warning-fg"
-    },
-    info: {
-      container: "border-status-info-border",
-      icon: "text-status-info-fg bg-status-info-bg",
-      stripe: "bg-status-info-fg"
-    },
-  }
-  
-  const style = variants[variant] || variants.default
-
-  return (
-    <Card className={cn("hover:shadow-md transition-all duration-300 relative group overflow-hidden border", style.container)}>
-      {/* Faixa lateral no hover */}
-      <div className={cn("absolute left-0 top-0 bottom-0 w-0.75 opacity-0 group-hover:opacity-100 transition-opacity", style.stripe)} />
-      
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className={cn("p-2.5 rounded-xl transition-colors border border-transparent shadow-sm", style.icon)}>
-            <Icon className="w-5 h-5" strokeWidth={2.5} />
-          </div>
-          {trend !== undefined && (
-            <div className={cn(
-              "flex items-center text-xs font-bold px-2 py-0.5 rounded-full border",
-              trend > 0 
-                ? "text-status-success-fg bg-status-success-bg border-status-success-border" 
-                : "text-status-error-fg bg-status-error-bg border-status-error-border"
-            )}>
-              {trend > 0 ? '+' : ''}{trend}%
-            </div>
-          )}
-        </div>
-        <div className="mt-4 space-y-1 relative z-10">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80 line-clamp-1">{title}</p>
-          <div className="flex items-baseline gap-2">
-            <h3 className="text-3xl font-bold tracking-tight text-foreground tabular-nums">{value}</h3>
-            {trendLabel && <span className="text-xs text-muted-foreground truncate lowercase opacity-80">{trendLabel}</span>}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-export function TechnicianDashboard() {
-  const navigate = useNavigate()
-  
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['workspace-summary'],
-    queryFn: async () => (await api.get('/workspace/summary')).data,
-    refetchInterval: 1000 * 60 * 5 
-  })
-
-  // Loading Skeleton
-  if (isLoading) return (
-    <div className="p-1 space-y-6 animate-pulse">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-xl w-full"/>)}
-        </div>
-        <div className="grid lg:grid-cols-3 gap-6">
-            <Skeleton className="h-112.5 lg:col-span-2 rounded-xl"/>
-            <Skeleton className="h-112.5ounded-xl"/>
-        </div>
-    </div>
-  )
-
-  if (isError) return (
-    <div className="flex flex-col items-center justify-center h-64 p-6 text-center border border-dashed rounded-lg bg-status-error-bg/10 border-status-error-border text-status-error-fg">
-      <AlertTriangle className="h-10 w-10 mb-3 opacity-80" />
-      <p className="text-sm font-medium">Não foi possível carregar o painel.</p>
-    </div>
-  )
-
-  const myCases = data.myCases || []
-  
-  // Lógica de Agrupamento de Risco
-  const urgencyCount = myCases.reduce((acc: Record<string, number>, curr: any) => {
-    const term = (curr.urgencia || '').toUpperCase()
-    let key = 'neutro'
-    
-    if (URGENCIA_NIVEIS.GRAVISSIMA.some(u => term.includes(u.toUpperCase())) || 
-        URGENCIA_NIVEIS.MUITO_GRAVE.some(u => term.includes(u.toUpperCase()))) {
-        key = 'alta'
-    } else if (URGENCIA_NIVEIS.GRAVE.some(u => term.includes(u.toUpperCase()))) {
-        key = 'media'
-    } else if (URGENCIA_NIVEIS.LEVE.some(u => term.includes(u.toUpperCase()))) {
-        key = 'baixa'
-    }
-    
-    acc[key] = (acc[key] || 0) + 1
-    return acc
-  }, { alta: 0, media: 0, baixa: 0, neutro: 0 })
-
-  const chartData = [
-    { type: 'alta', value: urgencyCount.alta, fill: "var(--color-alta)" },
-    { type: 'media', value: urgencyCount.media, fill: "var(--color-media)" },
-    { type: 'baixa', value: urgencyCount.baixa, fill: "var(--color-baixa)" },
-    { type: 'neutro', value: urgencyCount.neutro, fill: "var(--color-neutro)" },
-  ].filter(d => d.value > 0)
-
-  const totalCases = chartData.reduce((acc, curr) => acc + curr.value, 0)
-
-  return (
-    <div className="space-y-8 animate-in fade-in p-1">
-      
-      {/* 1. KPIs */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Famílias Acompanhadas" value={data.detailedStats?.acompanhamento || 0} icon={Users} variant="default" trend={2.5} trendLabel="novos" />
-        <StatCard title="Adesão ao PAF" value="92%" icon={FileCheck} variant="success" trend={1} trendLabel="conformidade" />
-        <StatCard title="Aguardando Aceite" value={data.detailedStats?.acolhidaEsp || 0} icon={Clock} variant="warning" trendLabel="fila" />
-        <StatCard title="Em Monitoramento" value={data.detailedStats?.monitoramento || 0} icon={Activity} variant="info" trendLabel="final" />
-      </section>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        
-        {/* 2. GRÁFICO (Risco da Carteira) */}
-        <Card className="lg:col-span-2 flex flex-col h-112.5 shadow-sm border-border/60 bg-card">
-          <CardHeader className="items-center pb-0 border-b border-border/40 bg-muted/10">
-            <CardTitle className="text-base font-bold flex items-center gap-2 text-foreground/90">
-              <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20">
-                 <Activity className="h-4 w-4 text-primary" />
-              </div>
-              Distribuição de Risco
-            </CardTitle>
-            <CardDescription className="text-xs">Complexidade da carteira ativa</CardDescription>
-          </CardHeader>
-          
-          <CardContent className="flex-1 pb-0 relative flex items-center justify-center">
-            {chartData.length === 0 ? (
-               <div className="flex flex-col items-center justify-center text-muted-foreground gap-3">
-                 <div className="p-4 bg-muted/50 rounded-full">
-                    <PieIcon className="h-8 w-8 opacity-40" />
-                 </div>
-                 <span className="text-sm font-medium">Sem dados suficientes</span>
-               </div>
-            ) : (
-              <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-70 w-full">
-                <PieChart>
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                  <Pie
-                    data={chartData}
-                    dataKey="value"
-                    nameKey="type"
-                    innerRadius={65}
-                    strokeWidth={4}
-                    stroke="hsl(var(--background))" // Borda branca para separar fatias
-                    paddingAngle={2}
-                  >
-                    <Label
-                      content={({ viewBox }) => {
-                        if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                          return (
-                            <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-4xl font-bold tracking-tighter">
-                                {totalCases}
-                              </tspan>
-                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 24} className="fill-muted-foreground text-xs font-medium uppercase tracking-wide">
-                                Casos
-                              </tspan>
-                            </text>
-                          )
-                        }
-                      }}
-                    />
-                  </Pie>
-                  
-                  <ChartLegend 
-                    content={({ payload }) => <ChartLegendContent payload={payload} nameKey="type" />} 
-                    className="-translate-y-2 flex-wrap gap-2 text-xs font-medium" 
-                  />
-                  
-                </PieChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-          <CardFooter className="flex-col gap-2 text-xs text-muted-foreground pt-4 pb-4 border-t bg-muted/5">
-              <div className="flex items-center gap-1.5 font-medium">
-                <Activity className="h-3.5 w-3.5 text-primary" />
-                <span>Análise de Vulnerabilidade</span>
-              </div>
-              <p className="text-center opacity-70 px-4">
-                Dados baseados na classificação de risco mais recente de cada caso.
-              </p>
-          </CardFooter>
-        </Card>
-
-        {/* 3. COLUNA DIREITA (Agenda + Alertas) */}
-        <div className="space-y-6 flex flex-col h-full">
-          {/* Agenda Compacta */}
-          <UpcomingAppointments 
-             data={data.appointments} 
-             title="Agenda de Hoje" 
-             enableScroll 
-             className="h-60 shadow-sm border-border/60"
-          />
-          
-          {/* Alertas de PAF */}
-          <Card className="shadow-sm border-border/60 overflow-hidden bg-card flex-1 min-h-50">
-            <CardHeader className="pb-3 px-5 py-4 border-b border-border/40">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-bold flex items-center gap-2.5 text-foreground">
-                   <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-status-error-bg border border-status-error-border text-status-error-fg">
-                      <AlertTriangle className="h-4 w-4"/> 
-                   </div>
-                   Pendências Prioritárias
-                </CardTitle>
-                {data.alerts?.length > 0 && (
-                  <span className="text-[10px] font-bold bg-status-error-bg text-status-error-fg px-2 py-0.5 rounded-full border border-status-error-border">
-                    {data.alerts.length}
-                  </span>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {(!data.alerts || data.alerts.length === 0) ? (
-                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
-                  <div className="p-3 bg-status-success-bg border border-status-success-border rounded-full">
-                     <CheckCircle2 className="h-6 w-6 text-status-success-fg"/> 
-                  </div>
-                  <span className="text-xs font-medium">Tudo em dia!</span>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/40">
-                   {data.alerts.slice(0, 4).map((alert: any) => {
-                     const details = getAlertDetails(alert.type, alert.days)
-                     const AlertIcon = details.icon
-                     
-                     return (
-                       <li key={alert.id}>
-                         <button
-                           type="button"
-                           onClick={() => navigate(`${ROUTE_PATHS.CASES}/${alert.id}`)}
-                           className="w-full text-left p-3.5 hover:bg-muted/30 transition-all group flex items-start justify-between"
-                         >
-                           <div className="flex gap-3 overflow-hidden">
-                             {/* Ícone do Alerta */}
-                             <div className={cn(
-                               "mt-0.5 h-8 w-8 shrink-0 flex items-center justify-center rounded-lg border shadow-sm", 
-                               details.bgClass,
-                               details.borderClass
-                             )}>
-                               <AlertIcon className={cn("h-4 w-4", details.colorClass)} strokeWidth={2.5} />
-                             </div>
-                             
-                             <div className="min-w-0 flex-1 pt-0.5">
-                               <p className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                                 {alert.nomeCompleto}
-                               </p>
-                               <p className={cn("text-xs mt-0.5 font-medium", details.colorClass)}>
-                                 {details.label}
-                               </p>
-                             </div>
-                           </div>
-                           
-                           <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 mt-1" />
-                         </button>
-                       </li>
-                     )
-                   })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+       </Tabs>
     </div>
   )
 }
@@ -1262,6 +937,13 @@ import { Badge } from '@/components/ui/badge'
 import { KPICard } from '@/components/workspace/SharedComponents'
 import { ManagerWorkspaceData } from '@/types/workspace'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+
+// Extensão da tipagem para garantir compatibilidade se a API mudar
+interface TeamMemberLoad {
+  name: string
+  role: string
+  value: number // [CORREÇÃO] A API retorna 'value', não 'cases'
+}
 
 export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
   
@@ -1349,12 +1031,13 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
           
           <CardContent className="flex-1 p-6">
             <div className="space-y-6">
-              {data.teamLoad.map((member, idx) => (
+              {/* [CORREÇÃO] Casting para garantir tipagem correta durante o map */}
+              {(data.teamLoad as unknown as TeamMemberLoad[]).map((member, idx) => (
                 <div key={idx} className="group">
                   {/* Header do Item */}
                   <div className="flex justify-between items-end mb-2">
                     <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-sm text-foreground">{member.nome}</span>
+                      <span className="font-semibold text-sm text-foreground">{member.name}</span>
                       <div className="flex items-center gap-1.5">
                         <Badge 
                           variant="secondary" 
@@ -1367,7 +1050,7 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                     
                     <div className="text-right">
                       <span className="text-sm font-bold tabular-nums text-foreground">
-                        {member.cases}
+                        {member.value} {/* [CORREÇÃO] Usando .value ao invés de .cases */}
                       </span>
                       <span className="text-xs text-muted-foreground ml-1">/ {CONFIG.CASELOAD_LIMIT}</span>
                     </div>
@@ -1376,10 +1059,10 @@ export function ManagerWorkspace({ data }: { data: ManagerWorkspaceData }) {
                   {/* Barra de Progresso Customizada */}
                   <div className="h-2.5 w-full bg-muted/50 rounded-full overflow-hidden ring-1 ring-border/30">
                       <div 
-                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${getLoadColor(member.cases)}`} 
-                        style={{ width: `${getLoadPercentage(member.cases)}%` }} 
+                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${getLoadColor(member.value)}`} 
+                        style={{ width: `${getLoadPercentage(member.value)}%` }} 
                         role="progressbar"
-                        aria-valuenow={member.cases}
+                        aria-valuenow={member.value}
                         aria-valuemin={0}
                         aria-valuemax={CONFIG.CASELOAD_LIMIT}
                       />
@@ -1464,10 +1147,15 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { KPICard, CaseListTable } from '@/components/workspace/SharedComponents'
 import { UpcomingAppointments } from '@/components/agenda/UpcomingAppointments'
-import { OperationalWorkspaceData } from '@/types/workspace'
+import { OperationalWorkspaceData, CaseAlert } from '@/types/workspace' // Importe CaseAlert
 import { ROUTES } from '@/constants/app-routes'
 import { cn } from '@/lib/utils'
 import type { UpcomingAppointment } from '@/components/agenda/UpcomingAppointments'
+
+// Interface estendida para acomodar propriedades dinâmicas ou calculadas
+interface ExtendedAlert extends CaseAlert {
+  days?: number;
+}
 
 // --- WORKSPACE COMPONENT ---
 
@@ -1496,9 +1184,12 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
         } : undefined
       }));
 
+    // Casting seguro para alertas
+    const alerts = (Array.isArray(data.alerts) ? data.alerts : []) as ExtendedAlert[];
+
     return {
       appointments: mappedAppointments,
-      alerts: Array.isArray(data.alerts) ? data.alerts : [],
+      alerts: alerts,
       myCases: Array.isArray(data.myCases) ? data.myCases : [],
       stats: data.detailedStats || { meusAguardando: 0, meusEmAtendimento: 0 }
     };
@@ -1622,7 +1313,9 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                   <ul className="divide-y divide-border/40">
                     {alerts.map((alert) => {
                       if (!alert) return null;
-                      const isCritical = (alert.days || 0) > 7
+                      // [CORREÇÃO] Acesso seguro à propriedade opcional 'days'
+                      const days = alert.days ?? 0; 
+                      const isCritical = days > 7
                       const isNavigating = navigatingId === alert.id
 
                       return (
@@ -1655,7 +1348,7 @@ export function SocialAgentWorkspace({ data }: { data?: OperationalWorkspaceData
                                 <span>{isCritical ? 'Crítico' : 'Pendente'}</span>
                               </div>
                               <span className="text-muted-foreground/40">•</span>
-                              <span className="text-muted-foreground font-medium">há {alert.days}d</span>
+                              <span className="text-muted-foreground font-medium">há {days}d</span>
                             </div>
                           </button>
                         </li>

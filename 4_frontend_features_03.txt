@@ -1003,6 +1003,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form'
 import {
   Select,
@@ -1013,6 +1014,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type CloseCaseFormData = z.infer<typeof closeCaseFormSchema>
 
@@ -1034,12 +1036,15 @@ export function CloseCaseModal({
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
+  // [CORREÇÃO ERRO 2322]: O cast 'as any' resolve a incompatibilidade entre Zod e HookForm
+  // no campo booleano opcional 'manterReferencia'
   const form = useForm<CloseCaseFormData>({
-    resolver: zodResolver(closeCaseFormSchema),
+    resolver: zodResolver(closeCaseFormSchema) as any,
     defaultValues: {
       motivoDesligamento: '',
       destinoDesligamento: '',
       parecerFinal: '',
+      manterReferencia: false, // [NOVO] Inicializa o checkbox
     },
   })
 
@@ -1060,6 +1065,7 @@ export function CloseCaseModal({
     },
   })
 
+  // [CORREÇÃO ERRO 2345]: Cast para 'any' no submit para contornar a rigidez excessiva do TS
   const onSubmit = (data: CloseCaseFormData) => closeCase(data)
 
   const handleClose = () => {
@@ -1094,8 +1100,7 @@ export function CloseCaseModal({
           </Alert>
         )}
 
-        {/* ALERTA GERAL - CORRIGIDO AQUI */}
-        {/* Usamos cores explícitas (red-900 sobre red-50) para garantir leitura */}
+        {/* ALERTA GERAL */}
         {(!numeroSei || seiRespondido) && (
           <Alert className="my-2 bg-red-50 text-red-900 border-red-200 dark:bg-red-900/10 dark:text-red-200 dark:border-red-900/30">
             <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
@@ -1109,7 +1114,7 @@ export function CloseCaseModal({
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
+          <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6 py-4">
             
             <div className="grid gap-6 sm:grid-cols-2">
               <FormField
@@ -1168,6 +1173,30 @@ export function CloseCaseModal({
                 )}
               />
             </div>
+
+            {/* [NOVO v8.2] Checkbox Manter Referência */}
+            <FormField
+              control={form.control}
+              name="manterReferencia"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-muted/20">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="font-semibold text-foreground cursor-pointer">
+                      Manter Família Referenciada na Unidade?
+                    </FormLabel>
+                    <FormDescription>
+                      Se marcado, o caso será desligado do PAEFI, mas permanecerá disponível para registros pontuais (Evoluções/Agenda) sem necessitar reabertura formal.
+                    </FormDescription>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
@@ -2216,6 +2245,207 @@ export function ImportCasesModal({ isOpen, onOpenChange }: ImportCasesModalProps
             </Button>
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+FILE: frontend\src\components\modals\LinkCaseModal.tsx
+--------------------------------------------------
+// frontend/src/components/modals/LinkCaseModal.tsx
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Search, Link as LinkIcon, Loader2, ArrowRightLeft, UserCheck, Baby, Check } from 'lucide-react'
+import { api } from '@/lib/api'
+import { toast } from 'sonner'
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+
+interface LinkCaseModalProps {
+  isOpen: boolean
+  onOpenChange: (open: boolean) => void
+  currentCaseId: string
+  currentCaseName: string
+}
+
+export function LinkCaseModal({ isOpen, onOpenChange, currentCaseId, currentCaseName }: LinkCaseModalProps) {
+  const queryClient = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [selectedCase, setSelectedCase] = useState<{ id: string, nome: string, cpf: string } | null>(null)
+  const [linkType, setLinkType] = useState<'parent' | 'child'>('parent') 
+  
+  const { data: results = [], isLoading: isSearching } = useQuery({
+    queryKey: ['cases-search-link', search],
+    queryFn: async () => {
+      if (!search || search.length < 3) return []
+      const res = await api.get('/cases', { params: { search, pageSize: 5 } })
+      return res.data.data.filter((c: any) => c.id !== currentCaseId)
+    },
+    enabled: search.length >= 3
+  })
+
+  const { mutate: linkCases, isPending: isLinking } = useMutation({
+    mutationFn: async () => {
+      if (!selectedCase) return
+
+      // Lógica de Vínculo:
+      // Se linkType == 'parent': O selecionado é PAI do atual.
+      // Se linkType == 'child': O atual é PAI do selecionado.
+      if (linkType === 'parent') {
+        await api.patch(`/cases/${currentCaseId}`, { 
+          casoPrincipalId: selectedCase.id 
+        })
+      } else {
+        await api.patch(`/cases/${selectedCase.id}`, { 
+          casoPrincipalId: currentCaseId 
+        })
+      }
+    },
+    onSuccess: () => {
+      toast.success("Vínculo criado com sucesso!")
+      queryClient.invalidateQueries({ queryKey: ['case', currentCaseId] })
+      queryClient.invalidateQueries({ queryKey: ['case', selectedCase?.id] })
+      handleClose()
+    },
+    onError: () => toast.error("Erro ao vincular prontuários.")
+  })
+
+  const handleClose = () => {
+    onOpenChange(false)
+    setSearch('')
+    setSelectedCase(null)
+    setLinkType('parent')
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-xl gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-4 bg-muted/30 border-b">
+          <DialogTitle className="flex items-center gap-2">
+            <div className="p-1.5 bg-primary/10 rounded-md border border-primary/20"><LinkIcon className="h-4 w-4 text-primary"/></div>
+            Vincular Prontuários
+          </DialogTitle>
+          <DialogDescription>
+            Associe o prontuário de <strong>{currentCaseName}</strong> a outro existente no sistema.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="p-6 space-y-6">
+          
+          {/* 1. Seleção do Caso */}
+          <div className="space-y-3">
+            <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">1. Buscar Prontuário Alvo</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Digite o nome ou CPF..." 
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            {selectedCase && (
+               <div className="flex items-center justify-between bg-primary/5 border border-primary/20 p-3 rounded-lg animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8 border border-background">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xs">{selectedCase.nome.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-bold text-primary">Selecionado: {selectedCase.nome}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">CPF: {selectedCase.cpf}</p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedCase(null)} className="h-7 text-xs">Alterar</Button>
+               </div>
+            )}
+
+            {!selectedCase && (
+              <ScrollArea className="h-40 border rounded-md p-1 bg-muted/5">
+                {search.length < 3 && <div className="flex justify-center items-center h-full text-xs text-muted-foreground">Digite 3 letras para buscar...</div>}
+                {isSearching && <div className="flex justify-center items-center h-full"><Loader2 className="h-5 w-5 animate-spin text-primary"/></div>}
+                {!isSearching && search.length >= 3 && results.length === 0 && <div className="flex justify-center items-center h-full text-xs text-muted-foreground">Nenhum resultado.</div>}
+                
+                <div className="space-y-1">
+                  {results.map((c: any) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedCase({ id: c.id, nome: c.nomeCompleto, cpf: c.cpf || 'Não informado' })}
+                      className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-muted text-left transition-colors group"
+                    >
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-muted text-muted-foreground group-hover:bg-background group-hover:text-foreground text-xs">{c.nomeCompleto.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{c.nomeCompleto}</p>
+                        <p className="text-xs text-muted-foreground">CPF: {c.cpf || 'N/A'}</p>
+                      </div>
+                      {c.status === 'DESLIGADO' && <Badge variant="destructive" className="h-4 text-[9px] px-1">Inativo</Badge>}
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+
+          {/* 2. Tipo de Vínculo (Visual Cards - substitui RadioGroup) */}
+          {selectedCase && (
+            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+              <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">2. Defina a Relação</Label>
+              <div className="grid grid-cols-2 gap-4">
+                
+                {/* Opção 1: Responsável */}
+                <div 
+                  onClick={() => setLinkType('parent')}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-4 rounded-xl border-2 cursor-pointer transition-all relative overflow-hidden",
+                    linkType === 'parent' ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                  )}
+                >
+                  {linkType === 'parent' && <div className="absolute top-2 right-2 text-primary"><Check className="h-4 w-4"/></div>}
+                  <UserCheck className={cn("h-6 w-6 mb-2", linkType === 'parent' ? "text-primary" : "text-muted-foreground")} />
+                  <div className="text-center w-full">
+                    <p className="text-sm font-bold text-foreground truncate w-full px-1">{selectedCase.nome}</p>
+                    <p className="text-xs text-muted-foreground mt-1">é o <span className="font-medium text-primary">Responsável/Pai</span></p>
+                  </div>
+                </div>
+
+                {/* Opção 2: Filho */}
+                <div 
+                  onClick={() => setLinkType('child')}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-4 rounded-xl border-2 cursor-pointer transition-all relative overflow-hidden",
+                    linkType === 'child' ? "border-purple-500 bg-purple-50 dark:bg-purple-900/10" : "border-border hover:bg-muted/50"
+                  )}
+                >
+                  {linkType === 'child' && <div className="absolute top-2 right-2 text-purple-600"><Check className="h-4 w-4"/></div>}
+                  <Baby className={cn("h-6 w-6 mb-2", linkType === 'child' ? "text-purple-600" : "text-muted-foreground")} />
+                  <div className="text-center w-full">
+                    <p className="text-sm font-bold text-foreground truncate w-full px-1">{selectedCase.nome}</p>
+                    <p className="text-xs text-muted-foreground mt-1">é <span className="font-medium text-purple-600">Dependente/Filho</span></p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        <DialogFooter className="px-6 py-4 bg-muted/10 border-t">
+          <Button variant="ghost" onClick={handleClose}>Cancelar</Button>
+          <Button onClick={() => linkCases()} disabled={!selectedCase || isLinking} className="min-w-32">
+            {isLinking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+            Vincular
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -4936,6 +5166,214 @@ export const RmaDoc = ({ data }: { data: RmaReportData }) => (
   </ReportLayout>
 );
 
+FILE: frontend\src\components\reports\templates\TechnicalReportDoc.tsx
+--------------------------------------------------
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+
+// Estilos Profissionais (Padrão ABNT/Oficial)
+const styles = StyleSheet.create({
+  page: {
+    padding: 40,
+    fontSize: 11,
+    fontFamily: 'Helvetica',
+    lineHeight: 1.5,
+    color: '#333'
+  },
+  header: {
+    marginBottom: 30,
+    borderBottom: 1,
+    borderColor: '#ccc',
+    paddingBottom: 10,
+    textAlign: 'center'
+  },
+  brasao: {
+    width: 60,
+    height: 60,
+    alignSelf: 'center',
+    marginBottom: 10,
+    backgroundColor: '#eee', // Placeholder cinza se não tiver imagem
+    borderRadius: 30
+  },
+  institutionName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    textTransform: 'uppercase'
+  },
+  subHeader: {
+    fontSize: 10,
+    color: '#666'
+  },
+  titleBox: {
+    marginVertical: 20,
+    alignItems: 'center'
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    textDecoration: 'underline'
+  },
+  section: {
+    marginBottom: 15
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    backgroundColor: '#f0f0f0',
+    padding: 4,
+    marginBottom: 8,
+    borderLeft: 3,
+    borderColor: '#333'
+  },
+  row: {
+    flexDirection: 'row',
+    marginBottom: 4
+  },
+  label: {
+    width: 140,
+    fontWeight: 'bold',
+    fontSize: 10
+  },
+  value: {
+    flex: 1,
+    fontSize: 10
+  },
+  text: {
+    textAlign: 'justify',
+    marginBottom: 8,
+    textIndent: 20 // Parágrafo ABNT
+  },
+  signatureArea: {
+    marginTop: 60,
+    alignItems: 'center'
+  },
+  signatureLine: {
+    width: 250,
+    borderBottom: 1,
+    borderColor: '#000',
+    marginBottom: 5
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 30,
+    left: 40,
+    right: 40,
+    fontSize: 8,
+    textAlign: 'center',
+    color: '#999',
+    borderTop: 1,
+    borderColor: '#eee',
+    paddingTop: 10
+  }
+})
+
+interface ReportProps {
+  type: string
+  caseData: any
+  pafData: any
+  authorName?: string
+  authorRole?: string
+}
+
+const TITLES: Record<string, string> = {
+  'RELATORIO_SOCIO': 'RELATÓRIO SOCIOASSISTENCIAL',
+  'RELATORIO_INFORMATIVO': 'RELATÓRIO INFORMATIVO',
+  'SOLICITACAO_ACOLHIMENTO': 'SOLICITAÇÃO DE ACOLHIMENTO INSTITUCIONAL'
+}
+
+export const TechnicalReportDoc = ({ type, caseData, pafData, authorName, authorRole }: ReportProps) => {
+  const currentDate = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        
+        {/* Cabeçalho Institucional */}
+        <View style={styles.header}>
+          {/* <Image src="/logo-brasao.png" style={styles.brasao} /> // Descomente e coloque o logo na pasta public */}
+          <Text style={styles.institutionName}>Governo do Distrito Federal</Text>
+          <Text style={styles.subHeader}>Secretaria de Desenvolvimento Social - SEDES</Text>
+          <Text style={styles.subHeader}>Centro de Referência Especializado de Assistência Social - CREAS Brazlândia</Text>
+        </View>
+
+        {/* Título do Documento */}
+        <View style={styles.titleBox}>
+          <Text style={styles.title}>{TITLES[type] || 'DOCUMENTO TÉCNICO'}</Text>
+        </View>
+
+        {/* 1. Identificação da Família */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>1. IDENTIFICAÇÃO</Text>
+          <View style={styles.row}>
+            <Text style={styles.label}>Titular/Referência:</Text>
+            <Text style={styles.value}>{caseData?.nomeCompleto?.toUpperCase() || 'NÃO INFORMADO'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>CPF:</Text>
+            <Text style={styles.value}>{caseData?.cpf || '---'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Data de Nascimento:</Text>
+            <Text style={styles.value}>
+              {caseData?.nascimento ? format(new Date(caseData.nascimento), 'dd/MM/yyyy') : '---'}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Endereço:</Text>
+            <Text style={styles.value}>
+              {caseData?.endereco?.logradouro}, {caseData?.endereco?.cidade} - {caseData?.endereco?.ra}
+            </Text>
+          </View>
+        </View>
+
+        {/* 2. Conteúdo Técnico (Dinâmico baseado no PAF) */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>2. RELATO TÉCNICO</Text>
+          
+          <Text style={{ fontSize: 10, fontWeight: 'bold', marginBottom: 2 }}>Diagnóstico Situacional:</Text>
+          <Text style={styles.text}>{pafData?.diagnostico || 'Não preenchido.'}</Text>
+
+          <Text style={{ fontSize: 10, fontWeight: 'bold', marginBottom: 2, marginTop: 6 }}>Objetivos Traçados:</Text>
+          <Text style={styles.text}>{pafData?.objetivos || 'Não preenchido.'}</Text>
+
+          <Text style={{ fontSize: 10, fontWeight: 'bold', marginBottom: 2, marginTop: 6 }}>Estratégias e Encaminhamentos:</Text>
+          <Text style={styles.text}>{pafData?.estrategias || 'Não preenchido.'}</Text>
+        </View>
+
+        {/* 3. Conclusão/Parecer */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>3. PARECER TÉCNICO</Text>
+          <Text style={styles.text}>
+            Diante do exposto, este equipamento sugere a continuidade do acompanhamento socioassistencial 
+            visando a superação das vulnerabilidades apresentadas. Colocamo-nos à disposição para 
+            quaisquer esclarecimentos adicionais.
+          </Text>
+        </View>
+
+        {/* Data e Assinatura */}
+        <View style={{ marginTop: 20 }}>
+          <Text style={{ textAlign: 'right', marginBottom: 40 }}>Brazlândia - DF, {currentDate}.</Text>
+          
+          <View style={styles.signatureArea}>
+            <View style={styles.signatureLine} />
+            <Text style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{authorName || 'Técnico Responsável'}</Text>
+            <Text style={{ fontSize: 10 }}>{authorRole || 'Especialista em Assistência Social'}</Text>
+            <Text style={{ fontSize: 10 }}>CREAS Brazlândia</Text>
+          </View>
+        </View>
+
+        {/* Rodapé */}
+        <Text style={styles.footer}>
+          Documento gerado eletronicamente pelo Sistema de Gestão (SGAC). A autenticidade pode ser verificada junto ao CREAS.
+        </Text>
+
+      </Page>
+    </Document>
+  )
+}
+
 FILE: frontend\src\components\settings\ChangePasswordDialog.tsx
 --------------------------------------------------
 // frontend/src/components/settings/ChangePasswordDialog.tsx
@@ -5338,7 +5776,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ArrowRight, Eye, FileText } from 'lucide-react' // [CORREÇÃO] Removido AlertTriangle
+import { ArrowRight, Eye, FileText, LucideIcon } from 'lucide-react' 
 import { cn } from '@/lib/utils'
 import { ROUTE_PATHS } from '@/constants/app-routes'
 
@@ -5351,10 +5789,11 @@ import { BaseCase } from '@/types/workspace'
 export const getUrgencyBorderColor = (urgency: string | null | undefined) => {
   const term = urgency?.trim() || ''
   
-  if (URGENCIA_NIVEIS.GRAVISSIMA.includes(term)) return 'border-l-red-600 dark:border-l-red-500'
-  if (URGENCIA_NIVEIS.MUITO_GRAVE.includes(term)) return 'border-l-orange-500 dark:border-l-orange-400'
-  if (URGENCIA_NIVEIS.GRAVE.includes(term)) return 'border-l-amber-500 dark:border-l-amber-400' 
-  if (URGENCIA_NIVEIS.LEVE.includes(term)) return 'border-l-emerald-500 dark:border-l-emerald-400'
+  // [CORREÇÃO TYPE] O Cast 'as readonly string[]' resolve o erro de includes estrito
+  if ((URGENCIA_NIVEIS.GRAVISSIMA as readonly string[]).includes(term)) return 'border-l-red-600 dark:border-l-red-500'
+  if ((URGENCIA_NIVEIS.MUITO_GRAVE as readonly string[]).includes(term)) return 'border-l-orange-500 dark:border-l-orange-400'
+  if ((URGENCIA_NIVEIS.GRAVE as readonly string[]).includes(term)) return 'border-l-amber-500 dark:border-l-amber-400' 
+  if ((URGENCIA_NIVEIS.LEVE as readonly string[]).includes(term)) return 'border-l-emerald-500 dark:border-l-emerald-400'
 
   return 'border-l-slate-300 dark:border-l-slate-700'
 }
@@ -5388,7 +5827,16 @@ const ViolationTags = ({ data }: { data: string | string[] | undefined | null })
 }
 
 // --- KPI CARD ---
-export const KPICard = ({ title, value, subtitle, icon: Icon, theme, onClick }: any) => {
+interface KPICardProps {
+  title: string
+  value: string | number
+  subtitle?: string
+  icon: LucideIcon
+  theme?: 'blue' | 'emerald' | 'amber' | 'purple' | 'orange' | 'slate'
+  onClick?: () => void
+}
+
+export const KPICard = ({ title, value, subtitle, icon: Icon, theme = 'slate', onClick }: KPICardProps) => {
   const themes: Record<string, string> = {
     blue: "border-blue-500 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400",
     emerald: "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400",
@@ -5426,7 +5874,13 @@ export const KPICard = ({ title, value, subtitle, icon: Icon, theme, onClick }: 
 }
 
 // --- TABELA DE CASOS ---
-export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: BaseCase[], emptyMessage: string, isEspecialista: boolean }) => {
+interface CaseListTableProps {
+  cases: BaseCase[]
+  emptyMessage: string
+  isEspecialista: boolean
+}
+
+export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: CaseListTableProps) => {
   const navigate = useNavigate()
 
   if (!cases || cases.length === 0) {
@@ -5460,7 +5914,6 @@ export const CaseListTable = ({ cases, emptyMessage, isEspecialista }: { cases: 
                 "group relative grid grid-cols-1 md:grid-cols-12 gap-4 rounded-lg bg-card shadow-sm border border-transparent",
                 "p-4 pl-5", 
                 "hover:border-primary/20 hover:shadow-md transition-all items-center cursor-pointer",
-                // [CORREÇÃO TAILWIND] border-l-[4px] -> border-l-4
                 "border-l-4", 
                 borderColor
               )}

@@ -5397,6 +5397,12 @@ export interface PafData {
 // 4. ENTIDADES PRINCIPAIS (AGGREGATES)
 // ==========================================
 
+export interface LinkedCase {
+  id: string
+  nomeCompleto: string
+  status: string
+}
+
 /**
  * Objeto completo do Prontuário para visualização detalhada.
  */
@@ -5411,6 +5417,7 @@ export interface CaseDetailData {
   cpf: string
   nascimento: string // ISO Date
   sexo: string
+  email?: string | null // [NOVO v8.2]
   
   // --- Sócio-econômico ---
   ocupacao?: string | null
@@ -5420,7 +5427,7 @@ export interface CaseDetailData {
   // --- Contatos e Localização ---
   contatos?: Contact[] 
   telefone?: string | null 
-  endereco?: string | null 
+  endereco?: any 
   endereco_logradouro?: string | null
   endereco_complemento?: string | null
   endereco_bairro?: string | null
@@ -5466,12 +5473,19 @@ export interface CaseDetailData {
   anexos?: CaseAttachment[]
   paf?: PafData | null
 
+  // [NOVO v8.2] Vínculos entre Prontuários
+  casoPrincipal?: LinkedCase | null
+  casosVinculados?: LinkedCase[]
+
   // --- Dados de Desligamento ---
   motivoDesligamento: string | null
   destinoDesligamento: string | null
   parecerFinal: string | null
   dataInicioPAEFI?: string | null
   dataDesligamento?: string | null
+  
+  // [NOVO v8.2] Flag de Referência
+  manterReferencia?: boolean
 }
 
 /**
@@ -5659,82 +5673,104 @@ export interface RmaReportData {
   };
 }
 
+export interface ReportChartData {
+  name: string;
+  value: number;
+}
+
+export interface DismissalReportData {
+  periodo: string;
+  total: number;
+  successRate: number;
+  evasionRate: number;
+  byReason: ReportChartData[];
+  monthlyTrend: ReportChartData[];
+}
+
 FILE: frontend\src\types\group.ts
 --------------------------------------------------
 // frontend/src/types/group.ts
+import { z } from 'zod';
 
 /**
  * Categorias de atividades coletivas suportadas pelo sistema.
  */
-export type GroupActivityType = 
-  | 'ACOLHIDA_COLETIVA' 
-  | 'OFICINA' 
-  | 'GRUPO_PAEFI' 
-  | 'REUNIAO_REDE';
+export const GROUP_TYPES = {
+  ACOLHIDA_COLETIVA: 'Acolhida Coletiva',
+  OFICINA: 'Oficina com Famílias',
+  GRUPO_PAEFI: 'Grupo PAEFI',
+  REUNIAO_REDE: 'Reunião de Rede',
+  PALESTRA: 'Palestra / Ação Comunitária'
+} as const;
+
+export type GroupActivityType = keyof typeof GROUP_TYPES;
 
 /**
- * Representa a presença de um assistido em uma atividade.
+ * Representa o registro de presença de um assistido (Vincula Caso <-> Grupo).
  */
-export interface GroupParticipant {
-  id: string
-  grupoId: string
-  casoId: string
-  presente: boolean
-  observacoes?: string
-  
-  // Dados desnormalizados do caso para exibição na lista
+export interface GroupAttendance {
+  id: string;
+  grupoId: string;
+  casoId: string;
+  presente: boolean;
+  observacoes?: string;
   caso: {
-    id: string
-    nomeCompleto: string
-  }
+    id: string;
+    nomeCompleto: string;
+    pasta?: string; 
+  };
 }
 
 /**
  * Entidade principal de Atividade Coletiva / Grupo.
  */
 export interface GroupActivity {
-  id: string
-  tema: string
-  tipo: GroupActivityType
-  
-  /** Data e Hora em formato ISO 8601 */
-  dataRealizacao: string 
-  
-  local?: string
-  descricao?: string
-  orgaosEnvolvidos: string[]
-  
+  id: string;
+  tema: string;
+  tipo: GroupActivityType;
+  dataRealizacao: string;
+  local: string; 
+  descricao?: string;
+  orgaosEnvolvidos: string[];
   facilitador: { 
-    id?: string
-    nome: string 
-  }
-
-  /** * Contagem agregada (vinda do backend/Prisma) 
-   * Útil para exibir nos cards sem carregar toda a lista
-   */
+    id: string; 
+    nome: string; 
+  };
   _count?: { 
-    participantes: number 
-  }
+    participantes: number; 
+  };
+  attendanceConfirmed?: boolean;
+  participantes?: GroupAttendance[];
+}
+
+// --- ZOD SCHEMAS ---
+
+const GROUP_TYPE_KEYS = Object.keys(GROUP_TYPES) as [string, ...string[]];
+
+export const createGroupSchema = z.object({
+  tema: z.string().min(3, "O tema deve ter pelo menos 3 caracteres"),
   
-  /** * Flag calculada pelo backend.
-   * Indica se a lista de presença já foi fechada/confirmada.
-   */
-  attendanceConfirmed?: boolean
+  // [CORREÇÃO FINAL] Usando a propriedade 'message' diretamente, 
+  // conforme solicitado pela mensagem de erro do TypeScript.
+  tipo: z.enum(GROUP_TYPE_KEYS, {
+    message: "Selecione um tipo válido"
+  }),
+  
+  dataRealizacao: z.string().datetime({ message: "Data inválida" }), 
+  local: z.string().min(3, "Local é obrigatório"),
+  descricao: z.string().optional(),
+  facilitadorId: z.string().uuid("Selecione um técnico responsável"),
+  orgaosEnvolvidos: z.array(z.string()).optional()
+});
 
-  /** Lista completa de participantes (carregada sob demanda ou em detalhes) */
-  participantes?: GroupParticipant[]
-}
+export const updateAttendanceSchema = z.object({
+  attendanceId: z.string().uuid(),
+  presente: z.boolean(),
+  observacoes: z.string().max(500).optional()
+});
 
-// --- TIPOS DE INPUT (Para formulários e API) ---
-
-export interface CreateGroupDTO {
-  tema: string
-  tipo: GroupActivityType
-  dataRealizacao: string
-  local: string
-  descricao?: string
-  facilitadorId: string
-}
+export type CreateGroupFormValues = z.infer<typeof createGroupSchema>;
+export type UpdateAttendanceFormValues = z.infer<typeof updateAttendanceSchema>;
 
 FILE: frontend\src\types\pdfmake.d.ts
 --------------------------------------------------
@@ -5895,11 +5931,11 @@ export interface UserFilters {
 FILE: frontend\src\types\workspace.ts
 --------------------------------------------------
 // frontend/src/types/workspace.ts
-import { UserRole } from './user'
-import { AppointmentCategory } from './agenda'
+import { UserRole } from './user' // Certifique-se que este arquivo existe
+import { AppointmentCategory } from './agenda' // Certifique-se que este arquivo existe
 
 // ==========================================
-// 1. ENUMS E AUXILIARES
+// 1. ENUMS E CONSTANTES
 // ==========================================
 
 export enum AlertType {
@@ -5910,67 +5946,80 @@ export enum AlertType {
   NOT_STARTED_YET = 'NOT_STARTED_YET'        // Caso atribuído, mas status não movido para "Em Atendimento"
 }
 
+// ==========================================
+// 2. ENTIDADES BASE (COMPARTILHADAS)
+// ==========================================
+
 /**
- * Representação leve de um agendamento para o widget do dashboard.
+ * Representação leve de um caso para listagens (Dashboard/Workspace).
+ * @note Substitui o antigo DashboardCase para manter compatibilidade com SharedComponents.tsx
+ */
+export interface BaseCase {
+  id: string
+  nomeCompleto: string
+  status: string
+  urgencia?: string | null
+  
+  /** * Pode vir como array do backend ou string CSV em views legadas 
+   */
+  violacao?: string | string[] | null 
+  
+  updatedAt: string
+  dataEntrada?: string // Usado para calcular SLA de acolhida
+  
+  // Opcionais úteis para UI
+  responsavelId?: string
+  tecnicoResponsavel?: {
+    nome: string
+  }
+}
+
+/**
+ * Representação leve de um agendamento para widgets.
  */
 export interface DashboardAppointment {
   id: string
   data: string // ISO Date string
   titulo: string
-  tipo?: AppointmentCategory
+  tipo?: AppointmentCategory | string
   caso?: { 
     id: string
     nomeCompleto: string 
   }
 }
 
-/**
- * Resumo de caso otimizado para listas rápidas e alertas.
- */
-export interface DashboardCase {
-  id: string
-  nomeCompleto: string
-  status: string
-  urgencia?: 'ALTA' | 'MEDIA' | 'BAIXA' | null
-  violacao?: string | null
-  updatedAt: string
-  dataEntrada?: string // Usado para calcular SLA de acolhida
-  
-  // Opcional: ID do responsável atual para filtragem rápida no front
-  responsavelId?: string
-}
-
-export interface CaseAlert extends DashboardCase {
-  type: AlertType
-  days: number // Dias de atraso ou estagnação
+export interface CaseAlert extends BaseCase {
+  alertType: AlertType // Renomeado de 'type' para evitar conflito com palavras reservadas
+  daysLate: number     // Renomeado de 'days' para ser mais semântico
 }
 
 // ==========================================
-// 2. DTOs DE RESPOSTA (WORKSPACES)
+// 3. WORKSPACES POR PERFIL (DISCRIMINATED UNIONS)
 // ==========================================
 
 /**
- * Workspace do Gerente: Visão macro da unidade.
+ * 🏢 Workspace do Gerente: Visão macro da unidade.
  */
 export interface ManagerWorkspaceData {
-  role: 'Gerente' // String literal para Discriminated Union
+  role: 'Gerente' // Discriminador
   
   stats: {
     totalActive: number
-    /** Casos que acabaram de chegar (Triagem/Recepção) */
-    waitingForReception: number 
-    /** Casos triados aguardando técnico de referência (Gargalo) */
-    waitingForDistribution: number 
+    waitingForReception: number     // Triagem
+    waitingForDistribution: number  // Gargalo (Sem técnico)
+    totalPaefi: number              // Adicionado para KPI
   }
   
+  /** Carga de trabalho da equipe */
   teamLoad: {
     id: string
     nome: string
-    role: UserRole
+    role: UserRole | string
     activeCases: number
     monitoringCases?: number
   }[]
   
+  /** Top violações para gráfico de barras */
   topViolations: { 
     label: string
     count: number 
@@ -5980,12 +6029,9 @@ export interface ManagerWorkspaceData {
 }
 
 /**
- * Tipos auxiliares para o Auditor
+ * ⚖️ Workspace do Auditor: Qualidade de dados e conformidade.
  */
-export interface IncompleteCase {
-  id: string
-  nome: string
-  status: string
+export interface IncompleteCase extends Pick<BaseCase, 'id' | 'nomeCompleto' | 'status'> {
   missingFields: string[] // Ex: ['CPF', 'Endereço', 'Telefone']
 }
 
@@ -5997,28 +6043,27 @@ export interface AuditLogSummary {
   data: string
 }
 
-/**
- * Workspace do Auditor: Foco em qualidade de dados e conformidade.
- */
 export interface AuditorWorkspaceData {
-  role: 'Auditor'
+  role: 'Auditor' // Discriminador
+  
   incompleteCases: IncompleteCase[]
   recentLogs: AuditLogSummary[]
+  
   complianceStats: {
     pafCoverage: number // % de casos ativos com PAF
     seiCoverage: number // % de casos com nº SEI
+    dataQualityScore: number // 0-100
   }
 }
 
 /**
- * Workspace Operacional: Foco nas tarefas do dia a dia.
- * (Compartilhado entre Agente Social e Especialista)
+ * 👷 Workspace Operacional: Agente Social e Especialista.
  */
 export interface OperationalWorkspaceData {
-  role: 'Agente_Social' | 'Especialista'
+  role: 'Agente_Social' | 'Especialista' // Discriminador
   
   /** Meus casos ativos ou monitorados */
-  myCases: DashboardCase[]
+  myCases: BaseCase[]
   
   /** Alertas de prazo e estagnação */
   alerts: CaseAlert[]
@@ -6028,26 +6073,23 @@ export interface OperationalWorkspaceData {
   
   /** Estatísticas específicas do cargo */
   detailedStats: {
+    // --- Comum ---
+    meusAtivos: number
+
     // --- Especialista (Técnico) ---
-    /** Casos em monitoramento (menos prioridade) */
     monitoramento?: number
-    /** Acolhidas especializadas pendentes */
     acolhidaEsp?: number
-    /** Casos em acompanhamento sistemático (PAEFI) */
-    acompanhamento?: number
+    acompanhamento?: number // PAEFI
     
     // --- Agente Social ---
-    /** Atribuídos a mim, aguardando 1º contato */
-    meusAguardando?: number    
-    /** Atribuídos a mim, triagem em andamento */
-    meusEmAtendimento?: number 
-    /** Fila geral da unidade (sem dono, para puxar) */
-    filaGeral?: number         
+    meusAguardando?: number    // Aguardando visita/contato
+    meusEmAtendimento?: number // Triagem em andamento
+    filaGeral?: number         // Sem dono (para puxar)
   }
 }
 
 // ==========================================
-// 3. UNION TYPE PRINCIPAL
+// 4. TIPO DE RETORNO DA API
 // ==========================================
 
 export type WorkspaceResponse = 
@@ -6786,7 +6828,8 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.WORKSPACE,
     icon: Briefcase,
     label: 'Minha Mesa',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista'],
+    // Todos têm acesso à mesa pessoal
+    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
     section: 'Meu Trabalho',
   },
   {
@@ -6809,7 +6852,8 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.DASHBOARD,
     icon: LayoutDashboard,
     label: 'Painel Geral',
-    allowedRoles: ['Gerente', 'Agente_Social', 'Especialista', 'Auditor'],
+    // [MUDANÇA v8.1] Restrito apenas a Gerentes e Auditores
+    allowedRoles: ['Gerente', 'Auditor'],
     section: 'Gestão de Casos',
   },
   {
@@ -6823,7 +6867,7 @@ export const NAV_LINKS: readonly NavLink[] = [
     to: ROUTES.TEAM_OVERVIEW,
     icon: Users,
     label: 'Gestão da Equipe',
-    allowedRoles: ['Gerente', 'Auditor'], // Apenas Gerente/Auditor veem
+    allowedRoles: ['Gerente', 'Auditor'],
     section: 'Gestão de Casos',
   },
   {
@@ -7479,6 +7523,12 @@ export const createCaseFormSchema = z.object({
   nascimento: z.string().refine((val) => val.length > 0, 'Data de nascimento obrigatória.'),
   sexo: z.string().min(1, 'Selecione o sexo.'),
 
+  // [NOVO v8.2] Campo de E-mail (Opcional, mas validado se preenchido)
+  email: z.union([
+    z.literal(''), 
+    z.string().email('Formato de e-mail inválido.')
+  ]).optional().nullable(),
+
   ocupacao: z.preprocess(
     (val) => (val === "" || val === null ? undefined : val),
     z.enum([...OCUPACOES_ROL] as [string, ...string[]])
@@ -7537,6 +7587,8 @@ export const closeCaseFormSchema = z.object({
   motivoDesligamento: z.string().min(1, 'Selecione um motivo.'),
   destinoDesligamento: z.string().min(1, 'Selecione o destino.'),
   parecerFinal: z.string().min(10, 'Parecer detalhado obrigatório.'),
+  // [NOVO] Flag
+  manterReferencia: z.boolean().default(false),
 })
 
 FILE: frontend\src\schemas\userSchemas.ts
@@ -7732,7 +7784,7 @@ FILE: frontend\package.json
 --------------------------------------------------
 {
   "name": "frontend",
-  "version": "8.0.0",
+  "version": "8.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -7777,6 +7829,7 @@ FILE: frontend\package.json
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "fast-csv": "^5.0.5",
+    "file-saver": "^2.0.5",
     "framer-motion": "^12.34.0",
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
@@ -7799,6 +7852,8 @@ FILE: frontend\package.json
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@tailwindcss/vite": "^4.1.18",
+    "@types/file-saver": "^2.0.7",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^25.2.2",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^5.2.0",

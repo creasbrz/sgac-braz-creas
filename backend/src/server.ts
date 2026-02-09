@@ -95,7 +95,7 @@ app.register(multipart, {
 
 app.register(fastifySwagger, {
   openapi: {
-    info: { title: 'CREAS Brazlândia API', version: '8.3.0' }, // Atualizado para v8.3
+    info: { title: 'CREAS Brazlândia API', version: '8.3.0' },
     components: { 
       securitySchemes: { 
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } 
@@ -141,15 +141,14 @@ app.register(async (api) => {
     api.register(waitingListRoutes)
     
     // Instrumentais Técnicos (v8.3)
-    // [CORREÇÃO] Registrado corretamente no escopo 'api'
     api.register(instrumentalRoutes)
-    api.register(pafRoutes) // Mantido por compatibilidade legado, se necessário
+    api.register(pafRoutes)
     
     // Gestão e Relatórios
     api.register(statsRoutes)
-    api.register(statsRoutes, { prefix: '/dashboard' }) // Alias
+    api.register(statsRoutes, { prefix: '/dashboard' }) // Alias para compatibilidade
     api.register(reportRoutes)
-    api.register(rmaRoutes)
+    api.register(rmaRoutes, { prefix: '/rma' }) // [CORREÇÃO] Prefixo explícito para RMA
     api.register(deliverablesRoutes)
     
     // Sistema e Arquivos
@@ -163,7 +162,7 @@ app.register(async (api) => {
     console.log('✅ Todas as rotas registradas com sucesso.')
   } catch (err) {
     console.error('❌ Falha fatal no registro de rotas:', err)
-    process.exit(1) // Falha no boot se rotas críticas falharem
+    process.exit(1)
   }
 
 }, { prefix: '/api' })
@@ -184,7 +183,7 @@ app.register(fastifyStatic, {
   preCompressed: true
 })
 
-// Fallback para SPA (Single Page Application)
+// Fallback para SPA
 app.setNotFoundHandler((req, reply) => {
   if (req.raw.url && req.raw.url.startsWith('/api')) {
     return reply.status(404).send({ 
@@ -192,7 +191,6 @@ app.setNotFoundHandler((req, reply) => {
       message: `Endpoint não encontrado: ${req.raw.url}` 
     })
   }
-  // Se não for API, retorna o index.html do React
   return reply.sendFile('index.html')
 })
 

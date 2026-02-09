@@ -263,7 +263,7 @@ import { CaseService } from '../services/CaseService'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
 import { Cargo, CaseStatus } from '@prisma/client'
 
-// Interfaces locais para Tipagem estrita dos Bodys
+// Interfaces locais
 interface UpdateStatusBody {
   status: CaseStatus
 }
@@ -276,11 +276,12 @@ interface CloseCaseBody {
   parecerFinal: string
   motivoDesligamento: string
   destinoDesligamento?: string
+  manterReferencia?: boolean
 }
 
 export class CaseController {
   
-  static async create(req: FastifyRequest<{ Body: CreateCaseInput }>, reply: FastifyReply) {
+  static async create(req: FastifyRequest<{ Body: CreateCaseInput & { email?: string, casoPrincipalId?: string } }>, reply: FastifyReply) {
     const { sub: userId } = req.user as { sub: string }
     
     try {
@@ -308,7 +309,8 @@ export class CaseController {
     return reply.send(caso)
   }
 
-  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateCaseInput }>, reply: FastifyReply) {
+  // [CORREÇÃO] Tipagem do body aceitando casoPrincipalId nullable
+  static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateCaseInput & { email?: string, casoPrincipalId?: string | null } }>, reply: FastifyReply) {
     const { id } = req.params
     const { sub: userId } = req.user as { sub: string }
     
@@ -349,12 +351,10 @@ export class CaseController {
     }
   }
 
-  // [CORREÇÃO AQUI] Definida a interface CloseCaseBody explicitamente no Generic
   static async closeCase(req: FastifyRequest<{ Params: { id: string }, Body: CloseCaseBody }>, reply: FastifyReply) {
     const { id } = req.params
     const { sub: userId } = req.user as { sub: string }
     
-    // Agora req.body é tipado como CloseCaseBody, satisfazendo o Service
     const updated = await CaseService.closeCase(id, req.body, userId)
     return reply.send(updated)
   }
@@ -972,49 +972,48 @@ FILE: backend\src\controllers\StatsController.ts
 // backend/src/controllers/StatsController.ts
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { StatsService } from '../services/StatsService'
-import { Cargo } from '@prisma/client'
+import { z } from 'zod'
 
 export class StatsController {
   
-  static async getDashboard(req: FastifyRequest, reply: FastifyReply) {
-    const { cargo, sub } = req.user as { cargo: string; sub: string }
-    const result = await StatsService.getDashboard({ sub, cargo })
+  static async getDashboard(request: FastifyRequest, reply: FastifyReply) {
+    // Extrai dados do usuário logado (injetados pelo JWT)
+    const user = request.user as { sub: string, cargo: string }
+    const data = await StatsService.getDashboard(user)
+    return reply.send(data)
+  }
+
+  static async getProductivity(request: FastifyRequest, reply: FastifyReply) {
+    const querySchema = z.object({
+      mode: z.enum(['workload', 'performance']).default('workload'),
+      months: z.coerce.number().default(1)
+    })
     
-    // Header de Cache (se aplicável, lógica pode vir do Service)
-    if ((result as any).cached) {
-       reply.header('X-Cache', 'HIT')
-    }
-    return reply.send(result)
+    const { mode, months } = querySchema.parse(request.query)
+    const data = await StatsService.getProductivity(mode, months)
+    return reply.send(data)
   }
 
-  static async getProductivity(req: FastifyRequest<{ Querystring: { mode: 'workload' | 'performance', months: number } }>, reply: FastifyReply) {
-    const { mode, months } = req.query
-    const result = await StatsService.getProductivity(mode, months)
-    return reply.send(result)
+  static async getVigilance(request: FastifyRequest, reply: FastifyReply) {
+    const data = await StatsService.getVigilanceStats()
+    return reply.send(data)
   }
 
-  static async getVigilance(req: FastifyRequest, reply: FastifyReply) {
-    const { cargo } = req.user as { cargo: string }
-    if (!['Gerente', 'Especialista', 'Auditor'].includes(cargo)) {
-       return reply.status(403).send({ message: "Acesso restrito." })
-    }
-    const result = await StatsService.getVigilanceStats()
-    return reply.send(result)
+  static async getAdvanced(request: FastifyRequest, reply: FastifyReply) {
+    const querySchema = z.object({
+      months: z.coerce.number().min(1).max(60).default(12),
+      violacao: z.string().optional()
+    })
+
+    const { months, violacao } = querySchema.parse(request.query)
+    const data = await StatsService.getAdvancedStats(months, violacao)
+    return reply.send(data)
   }
 
-  static async getAdvanced(req: FastifyRequest<{ Querystring: { months: number, violacao?: string } }>, reply: FastifyReply) {
-    const { cargo } = req.user as { cargo: string }
-    if (cargo !== Cargo.Gerente) return reply.status(403).send({ message: "Acesso restrito." })
-
-    const { months, violacao } = req.query
-    const result = await StatsService.getAdvancedStats(months, violacao)
-    return reply.send(result)
-  }
-
-  static async getActivity(req: FastifyRequest, reply: FastifyReply) {
-    const { cargo, sub } = req.user as { cargo: string; sub: string }
-    const result = await StatsService.getRecentActivity({ sub, cargo })
-    return reply.send(result)
+  static async getActivity(request: FastifyRequest, reply: FastifyReply) {
+    const user = request.user as { sub: string, cargo: string }
+    const data = await StatsService.getRecentActivity(user)
+    return reply.send(data)
   }
 }
 

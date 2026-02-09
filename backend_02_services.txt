@@ -761,12 +761,10 @@ import { prisma } from '../lib/prisma'
 import { cache } from '../lib/cache'
 import { CryptoService } from '../lib/crypto'
 import { geocodeAddress } from '../utils/geocoding'
-import { LogAction, CaseStatus, Cargo, Prisma } from '@prisma/client'
+import { LogAction, CaseStatus, Prisma } from '@prisma/client'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
-// [REFATORAÇÃO] Regra de negócio centralizada
 import { calculateUrgencyWeight } from '../domain/UrgencyRules'
 
-// Interface auxiliar para o objeto de endereço retornado ao Front
 interface AddressObject {
   logradouro: string | null
   ra: string | null
@@ -836,9 +834,6 @@ export class CaseService {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
   }
 
-  // [REFATORAÇÃO] Método calculateUrgencyWeight removido daqui. 
-  // A lógica agora reside em src/domain/UrgencyRules.ts para evitar duplicidade.
-
   private static parseDecimal(value: any): Prisma.Decimal | null {
     if (value === null || value === undefined || value === '') return null
     try {
@@ -862,50 +857,60 @@ export class CaseService {
     
     const where = this.buildWhereClause(params, user)
 
-    // Ordenação Padrão de Triagem:
-    // 1. Urgência (Maior peso primeiro) -> Gravidade
-    // 2. Data de Entrada (Mais antigo primeiro) -> Tempo de espera
-    let orderBy: any = [
+    let orderBy: Prisma.CaseOrderByWithRelationInput | Prisma.CaseOrderByWithRelationInput[] = [
       { pesoUrgencia: 'desc' },
       { dataEntrada: 'asc' }
     ]
     
-    if (sortBy) {
+    if (sortBy && typeof sortBy === 'string' && sortBy !== 'undefined' && sortBy !== 'null') {
+      const direction = sortOrder === 'asc' ? 'asc' : 'desc'
+      
       if (sortBy === 'urgencia') {
-         orderBy = [{ pesoUrgencia: sortOrder || 'desc' }, { dataEntrada: 'asc' }]
+         orderBy = [{ pesoUrgencia: direction }, { dataEntrada: 'asc' }]
       } else {
-         orderBy = { [sortBy]: sortOrder || 'asc' }
+         const validSortFields = ['nomeCompleto', 'dataEntrada', 'status', 'updatedAt']
+         if (validSortFields.includes(sortBy)) {
+             orderBy = { [sortBy]: direction }
+         }
       }
     }
 
-    const [items, total] = await Promise.all([
-      prisma.case.findMany({
-        where,
-        orderBy,
-        take: Number(pageSize),
-        skip: (Number(page) - 1) * Number(pageSize),
-        include: {
-          agenteAcolhida: { select: { nome: true } },
-          especialistaPAEFI: { select: { nome: true } }
-        },
-      }),
-      prisma.case.count({ where }),
-    ])
+    try {
+        const [items, total] = await Promise.all([
+          prisma.case.findMany({
+            where,
+            orderBy,
+            take: Number(pageSize),
+            skip: (Number(page) - 1) * Number(pageSize),
+            include: {
+              agenteAcolhida: { select: { nome: true } },
+              especialistaPAEFI: { select: { nome: true } }
+            },
+          }),
+          prisma.case.count({ where }),
+        ])
 
-    const formattedItems = items.map(item => this.formatCaseOutput(item))
+        const formattedItems = items.map(item => this.formatCaseOutput(item))
 
-    return { 
-      data: formattedItems, 
-      meta: { 
-        total, 
-        page: Number(page), 
-        pageSize: Number(pageSize), 
-        totalPages: Math.ceil(total / Number(pageSize)) 
-      } 
+        return { 
+          data: formattedItems, 
+          meta: { 
+            total, 
+            page: Number(page), 
+            pageSize: Number(pageSize), 
+            totalPages: Math.ceil(total / Number(pageSize)) 
+          } 
+        }
+    } catch (error) {
+        console.error("[CaseService.findAll] Erro crítico na query:", error)
+        return { 
+            data: [], 
+            meta: { total: 0, page: 1, pageSize: 10, totalPages: 0 } 
+        }
     }
   }
 
-  static async create(data: CreateCaseInput, userId: string) {
+  static async create(data: CreateCaseInput & { email?: string, casoPrincipalId?: string }, userId: string) {
     const exists = await prisma.case.findUnique({ where: { cpf: data.cpf } })
     if (exists) throw new Error('CPF_ALREADY_EXISTS')
 
@@ -929,7 +934,6 @@ export class CaseService {
         numero: CryptoService.encrypt(c.numero) || ''
     }))
 
-    // [REFATORAÇÃO] Uso da função centralizada
     const pesoUrgencia = calculateUrgencyWeight(data.urgencia)
 
     const newCase = await prisma.case.create({
@@ -940,6 +944,8 @@ export class CaseService {
         pesoUrgencia,
         ocupacao: data.ocupacao || null,
         renda: this.parseDecimal(data.renda),
+        email: data.email || null,
+        casoPrincipalId: data.casoPrincipalId || null,
 
         endereco_logradouro: encryptedLogradouro,
         endereco_complemento: encryptedComplemento,
@@ -964,12 +970,13 @@ export class CaseService {
     return this.formatCaseOutput(newCase)
   }
 
-  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, linkSei?: string | null, numeroSei?: string | null }, userId: string) {
+  static async update(id: string, data: UpdateCaseInput & { seiRespondido?: boolean, linkSei?: string | null, numeroSei?: string | null, email?: string, casoPrincipalId?: string | null }, userId: string) {
     const oldCase = await prisma.case.findUnique({ where: { id } })
     if (!oldCase) throw new Error('NOT_FOUND')
 
     const dataToUpdate: any = { ...data }
     
+    // Remove campos aninhados para tratar separadamente
     if (data.endereco) delete dataToUpdate.endereco
     if (data.contatos) delete dataToUpdate.contatos
 
@@ -977,12 +984,12 @@ export class CaseService {
     if (data.dataEntrada) dataToUpdate.dataEntrada = this.stripTime(data.dataEntrada)
     
     if (data.urgencia) {
-        // [REFATORAÇÃO] Uso da função centralizada
         dataToUpdate.pesoUrgencia = calculateUrgencyWeight(data.urgencia)
     }
     
     if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
 
+    // Gestão do SEI
     if (typeof data.seiRespondido === 'boolean') {
         dataToUpdate.seiRespondido = data.seiRespondido
         if (data.seiRespondido === true) {
@@ -990,6 +997,11 @@ export class CaseService {
         } else {
             dataToUpdate.dataRespostaSei = null
         }
+    }
+
+    // [CORREÇÃO] Gestão de Vínculos (Permitindo null)
+    if (data.casoPrincipalId !== undefined) {
+        dataToUpdate.casoPrincipalId = data.casoPrincipalId
     }
 
     if (data.endereco) {
@@ -1016,7 +1028,13 @@ export class CaseService {
     const updated = await prisma.case.update({ where: { id }, data: dataToUpdate })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, userId, LogAction.OUTRO, `Editou dados cadastrais.`)
+    
+    // Log detalhado para vínculos
+    let logMsg = `Editou dados cadastrais.`
+    if (data.casoPrincipalId && data.casoPrincipalId !== oldCase.casoPrincipalId) logMsg = `Vinculou ao prontuário ${data.casoPrincipalId}.`
+    if (data.casoPrincipalId === null && oldCase.casoPrincipalId) logMsg = `Removeu vínculo de prontuário.`
+
+    await this.createLog(id, userId, LogAction.OUTRO, logMsg)
     
     return this.formatCaseOutput(updated)
   }
@@ -1029,6 +1047,8 @@ export class CaseService {
         agenteAcolhida: { select: { id: true, nome: true } },
         especialistaPAEFI: { select: { id: true, nome: true } },
         familia: true,
+        casosVinculados: { select: { id: true, nomeCompleto: true, status: true } },
+        casoPrincipal: { select: { id: true, nomeCompleto: true } },
         encaminhamentos: { include: { autor: { select: { nome: true } } }, orderBy: { dataEnvio: 'desc' } },
         entregas: { include: { responsavel: { select: { nome: true } } }, orderBy: { dataSolicitacao: 'desc' } },
         evolucoes: { include: { autor: { select: { nome: true, cargo: true } } }, orderBy: { createdAt: 'desc' } },
@@ -1073,7 +1093,8 @@ export class CaseService {
         motivoDesligamento: null, 
         destinoDesligamento: null, 
         dataDesligamento: null, 
-        parecerFinal: null 
+        parecerFinal: null,
+        manterReferencia: false 
       }
     }
 
@@ -1085,7 +1106,6 @@ export class CaseService {
 
   static async assignSpecialist(id: string, specialistId: string, managerId: string) {
     const oldCase = await prisma.case.findUnique({ where: { id }, include: { especialistaPAEFI: true } })
-    const spec = await prisma.user.findUnique({ where: { id: specialistId } })
     
     if (!oldCase) throw new Error('NOT_FOUND')
     
@@ -1099,12 +1119,12 @@ export class CaseService {
     })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, managerId, LogAction.ATRIBUICAO, `Atribuiu a ${spec?.nome || 'Desconhecido'}`, oldCase?.especialistaPAEFI?.nome, spec?.nome)
+    await this.createLog(id, managerId, LogAction.ATRIBUICAO, `Atribuiu especialista`, oldCase?.especialistaPAEFI?.nome, 'Novo')
     
     return this.formatCaseOutput(updated)
   }
 
-  static async closeCase(id: string, data: { parecerFinal: string, motivoDesligamento: string, destinoDesligamento?: string }, userId: string) {
+  static async closeCase(id: string, data: { parecerFinal: string, motivoDesligamento: string, destinoDesligamento?: string, manterReferencia?: boolean }, userId: string) {
     const updated = await prisma.case.update({ 
       where: { id }, 
       data: { 
@@ -1115,47 +1135,71 @@ export class CaseService {
     })
     
     cache.invalidate('manager_stats')
-    await this.createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${data.motivoDesligamento}`)
+    
+    const refMsg = data.manterReferencia ? ' (Mantendo referência)' : '';
+    await this.createLog(id, userId, LogAction.DESLIGAMENTO, `Desligou: ${data.motivoDesligamento}${refMsg}`)
     
     return this.formatCaseOutput(updated)
   }
 
   static buildWhereClause(query: any, user: { cargo: string, sub: string }) {
     const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId } = query
-    let where: any = {}
+    
+    const conditions: any[] = []
 
-    if (agenteId) where = { agenteAcolhidaId: agenteId, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
-    else if (specialistId) where = { especialistaPAEFIId: specialistId, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
-    else if (view === 'all') {
-      if (status === 'DESLIGADO') where = { status: CaseStatus.DESLIGADO }
-      else where = { status: { not: CaseStatus.DESLIGADO } }
+    if (view === 'all') {
+      if (status === 'DESLIGADO') {
+         conditions.push({ status: CaseStatus.DESLIGADO })
+      } else if (!status || status === 'all') {
+         conditions.push({ status: { not: CaseStatus.DESLIGADO } })
+      }
     } else {
-      // [USO DO ENUM CARGO CORRIGIDO]
-      if (user.cargo === Cargo.Gerente) where = { status: CaseStatus.AGUARDANDO_DISTRIBUICAO }
-      else if (user.cargo === Cargo.Agente_Social) where = { agenteAcolhidaId: user.sub, status: { in: [CaseStatus.AGUARDANDO_ACOLHIDA, CaseStatus.EM_ACOLHIDA] } }
-      else if (user.cargo === Cargo.Especialista) where = { especialistaPAEFIId: user.sub, status: { in: [CaseStatus.EM_ACOLHIDA_ESPECIALIZADA, CaseStatus.EM_ACOMPANHAMENTO, CaseStatus.EM_MONITORAMENTO] } }
+      if (user.cargo === 'Gerente') {
+         conditions.push({ status: CaseStatus.AGUARDANDO_DISTRIBUICAO })
+      } 
+      else if (user.cargo === 'Agente_Social') {
+         conditions.push({
+           OR: [
+             { agenteAcolhidaId: user.sub },
+             { status: CaseStatus.AGUARDANDO_ACOLHIDA, agenteAcolhidaId: null }
+           ]
+         })
+      } 
+      else if (user.cargo === 'Especialista') {
+         conditions.push({ especialistaPAEFIId: user.sub })
+         conditions.push({ status: { not: CaseStatus.DESLIGADO } })
+      }
     }
 
-    if (search) {
-      where.AND = [ ...(where.AND || []), {
-          OR: [
-            { nomeCompleto: { contains: search, mode: 'insensitive' } },
-            { cpf: { contains: search } },
-            { endereco_ra: { contains: search, mode: 'insensitive' } }
-          ]
-      }]
+    if (agenteId) conditions.push({ agenteAcolhidaId: agenteId })
+    if (specialistId) conditions.push({ especialistaPAEFIId: specialistId })
+
+    if (search && search.trim() !== '') {
+      conditions.push({
+        OR: [
+          { nomeCompleto: { contains: search, mode: 'insensitive' } },
+          { cpf: { contains: search } },
+          { endereco_ra: { contains: search, mode: 'insensitive' } }
+        ]
+      })
     }
 
     if (status && status !== 'all') {
       const validStatuses = status.split(',').filter((s: string) => Object.values(CaseStatus).includes(s as CaseStatus))
-      if (validStatuses.length > 0) where.status = { in: validStatuses }
+      if (validStatuses.length > 0) conditions.push({ status: { in: validStatuses } })
     }
-    if (urgencia && urgencia !== 'all') where.urgencia = urgencia
-    if (violacao && violacao !== 'all') where.violacao = { has: violacao }
-    if (categoria && categoria !== 'all') where.categoria = categoria
-    if (sexo && sexo !== 'all') where.sexo = sexo
 
-    return where
+    if (urgencia && urgencia !== 'all') conditions.push({ urgencia })
+    
+    if (violacao && violacao !== 'all') {
+      conditions.push({ violacao: { has: violacao } })
+    }
+    
+    if (categoria && categoria !== 'all') conditions.push({ categoria })
+    if (sexo && sexo !== 'all') conditions.push({ sexo })
+
+    if (conditions.length === 0) return {}
+    return { AND: conditions }
   }
 }
 
@@ -1278,35 +1322,42 @@ interface ListEvolutionInput {
 export class EvolutionService {
   
   /**
-   * Lista evoluções aplicando regras estritas de visualização (Sigilo)
+   * Lista evoluções aplicando regras estritas de visualização (Sigilo por Perfil)
+   * Regra v8.3: 
+   * - Gerente vê tudo.
+   * - Agentes veem sigilosos de Agentes.
+   * - Especialistas veem sigilosos de Especialistas.
    */
   static async list({ caseId, userId, cargo, page, pageSize }: ListEvolutionInput) {
-    // 1. Busca dados de atribuição do caso
-    const caso = await prisma.case.findUnique({
-      where: { id: caseId },
-      select: { agenteAcolhidaId: true, especialistaPAEFIId: true }
-    })
-
-    if (!caso) throw new Error('CASE_NOT_FOUND')
-
-    // 2. Regras de Permissão
-    const isGerente = cargo === Cargo.Gerente
-    const isResponsavel = caso.agenteAcolhidaId === userId || caso.especialistaPAEFIId === userId
-    
-    // Quem pode ver tudo (incluindo sigilosos)? Gerentes e Técnicos Responsáveis
-    const canViewSigilo = isGerente || isResponsavel
-
-    const whereCondition: any = { casoId: caseId }
-
-    if (!canViewSigilo) {
-      // Regra: Se não for responsável, vê apenas PÚBLICAS ou AS SUAS PRÓPRIAS
-      whereCondition.OR = [
-        { sigilo: false },
-        { autorId: userId }
-      ]
+    // 1. Definição da cláusula WHERE base
+    const whereCondition: any = { 
+      casoId: caseId 
     }
 
-    // 3. Query
+    // 2. Lógica de Sigilo (Security Gate)
+    if (cargo !== Cargo.Gerente) {
+      // Se não for gerente, aplica filtros
+      const roleFilter = cargo === Cargo.Agente_Social ? Cargo.Agente_Social : Cargo.Especialista
+
+      whereCondition.OR = [
+        // A. Pode ver todas as públicas
+        { sigilo: false },
+        
+        // B. Pode ver as suas próprias (sempre)
+        { autorId: userId },
+
+        // C. Pode ver sigilosas SE forem do mesmo cargo (Perfil)
+        { 
+          AND: [
+            { sigilo: true },
+            { autor: { cargo: roleFilter } } 
+          ]
+        }
+      ]
+    }
+    // Se for Gerente, não adiciona filtros, vê tudo.
+
+    // 3. Query Otimizada
     const [items, total] = await Promise.all([
       prisma.evolucao.findMany({
         where: whereCondition,
@@ -1314,7 +1365,13 @@ export class EvolutionService {
         take: pageSize,
         skip: (page - 1) * pageSize,
         include: {
-          autor: { select: { id: true, nome: true, cargo: true } }
+          autor: { 
+            select: { 
+              id: true, 
+              nome: true, 
+              cargo: true 
+            } 
+          }
         }
       }),
       prisma.evolucao.count({ where: whereCondition })
@@ -2333,6 +2390,247 @@ export class ImportService {
     }
 
     return { processed: processedCount, created: createdCount, errors: errorCount, logs: logs }
+  }
+}
+
+FILE: backend\src\services\InstrumentalService.ts
+--------------------------------------------------
+// backend/src/services/InstrumentalService.ts
+import { prisma } from '../lib/prisma'
+import { LogAction } from '@prisma/client'
+import { UpsertPafInput, CreateDocumentInput } from '../schemas/instrumentalSchema'
+
+export class InstrumentalService {
+  
+  /**
+   * Cria ou Atualiza o PAF (Gera versão anterior automaticamente)
+   * e processa as entregas vinculadas.
+   */
+  static async upsertPaf(userId: string, data: UpsertPafInput) {
+    // 1. Verifica se já existe PAF (Usando casoId conforme schema)
+    const existingPaf = await prisma.paf.findUnique({
+      where: { casoId: data.caseId } // [CORREÇÃO] casoId
+    })
+
+    // 2. Se existir, salva backup na tabela PafVersion
+    if (existingPaf) {
+      await prisma.pafVersion.create({
+        data: {
+          pafId: existingPaf.id,
+          diagnostico: existingPaf.diagnostico,
+          objetivos: existingPaf.objetivos,
+          estrategias: existingPaf.estrategias,
+          deadline: existingPaf.deadline,
+          autorId: existingPaf.autorId,
+          savedAt: new Date(),
+          versaoNumero: existingPaf.versaoAtual
+        }
+      })
+    }
+
+    // 3. Atualiza ou Cria o PAF Atual
+    const paf = await prisma.paf.upsert({
+      where: { casoId: data.caseId }, // [CORREÇÃO] casoId
+      update: {
+        diagnostico: data.diagnostico,
+        objetivos: data.objetivos,
+        estrategias: data.estrategias,
+        deadline: data.deadline,
+        autorId: userId,
+        versaoAtual: { increment: 1 }
+      },
+      create: {
+        casoId: data.caseId, // [CORREÇÃO] casoId
+        diagnostico: data.diagnostico,
+        objetivos: data.objetivos,
+        estrategias: data.estrategias,
+        deadline: data.deadline,
+        autorId: userId,
+        versaoAtual: 1
+      }
+    })
+
+    // 4. Processa Entregas/Benefícios vinculados ao PAF
+    if (data.entregas && data.entregas.length > 0) {
+      for (const item of data.entregas) {
+        await prisma.serviceDeliverable.create({
+          data: {
+            casoId: data.caseId,
+            responsavelId: userId,
+            tipo: item,
+            status: 'CONCEDIDO',
+            dataSolicitacao: new Date(),
+            observacoes: `Concessão registrada via PAF (v${paf.versaoAtual})`
+          }
+        })
+      }
+    }
+
+    // 5. Log
+    await prisma.caseLog.create({
+      data: {
+        casoId: data.caseId,
+        autorId: userId,
+        acao: existingPaf ? LogAction.PAF_ATUALIZADO : LogAction.PAF_CRIADO,
+        descricao: existingPaf 
+          ? `Repactuação do PAF (v${paf.versaoAtual}).` 
+          : `Elaboração do Plano de Acompanhamento Inicial.`
+      }
+    })
+
+    return paf
+  }
+
+  /**
+   * Cria um Documento Técnico (Relatório/Ofício)
+   */
+  static async createDocument(userId: string, data: CreateDocumentInput) {
+    const doc = await prisma.technicalDocument.create({
+      data: {
+        tipo: data.tipo,
+        conteudo: data.conteudo, // JSON
+        casoId: data.caseId, // [CORREÇÃO] casoId
+        autorId: userId
+      }
+    })
+
+    const nomesDoc: Record<string, string> = {
+      'RELATORIO_SOCIO': 'Relatório Socioassistencial',
+      'RELATORIO_INFORMATIVO': 'Relatório Informativo',
+      'SOLICITACAO_ACOLHIMENTO': 'Solicitação de Acolhimento'
+    }
+
+    await prisma.caseLog.create({
+      data: {
+        casoId: data.caseId,
+        autorId: userId,
+        acao: LogAction.OUTRO,
+        descricao: `Emissão de ${nomesDoc[data.tipo] || 'Documento Técnico'}.`
+      }
+    })
+
+    return doc
+  }
+
+  /**
+   * Lista histórico de documentos de um caso
+   */
+  static async listDocuments(caseId: string) {
+    return prisma.technicalDocument.findMany({
+      where: { casoId: caseId }, // [CORREÇÃO] casoId
+      orderBy: { createdAt: 'desc' },
+      include: {
+        autor: { select: { nome: true, cargo: true } }
+      }
+    })
+  }
+
+  /**
+   * Busca histórico de versões do PAF
+   */
+  static async getPafHistory(caseId: string) {
+    // Busca PAF com includes e tipagem inferida
+    const paf = await prisma.paf.findUnique({
+        where: { casoId: caseId }, // [CORREÇÃO] casoId
+        include: { 
+            versoes: { orderBy: { savedAt: 'desc' }, include: { autor: { select: { nome: true } } } },
+            autor: { select: { nome: true } }
+        }
+    })
+
+    if (!paf) return []
+
+    // Formata para retornar uma lista unificada
+    // O TypeScript agora deve reconhecer 'versoes' e 'autor' porque usamos 'include'
+    const history = [
+        {
+            id: paf.id,
+            diagnostico: paf.diagnostico,
+            objetivos: paf.objetivos,
+            estrategias: paf.estrategias,
+            deadline: paf.deadline,
+            savedAt: paf.updatedAt,
+            autor: paf.autor,
+            versaoNumero: paf.versaoAtual,
+            isCurrent: true
+        },
+        // [CORREÇÃO] Tipagem explícita no map para evitar erro 7006
+        ...paf.versoes.map((v: any) => ({ ...v, isCurrent: false }))
+    ]
+
+    return history
+  }
+}
+
+FILE: backend\src\services\NotificationService.ts
+--------------------------------------------------
+// backend/src/services/NotificationService.ts
+import { prisma } from '../lib/prisma'
+
+interface EmailPayload {
+  to: string
+  subject: string
+  body: string
+}
+
+export class NotificationService {
+  /**
+   * Envia notificação por e-mail para o assistido.
+   * Atualmente loga no console (Dry Run), pronto para integração SMTP.
+   */
+  static async sendEmail({ to, subject, body }: EmailPayload) {
+    if (!to || !to.includes('@')) {
+      console.warn(`[Notification] Tentativa de envio para e-mail inválido: ${to}`)
+      return
+    }
+
+    // TODO: Integrar com Nodemailer / AWS SES / SendGrid aqui
+    console.log(`\n📨 [MOCK EMAIL] Para: ${to}`)
+    console.log(`   Assunto: ${subject}`)
+    console.log(`   Corpo: ${body}\n`)
+    
+    // Log de auditoria interno (opcional, mas recomendado)
+    // Poderíamos criar uma tabela 'NotificationLog' futuramente
+  }
+
+  /**
+   * Notifica sobre agendamento
+   */
+  static async notifyAppointment(caseId: string, date: Date, type: string) {
+    const caso = await prisma.case.findUnique({
+      where: { id: caseId },
+      select: { email: true, nomeCompleto: true }
+    })
+
+    if (caso?.email) {
+      const dateStr = date.toLocaleDateString('pt-BR')
+      const timeStr = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      
+      await this.sendEmail({
+        to: caso.email,
+        subject: `Lembrete de Atendimento - CREAS Brazlândia`,
+        body: `Olá, ${caso.nomeCompleto}.\n\nLembramos do seu agendamento (${type}) confirmado para o dia ${dateStr} às ${timeStr}.\n\nCaso não possa comparecer, por favor entre em contato.`
+      })
+    }
+  }
+
+  /**
+   * Notifica inclusão em grupo
+   */
+  static async notifyGroupInclusion(caseId: string, groupName: string, date: Date) {
+    const caso = await prisma.case.findUnique({
+      where: { id: caseId },
+      select: { email: true, nomeCompleto: true }
+    })
+
+    if (caso?.email) {
+       const dateStr = date.toLocaleDateString('pt-BR')
+       await this.sendEmail({
+        to: caso.email,
+        subject: `Convite para Atividade - ${groupName}`,
+        body: `Olá, ${caso.nomeCompleto}.\n\nVocê foi inscrito na atividade "${groupName}" que acontecerá em ${dateStr}.\nSua presença é muito importante!`
+      })
+    }
   }
 }
 

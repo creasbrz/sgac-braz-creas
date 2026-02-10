@@ -208,7 +208,7 @@ export function ManagerDashboard() {
             value={stats.acompanhamentosCount} 
             icon={FolderOpen} 
             variant="purple" 
-            description="PAEFI ativo"
+            description="Famílias em acompanhamento"
           />
           <ManagerStatCard 
             title="Desligamentos" 
@@ -277,7 +277,7 @@ export function ManagerDashboard() {
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Activity className="h-4 w-4 text-[hsl(var(--chart-2))]"/> Carga de Trabalho — Especialistas
               </CardTitle>
-              <CardDescription>Volume de PAEFI por técnico de referência.</CardDescription>
+              <CardDescription>Distribuição de casos ativos por especialista.</CardDescription>
             </CardHeader>
             <CardContent>
               {/* [CORREÇÃO] Altura fixa aplicada no ChartContainer */}

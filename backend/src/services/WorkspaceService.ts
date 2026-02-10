@@ -1,7 +1,7 @@
 // backend/src/services/WorkspaceService.ts
 import { prisma } from '../lib/prisma'
 import { Cargo, CaseStatus, LogAction } from '@prisma/client'
-import { startOfDay, endOfDay, subDays, differenceInDays } from 'date-fns'
+import { startOfDay, endOfDay, differenceInDays } from 'date-fns'
 
 enum CaseAlertType {
   PAF_NOT_STARTED = 'PAF_NOT_STARTED',
@@ -16,23 +16,23 @@ export class WorkspaceService {
   // --- HELPERS ---
 
   private static processTopViolations(violationArrays: (string[] | null)[]) {
-    const counts: Record<string, number> = {}
-    violationArrays.forEach(arr => {
-      if (Array.isArray(arr)) {
-        arr.forEach(rawItem => {
-          if (!rawItem) return
-          String(rawItem).split(',').forEach(p => {
-              const name = p.trim()
-              if (name) counts[name] = (counts[name] || 0) + 1
-          })
+  const counts: Record<string, number> = {}
+  violationArrays.forEach(arr => {
+    if (Array.isArray(arr)) {
+      arr.forEach(rawItem => {
+        if (!rawItem) return
+        String(rawItem).split(',').forEach(p => {
+            const name = p.trim()
+            if (name) counts[name] = (counts[name] || 0) + 1
         })
-      }
-    })
-    return Object.entries(counts)
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5)
-  }
+      })
+    }
+  })
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10) // <--- [ALTERADO] De 5 para 10
+}
 
   // --- MÉTODOS DE NEGÓCIO ---
 
@@ -91,8 +91,6 @@ export class WorkspaceService {
     const incompleteCases = await prisma.case.findMany({
       where: { 
         status: { not: CaseStatus.DESLIGADO },
-        // CORREÇÃO: Removido '{ cpf: null }' pois o campo é obrigatório no schema.
-        // Mantemos a busca por endereço incompleto (que é opcional) ou string vazia.
         OR: [ 
             { endereco_logradouro: null }, 
             { endereco_logradouro: '' } 
@@ -128,6 +126,16 @@ export class WorkspaceService {
         id: true, nomeCompleto: true, status: true, 
         urgencia: true, violacao: true, updatedAt: true, dataEntrada: true
       }
+    })
+
+    // [CORREÇÃO] Buscar agendamentos do dia para incluir no dashboard
+    const appointments = await prisma.agendamento.findMany({
+      where: { 
+        responsavelId: userId, 
+        data: { gte: startOfDay(now), lte: endOfDay(now) } 
+      },
+      include: { caso: { select: { id: true, nomeCompleto: true } } },
+      orderBy: { data: 'asc' }
     })
 
     let detailedStats = { monitoramento: 0, acolhidaEsp: 0, acompanhamento: 0, meusAguardando: 0, meusEmAtendimento: 0, filaGeral: 0 }
@@ -182,7 +190,13 @@ export class WorkspaceService {
       return null
     }).filter((a): a is any => a !== null)
 
-    return { role: cargo, myCases, alerts, detailedStats }
+    return { 
+      role: cargo, 
+      myCases, 
+      alerts, 
+      detailedStats, 
+      appointments // [CORREÇÃO] Incluído no retorno
+    }
   }
 
   static async distributeCase(caseId: string, targetUserId: string, roleType: 'AGENTE' | 'ESPECIALISTA', managerId: string) {

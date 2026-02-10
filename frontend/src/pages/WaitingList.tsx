@@ -61,7 +61,7 @@ interface Specialist {
 const ROLE_CONFIG = {
   Agente_Social: {
     title: 'Fila de Acolhida',
-    description: 'Cidadãos aguardando primeira escuta qualificada.',
+    description: 'Casos aguardando primeira escuta qualificada.',
     actionLabel: 'Acolher',
     actionIcon: UserPlus,
     emptyMessage: 'Nenhum caso aguardando na porta de entrada.',

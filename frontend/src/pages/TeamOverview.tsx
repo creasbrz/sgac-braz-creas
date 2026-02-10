@@ -343,7 +343,7 @@ export function TeamOverview() {
                   </div>
                   <Badge variant="outline" className="h-7 font-medium text-muted-foreground bg-background gap-2 px-3 border-border shadow-sm">
                     <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"/>
-                    Meta: 50 casos
+                    Meta: 25 casos
                   </Badge>
                 </div>
               </CardHeader>
@@ -393,7 +393,7 @@ export function TeamOverview() {
                       </div>
                       Especialistas de Referência
                     </CardTitle>
-                    <CardDescription>Acompanhamento PAEFI e Monitoramento.</CardDescription>
+                    <CardDescription>Acompanhamento e Monitoramento.</CardDescription>
                   </div>
                   <Badge variant="outline" className="h-7 font-medium text-muted-foreground bg-background gap-2 px-3 border-border shadow-sm">
                     <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse"/>
@@ -407,7 +407,7 @@ export function TeamOverview() {
                     <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs uppercase tracking-wider font-semibold border-b border-border/60">
                       <TableHead className="w-[35%] pl-6 h-11 text-muted-foreground">Servidor</TableHead>
                       <TableHead className="w-[25%] h-11 text-muted-foreground">Ocupação</TableHead>
-                      <TableHead className="text-center h-11 text-muted-foreground">PAEFI</TableHead>
+                      <TableHead className="text-center h-11 text-muted-foreground">Acompanhemnto</TableHead>
                       <TableHead className="text-center h-11 text-muted-foreground">Monitoramento</TableHead>
                       <TableHead className="text-right pr-6 h-11 text-muted-foreground">Ações</TableHead>
                     </TableRow>

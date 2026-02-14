@@ -23,17 +23,27 @@ export class CaseService {
   
   // --- HELPERS PRIVADOS ---
 
+  private static safeDecrypt(value: string | null | undefined): string | null {
+    if (!value) return null
+    try {
+        const decrypted = CryptoService.decrypt(value)
+        return decrypted || value 
+    } catch (e) {
+        return value 
+    }
+  }
+
   private static decryptCaseData(caso: any) {
     if (!caso) return null
 
-    const logradouro = CryptoService.decrypt(caso.endereco_logradouro) || caso.endereco_logradouro
-    const complemento = CryptoService.decrypt(caso.endereco_complemento) || caso.endereco_complemento
+    const logradouro = this.safeDecrypt(caso.endereco_logradouro)
+    const complemento = this.safeDecrypt(caso.endereco_complemento)
     
     let contatos = caso.contatos
     if (contatos && Array.isArray(contatos)) {
         contatos = contatos.map((c: any) => ({
             ...c,
-            numero: CryptoService.decrypt(c.numero) || c.numero
+            numero: this.safeDecrypt(c.numero)
         }))
     }
 
@@ -61,13 +71,10 @@ export class CaseService {
       longitude: caso.longitude
     }
 
-    const { 
-      endereco_logradouro, endereco_ra, endereco_cep, endereco_complemento, 
-      endereco_bairro, endereco_cidade, endereco_uf, latitude, longitude, 
-      ...rest 
-    } = caso
-
-    return { ...rest, endereco }
+    return { 
+        ...caso, 
+        endereco 
+    }
   }
 
   private static stripTime(date: Date | string): Date {
@@ -218,7 +225,6 @@ export class CaseService {
 
     const dataToUpdate: any = { ...data }
     
-    // Remove campos aninhados para tratar separadamente
     if (data.endereco) delete dataToUpdate.endereco
     if (data.contatos) delete dataToUpdate.contatos
 
@@ -231,7 +237,6 @@ export class CaseService {
     
     if (data.renda !== undefined) dataToUpdate.renda = this.parseDecimal(data.renda)
 
-    // Gestão do SEI
     if (typeof data.seiRespondido === 'boolean') {
         dataToUpdate.seiRespondido = data.seiRespondido
         if (data.seiRespondido === true) {
@@ -241,7 +246,6 @@ export class CaseService {
         }
     }
 
-    // [CORREÇÃO] Gestão de Vínculos (Permitindo null)
     if (data.casoPrincipalId !== undefined) {
         dataToUpdate.casoPrincipalId = data.casoPrincipalId
     }
@@ -271,7 +275,6 @@ export class CaseService {
     
     cache.invalidate('manager_stats')
     
-    // Log detalhado para vínculos
     let logMsg = `Editou dados cadastrais.`
     if (data.casoPrincipalId && data.casoPrincipalId !== oldCase.casoPrincipalId) logMsg = `Vinculou ao prontuário ${data.casoPrincipalId}.`
     if (data.casoPrincipalId === null && oldCase.casoPrincipalId) logMsg = `Removeu vínculo de prontuário.`
@@ -385,7 +388,7 @@ export class CaseService {
   }
 
   static buildWhereClause(query: any, user: { cargo: string, sub: string }) {
-    const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId } = query
+    const { search, status, urgencia, violacao, categoria, sexo, view, agenteId, specialistId, manterReferencia } = query
     
     const conditions: any[] = []
 
@@ -417,13 +420,24 @@ export class CaseService {
     if (specialistId) conditions.push({ especialistaPAEFIId: specialistId })
 
     if (search && search.trim() !== '') {
-      conditions.push({
-        OR: [
-          { nomeCompleto: { contains: search, mode: 'insensitive' } },
-          { cpf: { contains: search } },
-          { endereco_ra: { contains: search, mode: 'insensitive' } }
-        ]
-      })
+      const numericSearch = search.replace(/\D/g, ''); 
+      
+      const searchConditions: any[] = [
+        { nomeCompleto: { contains: search, mode: 'insensitive' } },
+        { endereco_ra: { contains: search, mode: 'insensitive' } }
+      ];
+
+      if (numericSearch.length > 0) {
+         searchConditions.push({ cpf: { contains: numericSearch } });
+      } else {
+         searchConditions.push({ cpf: { contains: search } });
+      }
+
+      conditions.push({ OR: searchConditions });
+    }
+
+    if (manterReferencia === 'true') {
+      conditions.push({ manterReferencia: true })
     }
 
     if (status && status !== 'all') {

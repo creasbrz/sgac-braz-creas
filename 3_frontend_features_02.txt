@@ -1626,32 +1626,31 @@ export function CaseStatusBadge({ status, className }: CaseStatusBadgeProps) {
 FILE: frontend\src\components\case\CaseTable.tsx
 --------------------------------------------------
 // frontend/src/components/case/CaseTable.tsx
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { 
-  MoreHorizontal, Edit, FileDown, FileSpreadsheet, 
-  ArrowUpDown, ArrowUp, ArrowDown, SearchX, AlertCircle 
+  MoreHorizontal, Edit, ArrowUpDown, ArrowUp, ArrowDown, 
+  SearchX, AlertCircle, CalendarDays, MapPin, ShieldAlert
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { clsx, type ClassValue } from 'clsx'
 
 import { api } from '@/lib/api'
 import { ROUTES } from '@/constants/app-routes'
 import { formatCPF } from '@/utils/formatters'
-import { useAuth } from '@/contexts/AuthContext'
 import { getUrgencyColor } from '@/constants/cases/styles' 
 
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Pagination } from '@/components/common/Pagination'
 import { CaseStatusBadge } from '@/components/case/CaseStatusBadge'
-import { ImportCasesModal } from '@/components/modals/ImportCasesModal'
 import { DataTableFilters, type FilterState } from '@/components/common/DataTableFilters'
 import { SavedFilters } from '@/components/common/SavedFilters'
 
@@ -1660,65 +1659,33 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// [CORREÇÃO 1] Helper para formatar o endereço (String ou Objeto)
-const formatCaseAddress = (endereco: string | AddressData | null | undefined) => {
-  if (!endereco) return null
-
-  // Se for string antiga/legado
-  if (typeof endereco === 'string') return endereco
-
-  // Se for objeto estruturado (conforme CaseForm)
-  const parts = [
-    endereco.logradouro,
-    endereco.complemento,
-    endereco.bairro,
-    endereco.ra // Região Administrativa é importante
-  ].filter(part => part && part.trim() !== '')
-
-  if (parts.length === 0) return null
-  
-  // Ex: "QNM 10 Conjunto A, Ceilândia"
-  return parts.join(', ')
-}
-
-// ----------------------------------------------------------------------
-// TYPES
-// ----------------------------------------------------------------------
-
-// [CORREÇÃO 2] Interface para o Objeto de Endereço
 interface AddressData {
-  logradouro?: string
-  complemento?: string
-  bairro?: string
-  cidade?: string
-  uf?: string
-  cep?: string
-  ra?: string
+  logradouro?: string; complemento?: string; bairro?: string; cidade?: string; uf?: string; cep?: string; ra?: string;
 }
 
+const formatCaseAddress = (endereco: unknown): string | null => {
+  if (!endereco) return null
+  if (typeof endereco === 'string') return endereco
+  
+  const addr = endereco as AddressData
+  const mainLoc = [addr.bairro, addr.ra].filter(Boolean).join(' - ')
+  const street = addr.logradouro ? `${addr.logradouro}${addr.complemento ? `, ${addr.complemento}` : ''}` : ''
+  
+  if (mainLoc && street) return `${street} (${mainLoc})`
+  return street || mainLoc || null
+}
+
+// --- TYPES ---
 interface ExtendedCaseSummary { 
-  id: string
-  nomeCompleto: string
-  cpf: string
-  status: string
-  dataEntrada: string
-  dataDesligamento?: string
-  motivoDesligamento?: string
-  urgencia: string
-  violacao?: string[] | string | null 
-  sexo?: string
-  // [CORREÇÃO 3] Aceita string ou objeto AddressData
-  endereco?: string | AddressData | null 
-  agenteAcolhida?: { nome: string }
-  especialistaPAEFI?: { nome: string }
+  id: string; nomeCompleto: string; cpf: string; status: string; dataEntrada: string;
+  dataDesligamento?: string; motivoDesligamento?: string; urgencia: string;
+  violacao?: string[] | string | null; sexo?: string;
+  endereco?: string | AddressData | null;
+  agenteAcolhida?: { nome: string }; especialistaPAEFI?: { nome: string };
 }
 
 interface PaginatedCasesResponse { 
-  items: ExtendedCaseSummary[]
-  total: number
-  page: number
-  pageSize: number
-  totalPages: number 
+  items: ExtendedCaseSummary[]; total: number; page: number; pageSize: number; totalPages: number; 
 }
 
 interface CaseTableProps { 
@@ -1728,437 +1695,382 @@ interface CaseTableProps {
   defaultView?: 'my' | 'all'
   queryParams?: Record<string, string | undefined>
   className?: string
+  hideHeader?: boolean
 }
 
 type SortDirection = 'asc' | 'desc'
-interface SortingState {
-  field: string
-  order: SortDirection
-}
+interface SortingState { field: string; order: SortDirection }
 
 const INITIAL_FILTERS: FilterState = {
-  status: 'all',
-  urgencia: 'all',
-  violacao: 'all',
-  categoria: 'all',
-  sexo: 'all'
+  status: 'all', urgencia: 'all', violacao: 'all', categoria: 'all', sexo: 'all'
 }
 
-// ----------------------------------------------------------------------
-// SUB-COMPONENTS
-// ----------------------------------------------------------------------
+// --- SUB-COMPONENTS ---
 
 const ViolationTags = ({ rawViolations }: { rawViolations?: string[] | string | null }) => {
-  if (!rawViolations) return <span className="text-muted-foreground/30 text-[10px]">-</span>
+  if (!rawViolations) return <span className="text-muted-foreground/20 text-[10px]">—</span>
   
-  const list = Array.isArray(rawViolations) 
-    ? rawViolations 
-    : (typeof rawViolations === 'string' && rawViolations.length > 0 ? rawViolations.split(',').map(s => s.trim()) : [])
+  const list = useMemo(() => {
+    if (Array.isArray(rawViolations)) return rawViolations
+    if (typeof rawViolations === 'string' && rawViolations.length > 0) return rawViolations.split(',').map(s => s.trim())
+    return []
+  }, [rawViolations])
 
-  if (list.length === 0) return <span className="text-muted-foreground/30 text-[10px]">-</span>
+  if (list.length === 0) return <span className="text-muted-foreground/20 text-[10px]">—</span>
 
-  const displayItems = list.slice(0, 2)
-  const remaining = list.length - 2
+  const first = list[0]
+  const remaining = list.length - 1
 
   return (
-    <div className="flex flex-wrap justify-start items-center gap-1.5">
-      {displayItems.map((v, i) => (
-        <Badge 
-          key={i} 
-          variant="outline" 
-          className="max-w-30 truncate border-border bg-muted/50 px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover:bg-muted"
-          title={v}
-        >
-          {v}
-        </Badge>
-      ))}
+    <div className="flex items-center gap-1">
+      <Badge variant="secondary" className="max-w-30 truncate border-transparent bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover:bg-muted/80">
+        {first}
+      </Badge>
       {remaining > 0 && (
-        <span className="text-[10px] font-bold text-muted-foreground/80 bg-muted/30 px-1.5 rounded-sm" title={list.slice(2).join(', ')}>
-          +{remaining}
-        </span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="cursor-help px-1 py-0 text-[9px] text-muted-foreground hover:bg-muted">
+                +{remaining}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-foreground">Outras violações:</span>
+                <ul className="list-disc pl-3 text-xs text-muted-foreground">
+                  {list.slice(1).map((v, i) => <li key={i}>{v}</li>)}
+                </ul>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </div>
   )
 }
 
-const SortableColumn = ({ 
-  label, 
-  field, 
-  sorting, 
-  onToggle, 
-  align = 'left',
-  className 
-}: { 
-  label: string, 
-  field: string, 
-  sorting: SortingState | null, 
-  onToggle: (f: string) => void, 
-  align?: 'left' | 'center' | 'right',
-  className?: string 
-}) => {
+// O componente de Cabeçalho agora força classes de Sticky
+const SortableHeader = ({ label, field, sorting, onToggle, align = 'left', className }: any) => {
   const isActive = sorting?.field === field
-  
   return (
     <TableHead 
       className={cn(
-        "cursor-pointer select-none transition-colors hover:bg-muted/50 hover:text-foreground h-10", 
+        // STICKY HEADER CLASSES:
+        // sticky top-0: Cola no topo
+        // bg-background: Fundo sólido (para nada passar por trás)
+        // z-20: Garante que fique acima das linhas
+        "sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)]",
+        "h-10 cursor-pointer select-none whitespace-nowrap transition-colors hover:bg-muted/50",
         isActive && "text-foreground font-semibold bg-muted/20",
-        align === 'center' && "text-center",
-        align === 'right' && "text-right",
+        align === 'center' && "text-center", 
+        align === 'right' && "text-right", 
         className
       )} 
       onClick={() => onToggle(field)}
     >
-      <div className={cn(
-        "flex items-center gap-1.5",
-        align === 'center' && "justify-center",
-        align === 'right' && "justify-end flex-row-reverse"
-      )}>
-        {label}
+      <div className={cn("flex items-center gap-1.5", align === 'center' && "justify-center", align === 'right' && "justify-end flex-row-reverse")}>
+        <span>{label}</span>
         {isActive ? (
-          sorting?.order === 'asc' 
-            ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> 
-            : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+          sorting?.order === 'asc' ? <ArrowUp className="h-3 w-3 text-primary"/> : <ArrowDown className="h-3 w-3 text-primary"/>
         ) : (
-          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100" />
+          <ArrowUpDown className="h-3 w-3 opacity-20 group-hover:opacity-50"/>
         )}
       </div>
     </TableHead>
   )
 }
 
-const EmptyState = ({ onClear }: { onClear: () => void }) => (
-  <div className="flex min-h-100 flex-col items-center justify-center space-y-3 rounded-md bg-muted/5 p-8 text-center animate-in fade-in zoom-in-95 duration-300 border-2 border-dashed border-border/50">
-    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted shadow-sm">
-      <SearchX className="h-6 w-6 text-muted-foreground" />
-    </div>
-    <div className="space-y-1">
-      <h3 className="text-lg font-semibold tracking-tight text-foreground">Nenhum caso encontrado</h3>
-      <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-        Não conseguimos encontrar registros com os filtros atuais.
-      </p>
-    </div>
-    <Button variant="outline" size="sm" onClick={onClear} className="mt-4 shadow-sm">
-      Limpar filtros
-    </Button>
-  </div>
+const TableRowsSkeleton = () => (
+  <>
+    {Array.from({ length: 8 }).map((_, i) => (
+      <TableRow key={i} className="h-14">
+        <TableCell className="pl-4"><Skeleton className="h-4 w-40" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-8 mx-auto" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-28" /></TableCell>
+        <TableCell><Skeleton className="h-5 w-24 mx-auto rounded-full" /></TableCell>
+        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-20 ml-auto" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-24" /></TableCell>
+        <TableCell><Skeleton className="h-5 w-24 mx-auto rounded-full" /></TableCell>
+        <TableCell><Skeleton className="h-8 w-8 ml-auto rounded-md" /></TableCell>
+      </TableRow>
+    ))}
+  </>
 )
 
-const TableRowSkeleton = ({ isManager }: { isManager: boolean }) => (
-  <TableRow>
-    <TableCell><Skeleton className="h-5 w-40 mb-1" /><Skeleton className="h-3 w-24 opacity-60" /></TableCell>
-    <TableCell><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-    {isManager && <TableCell><div className="mx-auto h-5 w-20 rounded-full bg-muted/50" /></TableCell>}
-    {isManager && <TableCell><div className="flex gap-1"><Skeleton className="h-5 w-16" /><Skeleton className="h-5 w-12" /></div></TableCell>}
-    <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-    <TableCell><div className="mx-auto h-6 w-24 rounded-full bg-muted/50" /></TableCell>
-    <TableCell><Skeleton className="h-8 w-8 rounded-md ml-auto" /></TableCell>
-  </TableRow>
-)
-
-// ----------------------------------------------------------------------
-// MAIN COMPONENT
-// ----------------------------------------------------------------------
+// --- MAIN COMPONENT ---
 
 export function CaseTable({ 
-  endpoint, 
-  title, 
-  description, 
-  defaultView = 'my', 
-  queryParams = {},
-  className 
+  endpoint, title, description, defaultView = 'my', queryParams = {}, className, hideHeader = false
 }: CaseTableProps) {
-  const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const currentPage = Number(searchParams.get('page') ?? '1')
   
-  const [isExporting, setIsExporting] = useState(false)
-  const [isImportOpen, setIsImportOpen] = useState(false)
   const [sorting, setSorting] = useState<SortingState | null>(null)
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS)
 
   const toggleSort = (field: string) => {
-    setSorting(current => {
-      if (current?.field === field) {
-        return current.order === 'asc' ? { field, order: 'desc' } : null
-      }
-      return { field, order: 'asc' }
-    })
+    setSorting(current => 
+      current?.field === field 
+        ? (current.order === 'asc' ? { field, order: 'desc' } : null) 
+        : { field, order: 'asc' }
+    )
   }
 
-  const handleFilterChange = (key: keyof FilterState, value: string) => {
-    setActiveFilters(prev => ({ ...prev, [key]: value }))
-    setSearchParams(prev => { prev.set('page', '1'); return prev })
-  }
+  const filtersToUse = hideHeader ? {} : activeFilters
 
-  const clearFilters = () => {
-    setActiveFilters(INITIAL_FILTERS)
-    setSearchParams(prev => { prev.set('page', '1'); return prev })
-  }
-
-  const applySavedFilter = (savedConfig: any) => {
-    setActiveFilters(prev => ({ ...prev, ...savedConfig }))
-    setSearchParams(prev => { prev.set('page', '1'); return prev })
-  }
-
-  const { data: result, isLoading, isError, refetch } = useQuery<PaginatedCasesResponse>({
-    queryKey: ['cases', endpoint, currentPage, activeFilters, sorting, defaultView, queryParams],
-    queryFn: async (): Promise<PaginatedCasesResponse> => {
-      const cleanFilters = Object.fromEntries(
-        Object.entries(activeFilters).filter(([_, v]) => v !== 'all' && v !== '')
+  const { data: result, isLoading, isError, refetch, isPlaceholderData } = useQuery<PaginatedCasesResponse>({
+    queryKey: ['cases', endpoint, currentPage, filtersToUse, sorting, defaultView, queryParams],
+    queryFn: async () => {
+      const cleanInternalFilters = Object.fromEntries(
+        Object.entries(filtersToUse).filter(([_, v]) => v !== 'all' && v !== '')
       )
-
+      
       const params = {
         page: currentPage, 
-        pageSize: 10,
-        view: defaultView,
-        sortBy: sorting?.field,
+        pageSize: 15, 
+        view: defaultView, 
+        sortBy: sorting?.field, 
         sortOrder: sorting?.order,
-        ...queryParams,
-        ...cleanFilters 
+        ...queryParams, 
+        ...cleanInternalFilters 
       }
       
       const response = await api.get(endpoint, { params })
       const items = response.data.data || response.data.items || []
-      const meta = response.data.meta || { total: 0, page: 1, pageSize: 10, totalPages: 1 }
-
+      const meta = response.data.meta || { total: 0, page: 1, pageSize: 15, totalPages: 1 }
+      
       return { items, total: meta.total, page: meta.page, pageSize: meta.pageSize, totalPages: meta.totalPages }
     },
     staleTime: 5000,
     placeholderData: keepPreviousData 
   })
 
-  const handlePageChange = (page: number) => setSearchParams(prev => { prev.set('page', String(page)); return prev })
-
-  const handleExport = async () => {
-    try {
-      setIsExporting(true)
-      const response = await api.get('/cases/export', {
-        responseType: 'blob', 
-      })
-
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      const formattedDate = format(new Date(), 'yyyy-MM-dd')
-      link.href = url
-      link.setAttribute('download', `Exportacao_Casos_${formattedDate}.xlsx`)
-      document.body.appendChild(link)
-      link.click()
-      
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Erro ao exportar:', error)
-    } finally {
-      setIsExporting(false)
-    }
+  const handlePageChange = (page: number) => {
+    setSearchParams(prev => { prev.set('page', String(page)); return prev })
   }
 
   const isArchiveMode = endpoint === '/cases/closed'
-  const showImportExport = !isArchiveMode && user?.cargo === 'Gerente'
 
   if (isError) {
     return (
-      <div className="flex h-64 flex-col items-center justify-center gap-4 rounded-lg border border-destructive/20 bg-destructive/5 p-8 text-center text-destructive animate-in fade-in">
-        <AlertCircle className="h-10 w-10" />
-        <div className="space-y-1">
-          <p className="font-semibold">Erro ao carregar dados</p>
-          <p className="text-sm opacity-80">Ocorreu um problema ao conectar com o servidor.</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-muted/5 p-8 text-center animate-in fade-in">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+          <AlertCircle className="h-6 w-6" />
         </div>
-        <Button variant="outline" onClick={() => refetch()} className="border-destructive/30 hover:bg-destructive/10">Tentar novamente</Button>
+        <p className="text-sm font-medium">Erro ao carregar dados</p>
+        <Button variant="outline" onClick={() => refetch()} className="h-8 text-xs">Recarregar</Button>
       </div>
     )
   }
 
   return (
-    <div className={cn("flex h-full flex-col space-y-6 animate-in fade-in duration-500", className)}>
+    <div className={cn("flex h-full flex-col isolate bg-background", className)}>
       
-      {(title || description || showImportExport) && (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* 1. Header de Filtros (Fixo no topo da área da tabela) */}
+      {!hideHeader && (
+        <div className="flex-none p-4 pb-2 space-y-4 border-b border-border/40">
           {(title || description) && (
-            <div className="space-y-1">
-              {title && <h2 className="text-2xl font-bold tracking-tight text-foreground">{title}</h2>}
+            <div>
+              {title && <h2 className="text-lg font-semibold tracking-tight">{title}</h2>}
               {description && <p className="text-sm text-muted-foreground">{description}</p>}
             </div>
           )}
-          
-          {showImportExport && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="h-9 gap-2 shadow-sm">
-                <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> 
-                <span className="hidden sm:inline">Importar</span>
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleExport} 
-                disabled={isExporting} 
-                className="h-9 gap-2 shadow-sm"
-              >
-                <FileDown className={cn("h-4 w-4 text-blue-600", isExporting && "animate-bounce")} /> 
-                <span className="hidden sm:inline">{isExporting ? 'Exportando...' : 'Exportar'}</span>
-              </Button>
-            </div>
-          )}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <DataTableFilters 
+              filters={activeFilters} 
+              setFilters={(key, val) => {
+                setActiveFilters(prev => ({ ...prev, [key]: val }))
+                setSearchParams(prev => { prev.set('page', '1'); return prev })
+              }} 
+              onClear={() => {
+                setActiveFilters(INITIAL_FILTERS)
+                setSearchParams(prev => { prev.set('page', '1'); return prev })
+              }} 
+            />
+            <SavedFilters currentFilters={activeFilters} onApply={(c) => setActiveFilters(prev => ({...prev, ...c}))} />
+          </div>
         </div>
       )}
 
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-center xl:justify-between">
-        <DataTableFilters filters={activeFilters} setFilters={handleFilterChange} onClear={clearFilters} />
-        <div className="mt-2 flex justify-end xl:mt-0">
-          <SavedFilters currentFilters={activeFilters} onApply={applySavedFilter} />
-        </div>
-      </div>
-
-      <div className="flex-1 rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-auto relative">
+      {/* 2. Área de Rolagem (O segredo do Sticky está aqui) */}
+      {/* relative flex-1: Ocupa todo o espaço restante */}
+      {/* overflow-hidden: Impede scroll no elemento pai, forçando o scroll no filho absolute */}
+      <div className="relative flex-1 overflow-hidden">
+        
+        {/* Scroll Container: absolute inset-0 força este div a ser a "janela" de rolagem */}
+        <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent">
           <Table>
-            <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm shadow-sm">
-              <TableRow className="hover:bg-transparent border-b-border/60">
-                <SortableColumn label="Nome / Endereço" field="nomeCompleto" sorting={sorting} onToggle={toggleSort} className="pl-6 min-w-55" />
-                <SortableColumn label="Sexo" field="sexo" sorting={sorting} onToggle={toggleSort} align="center" className="w-20" />
-                <TableHead className="w-35 whitespace-nowrap text-muted-foreground font-medium">CPF</TableHead>
+            <TableHeader>
+              <TableRow className="border-b-0 hover:bg-transparent">
+                <SortableHeader label="Beneficiário" field="nomeCompleto" sorting={sorting} onToggle={toggleSort} className="pl-6 min-w-64" />
+                
+                {/* HEADERS NÃO ORDENÁVEIS TAMBÉM PRECISAM SER STICKY */}
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-15 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  Sexo
+                </TableHead>
+                
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-32 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  CPF
+                </TableHead>
                 
                 {!isArchiveMode && (
                   <>
-                    <SortableColumn label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-35" />
-                    <TableHead className="w-55 whitespace-nowrap text-muted-foreground font-medium">Violação</TableHead>
+                    <SortableHeader label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-28" />
+                    <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-45 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                      Violações
+                    </TableHead>
                   </>
                 )}
 
-                <SortableColumn 
-                  label={isArchiveMode ? 'Desligamento' : 'Tempo'} 
+                <SortableHeader 
+                  label={isArchiveMode ? 'Desligamento' : 'Entrada'} 
                   field={isArchiveMode ? 'dataDesligamento' : 'dataEntrada'} 
-                  sorting={sorting} 
-                  onToggle={toggleSort}
-                  align="right"
+                  sorting={sorting} onToggle={toggleSort} align="right" 
                   className="w-35 pr-6" 
                 />
                 
-                {isArchiveMode && <TableHead className="whitespace-nowrap w-37.5 text-muted-foreground font-medium">Motivo</TableHead>}
-                <TableHead className="whitespace-nowrap w-40 text-muted-foreground font-medium">Responsável</TableHead>
-                
-                {!isArchiveMode && (
-                   <SortableColumn label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-40" />
+                {isArchiveMode && (
+                  <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-35 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                    Motivo
+                  </TableHead>
                 )}
                 
-                <TableHead className="w-12.5"></TableHead>
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-35 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  Referência
+                </TableHead>
+                
+                {!isArchiveMode && <SortableHeader label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-32.5" />}
+                
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-12.5"></TableHead>
               </TableRow>
             </TableHeader>
             
             <TableBody>
               {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} isManager={!isArchiveMode} />)
+                <TableRowsSkeleton />
               ) : result?.items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={isArchiveMode ? 8 : 10} className="h-96 p-0">
-                      <EmptyState onClear={clearFilters} />
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={isArchiveMode ? 8 : 9} className="h-96 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground/50">
+                      <SearchX className="h-8 w-8" />
+                      <p>Nenhum caso encontrado</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 result?.items.map((item) => {
-                  // [CORREÇÃO 4] Processa o endereço antes de renderizar
                   const formattedAddress = formatCaseAddress(item.endereco)
+                  const isManager = !isArchiveMode
 
                   return (
-                    <TableRow key={item.id} className="group transition-colors hover:bg-muted/30 border-b-border/40">
-                      <TableCell className="py-3 pl-6 align-top">
+                    <TableRow key={item.id} className={cn("group text-xs transition-all hover:bg-muted/40 border-border/40", isPlaceholderData && "opacity-50 grayscale")}>
+                      
+                      <TableCell className="pl-6 py-3 align-top">
                         <div className="flex flex-col gap-0.5">
-                          <Link 
-                            to={ROUTES.CASE_DETAIL(item.id)} 
-                            className="font-semibold text-foreground transition-colors hover:text-primary hover:underline underline-offset-4 line-clamp-1"
-                            title={item.nomeCompleto}
-                          >
+                          <Link to={ROUTES.CASE_DETAIL(item.id)} className="text-sm font-medium text-foreground hover:text-primary hover:underline line-clamp-1">
                             {item.nomeCompleto}
                           </Link>
-                          
-                          {/* [CORREÇÃO 5] Renderiza a string formatada */}
                           {formattedAddress ? (
-                            <span className="truncate text-xs text-muted-foreground/80 max-w-62.5" title={formattedAddress}>
-                              {formattedAddress}
-                            </span>
-                          ) : (
-                            <span className="text-xs italic text-muted-foreground/40">Sem endereço</span>
-                          )}
+                            <div className="flex items-center gap-1 text-muted-foreground" title={formattedAddress}>
+                              <MapPin className="h-3 w-3 shrink-0 opacity-70" />
+                              <span className="truncate max-w-55 text-[11px]">{formattedAddress}</span>
+                            </div>
+                          ) : <span className="text-[10px] italic text-muted-foreground/30 ml-4">Sem endereço</span>}
                         </div>
                       </TableCell>
                       
-                      <TableCell className="text-xs text-muted-foreground text-center align-top pt-3.5 font-medium">
-                        {item.sexo || '-'}
+                      <TableCell className="text-center align-top py-3 text-muted-foreground">{item.sexo || '-'}</TableCell>
+                      
+                      {/* --- CPF PURO (SEM ICONE, SEM QUEBRA) --- */}
+                      <TableCell className="align-top py-3 font-mono text-muted-foreground whitespace-nowrap">
+                        {item.cpf ? formatCPF(item.cpf) : '-'}
                       </TableCell>
                       
-                      <TableCell className="text-xs font-mono text-muted-foreground tabular-nums align-top pt-3.5">
-                        {formatCPF(item.cpf)}
-                      </TableCell>
-                      
-                      {!isArchiveMode && (
+                      {isManager && (
                         <>
-                          <TableCell className="text-center align-top pt-3">
-                            <Badge 
-                              variant="outline" 
-                              className={cn(
-                                "whitespace-nowrap w-fit mx-auto border px-2.5 py-0.5 text-[10px] font-bold uppercase shadow-none bg-opacity-10",
-                                getUrgencyColor(item.urgencia)
-                              )}
-                            >
+                          {/* --- URGÊNCIA COMPLETA --- */}
+                          <TableCell className="text-center align-top py-3">
+                            <Badge variant="outline" className={cn("mx-auto border bg-opacity-10 px-2 py-0.5 text-[10px] font-bold shadow-none", getUrgencyColor(item.urgencia))}>
                               {item.urgencia}
                             </Badge>
                           </TableCell>
-                          <TableCell className="py-2 align-top pt-3">
+                          <TableCell className="align-top py-3">
                             <ViolationTags rawViolations={item.violacao} />
                           </TableCell>
                         </>
                       )}
 
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums text-right pr-6 align-top pt-3.5">
-                        {isArchiveMode 
-                          ? (item.dataDesligamento ? format(new Date(item.dataDesligamento), 'dd/MM/yyyy') : '-')
-                          : (
-                            <span title={format(new Date(item.dataEntrada), "dd 'de' MMMM, HH:mm", { locale: ptBR })} className="font-medium">
-                              {formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })}
+                      <TableCell className="text-right align-top py-3 pr-6">
+                        <div className="flex flex-col items-end gap-0.5">
+                          {isArchiveMode ? (
+                            <span className="font-medium text-muted-foreground">
+                              {item.dataDesligamento ? format(new Date(item.dataDesligamento), 'dd/MM/yyyy') : '-'}
                             </span>
-                          )
-                        }
+                          ) : (
+                            <>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="font-medium text-foreground cursor-help whitespace-nowrap">
+                                      {formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left">
+                                    <div className="flex items-center gap-2">
+                                      <CalendarDays className="h-4 w-4" />
+                                      {format(new Date(item.dataEntrada), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                                {format(new Date(item.dataEntrada), 'dd/MM/yy')}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
 
                       {isArchiveMode && (
-                        <TableCell className="align-top pt-3.5">
-                          <div className="truncate text-xs text-muted-foreground max-w-35" title={item.motivoDesligamento}>
-                            {item.motivoDesligamento ?? '-'}
-                          </div>
+                        <TableCell className="align-top py-3 text-muted-foreground">
+                           <span className="line-clamp-2 max-w-30" title={item.motivoDesligamento}>{item.motivoDesligamento || '-'}</span>
                         </TableCell>
                       )}
 
-                      <TableCell className="text-xs font-medium text-foreground/80 align-top pt-3.5">
+                      <TableCell className="align-top py-3 font-medium text-muted-foreground whitespace-nowrap">
                         {item.status === 'EM_ACOMPANHAMENTO' || (isArchiveMode && item.especialistaPAEFI) 
-                          ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? <span className="text-muted-foreground/40 italic">-</span>
-                          : item.agenteAcolhida?.nome?.split(' ')[0] ?? <span className="text-muted-foreground/40 italic">-</span>
+                          ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? '-'
+                          : item.agenteAcolhida?.nome?.split(' ')[0] ?? '-'
                         }
                       </TableCell>
                       
-                      {!isArchiveMode && (
-                        <TableCell className="text-center align-top pt-2.5">
-                          <div className="flex justify-center">
-                            <CaseStatusBadge status={item.status} />
-                          </div>
+                      {isManager && (
+                        <TableCell className="text-center align-top py-3">
+                          <CaseStatusBadge status={item.status} className="scale-90 mx-auto" />
                         </TableCell>
                       )}
                       
-                      <TableCell className="pr-4 text-right align-top pt-2">
+                      <TableCell className="align-top py-2 pr-2 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity data-[state=open]:opacity-100 hover:bg-muted">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity">
                                 <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem asChild>
-                              <Link to={ROUTES.CASE_DETAIL(item.id)} className="cursor-pointer font-medium">
-                                <Edit className="mr-2 h-4 w-4 text-primary" /> Ver Detalhes
+                              <Link to={ROUTES.CASE_DETAIL(item.id)} className="cursor-pointer">
+                                <Edit className="mr-2 h-4 w-4 text-primary" /> Abrir Prontuário
                               </Link>
                             </DropdownMenuItem>
+                            {!isArchiveMode && (
+                              <DropdownMenuItem className="text-amber-600 focus:text-amber-700">
+                                <ShieldAlert className="mr-2 h-4 w-4" /> Reportar Incidente
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -2170,20 +2082,19 @@ export function CaseTable({
           </Table>
         </div>
       </div>
-
-      {result && result.total > 0 && (
-        <div className="border-t border-border/40 pt-4">
-           <Pagination 
-             currentPage={currentPage} 
-             totalPages={result.totalPages} 
-             totalItems={result.total} 
-             pageSize={result.pageSize} 
-             onPageChange={handlePageChange} 
-           />
-        </div>
-      )}
       
-      <ImportCasesModal isOpen={isImportOpen} onOpenChange={setIsImportOpen} />
+      {/* 3. Rodapé Fixo (Paginação) */}
+      <div className="flex-none flex items-center justify-end border-t border-border/40 bg-background p-2">
+        {result && result.total > 0 && (
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={result.totalPages} 
+            totalItems={result.total} 
+            pageSize={result.pageSize} 
+            onPageChange={handlePageChange}
+          />
+        )}
+      </div>
     </div>
   )
 }

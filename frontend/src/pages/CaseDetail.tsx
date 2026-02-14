@@ -1,103 +1,52 @@
-import { useState, Suspense } from "react"
+// frontend/src/pages/CaseDetail.tsx
+import { useState, Suspense, useMemo } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft, Calendar, FileText, AlertTriangle,
   Paperclip, LayoutDashboard, Edit, ShieldCheck, Network, 
-  Users, PackageCheck, User, Loader2, ClipboardList, MapPin, Phone,
-  Link as LinkIcon, BadgeDollarSign
+  Users, PackageCheck, Loader2, ClipboardList, 
+  Link as LinkIcon, BadgeDollarSign, Bookmark, Mail,
+  User, MessageCircle
 } from "lucide-react" 
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { format } from 'date-fns'
 
 import { api } from '@/lib/api'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { CaseStatusBadge } from "@/components/case/CaseStatusBadge"
-import { formatCPF } from '@/utils/formatters'
+import { formatCPF, formatPhone } from '@/utils/formatters'
 import { getUrgencyColor } from '@/constants/cases/styles'
 
-// Componentes de Relatório
 import { PDFDownloadButton } from '@/components/reports/PDFDownloadButton'
 import { CaseDoc } from '@/components/reports/templates/CaseDoc'
 
-// --- ABAS (Components) ---
 import { OverviewTab } from '@/components/case/tabs/OverviewTab'
 import { ReferralsTab } from '@/components/case/tabs/ReferralsTab'
 import { FamilyTab } from '@/components/case/tabs/FamilyTab'
 import { DeliverablesTab } from '@/components/case/tabs/DeliverablesTab'
 import { AppointmentsTab } from "@/components/case/tabs/AppointmentsTab"
-import { InstrumentalsTab } from "@/components/case/tabs/InstrumentalsTab" // V8.3: Substitui PafTab
+import { InstrumentalsTab } from "@/components/case/tabs/InstrumentalsTab" 
 import { EvolutionsTab } from "@/components/case/tabs/EvolutionsTab"
 import { AttachmentsTab } from "@/components/case/tabs/AttachmentsTab"
 import { CaseHistory as HistoryTab } from "@/components/case/tabs/HistoryTab"
 
-// Modais e Forms
 import { CaseForm } from '@/components/case/CaseForm'
 import { CloseCaseModal } from '@/components/modals/CloseCaseModal'
 import { CaseWorkflow } from "@/components/case/CaseWorkflow"
-import { CaseContactList } from "@/components/case/CaseContactList"
-import { CaseAddressCard } from "@/components/case/CaseAddressCard"
 import { CaseActions } from "@/components/case/CaseActions"
 
 import type { CaseDetailData } from '@/types/case'
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
-
-// --- COMPONENTES AUXILIARES ---
-
-function SidebarInfo({ caseData }: { caseData: CaseDetailData }) {
-  return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-card text-card-foreground shadow-sm overflow-hidden">
-        <div className="p-3 px-4 border-b border-border bg-muted/30 flex items-center justify-between">
-          <h3 className="font-bold flex items-center gap-2 text-sm text-foreground">
-            <div className="p-1 bg-primary/10 rounded text-primary border border-primary/20"><User className="h-3.5 w-3.5"/></div>
-            Ficha Rápida
-          </h3>
-        </div>
-        <div className="p-4 space-y-5 text-sm">
-           <div>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-                Responsável Legal <Users className="h-3 w-3 opacity-50"/>
-              </p>
-              <div className="pl-2 border-l-2 border-primary/30 py-0.5">
-                 <p className="font-semibold leading-tight text-foreground">{caseData.responsavelLegal || "Não informado"}</p>
-                 {caseData.parentescoResponsavel && <p className="text-xs text-muted-foreground mt-0.5 capitalize">{caseData.parentescoResponsavel.toLowerCase()}</p>}
-              </div>
-           </div>
-           
-           <Separator className="bg-border/60" />
-           
-           <div>
-             <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-               Contatos <Phone className="h-3 w-3 opacity-50"/>
-             </p>
-             <CaseContactList contatos={caseData.contatos} telefoneAntigo={caseData.telefone} />
-           </div>
-           
-           <Separator className="bg-border/60" />
-           
-           <div>
-             <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-               Localização <MapPin className="h-3 w-3 opacity-50"/>
-             </p>
-             {/* Cast 'as any' temporário para compatibilidade de tipos */}
-             <CaseAddressCard endereco={caseData.endereco as any} />
-           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function InfoCard({ icon: Icon, label, children }: any) {
   return (
@@ -136,13 +85,10 @@ function DetailSkeleton() {
   )
 }
 
-// --- PÁGINA PRINCIPAL ---
-
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   
-  // Controle de Abas via URL para permitir compartilhamento e histórico do navegador
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') || 'overview'
   
@@ -155,6 +101,26 @@ export function CaseDetail() {
     enabled: !!id,
     retry: 1
   })
+
+  // Identifica o telefone principal para o Header
+  const displayPhone = useMemo(() => {
+     if (!caso) return null;
+     if (caso.telefone) return caso.telefone;
+     if (caso.contatos && Array.isArray(caso.contatos) && caso.contatos.length > 0) {
+        const main = caso.contatos.find((c: any) => ['Celular', 'Principal', 'Pessoal'].includes(c.tipo));
+        return main ? main.numero : caso.contatos[0].numero;
+     }
+     return null;
+  }, [caso]);
+
+  // Função para abrir o WhatsApp
+  const openWhatsApp = (phone: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length >= 10) { 
+      const message = encodeURIComponent("Olá! Aqui é da equipe técnica do CREAS Brazlândia. ");
+      window.open(`https://wa.me/55${cleanPhone}?text=${message}`, '_blank');
+    }
+  }
 
   if (isLoading) return <DetailSkeleton />
   
@@ -181,14 +147,13 @@ export function CaseDetail() {
   }
 
   return (
-    <div className="container mx-auto max-w-7xl pb-10 space-y-8 animate-in fade-in duration-500 px-4 md:px-8 pt-6">
+    <div className="container mx-auto max-w-7xl pb-10 space-y-6 animate-in fade-in duration-500 px-4 md:px-8 pt-6">
       
-      {/* 1. Header & Ações */}
+      {/* 1. Header Unificado */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <Button 
-            variant="ghost" 
-            size="sm" 
+            variant="ghost" size="sm" 
             className="-ml-2 text-muted-foreground hover:text-foreground p-0 px-2 h-8" 
             onClick={() => navigate('/cases')}
           >
@@ -208,39 +173,98 @@ export function CaseDetail() {
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          <div className="h-14 w-14 md:h-16 md:w-16 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 flex items-center justify-center text-2xl font-bold shrink-0 border border-blue-200 dark:border-blue-800 select-none shadow-sm ring-4 ring-background">
+        <div className="flex flex-col md:flex-row gap-6 items-start border-b border-border/40 pb-6">
+          <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl bg-linear-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 text-blue-700 dark:text-blue-300 flex items-center justify-center text-3xl font-bold shrink-0 border border-blue-200/50 dark:border-blue-800/50 select-none shadow-sm ring-1 ring-background">
              {caso.nomeCompleto.charAt(0)}
           </div>
           
-          <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="flex-1 min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground truncate">{caso.nomeCompleto}</h1>
+              
+              {caso.manterReferencia && (
+                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1.5 shadow-sm">
+                  <Bookmark className="h-3 w-3 fill-current" />
+                  Família Referenciada
+                </Badge>
+              )}
+
+              {/* [CORREÇÃO] Badge de Urgência alinhado com o CaseTable (Removido o text-white forçado) */}
               {caso.urgencia && (
-                  <Badge className={`${getUrgencyColor(caso.urgencia)} text-white border-0 shadow-sm`}>
+                  <Badge className={cn("shadow-sm font-bold uppercase tracking-wider text-[11px] px-2.5 py-0.5", getUrgencyColor(caso.urgencia))}>
                     {caso.urgencia}
                   </Badge>
               )}
+              
               <CaseStatusBadge status={caso.status} />
             </div>
             
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-               <span className="flex items-center gap-1.5 font-medium"><FileText className="h-3.5 w-3.5 opacity-70"/> {formatCPF(caso.cpf)}</span>
-               <span className="hidden md:inline text-border/60">|</span>
-               <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 opacity-70"/> {new Date(caso.dataEntrada).toLocaleDateString()}</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+               <div className="flex items-center gap-1.5 font-medium bg-muted/30 px-2 py-0.5 rounded border border-border/40">
+                 <FileText className="h-3.5 w-3.5 opacity-70"/> 
+                 {formatCPF(caso.cpf)}
+               </div>
+               
+               <div className="flex items-center gap-1.5" title="Data de Entrada">
+                 <Calendar className="h-3.5 w-3.5 opacity-70"/> 
+                 {new Date(caso.dataEntrada).toLocaleDateString()}
+               </div>
+
                {caso.origem && (
                  <>
-                  <span className="hidden md:inline text-border/60">|</span>
+                  <span className="text-border/60">|</span>
                   <Badge variant="secondary" className="h-5 px-1.5 text-[10px] tracking-wide uppercase font-bold bg-muted text-muted-foreground border-border/50">
                     {caso.origem.replace('_', ' ')}
                   </Badge>
                  </>
                )}
             </div>
+
+            {/* Linha de Contato */}
+            <div className="flex flex-wrap items-center gap-4 pt-1 text-sm text-foreground/80">
+              
+              {displayPhone && (
+                <button 
+                  onClick={() => openWhatsApp(displayPhone)}
+                  className="flex items-center gap-1.5 hover:text-emerald-700 transition-colors bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-md border border-emerald-200/50 shadow-sm font-medium"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 fill-emerald-100" />
+                  {formatPhone(displayPhone)}
+                </button>
+              )}
+
+              {caso.email && (
+                <div className="flex items-center gap-1.5 hover:text-foreground transition-colors">
+                  <Mail className="h-3.5 w-3.5 text-blue-600"/>
+                  <a href={`mailto:${caso.email}`} className="hover:underline decoration-blue-600/50 underline-offset-4">
+                    {caso.email}
+                  </a>
+                </div>
+              )}
+
+              {caso.responsavelLegal && (
+                <>
+                  <span className="hidden sm:inline text-border/60">|</span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1.5 cursor-help">
+                          <User className="h-3.5 w-3.5 text-purple-600"/>
+                          <span className="font-medium">Responsável:</span> {caso.responsavelLegal.split(' ')[0]}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Responsável Legal: <strong>{caso.responsavelLegal}</strong></p>
+                        {caso.parentescoResponsavel && <p className="text-xs capitalize">Vínculo: {caso.parentescoResponsavel.toLowerCase()}</p>}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="w-full md:w-auto mt-2 md:mt-0">
-             {/* Suspense removido para evitar flicker, assumindo CaseActions como síncrono ou com loading interno */}
+          <div className="w-full md:w-auto mt-2 md:mt-0 self-start md:self-center">
              <CaseActions 
                 caseId={caso.id} 
                 status={caso.status} 
@@ -252,10 +276,8 @@ export function CaseDetail() {
         </div>
       </div>
 
-      {/* 2. Workflow (Barra de Progresso do Caso) */}
       <CaseWorkflow status={caso.status} />
 
-      {/* ALERTA DE VÍNCULO (PAI/FILHO) */}
       {caso.casoPrincipal && (
         <Alert className="bg-blue-50 border-blue-200 text-blue-900">
           <LinkIcon className="h-4 w-4" />
@@ -266,7 +288,7 @@ export function CaseDetail() {
         </Alert>
       )}
 
-      {/* INFO CARDS (RESUMO) */}
+      {/* Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <InfoCard icon={LayoutDashboard} label="Status Atual">
           <CaseStatusBadge status={caso.status} />
@@ -282,7 +304,7 @@ export function CaseDetail() {
         <InfoCard icon={Calendar} label="Tempo de Acompanhamento">
           <div className="flex flex-col">
             <span className="font-medium">
-              {format(new Date(caso.dataEntrada), "dd/MM/yyyy")}
+              {new Date(caso.dataEntrada).toLocaleDateString()}
             </span>
             <span className="text-[10px] text-muted-foreground uppercase">Data de Entrada</span>
           </div>
@@ -300,17 +322,16 @@ export function CaseDetail() {
         </InfoCard>
       </div>
 
-      {/* 3. SISTEMA DE ABAS (TABS) */}
+      {/* Abas Full Width */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         
-        {/* BARRA DE NAVEGAÇÃO (STICKY) */}
         <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-md py-3 border-b border-border w-full -mx-4 px-4 md:mx-0 md:px-0 transition-all">
           <TabsList className="bg-transparent h-auto p-0 w-full justify-start overflow-x-auto no-scrollbar flex gap-2 pb-1">
             {[
               { id: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
               { id: 'evolutions', label: 'Evoluções', icon: FileText },
               { id: 'family', label: 'Família', icon: Users },
-              { id: 'instrumentals', label: 'Instrumentais (PAF)', icon: ClipboardList }, // Nova Aba V8.3
+              { id: 'instrumentals', label: 'Instrumentais (PAF)', icon: ClipboardList }, 
               { id: 'appointments', label: 'Agenda', icon: Calendar },
               { id: 'deliverables', label: 'Benefícios', icon: PackageCheck },
               { id: 'referrals', label: 'Rede', icon: Network },
@@ -332,74 +353,57 @@ export function CaseDetail() {
           </TabsList>
         </div>
 
-        {/* CONTEÚDO DAS ABAS */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pt-6">
-          
-          {/* ÁREA DE CONTEÚDO (9 COLUNAS) */}
-          <div className="lg:col-span-9 min-w-0">
-            <div className="min-h-125">
-              <Suspense fallback={<DetailSkeleton />}>
-                
-                <TabsContent value="overview" className="space-y-6 mt-0 animate-in fade-in slide-in-from-left-2 duration-300">
-                  <OverviewTab caseData={caso} />
-                  <div className="lg:hidden mt-8"><SidebarInfo caseData={caso} /></div>
-                </TabsContent>
-                
-                <TabsContent value="evolutions" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <EvolutionsTab caseId={id} />
-                </TabsContent>
+        <div className="mt-6 min-h-125">
+            <Suspense fallback={<DetailSkeleton />}>
+              <TabsContent value="overview" className="mt-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                <OverviewTab caseData={caso} />
+              </TabsContent>
+              
+              <TabsContent value="evolutions" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <EvolutionsTab caseId={id} />
+              </TabsContent>
 
-                <TabsContent value="family" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <FamilyTab 
-                    caseId={id} 
-                    caseName={caso.nomeCompleto}
-                    titularRenda={Number(caso.renda) || 0}
-                    casoPrincipal={caso.casoPrincipal}
-                    casosVinculados={caso.casosVinculados}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="instrumentals" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <InstrumentalsTab caseId={id} caseData={caso} />
-                </TabsContent>
+              <TabsContent value="family" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <FamilyTab 
+                  caseId={id} 
+                  caseName={caso.nomeCompleto}
+                  titularRenda={Number(caso.renda) || 0}
+                  casoPrincipal={caso.casoPrincipal}
+                  casosVinculados={caso.casosVinculados}
+                />
+              </TabsContent>
+              
+              <TabsContent value="instrumentals" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <InstrumentalsTab caseId={id} caseData={caso} />
+              </TabsContent>
 
-                <TabsContent value="deliverables" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <DeliverablesTab caseId={id} />
-                </TabsContent>
+              <TabsContent value="deliverables" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <DeliverablesTab caseId={id} />
+              </TabsContent>
 
-                <TabsContent value="referrals" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <ReferralsTab caseId={id} />
-                </TabsContent>
+              <TabsContent value="referrals" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <ReferralsTab caseId={id} />
+              </TabsContent>
 
-                <TabsContent value="attachments" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <AttachmentsTab caseId={id} onError={() => {}} />
-                </TabsContent>
+              <TabsContent value="attachments" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <AttachmentsTab caseId={id} onError={() => {}} />
+              </TabsContent>
 
-                <TabsContent value="history" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <HistoryTab caseId={id} showOnlyLogs />
-                </TabsContent>
-                
-                <TabsContent value="appointments" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <AppointmentsTab 
-                    caseId={id} 
-                    caseName={caso.nomeCompleto} 
-                    phone={caso.telefone}
-                  />
-                </TabsContent>
-
-              </Suspense>
-            </div>
-          </div>
-
-          {/* BARRA LATERAL (3 COLUNAS - Apenas Desktop) */}
-          <aside className="hidden lg:block lg:col-span-3 sticky top-28 self-start transition-all">
-              <SidebarInfo caseData={caso} />
-          </aside>
-
+              <TabsContent value="history" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <HistoryTab caseId={id} showOnlyLogs />
+              </TabsContent>
+              
+              <TabsContent value="appointments" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <AppointmentsTab 
+                  caseId={id} 
+                  caseName={caso.nomeCompleto} 
+                  phone={caso.telefone}
+                />
+              </TabsContent>
+            </Suspense>
         </div>
       </Tabs>
 
-      {/* MODAL DE EDIÇÃO */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0 bg-background border border-border shadow-xl">
           <DialogHeader className="p-6 pb-4 border-b border-border bg-muted/10 sticky top-0 z-10 backdrop-blur-md">
@@ -416,7 +420,6 @@ export function CaseDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE DESLIGAMENTO */}
       <CloseCaseModal 
         caseId={id!} 
         isOpen={isCloseModalOpen} 

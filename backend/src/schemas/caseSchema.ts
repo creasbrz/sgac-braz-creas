@@ -58,7 +58,11 @@ export const createCaseBodySchema = z.object({
   }),
   sexo: z.string().min(1, 'Selecione o sexo'),
 
-  // [NOVOS CAMPOS] Dados Socioeconômicos
+  // [CORREÇÃO] Adicionado campo de e-mail ao schema
+  // Aceita string vazia, null ou undefined e transforma em string ou null
+  email: z.string().email("E-mail inválido").nullish().or(z.literal('')).transform(v => v || null),
+
+  // Dados Socioeconômicos
   ocupacao: z.enum(OCUPACOES_ROL).or(z.string()).optional().nullable(),
   
   // Renda: Aceita número ou string, converte vírgula para ponto e garante número

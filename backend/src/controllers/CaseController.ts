@@ -42,6 +42,23 @@ export class CaseController {
     return reply.send(result)
   }
 
+  // [CORREÇÃO APLICADA AQUI]
+  static async listClosed(req: FastifyRequest<{ Querystring: any }>, reply: FastifyReply) {
+    const user = req.user as { sub: string, cargo: string }
+    
+    // Convertemos req.query para 'any' ou 'Record<string, any>' para permitir o spread (...)
+    const queryParams = req.query as Record<string, any>;
+
+    const closedFilters = {
+      ...queryParams, 
+      status: 'DESLIGADO',
+      view: 'all' 
+    }
+
+    const result = await CaseService.findAll(closedFilters, user)
+    return reply.send(result)
+  }
+
   static async getById(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     const { id } = req.params
     const caso = await CaseService.getCaseWithEconomics(id)
@@ -50,7 +67,6 @@ export class CaseController {
     return reply.send(caso)
   }
 
-  // [CORREÇÃO] Tipagem do body aceitando casoPrincipalId nullable
   static async update(req: FastifyRequest<{ Params: { id: string }, Body: UpdateCaseInput & { email?: string, casoPrincipalId?: string | null } }>, reply: FastifyReply) {
     const { id } = req.params
     const { sub: userId } = req.user as { sub: string }

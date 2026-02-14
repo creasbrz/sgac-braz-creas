@@ -49,7 +49,6 @@ export async function caseRoutes(app: FastifyInstance) {
     schema: { tags: ['Casos'], params: z.object({ id: z.string().uuid() }) }
   }, CaseController.getById)
 
-  // [CORREÇÃO] Mudado de PUT para PATCH para alinhar com o frontend e permitir updates parciais (Vínculos)
   server.patch('/cases/:id', {
     schema: { 
       tags: ['Casos'], 
@@ -58,8 +57,8 @@ export async function caseRoutes(app: FastifyInstance) {
         seiRespondido: z.boolean().optional(),
         linkSei: z.string().optional().nullable(),
         numeroSei: z.string().optional().nullable(),
-        // [IMPORTANTE] Permite vincular/desvincular casos
-        casoPrincipalId: z.string().uuid().nullable().optional() 
+        casoPrincipalId: z.string().uuid().nullable().optional(),
+        email: z.string().email().optional().nullable().or(z.literal('')) 
       })
     }
   }, CaseController.update)
@@ -97,7 +96,6 @@ export async function caseRoutes(app: FastifyInstance) {
 
   // --- IMPORT / EXPORT ---
   
-  // [GET] CASOS FECHADOS (Alias)
   server.get('/cases/closed', {
     schema: {
       tags: ['Casos'],
@@ -106,10 +104,18 @@ export async function caseRoutes(app: FastifyInstance) {
         search: z.string().optional(),
         page: z.coerce.number().default(1),
         pageSize: z.coerce.number().default(10),
-        view: z.string().optional(),
+        
+        // [CORREÇÃO] Parâmetros extras aceitos para os filtros da tabela e aba de referenciados
+        manterReferencia: z.string().optional(),
+        urgencia: z.string().optional(),
+        violacao: z.string().optional(),
+        categoria: z.string().optional(),
+        sexo: z.string().optional(),
+        sortBy: z.string().optional(),
+        sortOrder: z.enum(['asc', 'desc']).optional(),
       })
     }
-  }, CaseController.list)
+  }, CaseController.listClosed)
 
   // [GET] EXPORTAR EXCEL
   server.get('/cases/export', {

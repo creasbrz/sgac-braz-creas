@@ -697,13 +697,23 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
       dataEntrada: initialData.dataEntrada ? initialData.dataEntrada.split('T')[0] : getLocalDateOnly(),
       nascimento: initialData.nascimento ? initialData.nascimento.split('T')[0] : '',
       
-      contatos: Array.isArray(initialData.contatos) && initialData.contatos.length > 0
+      contatos: Array.isArray(initialData.contatos) && initialData.contatos.length > 0 
         ? initialData.contatos 
         : (initialData.telefone ? [{ numero: initialData.telefone, tipo: 'Pessoal', nome: '' }] : defaultValues.contatos),
       
+      // Ajuste importante: Se o endereço vier formatado do backend, pode ser um objeto ou campos planos
+      // A lógica abaixo garante que o formulário receba o objeto 'endereco' populado
       endereco: initialData.endereco && typeof initialData.endereco === 'object' 
         ? initialData.endereco 
-        : (typeof initialData.endereco === 'string' ? { ...defaultValues.endereco, logradouro: initialData.endereco } : defaultValues.endereco),
+        : {
+            logradouro: initialData.endereco_logradouro || '',
+            complemento: initialData.endereco_complemento || '',
+            bairro: initialData.endereco_bairro || '',
+            cidade: initialData.endereco_cidade || 'Brasília',
+            uf: initialData.endereco_uf || 'DF',
+            cep: initialData.endereco_cep || '',
+            ra: initialData.endereco_ra || ''
+          },
       
       violacao: Array.isArray(initialData.violacao) 
         ? initialData.violacao 
@@ -716,16 +726,17 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
       linkSei: initialData.linkSei || '',
       observacoes: initialData.observacoes || '',
       agenteAcolhidaId: initialData.agenteAcolhidaId || '',
-      email: initialData.email || '' // [NOVO] Normalização do E-mail
+      email: initialData.email || '' 
     }
   }, [initialData])
 
-  // [CORREÇÃO ERRO 2322]: Cast 'as any' no resolver para silenciar conflito de tipos estritos do Zod vs Form
+  // Cast 'as any' para resolver conflito de tipagem do zodResolver
   const form = useForm<CreateCaseFormData>({
     resolver: zodResolver(createCaseFormSchema) as any,
     defaultValues: normalizedInitialData,
   })
 
+  // Reset do form quando os dados iniciais mudam (ex: edição)
   useEffect(() => {
     if (initialData) form.reset(normalizedInitialData)
   }, [initialData, form, normalizedInitialData])
@@ -739,7 +750,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
         cpf: data.cpf.replace(/\D/g, ''),
         nascimento: data.nascimento,
         sexo: data.sexo,
-        email: data.email || null, // [NOVO] Envio do E-mail
+        email: data.email || null, 
         
         // Sócio-econômico
         ocupacao: data.ocupacao || null,
@@ -770,7 +781,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
       }
 
       return isEditing && caseId
-        ? await api.put(`/cases/${caseId}`, payload)
+        ? await api.patch(`/cases/${caseId}`, payload) // CORREÇÃO: PUT -> PATCH
         : await api.post('/cases', payload)
     },
     onSuccess: () => {
@@ -789,7 +800,6 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
     },
   })
 
-  // Função para exibir erros de validação
   const handleError = (errors: any) => {
     console.error("Erros de validação:", errors)
     const errorFields = Object.keys(errors).map(key => {
@@ -813,7 +823,7 @@ export function CaseForm({ onCaseCreated, initialData, caseId }: CaseFormProps) 
   return (
     <Form {...form}>
       <form 
-        // [CORREÇÃO ERRO 2352]: Cast duplo (as unknown as CreateCaseFormData) para garantir compatibilidade
+        // Cast duplo para evitar erro de tipo do hook form
         onSubmit={form.handleSubmit((data) => submitCase(data as unknown as CreateCaseFormData), handleError)} 
         className={clsx("space-y-8 pb-10", isPending && "opacity-50 pointer-events-none")}
       >

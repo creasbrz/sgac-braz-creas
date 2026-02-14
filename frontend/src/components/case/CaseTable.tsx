@@ -4,7 +4,8 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { 
   MoreHorizontal, Edit, ArrowUpDown, ArrowUp, ArrowDown, 
-  SearchX, AlertCircle, CalendarDays, MapPin, ShieldAlert
+  SearchX, AlertCircle, CalendarDays, MapPin, ShieldAlert,
+  Bookmark
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -54,6 +55,7 @@ interface ExtendedCaseSummary {
   dataDesligamento?: string; motivoDesligamento?: string; urgencia: string;
   violacao?: string[] | string | null; sexo?: string;
   endereco?: string | AddressData | null;
+  manterReferencia?: boolean; 
   agenteAcolhida?: { nome: string }; especialistaPAEFI?: { nome: string };
 }
 
@@ -95,7 +97,7 @@ const ViolationTags = ({ rawViolations }: { rawViolations?: string[] | string | 
   const remaining = list.length - 1
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 justify-center">
       <Badge variant="secondary" className="max-w-30 truncate border-transparent bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover:bg-muted/80">
         {first}
       </Badge>
@@ -122,16 +124,11 @@ const ViolationTags = ({ rawViolations }: { rawViolations?: string[] | string | 
   )
 }
 
-// O componente de Cabeçalho agora força classes de Sticky
-const SortableHeader = ({ label, field, sorting, onToggle, align = 'left', className }: any) => {
+const SortableHeader = ({ label, field, sorting, onToggle, align = 'center', className }: any) => {
   const isActive = sorting?.field === field
   return (
     <TableHead 
       className={cn(
-        // STICKY HEADER CLASSES:
-        // sticky top-0: Cola no topo
-        // bg-background: Fundo sólido (para nada passar por trás)
-        // z-20: Garante que fique acima das linhas
         "sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)]",
         "h-10 cursor-pointer select-none whitespace-nowrap transition-colors hover:bg-muted/50",
         isActive && "text-foreground font-semibold bg-muted/20",
@@ -157,13 +154,13 @@ const TableRowsSkeleton = () => (
   <>
     {Array.from({ length: 8 }).map((_, i) => (
       <TableRow key={i} className="h-14">
-        <TableCell className="pl-4"><Skeleton className="h-4 w-40" /></TableCell>
+        <TableCell className="pl-6"><Skeleton className="h-4 w-48" /></TableCell>
         <TableCell><Skeleton className="h-3 w-8 mx-auto" /></TableCell>
-        <TableCell><Skeleton className="h-3 w-28" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-28 mx-auto" /></TableCell>
         <TableCell><Skeleton className="h-5 w-24 mx-auto rounded-full" /></TableCell>
-        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-        <TableCell><Skeleton className="h-3 w-20 ml-auto" /></TableCell>
-        <TableCell><Skeleton className="h-3 w-24" /></TableCell>
+        <TableCell><Skeleton className="h-4 w-24 mx-auto" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-20 mx-auto" /></TableCell>
+        <TableCell><Skeleton className="h-3 w-24 mx-auto" /></TableCell>
         <TableCell><Skeleton className="h-5 w-24 mx-auto rounded-full" /></TableCell>
         <TableCell><Skeleton className="h-8 w-8 ml-auto rounded-md" /></TableCell>
       </TableRow>
@@ -240,7 +237,6 @@ export function CaseTable({
   return (
     <div className={cn("flex h-full flex-col isolate bg-background", className)}>
       
-      {/* 1. Header de Filtros (Fixo no topo da área da tabela) */}
       {!hideHeader && (
         <div className="flex-none p-4 pb-2 space-y-4 border-b border-border/40">
           {(title || description) && (
@@ -266,56 +262,52 @@ export function CaseTable({
         </div>
       )}
 
-      {/* 2. Área de Rolagem (O segredo do Sticky está aqui) */}
-      {/* relative flex-1: Ocupa todo o espaço restante */}
-      {/* overflow-hidden: Impede scroll no elemento pai, forçando o scroll no filho absolute */}
       <div className="relative flex-1 overflow-hidden">
-        
-        {/* Scroll Container: absolute inset-0 força este div a ser a "janela" de rolagem */}
         <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent">
           <Table>
             <TableHeader>
               <TableRow className="border-b-0 hover:bg-transparent">
-                <SortableHeader label="Beneficiário" field="nomeCompleto" sorting={sorting} onToggle={toggleSort} className="pl-6 min-w-64" />
+                <SortableHeader label="Beneficiário" field="nomeCompleto" sorting={sorting} onToggle={toggleSort} align="center" className="min-w-70 w-[25%]" />
                 
-                {/* HEADERS NÃO ORDENÁVEIS TAMBÉM PRECISAM SER STICKY */}
-                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-15 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-20 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
                   Sexo
                 </TableHead>
                 
-                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-32 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-35 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
                   CPF
                 </TableHead>
                 
-                {!isArchiveMode && (
+                {!isArchiveMode ? (
                   <>
-                    <SortableHeader label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-28" />
-                    <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-45 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                    <SortableHeader label="Urgência" field="urgencia" sorting={sorting} onToggle={toggleSort} align="center" className="w-32.5" />
+                    <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-45 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
                       Violações
                     </TableHead>
                   </>
-                )}
+                ) : null}
 
                 <SortableHeader 
                   label={isArchiveMode ? 'Desligamento' : 'Entrada'} 
                   field={isArchiveMode ? 'dataDesligamento' : 'dataEntrada'} 
-                  sorting={sorting} onToggle={toggleSort} align="right" 
-                  className="w-35 pr-6" 
+                  sorting={sorting} onToggle={toggleSort} align="center" 
+                  className="w-35" 
                 />
                 
-                {isArchiveMode && (
-                  <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-35 text-xs font-medium text-muted-foreground whitespace-nowrap">
+                {isArchiveMode ? (
+                  <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] min-w-55 w-[20%] text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
                     Motivo
                   </TableHead>
-                )}
+                ) : null}
                 
-                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-35 text-xs font-medium text-muted-foreground whitespace-nowrap">
-                  Referência
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-40 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  Técnico Referência
                 </TableHead>
                 
-                {!isArchiveMode && <SortableHeader label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-32.5" />}
+                {!isArchiveMode ? (
+                  <SortableHeader label="Status" field="status" sorting={sorting} onToggle={toggleSort} align="center" className="w-40" />
+                ) : null}
                 
-                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-12.5"></TableHead>
+                <TableHead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.05)] w-15"></TableHead>
               </TableRow>
             </TableHeader>
             
@@ -340,14 +332,23 @@ export function CaseTable({
                     <TableRow key={item.id} className={cn("group text-xs transition-all hover:bg-muted/40 border-border/40", isPlaceholderData && "opacity-50 grayscale")}>
                       
                       <TableCell className="pl-6 py-3 align-top">
-                        <div className="flex flex-col gap-0.5">
-                          <Link to={ROUTES.CASE_DETAIL(item.id)} className="text-sm font-medium text-foreground hover:text-primary hover:underline line-clamp-1">
-                            {item.nomeCompleto}
-                          </Link>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Link to={ROUTES.CASE_DETAIL(item.id)} className="text-sm font-medium text-foreground hover:text-primary hover:underline line-clamp-1">
+                              {item.nomeCompleto}
+                            </Link>
+                            
+                            {item.manterReferencia && (
+                              <Badge variant="outline" className="bg-purple-50/50 text-purple-700 border-purple-200/60 px-1.5 py-0 text-[9px] shadow-sm flex items-center gap-1 leading-tight">
+                                <Bookmark className="h-2.5 w-2.5 fill-current" /> Referenciada
+                              </Badge>
+                            )}
+                          </div>
+
                           {formattedAddress ? (
                             <div className="flex items-center gap-1 text-muted-foreground" title={formattedAddress}>
                               <MapPin className="h-3 w-3 shrink-0 opacity-70" />
-                              <span className="truncate max-w-55 text-[11px]">{formattedAddress}</span>
+                              <span className="truncate max-w-62.5 text-[11px]">{formattedAddress}</span>
                             </div>
                           ) : <span className="text-[10px] italic text-muted-foreground/30 ml-4">Sem endereço</span>}
                         </div>
@@ -355,29 +356,27 @@ export function CaseTable({
                       
                       <TableCell className="text-center align-top py-3 text-muted-foreground">{item.sexo || '-'}</TableCell>
                       
-                      {/* --- CPF PURO (SEM ICONE, SEM QUEBRA) --- */}
-                      <TableCell className="align-top py-3 font-mono text-muted-foreground whitespace-nowrap">
+                      <TableCell className="text-center align-top py-3 font-mono text-muted-foreground whitespace-nowrap">
                         {item.cpf ? formatCPF(item.cpf) : '-'}
                       </TableCell>
                       
                       {isManager && (
                         <>
-                          {/* --- URGÊNCIA COMPLETA --- */}
                           <TableCell className="text-center align-top py-3">
-                            <Badge variant="outline" className={cn("mx-auto border bg-opacity-10 px-2 py-0.5 text-[10px] font-bold shadow-none", getUrgencyColor(item.urgencia))}>
+                            <Badge variant="outline" className={cn("mx-auto border bg-opacity-10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-none", getUrgencyColor(item.urgencia))}>
                               {item.urgencia}
                             </Badge>
                           </TableCell>
-                          <TableCell className="align-top py-3">
+                          <TableCell className="text-center align-top py-3">
                             <ViolationTags rawViolations={item.violacao} />
                           </TableCell>
                         </>
                       )}
 
-                      <TableCell className="text-right align-top py-3 pr-6">
-                        <div className="flex flex-col items-end gap-0.5">
+                      <TableCell className="text-center align-top py-3">
+                        <div className="flex flex-col items-center gap-0.5">
                           {isArchiveMode ? (
-                            <span className="font-medium text-muted-foreground">
+                            <span className="font-medium text-muted-foreground whitespace-nowrap">
                               {item.dataDesligamento ? format(new Date(item.dataDesligamento), 'dd/MM/yyyy') : '-'}
                             </span>
                           ) : (
@@ -389,7 +388,7 @@ export function CaseTable({
                                       {formatDistanceToNow(new Date(item.dataEntrada), { locale: ptBR, addSuffix: true })}
                                     </span>
                                   </TooltipTrigger>
-                                  <TooltipContent side="left">
+                                  <TooltipContent side="top">
                                     <div className="flex items-center gap-2">
                                       <CalendarDays className="h-4 w-4" />
                                       {format(new Date(item.dataEntrada), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
@@ -406,12 +405,12 @@ export function CaseTable({
                       </TableCell>
 
                       {isArchiveMode && (
-                        <TableCell className="align-top py-3 text-muted-foreground">
-                           <span className="line-clamp-2 max-w-30" title={item.motivoDesligamento}>{item.motivoDesligamento || '-'}</span>
+                        <TableCell className="text-center align-top py-3 text-muted-foreground px-4">
+                           <span className="line-clamp-2" title={item.motivoDesligamento}>{item.motivoDesligamento || '-'}</span>
                         </TableCell>
                       )}
 
-                      <TableCell className="align-top py-3 font-medium text-muted-foreground whitespace-nowrap">
+                      <TableCell className="text-center align-top py-3 font-medium text-muted-foreground whitespace-nowrap">
                         {item.status === 'EM_ACOMPANHAMENTO' || (isArchiveMode && item.especialistaPAEFI) 
                           ? item.especialistaPAEFI?.nome?.split(' ')[0] ?? '-'
                           : item.agenteAcolhida?.nome?.split(' ')[0] ?? '-'
@@ -456,8 +455,7 @@ export function CaseTable({
         </div>
       </div>
       
-      {/* 3. Rodapé Fixo (Paginação) */}
-      <div className="flex-none flex items-center justify-end border-t border-border/40 bg-background p-2">
+      <div className="flex-none flex items-center justify-end border-t border-border/40 bg-background p-2 z-10 relative">
         {result && result.total > 0 && (
           <Pagination 
             currentPage={currentPage} 

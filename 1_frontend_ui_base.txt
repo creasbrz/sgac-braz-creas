@@ -7755,7 +7755,7 @@ FILE: frontend\package.json
 --------------------------------------------------
 {
   "name": "frontend",
-  "version": "8.5.0",
+  "version": "8.5.1",
   "type": "module",
   "scripts": {
     "dev": "vite",

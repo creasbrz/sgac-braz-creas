@@ -49,8 +49,7 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
   const weightedLoad = member.active + (member.monitoring * 0.2)
   const loadPercentage = Math.min((weightedLoad / maxLoad) * 100, 100)
   
-  // Cores Semânticas de Carga (Tailwind v4)
-  // Nota: Usamos strings completas para garantir que o Tailwind detecte as classes
+  // Cores Semânticas de Carga
   let indicatorClass = "[&>*]:bg-emerald-500" // Saudável
   let statusText = "Normal"
   let statusTextColor = "text-emerald-600 dark:text-emerald-400"
@@ -73,7 +72,7 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
           <Avatar className="h-9 w-9 border border-border/50 shadow-sm">
             <AvatarFallback className={cn(
               "text-xs text-muted-foreground bg-muted font-bold transition-all duration-300",
-              isPrivacyMode && "blur-[3px]"
+              isPrivacyMode && "blur-sm"
             )}>
               {member.name.substring(0,2).toUpperCase()}
             </AvatarFallback>
@@ -81,7 +80,7 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
           <div className="flex flex-col gap-0.5">
             <span className={cn(
               "font-semibold text-sm text-foreground transition-all duration-300",
-              isPrivacyMode && "blur-[5px] select-none opacity-80"
+              isPrivacyMode && "blur-sm select-none opacity-80"
             )}>
               {member.name}
             </span>
@@ -94,7 +93,6 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
       
       {/* Coluna de Carga Visual */}
       <TableCell>
-        {/* [CORREÇÃO] max-w-[180px] -> max-w-45 */}
         <div className="w-full max-w-45 space-y-1.5">
           <div className="flex justify-between items-center text-[10px] font-medium">
             <span className={cn(statusTextColor)}>
@@ -104,7 +102,6 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
                 {Math.round(weightedLoad * 10) / 10} / {maxLoad} un.
             </span>
           </div>
-          {/* [CORREÇÃO] Removemos indicatorClassName e usamos seletor filho [&>*] no className */}
           <Progress 
             value={loadPercentage} 
             className={cn("h-1.5 bg-muted/50", indicatorClass)} 
@@ -113,7 +110,6 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
       </TableCell>
 
       <TableCell className="text-center">
-        {/* [CORREÇÃO] min-w-[2.5rem] -> min-w-10 */}
         <div className="inline-flex items-center justify-center min-w-10 h-6 px-2 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs font-bold tabular-nums border border-blue-100 dark:border-blue-800">
           {member.active}
         </div>
@@ -121,7 +117,6 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
       
       <TableCell className="text-center">
         {member.role === 'Especialista' ? (
-          /* [CORREÇÃO] min-w-[2.5rem] -> min-w-10 */
           <div className="inline-flex items-center justify-center min-w-10 h-6 px-2 rounded-md bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 text-xs font-bold tabular-nums border border-cyan-100 dark:border-cyan-800">
             {member.monitoring}
           </div>
@@ -147,12 +142,20 @@ const TeamRow = ({ member, maxLoad, onDetails }: { member: TeamMemberStats, maxL
 const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: () => void }) => {
   const { isPrivacyMode } = usePrivacy()
   
+  // [CORREÇÃO AQUI]: Em vez de 'all', mandamos exatamente os status que compõem a "carga ativa".
+  // Nosso backend foi programado para ler essas vírgulas e converter numa query "IN [ ... ]".
   const filterParams = member.role === 'Agente_Social' 
-    ? { agenteId: member.id }
-    : { specialistId: member.id }
+    ? { 
+        agenteId: member.id, 
+        status: 'AGUARDANDO_ACOLHIDA,EM_ACOLHIDA' 
+      } 
+    : { 
+        specialistId: member.id, 
+        status: 'EM_ACOLHIDA_ESPECIALIZADA,EM_ACOMPANHAMENTO,EM_MONITORAMENTO' 
+      }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500 h-full flex flex-col p-1">
+    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500 pb-10">
       
       {/* Header do Perfil */}
       <div className="flex flex-col gap-6 border-b border-border pb-6">
@@ -164,9 +167,8 @@ const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: (
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
            <div className="flex items-center gap-5">
-             {/* [CORREÇÃO] blur-[4px] -> blur-xs */}
              <Avatar className="h-16 w-16 border-2 border-background shadow-md ring-1 ring-border/50">
-               <AvatarFallback className={cn("bg-primary/10 text-primary text-xl font-bold", isPrivacyMode && "blur-xs")}>
+               <AvatarFallback className={cn("bg-primary/10 text-primary text-xl font-bold", isPrivacyMode && "blur-sm")}>
                  {member.name.substring(0,2).toUpperCase()}
                </AvatarFallback>
              </Avatar>
@@ -184,13 +186,11 @@ const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: (
            </div>
 
            <div className="flex gap-4">
-             {/* [CORREÇÃO] min-w-[120px] -> min-w-30 */}
              <Card className="flex flex-col items-center justify-center p-4 min-w-30 border-l-4 border-l-blue-500 shadow-sm bg-card/50">
                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">Casos Ativos</span>
                  <span className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{member.active}</span>
              </Card>
              {member.role === 'Especialista' && (
-               /* [CORREÇÃO] min-w-[120px] -> min-w-30 */
                <Card className="flex flex-col items-center justify-center p-4 min-w-30 border-l-4 border-l-cyan-500 shadow-sm bg-card/50">
                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">Monitoramento</span>
                    <span className="text-3xl font-bold text-foreground tabular-nums tracking-tight">{member.monitoring}</span>
@@ -200,23 +200,25 @@ const TeamDetailView = ({ member, onBack }: { member: TeamMemberStats, onBack: (
         </div>
       </div>
 
-      <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden shadow-sm flex flex-col">
+      {/* [CORREÇÃO CSS AQUI]: Usando style inline garantimos a renderização em qualquer versão do Tailwind */}
+      <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden" style={{ minHeight: '650px' }}>
         <div className="p-4 px-6 border-b border-border bg-muted/30 flex justify-between items-center">
            <h3 className="font-semibold flex items-center gap-2 text-foreground">
              <div className="p-1.5 bg-background rounded-md border border-border/60 shadow-sm">
                 <Briefcase className="h-4 w-4 text-primary"/> 
              </div>
-             Casos Vinculados
+             Carga de Trabalho Atual
            </h3>
         </div>
-        <div className="flex-1 min-h-0 bg-background">
+        <div className="flex-1 bg-background h-full">
            <CaseTable 
              endpoint="/cases"
              title=""
              description=""
-             defaultView="all"
+             defaultView="all" 
              queryParams={filterParams}
-             className="border-none shadow-none"
+             hideHeader={false}
+             className="border-none shadow-none h-full"
            />
         </div>
       </div>
@@ -316,7 +318,6 @@ export function TeamOverview() {
       ) : (
         <Tabs defaultValue="agents" className="w-full">
           <div className="flex items-center justify-between mb-6">
-             {/* [CORREÇÃO] max-w-[400px] -> max-w-100 */}
              <TabsList className="grid w-full max-w-100 grid-cols-2 bg-muted/40 p-1 rounded-lg border border-border/40">
                <TabsTrigger value="agents" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary transition-all">
                  <UserCheck className="h-4 w-4" /> Agentes
@@ -363,10 +364,10 @@ export function TeamOverview() {
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-16 text-muted-foreground">
                           <div className="flex flex-col items-center gap-3">
-                             <div className="p-3 bg-muted/50 rounded-full">
+                              <div className="p-3 bg-muted/50 rounded-full">
                                 <Users className="h-6 w-6 opacity-30" />
-                             </div>
-                             <p>Nenhum agente encontrado.</p>
+                              </div>
+                              <p>Nenhum agente encontrado.</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -407,7 +408,7 @@ export function TeamOverview() {
                     <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs uppercase tracking-wider font-semibold border-b border-border/60">
                       <TableHead className="w-[35%] pl-6 h-11 text-muted-foreground">Servidor</TableHead>
                       <TableHead className="w-[25%] h-11 text-muted-foreground">Ocupação</TableHead>
-                      <TableHead className="text-center h-11 text-muted-foreground">Acompanhemnto</TableHead>
+                      <TableHead className="text-center h-11 text-muted-foreground">Acompanhamento</TableHead>
                       <TableHead className="text-center h-11 text-muted-foreground">Monitoramento</TableHead>
                       <TableHead className="text-right pr-6 h-11 text-muted-foreground">Ações</TableHead>
                     </TableRow>

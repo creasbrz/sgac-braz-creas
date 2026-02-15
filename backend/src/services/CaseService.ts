@@ -427,16 +427,15 @@ export class CaseService {
         { endereco_ra: { contains: search, mode: 'insensitive' } }
       ];
 
+      // Garante que o CPF só pesquise o número puro se o Prisma suportar strings nele
       if (numericSearch.length > 0) {
          searchConditions.push({ cpf: { contains: numericSearch } });
-      } else {
-         searchConditions.push({ cpf: { contains: search } });
       }
 
       conditions.push({ OR: searchConditions });
     }
 
-    if (manterReferencia === 'true') {
+    if (manterReferencia === 'true' || manterReferencia === true) {
       conditions.push({ manterReferencia: true })
     }
 

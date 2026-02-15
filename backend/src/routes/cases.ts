@@ -12,13 +12,10 @@ import { format } from 'date-fns'
 export async function caseRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>()
 
-  // Middleware de Autenticação
   server.addHook('onRequest', async (req, reply) => {
     try { await req.jwtVerify() } 
     catch (err) { await reply.status(401).send({ message: 'Não autorizado' }) }
   })
-
-  // --- CRUD CORE ---
 
   server.post('/cases', {
     schema: { tags: ['Casos'], body: createCaseBodySchema }
@@ -63,8 +60,6 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   }, CaseController.update)
 
-  // --- ACTIONS ---
-
   server.patch('/cases/:id/status', {
     schema: { 
       tags: ['Casos'], 
@@ -94,8 +89,6 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   }, CaseController.closeCase)
 
-  // --- IMPORT / EXPORT ---
-  
   server.get('/cases/closed', {
     schema: {
       tags: ['Casos'],
@@ -105,7 +98,6 @@ export async function caseRoutes(app: FastifyInstance) {
         page: z.coerce.number().default(1),
         pageSize: z.coerce.number().default(10),
         
-        // [CORREÇÃO] Parâmetros extras aceitos para os filtros da tabela e aba de referenciados
         manterReferencia: z.string().optional(),
         urgencia: z.string().optional(),
         violacao: z.string().optional(),
@@ -117,7 +109,6 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   }, CaseController.listClosed)
 
-  // [GET] EXPORTAR EXCEL
   server.get('/cases/export', {
     schema: { tags: ['Casos'], summary: 'Exportar todos os dados para Excel (.xlsx)' }
   }, async (req, reply) => {
@@ -135,7 +126,6 @@ export async function caseRoutes(app: FastifyInstance) {
     }
   })
 
-  // [GET] DOWNLOAD MODELO
   server.get('/cases/import/template', {
     schema: { tags: ['Casos'], summary: 'Baixar planilha modelo para importação' }
   }, async (req, reply) => {
@@ -145,7 +135,6 @@ export async function caseRoutes(app: FastifyInstance) {
     return reply.send(buffer)
   })
 
-  // [POST] IMPORTAR CASOS
   server.post('/cases/import', {
     schema: { tags: ['Casos'], summary: 'Importar casos em massa via Excel/CSV' }
   }, async (req, reply) => {

@@ -196,13 +196,17 @@ export function CaseTable({
         Object.entries(filtersToUse).filter(([_, v]) => v !== 'all' && v !== '')
       )
       
+      const cleanExternalParams = Object.fromEntries(
+        Object.entries(queryParams).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+      )
+
       const params = {
         page: currentPage, 
         pageSize: 15, 
         view: defaultView, 
         sortBy: sorting?.field, 
         sortOrder: sorting?.order,
-        ...queryParams, 
+        ...cleanExternalParams, 
         ...cleanInternalFilters 
       }
       
@@ -235,10 +239,11 @@ export function CaseTable({
   }
 
   return (
-    <div className={cn("flex h-full flex-col isolate bg-background", className)}>
+    // [CORREÇÃO] min-h-[400px] -> min-h-100
+    <div className={cn("flex h-full flex-col isolate bg-background min-h-100", className)}>
       
       {!hideHeader && (
-        <div className="flex-none p-4 pb-2 space-y-4 border-b border-border/40">
+        <div className="flex-none p-4 pb-2 space-y-4 border-b border-border/40 shrink-0">
           {(title || description) && (
             <div>
               {title && <h2 className="text-lg font-semibold tracking-tight">{title}</h2>}
@@ -262,8 +267,8 @@ export function CaseTable({
         </div>
       )}
 
-      <div className="relative flex-1 overflow-hidden">
-        <div className="absolute inset-0 overflow-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent">
+      {/* [CORREÇÃO] min-h-[300px] -> min-h-75 */}
+      <div className="flex-1 overflow-auto min-h-75 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent">
           <Table>
             <TableHeader>
               <TableRow className="border-b-0 hover:bg-transparent">
@@ -452,10 +457,9 @@ export function CaseTable({
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
       
-      <div className="flex-none flex items-center justify-end border-t border-border/40 bg-background p-2 z-10 relative">
+      <div className="flex-none flex items-center justify-end border-t border-border/40 bg-background p-2 z-10 relative shrink-0">
         {result && result.total > 0 && (
           <Pagination 
             currentPage={currentPage} 

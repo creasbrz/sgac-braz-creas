@@ -4,7 +4,6 @@ import { CaseService } from '../services/CaseService'
 import { CreateCaseInput, UpdateCaseInput } from '../schemas/caseSchema'
 import { Cargo, CaseStatus } from '@prisma/client'
 
-// Interfaces locais
 interface UpdateStatusBody {
   status: CaseStatus
 }
@@ -42,11 +41,9 @@ export class CaseController {
     return reply.send(result)
   }
 
-  // [CORREÇÃO APLICADA AQUI]
   static async listClosed(req: FastifyRequest<{ Querystring: any }>, reply: FastifyReply) {
     const user = req.user as { sub: string, cargo: string }
     
-    // Convertemos req.query para 'any' ou 'Record<string, any>' para permitir o spread (...)
     const queryParams = req.query as Record<string, any>;
 
     const closedFilters = {
